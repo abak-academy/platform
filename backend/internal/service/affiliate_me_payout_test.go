@@ -48,21 +48,14 @@ func seedAffiliateMePayoutDay(t *testing.T, repo *repository.Repository, day int
 
 func seedAffiliateMePayoutRow(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID, status string, amount float64, requestedAt time.Time) uuid.UUID {
 	t.Helper()
-	var id uuid.UUID
-	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliate_payouts (affiliator_id, amount, status, bank_name, bank_account_number, bank_account_holder, requested_at)
-		 VALUES ($1, $2, $3, 'BCA', '1234567890', 'Budi Santoso', $4)
-		 RETURNING id`,
-		affiliatorID, amount, status, requestedAt,
-	).Scan(&id))
-	return id
+	return seedAffiliateTxPayout(t, repo, affiliatorID, status, amount, "Budi Santoso", requestedAt)
 }
 
 func countAffiliateMePayouts(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID) int {
 	t.Helper()
 	var n int
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_payouts WHERE affiliator_id = $1`, affiliatorID).Scan(&n))
+		`SELECT count(*) FROM affiliate_transactions WHERE type = 'payout' AND affiliator_id = $1`, affiliatorID).Scan(&n))
 	return n
 }
 
@@ -162,8 +155,8 @@ func TestRequestMyAffiliatePayout_fullSaldoDefaultWritesDeduction(t *testing.T) 
 	var ledgerAmount float64
 	var payoutID, actorID uuid.UUID
 	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`SELECT amount, payout_id, actor_id FROM affiliate_ledger_entries
-		 WHERE affiliator_id = $1 AND entry_type = 'payout'`, aff.ID,
+		`SELECT amount, id, actor_id FROM affiliate_transactions
+		 WHERE affiliator_id = $1 AND type = 'payout'`, aff.ID,
 	).Scan(&ledgerAmount, &payoutID, &actorID))
 	require.InDelta(t, -150000, ledgerAmount, 0.001)
 	require.Equal(t, payout.ID, payoutID)
@@ -226,7 +219,7 @@ func TestListMyAffiliatePayouts_newestFirstWithSchedule(t *testing.T) {
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "requested", 100000, base)
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "paid", 50000, base.Add(time.Hour))
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "rejected", 25000, base.Add(2*time.Hour))
-	seedAffiliateMeLedgerEntry(t, repo, aff.ID, "commission", 175000, time.Now().UTC())
+	seedAffiliateMeLedgerEntry(t, repo, aff.ID, "commission", 350000, time.Now().UTC())
 
 	_, other := seedAffiliateMeAffiliator(t, repo, "Affiliator PayList B "+uniqueSuffix(), "active", "bronze")
 	seedAffiliateMePayoutRow(t, repo, other.ID, "paid", 999999, time.Now().UTC())
@@ -260,7 +253,7 @@ func TestListMyAffiliatePayouts_flagOffReturnsSentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrAffiliateProfileNotFound)
 }
 
-func TestListMyAffiliateAdjustments_marksAppliedFromLedger(t *testing.T) {
+func TestListMyAffiliateAdjustments_listsOwnPostedRows(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateMeFlag(t, repo, "true")
@@ -270,39 +263,17 @@ func TestListMyAffiliateAdjustments_marksAppliedFromLedger(t *testing.T) {
 	_, affB := seedAffiliateMeAffiliator(t, repo, "Affiliator Adj B "+uniqueSuffix(), "active", "bronze")
 
 	now := time.Now().UTC()
-	var appliedID, pendingID, foreignID uuid.UUID
-	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO affiliate_adjustments (affiliator_id, category, amount, reason, created_by, created_at)
-		 VALUES ($1, 'correction', -20000, 'koreksi', $2, $3) RETURNING id`,
-		aff.ID, uuid.MustParse(decider), now,
-	).Scan(&appliedID))
-	_, err := repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, adjustment_id)
-		 VALUES ($1, 'adjustment', -20000, $2)`, aff.ID, appliedID)
-	require.NoError(t, err)
-	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO affiliate_adjustments (affiliator_id, category, amount, reason, approval_status, created_by, created_at)
-		 VALUES ($1, 'bonus', 10000, 'bonus event', 'pending', $2, $3) RETURNING id`,
-		aff.ID, uuid.MustParse(decider), now.Add(time.Hour),
-	).Scan(&pendingID))
-	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO affiliate_adjustments (affiliator_id, category, amount, reason, created_by, created_at)
-		 VALUES ($1, 'other', 5000, 'milik affiliator lain', $2, $3) RETURNING id`,
-		affB.ID, uuid.MustParse(decider), now,
-	).Scan(&foreignID))
+	deciderID := uuid.MustParse(decider)
+	appliedID := seedAffiliateTxAdjustment(t, repo, aff.ID, "correction", -20000, "koreksi", &deciderID, now)
+	foreignID := seedAffiliateTxAdjustment(t, repo, affB.ID, "other", 5000, "milik affiliator lain", &deciderID, now)
 
 	page, err := svc.ListMyAffiliateAdjustments(ctx, userID, AffiliateMeListFilter{Page: 1, PerPage: 20})
 	require.NoError(t, err)
-	require.Equal(t, 2, page.Total)
-	require.Len(t, page.Data, 2)
-
-	applied := map[uuid.UUID]bool{}
-	for _, row := range page.Data {
-		applied[row.ID] = row.Applied
-	}
-	require.True(t, applied[appliedID], "adjustment with a ledger entry must be applied")
-	require.False(t, applied[pendingID], "threshold-pending adjustment has no ledger entry yet")
-	require.NotContains(t, applied, foreignID, "another affiliator's adjustment must not leak")
+	require.Equal(t, 1, page.Total)
+	require.Len(t, page.Data, 1)
+	require.Equal(t, appliedID, page.Data[0].ID)
+	require.True(t, page.Data[0].Applied, "a posted adjustment is always applied")
+	require.NotEqual(t, foreignID, page.Data[0].ID, "another affiliator's adjustment must not leak")
 
 	_, err = svc.ListMyAffiliateAdjustments(ctx, seedAffiliateMeUser(t, repo, "Affiliator Adj None "+uniqueSuffix(), "affiliator"), AffiliateMeListFilter{Page: 1, PerPage: 20})
 	require.ErrorIs(t, err, ErrAffiliateProfileNotFound)

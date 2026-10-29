@@ -103,13 +103,37 @@ func seedAffiliateMeOrder(t *testing.T, repo *repository.Repository, studentID s
 	return id
 }
 
+// seedAffiliateMeLedgerEntry puts one ledger row of the given type on the
+// affiliator's balance, effective at createdAt. A commission gets its own
+// student and order; a refund deduction offsets the affiliator's latest
+// commission that has none yet.
 func seedAffiliateMeLedgerEntry(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID, entryType string, amount float64, createdAt time.Time) {
 	t.Helper()
-	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, created_at)
-		 VALUES ($1, $2, $3, $4)`,
-		affiliatorID, entryType, amount, createdAt)
-	require.NoError(t, err)
+	ctx := context.Background()
+	switch entryType {
+	case "commission":
+		student := seedAffiliateMeStudent(t, repo, "Ledger Student "+uniqueSuffix())
+		seedAffiliateJobCommission(t, repo, affiliatorID, uuid.MustParse(student), affiliateJobCommissionSeed{
+			productType: "exam", base: amount * 10, pct: 10, amount: amount, status: "available", level: "bronze",
+			createdAt: createdAt, paidAt: createdAt,
+		})
+	case "refund_deduction":
+		tag, err := repo.Pool().Exec(ctx,
+			`INSERT INTO affiliate_transactions
+			     (affiliator_id, type, status, amount, effective_at, created_at, parent_id, student_id, order_id, order_item_id, product_type)
+			 SELECT affiliator_id, 'refund_deduction', 'posted', $2, $3, $3, id, student_id, order_id, order_item_id, product_type
+			 FROM affiliate_transactions c
+			 WHERE c.type = 'commission' AND c.affiliator_id = $1
+			   AND NOT EXISTS (SELECT 1 FROM affiliate_transactions d WHERE d.parent_id = c.id AND d.type = 'refund_deduction')
+			 ORDER BY c.created_at DESC LIMIT 1`,
+			affiliatorID, amount, createdAt)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, tag.RowsAffected(), "a refund deduction needs a commission without one")
+	case "payout":
+		seedAffiliateTxPayout(t, repo, affiliatorID, "paid", amount, "Budi Santoso", createdAt)
+	default:
+		seedAffiliateTxAdjustment(t, repo, affiliatorID, "other", amount, "seed "+entryType, nil, createdAt)
+	}
 }
 
 func TestGetMyAffiliateProfile_showsLevelProgress(t *testing.T) {
@@ -440,7 +464,7 @@ func TestGetMyAffiliateLedger_saldoAndOrdering(t *testing.T) {
 
 	desc, err := svc.GetMyAffiliateLedger(ctx, userID, AffiliateMeListFilter{Page: 1, PerPage: 20})
 	require.NoError(t, err)
-	require.InDelta(t, 14000, desc.Saldo, 0.001)
+	require.InDelta(t, 4000, desc.Saldo, 0.001)
 	require.Equal(t, 3, desc.Total)
 	require.Len(t, desc.Data, 3)
 	require.Equal(t, "payout", desc.Data[0].EntryType)
@@ -453,7 +477,7 @@ func TestGetMyAffiliateLedger_saldoAndOrdering(t *testing.T) {
 	paged, err := svc.GetMyAffiliateLedger(ctx, userID, AffiliateMeListFilter{Page: 2, PerPage: 2})
 	require.NoError(t, err)
 	require.Len(t, paged.Data, 1)
-	require.InDelta(t, 14000, paged.Saldo, 0.001)
+	require.InDelta(t, 4000, paged.Saldo, 0.001)
 
 	userIDB, affB := seedAffiliateMeAffiliator(t, repo, "Affiliator Ledger B "+uniqueSuffix(), "active", "bronze")
 	ledgerB, err := svc.GetMyAffiliateLedger(ctx, userIDB, AffiliateMeListFilter{Page: 1, PerPage: 20})

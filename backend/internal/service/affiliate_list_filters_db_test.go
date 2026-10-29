@@ -33,27 +33,14 @@ func TestAffiliateMeLists_SearchFilterAndPaginate(t *testing.T) {
 	cSariCourse := commission(sari, "course", "available", 2)
 	commission(sari, "book", "pending", 20)
 	commission(dimas, "exam", "cancelled", 40)
-	seedCommissionLedgerEntry(t, repo, aff.ID, cSariCourse, 10000)
 	// An order item carries the product's name at purchase time.
 	_, err := repo.Pool().Exec(ctx,
 		`UPDATE order_item SET name = 'Kursus Matematika '||$2::text
-		 WHERE id = (SELECT order_item_id FROM affiliate_commissions WHERE id = $1)`, cSariCourse, unique)
+		 WHERE id = (SELECT order_item_id FROM affiliate_transactions WHERE id = $1)`, cSariCourse, unique)
 	require.NoError(t, err)
-	var adjustmentID uuid.UUID
-	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO affiliate_adjustments (affiliator_id, category, amount, reason, created_by)
-		 VALUES ($1, 'bonus', 5000, 'Bonus akhir tahun '||$2::text, $3) RETURNING id`,
-		aff.ID, unique, uuid.MustParse(seedAffiliateMeUser(t, repo, "Admin Ledger "+uniqueSuffix(), "super_admin"))).Scan(&adjustmentID))
-	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, adjustment_id, note, created_at) VALUES
-		 ($1, 'adjustment', 5000, $3, 'Bonus akhir tahun '||$2::text, now() - interval '1 day')`,
-		aff.ID, unique, adjustmentID)
-	require.NoError(t, err)
-	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, note, created_at) VALUES
-		 ($1, 'payout', -3000, 'payout requested order '||$2::text, now() - interval '3 days')`,
-		aff.ID, uuid.NewString())
-	require.NoError(t, err)
+	adminID := uuid.MustParse(seedAffiliateMeUser(t, repo, "Admin Ledger "+uniqueSuffix(), "super_admin"))
+	seedAffiliateTxAdjustment(t, repo, aff.ID, "bonus", 5000, "Bonus akhir tahun "+unique, &adminID, now.AddDate(0, 0, -1))
+	seedAffiliateTxPayout(t, repo, aff.ID, "paid", 3000, "Budi", now.AddDate(0, 0, -3))
 
 	page := func(f AffiliateMeListFilter) AffiliateMeCommissionsPage {
 		t.Helper()
@@ -158,12 +145,8 @@ func TestAffiliateMeLists_PayoutsAndAdjustmentsFilters(t *testing.T) {
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "rejected", 100000, now.AddDate(0, 0, -5))
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "requested", 100000, now.AddDate(0, 0, -1))
 	unique := uniqueSuffix()
-	_, err := repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_adjustments (affiliator_id, category, amount, reason, created_by, created_at) VALUES
-		 ($1, 'bonus', 50000, 'Bonus '||$3::text, $2, now() - interval '2 days'),
-		 ($1, 'correction', -20000, 'Koreksi '||$3::text, $2, now() - interval '20 days')`,
-		aff.ID, deciderID, unique)
-	require.NoError(t, err)
+	seedAffiliateTxAdjustment(t, repo, aff.ID, "bonus", 50000, "Bonus "+unique, &deciderID, now.AddDate(0, 0, -2))
+	seedAffiliateTxAdjustment(t, repo, aff.ID, "correction", -20000, "Koreksi "+unique, &deciderID, now.AddDate(0, 0, -20))
 
 	base := AffiliateMeListFilter{Page: 1, PerPage: 20}
 	with := func(f func(*AffiliateMeListFilter)) AffiliateMeListFilter { out := base; f(&out); return out }

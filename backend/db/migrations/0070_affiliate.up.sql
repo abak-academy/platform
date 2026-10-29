@@ -41,108 +41,137 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_bindings_student_active
 CREATE INDEX IF NOT EXISTS idx_affiliate_bindings_affiliator
     ON affiliate_bindings (affiliator_id, status);
 
--- The money tables below (commissions, payouts, adjustments, ledger entries)
--- are replaced by affiliate_transactions in the same migration file.
-CREATE TABLE IF NOT EXISTS affiliate_commissions (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    affiliator_id    UUID NOT NULL REFERENCES affiliators (user_id),
-    student_id       UUID NOT NULL REFERENCES users (id),
-    order_id         UUID NOT NULL REFERENCES orders (id),
-    order_item_id    UUID NOT NULL UNIQUE REFERENCES order_item (id),
-    product_type     TEXT NOT NULL,
-    quantity         INT NOT NULL DEFAULT 1,
-    base_amount      NUMERIC(12, 2) NOT NULL,
-    commission_type  TEXT NOT NULL DEFAULT 'percent' CHECK (commission_type IN ('percent', 'fixed')),
-    commission_value NUMERIC(12, 2) NOT NULL,
-    level_snapshot   TEXT NOT NULL,
-    amount           NUMERIC(12, 2) NOT NULL,
-    status           TEXT NOT NULL DEFAULT 'pending'
-                     CHECK (status IN ('pending', 'available', 'cancelled')),
-    wait_until       TIMESTAMPTZ,
-    paid_at          TIMESTAMPTZ,
-    received_at      TIMESTAMPTZ,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_affiliate_commissions_affiliator
-    ON affiliate_commissions (affiliator_id, status);
-
-CREATE INDEX IF NOT EXISTS idx_affiliate_commissions_wait
-    ON affiliate_commissions (status, wait_until)
-    WHERE status = 'pending';
-
-CREATE INDEX IF NOT EXISTS idx_affiliate_commissions_order
-    ON affiliate_commissions (order_id);
-
-CREATE TABLE IF NOT EXISTS affiliate_payouts (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    affiliator_id       UUID NOT NULL REFERENCES affiliators (user_id),
-    amount              NUMERIC(12, 2) NOT NULL,
-    status              TEXT NOT NULL DEFAULT 'requested'
-                        CHECK (status IN ('requested', 'processing', 'paid', 'rejected')),
-    bank_name           TEXT NOT NULL,
-    bank_account_number TEXT NOT NULL,
-    bank_account_holder TEXT NOT NULL,
-    proof_url           TEXT,
-    reject_reason       TEXT,
-    processed_by        UUID REFERENCES users (id),
-    processed_at        TIMESTAMPTZ,
-    requested_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_affiliate_payouts_affiliator
-    ON affiliate_payouts (affiliator_id, status);
-
-CREATE TABLE IF NOT EXISTS affiliate_adjustments (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    affiliator_id   UUID NOT NULL REFERENCES affiliators (user_id),
-    category        TEXT NOT NULL CHECK (category IN ('correction', 'offline', 'bonus', 'other')),
-    amount          NUMERIC(12, 2) NOT NULL,
-    reason          TEXT NOT NULL,
-    note            TEXT,
-    approval_status TEXT CHECK (approval_status IN ('pending', 'approved')),
-    approver_id     UUID REFERENCES users (id),
-    approved_at     TIMESTAMPTZ,
-    created_by      UUID NOT NULL REFERENCES users (id),
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_affiliate_adjustments_affiliator
-    ON affiliate_adjustments (affiliator_id, created_at);
-
-CREATE TABLE IF NOT EXISTS affiliate_ledger_entries (
+CREATE TABLE IF NOT EXISTS affiliate_transactions (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     affiliator_id UUID NOT NULL REFERENCES affiliators (user_id),
-    entry_type    TEXT NOT NULL
-                  CHECK (entry_type IN ('commission', 'refund_deduction', 'adjustment', 'payout', 'payout_reversal')),
+    type          TEXT NOT NULL
+                  CHECK (type IN ('commission', 'refund_deduction', 'payout', 'payout_reversal', 'adjustment')),
+    status        TEXT NOT NULL,
     amount        NUMERIC(12, 2) NOT NULL,
-    commission_id UUID REFERENCES affiliate_commissions (id),
-    payout_id     UUID REFERENCES affiliate_payouts (id),
-    adjustment_id UUID REFERENCES affiliate_adjustments (id),
-    note          TEXT,
+    effective_at  TIMESTAMPTZ,
+    parent_id     UUID REFERENCES affiliate_transactions (id),
     actor_id      UUID REFERENCES users (id),
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    note          TEXT,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    student_id    UUID REFERENCES users (id),
+    order_id      UUID REFERENCES orders (id),
+    order_item_id UUID REFERENCES order_item (id),
+    product_type  TEXT,
+    quantity      INT,
+    base_amount   NUMERIC(12, 2),
+    release_at    TIMESTAMPTZ,
+    order_paid_at TIMESTAMPTZ,
+    detail        JSONB NOT NULL DEFAULT '{}',
+    CONSTRAINT affiliate_transactions_status_check CHECK (
+        (type = 'commission' AND status IN ('pending', 'available', 'cancelled'))
+        OR (type = 'payout' AND status IN ('requested', 'processing', 'paid', 'rejected'))
+        OR (type IN ('refund_deduction', 'payout_reversal', 'adjustment') AND status = 'posted')
+    ),
+    CONSTRAINT affiliate_transactions_amount_check CHECK (
+        (type = 'commission' AND amount > 0)
+        OR (type IN ('refund_deduction', 'payout') AND amount < 0)
+        OR (type = 'payout_reversal' AND amount > 0)
+        OR (type = 'adjustment' AND amount <> 0)
+    ),
+    CONSTRAINT affiliate_transactions_commission_check CHECK (
+        type <> 'commission' OR (
+            student_id IS NOT NULL AND order_id IS NOT NULL AND order_item_id IS NOT NULL
+            AND product_type IS NOT NULL AND quantity IS NOT NULL AND base_amount IS NOT NULL
+        )
+    ),
+    CONSTRAINT affiliate_transactions_parent_check CHECK (
+        type NOT IN ('refund_deduction', 'payout_reversal') OR parent_id IS NOT NULL
+    ),
+    CONSTRAINT affiliate_transactions_effective_check CHECK (
+        (type NOT IN ('refund_deduction', 'payout', 'payout_reversal', 'adjustment') OR effective_at IS NOT NULL)
+        AND (type <> 'commission' OR status <> 'available' OR effective_at IS NOT NULL)
+    )
 );
 
-CREATE INDEX IF NOT EXISTS idx_affiliate_ledger_affiliator
-    ON affiliate_ledger_entries (affiliator_id, created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_transactions_commission_item
+    ON affiliate_transactions (order_item_id)
+    WHERE type = 'commission';
 
-CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_ledger_commission
-    ON affiliate_ledger_entries (commission_id, entry_type)
-    WHERE commission_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_transactions_refund_parent
+    ON affiliate_transactions (parent_id)
+    WHERE type = 'refund_deduction';
 
-CREATE FUNCTION affiliate_ledger_append_only() RETURNS trigger AS $$
+CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_transactions_reversal_parent
+    ON affiliate_transactions (parent_id)
+    WHERE type = 'payout_reversal';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_affiliate_transactions_payout_in_flight
+    ON affiliate_transactions (affiliator_id)
+    WHERE type = 'payout' AND status IN ('requested', 'processing');
+
+CREATE INDEX IF NOT EXISTS idx_affiliate_transactions_ledger
+    ON affiliate_transactions (affiliator_id, effective_at)
+    WHERE effective_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_affiliate_transactions_affiliator
+    ON affiliate_transactions (affiliator_id, type, status);
+
+CREATE INDEX IF NOT EXISTS idx_affiliate_transactions_release
+    ON affiliate_transactions (release_at)
+    WHERE type = 'commission' AND status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_affiliate_transactions_order
+    ON affiliate_transactions (order_id)
+    WHERE order_id IS NOT NULL;
+
+-- Money fields never change after insert; only status moves, along the allowed
+-- transitions, so the balance of any past date stays reproducible.
+CREATE FUNCTION affiliate_transactions_guard() RETURNS trigger AS $$
 BEGIN
-    RAISE EXCEPTION 'affiliate_ledger_entries is append-only';
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'affiliate_transactions rows cannot be deleted';
+    END IF;
+
+    IF NEW.id <> OLD.id
+       OR NEW.affiliator_id <> OLD.affiliator_id
+       OR NEW.type <> OLD.type
+       OR NEW.amount <> OLD.amount
+       OR NEW.created_at <> OLD.created_at
+       OR NEW.parent_id IS DISTINCT FROM OLD.parent_id
+       OR NEW.student_id IS DISTINCT FROM OLD.student_id
+       OR NEW.order_id IS DISTINCT FROM OLD.order_id
+       OR NEW.order_item_id IS DISTINCT FROM OLD.order_item_id
+       OR NEW.product_type IS DISTINCT FROM OLD.product_type
+       OR NEW.quantity IS DISTINCT FROM OLD.quantity
+       OR NEW.base_amount IS DISTINCT FROM OLD.base_amount
+       OR NEW.order_paid_at IS DISTINCT FROM OLD.order_paid_at THEN
+        RAISE EXCEPTION 'affiliate_transactions money fields are immutable';
+    END IF;
+
+    IF OLD.effective_at IS NOT NULL AND NEW.effective_at IS DISTINCT FROM OLD.effective_at THEN
+        RAISE EXCEPTION 'affiliate_transactions.effective_at is set once';
+    END IF;
+    IF OLD.release_at IS NOT NULL AND NEW.release_at IS DISTINCT FROM OLD.release_at THEN
+        RAISE EXCEPTION 'affiliate_transactions.release_at is set once';
+    END IF;
+
+    IF NEW.status <> OLD.status AND NOT (
+        (OLD.type = 'commission' AND OLD.status = 'pending' AND NEW.status IN ('available', 'cancelled'))
+        OR (OLD.type = 'commission' AND OLD.status = 'available' AND NEW.status = 'cancelled')
+        OR (OLD.type = 'payout' AND OLD.status = 'requested' AND NEW.status IN ('processing', 'paid', 'rejected'))
+        OR (OLD.type = 'payout' AND OLD.status = 'processing' AND NEW.status IN ('paid', 'rejected'))
+    ) THEN
+        RAISE EXCEPTION 'affiliate_transactions status cannot move from % to %', OLD.status, NEW.status;
+    END IF;
+
+    IF NEW.detail IS DISTINCT FROM OLD.detail
+       AND (OLD.type <> 'payout' OR NEW.status = OLD.status) THEN
+        RAISE EXCEPTION 'affiliate_transactions.detail is immutable';
+    END IF;
+
+    RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER trg_affiliate_ledger_append_only
-    BEFORE UPDATE OR DELETE ON affiliate_ledger_entries
-    FOR EACH ROW EXECUTE FUNCTION affiliate_ledger_append_only();
+CREATE TRIGGER trg_affiliate_transactions_guard
+    BEFORE UPDATE OR DELETE ON affiliate_transactions
+    FOR EACH ROW EXECUTE FUNCTION affiliate_transactions_guard();
 
 CREATE TABLE IF NOT EXISTS affiliate_settings (
     id                     INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),

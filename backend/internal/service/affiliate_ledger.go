@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"akademi-bimbel/internal/model"
-
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -35,14 +33,7 @@ func (s *Service) settleAffiliateRefundTx(ctx context.Context, tx pgx.Tx, orderI
 				return fmt.Errorf("cancel affiliate commission: %w", err)
 			}
 		case "available":
-			if err := s.storeRepo.InsertRefundDeductionTx(ctx, tx, &model.AffiliateLedgerEntry{
-				AffiliatorID: c.AffiliatorID,
-				EntryType:    "refund_deduction",
-				Amount:       -c.Amount,
-				CommissionID: &c.ID,
-				Note:         &note,
-				ActorID:      &actor,
-			}); err != nil {
+			if err := s.storeRepo.InsertRefundDeductionTx(ctx, tx, c.ID, actor, note); err != nil {
 				return fmt.Errorf("insert refund deduction: %w", err)
 			}
 			if _, err := s.storeRepo.SetCommissionStatusFromTx(ctx, tx, c.ID, c.Status, "cancelled"); err != nil {

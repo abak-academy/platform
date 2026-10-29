@@ -19,30 +19,22 @@ func seedRefundCommission(t *testing.T, repo *repository.Repository, affiliatorI
 	t.Helper()
 	var id uuid.UUID
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliate_commissions
-		     (affiliator_id, student_id, order_id, order_item_id, product_type,
-		      base_amount, commission_value, level_snapshot, amount, status)
-		 VALUES ($1, $2, $3, $4, 'book', 100000, 3, 'bronze', $5, $6) RETURNING id`,
+		`INSERT INTO affiliate_transactions
+		     (affiliator_id, type, student_id, order_id, order_item_id, product_type, quantity,
+		      base_amount, detail, amount, status, effective_at)
+		 VALUES ($1, 'commission', $2, $3, $4, 'book', 1, 100000,
+		     '{"rule":{"type":"percent","value":3},"level":"bronze"}', $5, $6, CASE WHEN $6 = 'available' THEN now() END)
+		 RETURNING id`,
 		affiliatorID, studentID, orderID, orderItemID, amount, status,
 	).Scan(&id))
 	return id
 }
 
-func seedCommissionLedgerEntry(t *testing.T, repo *repository.Repository, affiliatorID, commissionID uuid.UUID, amount float64) {
-	t.Helper()
-	_, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id)
-		 VALUES ($1, 'commission', $2, $3)`,
-		affiliatorID, amount, commissionID,
-	)
-	require.NoError(t, err)
-}
-
 func refundDeductionEntries(t *testing.T, repo *repository.Repository, commissionID uuid.UUID) []model.AffiliateLedgerEntry {
 	t.Helper()
 	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, entry_type, amount, commission_id, payout_id, adjustment_id, note, actor_id, created_at
-		 FROM affiliate_ledger_entries WHERE commission_id = $1 AND entry_type = 'refund_deduction' ORDER BY created_at`, commissionID)
+		`SELECT id, affiliator_id, type, amount, parent_id, NULL::uuid, NULL::uuid, note, actor_id, effective_at
+		 FROM affiliate_transactions WHERE parent_id = $1 AND type = 'refund_deduction' ORDER BY effective_at`, commissionID)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -61,7 +53,7 @@ func commissionLedgerCount(t *testing.T, repo *repository.Repository, commission
 	t.Helper()
 	var n int
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_ledger_entries WHERE commission_id = $1`, commissionID,
+		`SELECT count(*) FROM affiliate_transactions WHERE effective_at IS NOT NULL AND (id = $1 OR parent_id = $1)`, commissionID,
 	).Scan(&n))
 	return n
 }
@@ -70,7 +62,7 @@ func affiliateLedgerSaldo(t *testing.T, repo *repository.Repository, affiliatorI
 	t.Helper()
 	var saldo float64
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`SELECT COALESCE(SUM(amount), 0) FROM affiliate_ledger_entries WHERE affiliator_id = $1`, affiliatorID,
+		`SELECT COALESCE(SUM(amount), 0) FROM affiliate_transactions WHERE effective_at IS NOT NULL AND affiliator_id = $1`, affiliatorID,
 	).Scan(&saldo))
 	return saldo
 }
@@ -79,7 +71,7 @@ func commissionStatusByID(t *testing.T, repo *repository.Repository, commissionI
 	t.Helper()
 	var status string
 	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`SELECT status FROM affiliate_commissions WHERE id = $1`, commissionID,
+		`SELECT status FROM affiliate_transactions WHERE id = $1`, commissionID,
 	).Scan(&status))
 	return status
 }
@@ -117,7 +109,6 @@ func TestRefundOrder_AvailableCommissionWritesNegativeDeduction(t *testing.T) {
 	actor := seedRevokeActor(t, repo)
 
 	orderID, commissionID := refundSeed(t, repo, owner, "available")
-	seedCommissionLedgerEntry(t, repo, owner.affiliatorID, commissionID, 3000)
 
 	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
 
@@ -140,7 +131,6 @@ func TestRefundOrder_FlagOffLeavesCommissionsAndLedgerUntouched(t *testing.T) {
 	actor := seedRevokeActor(t, repo)
 
 	orderID, commissionID := refundSeed(t, repo, owner, "available")
-	seedCommissionLedgerEntry(t, repo, owner.affiliatorID, commissionID, 3000)
 
 	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
 
@@ -157,7 +147,6 @@ func TestRefundOrder_DoubleRefundRefusedBeforeAffiliateSettlement(t *testing.T) 
 	actor := seedRevokeActor(t, repo)
 
 	orderID, commissionID := refundSeed(t, repo, owner, "available")
-	seedCommissionLedgerEntry(t, repo, owner.affiliatorID, commissionID, 3000)
 
 	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
 

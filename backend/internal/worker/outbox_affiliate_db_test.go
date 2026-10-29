@@ -84,9 +84,9 @@ func pollAllWithWorker(t *testing.T, env *lifecycleEnv, w *Worker) {
 func workerCommissionRows(t *testing.T, repo *repository.Repository, orderID uuid.UUID) []model.AffiliateCommission {
 	t.Helper()
 	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
-		        level_snapshot, amount, status, wait_until, paid_at
-		 FROM affiliate_commissions WHERE order_id = $1 ORDER BY order_item_id`, orderID)
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
+		        detail->'rule'->>'type', (detail->'rule'->>'value')::numeric, detail->>'level', amount, status, release_at, order_paid_at
+		 FROM affiliate_transactions WHERE type = 'commission' AND order_id = $1 ORDER BY order_item_id`, orderID)
 	if err != nil {
 		t.Fatalf("query commissions: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestOrderPaidAffiliate_BoundStudentCreatesPendingCommissions(t *testing.T) 
 
 	pollAllWithWorker(t, env, &Worker{repo: env.repo, commissionSvc: env.svc})
 
-	if got := env.count(t, `SELECT count(*) FROM affiliate_commissions WHERE order_id = $1`, orderID); got != 2 {
+	if got := env.count(t, `SELECT count(*) FROM affiliate_transactions WHERE type = 'commission' AND order_id = $1`, orderID); got != 2 {
 		t.Fatalf("affiliate commissions = %d, want 2 (course + book)", got)
 	}
 
@@ -149,8 +149,8 @@ func TestOrderPaidAffiliate_BoundStudentCreatesPendingCommissions(t *testing.T) 
 		var waitUntil *time.Time
 		var affiliator, orderStudent uuid.UUID
 		if err := env.repo.Pool().QueryRow(ctx,
-			`SELECT base_amount, commission_value, amount, level_snapshot, status, wait_until, affiliator_id, student_id
-			 FROM affiliate_commissions WHERE order_id = $1 AND product_type = $2`,
+			`SELECT base_amount, (detail->'rule'->>'value')::numeric, amount, detail->>'level', status, release_at, affiliator_id, student_id
+			 FROM affiliate_transactions WHERE type = 'commission' AND order_id = $1 AND product_type = $2`,
 			orderID, w.productType,
 		).Scan(&base, &pct, &amount, &level, &status, &waitUntil, &affiliator, &orderStudent); err != nil {
 			t.Fatalf("commission for %s: %v", w.productType, err)
@@ -223,7 +223,7 @@ func TestOrderPaidAffiliate_ReplayedEventDoesNotDuplicateCommissions(t *testing.
 	)
 	pollAllWithWorker(t, env, w)
 
-	if got := env.count(t, `SELECT count(*) FROM affiliate_commissions WHERE order_id = $1`, orderID); got != 1 {
+	if got := env.count(t, `SELECT count(*) FROM affiliate_transactions WHERE type = 'commission' AND order_id = $1`, orderID); got != 1 {
 		t.Errorf("affiliate commissions after replay = %d, want 1 (ON CONFLICT DO NOTHING)", got)
 	}
 }
@@ -252,7 +252,7 @@ func TestOrderPaidAffiliate_CommissionFailureDoesNotFailFulfilment(t *testing.T)
 	if got := env.count(t, `SELECT count(*) FROM outbox WHERE aggregate_id = $1 AND processed_at IS NULL`, orderID); got != 0 {
 		t.Errorf("unprocessed outbox events = %d, want 0 (event processed anyway)", got)
 	}
-	if got := env.count(t, `SELECT count(*) FROM affiliate_commissions WHERE order_id = $1`, orderID); got != 0 {
+	if got := env.count(t, `SELECT count(*) FROM affiliate_transactions WHERE type = 'commission' AND order_id = $1`, orderID); got != 0 {
 		t.Errorf("affiliate commissions = %d, want 0 (failed step left nothing)", got)
 	}
 }

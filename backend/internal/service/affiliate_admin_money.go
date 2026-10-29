@@ -63,8 +63,7 @@ type AdminPayoutDecisionInput struct {
 }
 
 // AdminCreateAffiliateAdjustment writes one admin adjustment (BR-ADJ-01..06).
-// Phase 1 applies it immediately: one transaction writes the adjustment row
-// and its signed ledger entry. The second-approval flow of BR-ADJ-03 is not
+// Phase 1 applies it immediately: the posted transaction is the ledger entry. The second-approval flow of BR-ADJ-03 is not
 // built, so there is no pending state.
 func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, affiliatorID string, in AdminAdjustmentInput) (*model.AffiliateAdjustment, error) {
 	affID, err := parseUUID(affiliatorID)
@@ -107,16 +106,6 @@ func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, a
 	}
 	if err := s.storeRepo.InsertAffiliateAdjustmentTx(ctx, tx, adj); err != nil {
 		return nil, fmt.Errorf("insert affiliate adjustment: %w", err)
-	}
-	if err := s.storeRepo.InsertAffiliateLedgerEntryTx(ctx, tx, &model.AffiliateLedgerEntry{
-		AffiliatorID: aff.ID,
-		EntryType:    "adjustment",
-		Amount:       in.Amount,
-		AdjustmentID: &adj.ID,
-		Note:         &reason,
-		ActorID:      &actor,
-	}); err != nil {
-		return nil, fmt.Errorf("insert adjustment ledger entry: %w", err)
 	}
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, "affiliate_adjustment", adj.ID.String(), "affiliate.adjustment", map[string]any{
 		"affiliator_id": aff.ID,
@@ -201,11 +190,8 @@ func (s *Service) AdminAffiliatePayoutsCSV(ctx context.Context, f AffiliateAdmin
 
 // AdminDecideAffiliatePayout marks a queued payout paid (with the mandatory
 // transfer proof, BR-PCR-03) or rejected (with the mandatory reason, BR-PCR-04).
-// The rejection compensates the balance only when the request-time deduction
-// ledger row exists (D2 owns that write); without it there is nothing to
-// reverse. uq_affiliate_ledger only constrains commission rows, so reversal
-// idempotence is the payout status guard plus this transaction's existence
-// check.
+// The rejection returns the amount the request debited by posting a payout
+// reversal, which the unique index on its parent keeps to one.
 func (s *Service) AdminDecideAffiliatePayout(ctx context.Context, actorID, payoutID string, in AdminPayoutDecisionInput) (*model.AffiliatePayout, error) {
 	id, err := parseUUID(payoutID)
 	if err != nil {
@@ -271,28 +257,8 @@ func (s *Service) AdminDecideAffiliatePayout(ctx context.Context, actorID, payou
 		if err != nil {
 			return nil, fmt.Errorf("mark payout rejected: %w", err)
 		}
-		deducted, err := s.storeRepo.HasAffiliateLedgerEntryTx(ctx, tx, id, "payout")
-		if err != nil {
-			return nil, fmt.Errorf("check payout deduction: %w", err)
-		}
-		if deducted {
-			reversed, err := s.storeRepo.HasAffiliateLedgerEntryTx(ctx, tx, id, "payout_reversal")
-			if err != nil {
-				return nil, fmt.Errorf("check payout reversal: %w", err)
-			}
-			if !reversed {
-				note := "payout rejected"
-				if err := s.storeRepo.InsertAffiliateLedgerEntryTx(ctx, tx, &model.AffiliateLedgerEntry{
-					AffiliatorID: payout.AffiliatorID,
-					EntryType:    "payout_reversal",
-					Amount:       payout.Amount,
-					PayoutID:     &id,
-					Note:         &note,
-					ActorID:      &actor,
-				}); err != nil {
-					return nil, fmt.Errorf("insert payout reversal: %w", err)
-				}
-			}
+		if err := s.storeRepo.InsertAffiliatePayoutReversalTx(ctx, tx, id, actor, "payout rejected"); err != nil {
+			return nil, fmt.Errorf("insert payout reversal: %w", err)
 		}
 		if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, "affiliate_payout", id.String(), "affiliate.payout_rejected", map[string]any{
 			"affiliator_id": payout.AffiliatorID,

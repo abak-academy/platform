@@ -193,11 +193,6 @@ func (s *Service) releaseAffiliateCommission(ctx context.Context, c repository.A
 	note := fmt.Sprintf("commission %s order %s", c.ItemName, c.Commission.OrderID)
 	done, err := s.storeRepo.ReleaseAffiliateCommissionTx(ctx, tx, c.Commission.ID, note)
 	if err != nil {
-		// The ledger unique index says an earlier run already released this
-		// commission; treat it as already-done, not as a failure.
-		if errors.Is(err, repository.ErrAffiliateLedgerEntryExists) {
-			return false, nil
-		}
 		return false, err
 	}
 	if !done {

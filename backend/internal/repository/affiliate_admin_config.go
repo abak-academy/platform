@@ -208,9 +208,9 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 		 ) bind ON bind.affiliator_id = a.user_id
 		 LEFT JOIN (
 		     SELECT affiliator_id, SUM(base_amount) AS net_revenue
-		     FROM affiliate_commissions
-		     WHERE status = 'available'
-		       AND COALESCE(wait_until, paid_at) >= $1 AND COALESCE(wait_until, paid_at) < $2
+		     FROM affiliate_transactions
+		     WHERE type = 'commission' AND status = 'available'
+		       AND COALESCE(release_at, order_paid_at) >= $1 AND COALESCE(release_at, order_paid_at) < $2
 		     GROUP BY affiliator_id
 		 ) rev ON rev.affiliator_id = a.user_id
 		 WHERE TRUE`+p.sql+`
@@ -241,8 +241,8 @@ func (r *Repository) ListAffiliateReportRows(ctx context.Context, from, to time.
 func (r *Repository) ListAffiliateCommissionStatusTotals(ctx context.Context, from, to time.Time) (map[uuid.UUID]map[string]float64, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT affiliator_id, status, SUM(amount)
-		 FROM affiliate_commissions
-		 WHERE paid_at >= $1 AND paid_at < $2
+		 FROM affiliate_transactions
+		 WHERE type = 'commission' AND order_paid_at >= $1 AND order_paid_at < $2
 		 GROUP BY affiliator_id, status`,
 		from, to,
 	)
@@ -267,13 +267,15 @@ func (r *Repository) ListAffiliateCommissionStatusTotals(ctx context.Context, fr
 	return out, rows.Err()
 }
 
-// SumAffiliateCommissionLedgerByStatus nets the append-only ledger entries
-// tied to a commission (commission, refund_deduction) per commission status.
+// SumAffiliateCommissionLedgerByStatus nets the transactions tied to a
+// commission (the commission itself once released, and its refund deduction)
+// per commission status.
 func (r *Repository) SumAffiliateCommissionLedgerByStatus(ctx context.Context) (map[string]float64, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT c.status, COALESCE(SUM(e.amount), 0)
-		 FROM affiliate_ledger_entries e
-		 JOIN affiliate_commissions c ON c.id = e.commission_id
+		 FROM affiliate_transactions c
+		 JOIN affiliate_transactions e ON e.id = c.id OR (e.parent_id = c.id AND e.type = 'refund_deduction')
+		 WHERE c.type = 'commission' AND e.effective_at IS NOT NULL
 		 GROUP BY c.status`)
 	if err != nil {
 		return nil, err
@@ -297,7 +299,7 @@ func (r *Repository) SumAffiliateCommissionLedgerByStatus(ctx context.Context) (
 func (r *Repository) SumAffiliatePayoutLiability(ctx context.Context) (float64, error) {
 	var total float64
 	err := r.pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(amount), 0) FROM affiliate_payouts WHERE status IN ('requested', 'processing')`,
+		`SELECT COALESCE(-SUM(amount), 0) FROM affiliate_transactions WHERE type = 'payout' AND status IN ('requested', 'processing')`,
 	).Scan(&total)
 	return total, err
 }

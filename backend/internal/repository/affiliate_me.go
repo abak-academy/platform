@@ -139,24 +139,22 @@ func affiliateCommissionPredicate(f AffiliateCommissionFilter) *affPredicate {
 	p := newAffPredicate(2)
 	p.eq("c.status", f.Status)
 	p.eq("c.product_type", f.ProductType)
-	p.dates("c.paid_at", f.PaidFrom, f.PaidTo)
+	p.dates("c.order_paid_at", f.PaidFrom, f.PaidTo)
 	p.search(f.Q, "u.name", "oi.name")
 	return p
 }
 
-const affiliateCommissionFrom = `FROM affiliate_commissions c
+const affiliateCommissionFrom = `FROM affiliate_transactions c
 		 JOIN users u ON u.id = c.student_id
 		 JOIN order_item oi ON oi.id = c.order_item_id`
 
 func (r *Repository) ListAffiliateCommissionsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, f AffiliateCommissionFilter) ([]AffiliateCommissionRow, error) {
 	p := affiliateCommissionPredicate(f)
 	args := append([]interface{}{affiliatorID}, p.args...)
-	query := `SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.commission_type, c.commission_value,
-	        c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at, c.received_at, c.created_at, c.updated_at,
-	        u.name, oi.name
+	query := `SELECT ` + affiliateCommissionSelect("c") + `, u.name, oi.name
 		 ` + affiliateCommissionFrom + `
-		 WHERE c.affiliator_id = $1` + p.sql + `
-		 ORDER BY c.paid_at DESC NULLS LAST, c.id DESC
+		 WHERE c.type = 'commission' AND c.affiliator_id = $1` + p.sql + `
+		 ORDER BY c.order_paid_at DESC NULLS LAST, c.id DESC
 		 LIMIT $` + strconv.Itoa(p.next) + ` OFFSET $` + strconv.Itoa(p.next+1)
 	args = append(args, f.Limit, f.Offset)
 
@@ -169,9 +167,7 @@ func (r *Repository) ListAffiliateCommissionsForAffiliator(ctx context.Context, 
 	out := []AffiliateCommissionRow{}
 	for rows.Next() {
 		var c AffiliateCommissionRow
-		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
-			&c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
-			&c.ReceivedAt, &c.CreatedAt, &c.UpdatedAt, &c.StudentName, &c.ProductName); err != nil {
+		if err := rows.Scan(append(affiliateCommissionDest(&c.AffiliateCommission), &c.StudentName, &c.ProductName)...); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
@@ -182,7 +178,7 @@ func (r *Repository) ListAffiliateCommissionsForAffiliator(ctx context.Context, 
 func (r *Repository) CountAffiliateCommissionsForAffiliator(ctx context.Context, affiliatorID uuid.UUID, f AffiliateCommissionFilter) (int, error) {
 	p := affiliateCommissionPredicate(f)
 	args := append([]interface{}{affiliatorID}, p.args...)
-	query := `SELECT count(*) ` + affiliateCommissionFrom + ` WHERE c.affiliator_id = $1` + p.sql
+	query := `SELECT count(*) ` + affiliateCommissionFrom + ` WHERE c.type = 'commission' AND c.affiliator_id = $1` + p.sql
 
 	var n int
 	err := r.pool.QueryRow(ctx, query, args...).Scan(&n)
@@ -199,17 +195,15 @@ type AffiliateLedgerRow struct {
 
 func affiliateLedgerPredicate(q AffiliateListQuery) *affPredicate {
 	p := newAffPredicate(2)
-	p.eq("l.entry_type", q.Type)
-	p.dates("l.created_at", q.From, q.To)
-	p.search(q.Q, "u.name", "oi.name", "adj.reason")
+	p.eq("l.type", q.Type)
+	p.dates("l.effective_at", q.From, q.To)
+	p.search(q.Q, "u.name", "oi.name", "l.note")
 	return p
 }
 
-const affiliateLedgerFrom = `FROM affiliate_ledger_entries l
-		 LEFT JOIN affiliate_commissions c ON c.id = l.commission_id
-		 LEFT JOIN users u ON u.id = c.student_id
-		 LEFT JOIN order_item oi ON oi.id = c.order_item_id
-		 LEFT JOIN affiliate_adjustments adj ON adj.id = l.adjustment_id`
+const affiliateLedgerFrom = `FROM affiliate_transactions l
+		 LEFT JOIN users u ON u.id = l.student_id
+		 LEFT JOIN order_item oi ON oi.id = l.order_item_id`
 
 func (r *Repository) ListAffiliateLedgerForAffiliator(ctx context.Context, affiliatorID uuid.UUID, ascending bool, q AffiliateListQuery, limit, offset int) ([]AffiliateLedgerRow, error) {
 	direction := "DESC"
@@ -218,11 +212,10 @@ func (r *Repository) ListAffiliateLedgerForAffiliator(ctx context.Context, affil
 	}
 	p := affiliateLedgerPredicate(q)
 	args := append([]interface{}{affiliatorID}, p.args...)
-	query := `SELECT l.id, l.affiliator_id, l.entry_type, l.amount, l.commission_id, l.payout_id, l.adjustment_id,
-	        l.note, l.actor_id, l.created_at, u.name, oi.name
+	query := `SELECT ` + affiliateLedgerSelect("l") + `, u.name, oi.name
 		 ` + affiliateLedgerFrom + `
-		 WHERE l.affiliator_id = $1` + p.sql + `
-		 ORDER BY l.created_at ` + direction + `, l.id ` + direction + `
+		 WHERE l.effective_at IS NOT NULL AND l.affiliator_id = $1` + p.sql + `
+		 ORDER BY l.effective_at ` + direction + `, l.id ` + direction + `
 		 LIMIT $` + strconv.Itoa(p.next) + ` OFFSET $` + strconv.Itoa(p.next+1)
 	args = append(args, limit, offset)
 
@@ -235,8 +228,7 @@ func (r *Repository) ListAffiliateLedgerForAffiliator(ctx context.Context, affil
 	out := []AffiliateLedgerRow{}
 	for rows.Next() {
 		var e AffiliateLedgerRow
-		if err := rows.Scan(&e.ID, &e.AffiliatorID, &e.EntryType, &e.Amount, &e.CommissionID, &e.PayoutID,
-			&e.AdjustmentID, &e.Note, &e.ActorID, &e.CreatedAt, &e.StudentName, &e.ProductName); err != nil {
+		if err := rows.Scan(append(affiliateLedgerDest(&e.AffiliateLedgerEntry), &e.StudentName, &e.ProductName)...); err != nil {
 			return nil, err
 		}
 		out = append(out, e)
@@ -247,7 +239,7 @@ func (r *Repository) ListAffiliateLedgerForAffiliator(ctx context.Context, affil
 func (r *Repository) CountAffiliateLedgerEntriesForAffiliator(ctx context.Context, affiliatorID uuid.UUID, q AffiliateListQuery) (int, error) {
 	p := affiliateLedgerPredicate(q)
 	args := append([]interface{}{affiliatorID}, p.args...)
-	query := `SELECT count(*) ` + affiliateLedgerFrom + ` WHERE l.affiliator_id = $1` + p.sql
+	query := `SELECT count(*) ` + affiliateLedgerFrom + ` WHERE l.effective_at IS NOT NULL AND l.affiliator_id = $1` + p.sql
 
 	var n int
 	err := r.pool.QueryRow(ctx, query, args...).Scan(&n)
@@ -257,7 +249,7 @@ func (r *Repository) CountAffiliateLedgerEntriesForAffiliator(ctx context.Contex
 func (r *Repository) SumAffiliateLedgerForAffiliator(ctx context.Context, affiliatorID uuid.UUID) (float64, error) {
 	var saldo float64
 	err := r.pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(amount), 0) FROM affiliate_ledger_entries WHERE affiliator_id = $1`,
+		`SELECT COALESCE(SUM(amount), 0) FROM affiliate_transactions WHERE affiliator_id = $1 AND effective_at IS NOT NULL`,
 		affiliatorID,
 	).Scan(&saldo)
 	return saldo, err
@@ -276,8 +268,8 @@ func (r *Repository) GetAffiliateMeCounts(ctx context.Context, affiliatorID uuid
 		    (SELECT count(*) FROM affiliate_bindings WHERE affiliator_id = $1 AND status = 'active'),
 		    (SELECT count(DISTINCT student_id) FROM affiliate_bindings WHERE affiliator_id = $1
 		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3)),
-		    (SELECT COALESCE(SUM(amount), 0) FROM affiliate_ledger_entries WHERE affiliator_id = $1 AND entry_type = 'commission'
-		        AND ($2::timestamptz IS NULL OR created_at >= $2) AND ($3::timestamptz IS NULL OR created_at < $3))`,
+		    (SELECT COALESCE(SUM(amount), 0) FROM affiliate_transactions WHERE affiliator_id = $1 AND type = 'commission' AND effective_at IS NOT NULL
+		        AND ($2::timestamptz IS NULL OR effective_at >= $2) AND ($3::timestamptz IS NULL OR effective_at < $3))`,
 		affiliatorID, from, to,
 	).Scan(&counts.Registrations, &counts.TotalStudents, &counts.ActiveBindings, &counts.NewStudents, &counts.CommissionEarned)
 	return counts, err
@@ -331,24 +323,23 @@ func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateR
 	p := newAffPredicate(1)
 	p.eq("c.status", f.Status)
 	p.eq("c.product_type", f.ProductType)
-	p.dates("c.paid_at", f.PaidFrom, f.PaidTo)
+	p.dates("c.order_paid_at", f.PaidFrom, f.PaidTo)
 	p.search(f.Q, "u.name", "oi.name", "au.name", "a.referral_code")
-	from := `FROM affiliate_commissions c
+	from := `FROM affiliate_transactions c
 		 JOIN users u ON u.id = c.student_id
 		 JOIN order_item oi ON oi.id = c.order_item_id
 		 JOIN affiliators a ON a.user_id = c.affiliator_id
 		 JOIN users au ON au.id = a.user_id
-		 WHERE TRUE` + p.sql
+		 WHERE c.type = 'commission'` + p.sql
 
 	var total int
 	if err := r.pool.QueryRow(ctx, `SELECT count(*) `+from, p.args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type, c.base_amount, c.commission_type, c.commission_value,
-		        c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at, c.received_at, c.created_at, c.updated_at,
+		`SELECT `+affiliateCommissionSelect("c")+`,
 		        u.name, oi.name, au.name, COALESCE(a.referral_code, '') `+from+`
-		 ORDER BY c.paid_at DESC NULLS LAST, c.id DESC
+		 ORDER BY c.order_paid_at DESC NULLS LAST, c.id DESC
 		 LIMIT $`+strconv.Itoa(p.next)+` OFFSET $`+strconv.Itoa(p.next+1),
 		append(p.args, f.Limit, f.Offset)...)
 	if err != nil {
@@ -359,9 +350,7 @@ func (r *Repository) ListAffiliateReportOrders(ctx context.Context, f AffiliateR
 	out := []AffiliateReportOrderRow{}
 	for rows.Next() {
 		var c AffiliateReportOrderRow
-		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
-			&c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
-			&c.ReceivedAt, &c.CreatedAt, &c.UpdatedAt, &c.StudentName, &c.ProductName, &c.AffiliatorName, &c.AffiliatorCode); err != nil {
+		if err := rows.Scan(append(affiliateCommissionDest(&c.AffiliateCommission), &c.StudentName, &c.ProductName, &c.AffiliatorName, &c.AffiliatorCode)...); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, c)

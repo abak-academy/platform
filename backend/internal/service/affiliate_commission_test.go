@@ -106,9 +106,9 @@ func runCreateCommissions(t *testing.T, svc *Service, repo *repository.Repositor
 func affiliateCommissionsForOrder(t *testing.T, repo *repository.Repository, orderID uuid.UUID) []model.AffiliateCommission {
 	t.Helper()
 	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
-		        level_snapshot, amount, status, wait_until, paid_at
-		 FROM affiliate_commissions WHERE order_id = $1 ORDER BY order_item_id`, orderID)
+		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
+		        detail->'rule'->>'type', (detail->'rule'->>'value')::numeric, detail->>'level', amount, status, release_at, order_paid_at
+		 FROM affiliate_transactions WHERE type = 'commission' AND order_id = $1 ORDER BY order_item_id`, orderID)
 	require.NoError(t, err)
 	defer rows.Close()
 

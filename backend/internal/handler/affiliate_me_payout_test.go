@@ -117,7 +117,8 @@ func seedAffiliatePayoutBank(t *testing.T, pool *pgxpool.Pool, affiliatorID uuid
 func seedAffiliatePayoutSaldo(t *testing.T, pool *pgxpool.Pool, affiliatorID uuid.UUID, amount float64) {
 	t.Helper()
 	if _, err := pool.Exec(context.Background(),
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount) VALUES ($1, 'commission', $2)`,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at, detail)
+		 VALUES ($1, 'adjustment', 'posted', $2, now(), '{"category":"other"}')`,
 		affiliatorID, amount); err != nil {
 		t.Fatalf("seed ledger: %v", err)
 	}
@@ -127,9 +128,11 @@ func seedAffiliatePayoutRow(t *testing.T, pool *pgxpool.Pool, affiliatorID uuid.
 	t.Helper()
 	var id uuid.UUID
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliate_payouts (affiliator_id, amount, status, bank_name, bank_account_number, bank_account_holder, requested_at)
-		 VALUES ($1, $2, $3, 'BCA', '1234567890', 'Budi Santoso', $4) RETURNING id`,
-		affiliatorID, amount, status, requestedAt,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at, created_at, detail)
+		 VALUES ($1, 'payout', $2, -$3::numeric, $4, $4,
+		     jsonb_build_object('bank_account', jsonb_build_object(
+		         'bank_name', 'BCA', 'account_number', '1234567890', 'account_holder', $5::text))) RETURNING id`,
+		affiliatorID, status, amount, requestedAt, "Budi Santoso",
 	).Scan(&id); err != nil {
 		t.Fatalf("seed payout: %v", err)
 	}
@@ -277,8 +280,8 @@ func TestAffiliateMePayoutHandler_requestPayoutHappyPath(t *testing.T) {
 	var ledgerAmount float64
 	var payoutID, actorID uuid.UUID
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT amount, payout_id, actor_id FROM affiliate_ledger_entries
-		 WHERE affiliator_id = $1 AND entry_type = 'payout'`, owner.affID,
+		`SELECT amount, id, actor_id FROM affiliate_transactions
+		 WHERE affiliator_id = $1 AND type = 'payout'`, owner.affID,
 	).Scan(&ledgerAmount, &payoutID, &actorID); err != nil {
 		t.Fatalf("read ledger row: %v", err)
 	}

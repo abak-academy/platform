@@ -58,7 +58,7 @@ Aturan bisnis lengkap ada di BRD v0.4 (`docs/specs/affiliate-program-brd.md`: BR
 
 ### Failure behavior
 
-- Event `OrderPaid` diproses ulang → idempoten: unique `order_item_id` untuk transaksi komisi; komisi hanya dibuat bila order status bukan `cancelled` pada saat handler membaca (pola yang sudah ada di worker). Kegagalan membuat komisi tidak menggagalkan akses: langkah berjalan di savepoint, dicatat `slog.Error`, dan job rekonsiliasi (jendela 14 hari) membuatnya ulang. Order lunas yang sudah melewati jendela tetapi masih tanpa komisi dicatat `slog.Error` tegas agar terlihat, tidak diam.
+- Event `OrderPaid` diproses ulang → idempoten: unique `order_item_id` untuk transaksi komisi; komisi hanya dibuat bila order status bukan `cancelled` pada saat handler membaca (pola yang sudah ada di worker). Kegagalan membuat komisi tidak menggagalkan akses: langkah berjalan di savepoint, dicatat `slog.Error`, dan job rekonsiliasi (jendela 14 hari) membuatnya ulang.
 - Refund setelah payout → saldo boleh negatif sementara (transaksi pengurang), ditutup komisi berikutnya.
 - Pembatalan order sebelum lunas tidak menyentuh komisi (tidak pernah dibuat).
 - Affiliator `suspended`/`deactivated` → komisi baru tidak dibuat; binding siswa tetap tidak dialihkan. Penonaktifan membatalkan komisi `pending`.

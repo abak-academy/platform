@@ -128,8 +128,8 @@ type AffiliateCommissionStatusTotal struct {
 func (r *Repository) SumAffiliateCommissionsByStatus(ctx context.Context, affiliatorID uuid.UUID) ([]AffiliateCommissionStatusTotal, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT status, count(*), COALESCE(SUM(amount), 0)
-		 FROM affiliate_commissions
-		 WHERE affiliator_id = $1
+		 FROM affiliate_transactions
+		 WHERE type = 'commission' AND affiliator_id = $1
 		 GROUP BY status`,
 		affiliatorID,
 	)
@@ -202,39 +202,12 @@ func (r *Repository) RejectAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.
 // affiliator still waiting out its hold period (BR-PLG-07) and returns how many.
 func (r *Repository) CancelPendingCommissionsByAffiliatorTx(ctx context.Context, tx pgx.Tx, affiliatorID uuid.UUID) (int64, error) {
 	tag, err := tx.Exec(ctx,
-		`UPDATE affiliate_commissions SET status = 'cancelled', updated_at = now()
-		 WHERE affiliator_id = $1 AND status = 'pending'`,
+		`UPDATE affiliate_transactions SET status = 'cancelled', updated_at = now()
+		 WHERE type = 'commission' AND affiliator_id = $1 AND status = 'pending'`,
 		affiliatorID,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return tag.RowsAffected(), nil
-}
-
-// GetAffiliateCommissionsByIDsTx locks and returns the named commissions that
-// belong to the affiliator; ids that match nothing are simply absent.
-func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.Tx, affiliatorID uuid.UUID, ids []uuid.UUID) ([]model.AffiliateCommission, error) {
-	rows, err := tx.Query(ctx,
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_type, commission_value,
-		        level_snapshot, amount, status, wait_until, paid_at
-		 FROM affiliate_commissions
-		 WHERE affiliator_id = $1 AND id = ANY($2)
-		 ORDER BY created_at
-		 FOR UPDATE`, affiliatorID, ids)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	out := []model.AffiliateCommission{}
-	for rows.Next() {
-		var c model.AffiliateCommission
-		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID,
-			&c.ProductType, &c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt); err != nil {
-			return nil, err
-		}
-		out = append(out, c)
-	}
-	return out, rows.Err()
 }

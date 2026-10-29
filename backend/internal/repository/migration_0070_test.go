@@ -14,10 +14,7 @@ import (
 var affiliateTables = []string{
 	"affiliators",
 	"affiliate_bindings",
-	"affiliate_commissions",
-	"affiliate_payouts",
-	"affiliate_adjustments",
-	"affiliate_ledger_entries",
+	"affiliate_transactions",
 	"affiliate_settings",
 }
 
@@ -30,6 +27,10 @@ var removedAffiliateTables = []string{
 	"affiliate_level_history",
 	"affiliate_level_settings",
 	"affiliate_product_overrides",
+	"affiliate_commissions",
+	"affiliate_payouts",
+	"affiliate_adjustments",
+	"affiliate_ledger_entries",
 }
 
 func requireAffiliateTableExists(t *testing.T, pool *pgxpool.Pool, table string, want bool) {
@@ -177,37 +178,79 @@ func TestMigration0070_AffiliateSchema(t *testing.T) {
 		orderID, productID,
 	).Scan(&itemID))
 
+	const insertCommission = `INSERT INTO affiliate_transactions
+		(affiliator_id, type, status, amount, student_id, order_id, order_item_id, product_type, quantity, base_amount, detail)
+		VALUES ($1, 'commission', 'pending', 10000, $2, $3, $4, 'course', 1, 100000, '{"rule":{"type":"percent","value":10},"level":"bronze"}')
+		RETURNING id`
 	var commissionID uuid.UUID
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO affiliate_commissions (affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_value, level_snapshot, amount, paid_at)
-		VALUES ($1, $2, $3, $4, 'course', 100000, 10, 'bronze', 10000, now()) RETURNING id`,
-		affiliatorUserID, studentUserID, orderID, itemID,
-	).Scan(&commissionID))
+	require.NoError(t, pool.QueryRow(ctx, insertCommission, affiliatorUserID, studentUserID, orderID, itemID).Scan(&commissionID))
+	_, err = pool.Exec(ctx, insertCommission, affiliatorUserID, studentUserID, orderID, itemID)
+	require.Equal(t, "23505", pgErrCode(t, err), "a duplicate commission for one order item must violate the order_item_id unique index")
 	_, err = pool.Exec(ctx,
-		`INSERT INTO affiliate_commissions (affiliator_id, student_id, order_id, order_item_id, product_type, base_amount, commission_value, level_snapshot, amount, paid_at)
-		VALUES ($1, $2, $3, $4, 'course', 100000, 10, 'bronze', 10000, now())`,
-		affiliatorUserID, studentUserID, orderID, itemID,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, status, amount) VALUES ($1, 'commission', 'paid', 10000)`,
+		affiliatorUserID,
 	)
-	require.Equal(t, "23505", pgErrCode(t, err), "a duplicate commission for one order item must violate the order_item_id UNIQUE constraint")
-	_, err = pool.Exec(ctx, `UPDATE affiliate_commissions SET status = 'paid' WHERE id = $1`, commissionID)
 	require.Equal(t, "23514", pgErrCode(t, err), "commission statuses are pending, available and cancelled")
-
-	// Ledger: append-only trigger rejects UPDATE and DELETE; the unique
-	// (commission_id, entry_type) pair rejects a second availability entry.
-	var ledgerID uuid.UUID
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id) VALUES ($1, 'commission', 10000, $2) RETURNING id`,
-		affiliatorUserID, commissionID,
-	).Scan(&ledgerID))
 	_, err = pool.Exec(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id) VALUES ($1, 'commission', 10000, $2)`,
-		affiliatorUserID, commissionID,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at) VALUES ($1, 'payout', 'requested', 5000, now())`,
+		affiliatorUserID,
 	)
-	require.Equal(t, "23505", pgErrCode(t, err), "a second commission entry for one commission must violate uq_affiliate_ledger_commission")
-	_, err = pool.Exec(ctx, `UPDATE affiliate_ledger_entries SET amount = 0 WHERE id = $1`, ledgerID)
-	require.Error(t, err, "ledger rows must refuse UPDATE (append-only)")
-	_, err = pool.Exec(ctx, `DELETE FROM affiliate_ledger_entries WHERE id = $1`, ledgerID)
-	require.Error(t, err, "ledger rows must refuse DELETE (append-only)")
+	require.Equal(t, "23514", pgErrCode(t, err), "a payout debits the balance, so its amount must be negative")
+
+	// The guard freezes money fields, allows status moves along the lifecycle
+	// only, sets effective_at once and refuses DELETE.
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET amount = 99999 WHERE id = $1`, commissionID)
+	require.Error(t, err, "amount must be immutable")
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET detail = '{}' WHERE id = $1`, commissionID)
+	require.Error(t, err, "a commission's detail must be immutable")
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET status = 'available' WHERE id = $1`, commissionID)
+	require.Equal(t, "23514", pgErrCode(t, err), "an available commission needs effective_at")
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET status = 'available', effective_at = now() WHERE id = $1`, commissionID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET effective_at = now() + interval '1 day' WHERE id = $1`, commissionID)
+	require.Error(t, err, "effective_at must be settable once")
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET status = 'pending' WHERE id = $1`, commissionID)
+	require.Error(t, err, "an available commission cannot go back to pending")
+	_, err = pool.Exec(ctx, `DELETE FROM affiliate_transactions WHERE id = $1`, commissionID)
+	require.Error(t, err, "rows must refuse DELETE")
+
+	// A refund deduction and a payout reversal each exist once per parent.
+	const insertDeduction = `INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at, parent_id)
+		VALUES ($1, 'refund_deduction', 'posted', -10000, now(), $2)`
+	_, err = pool.Exec(ctx, insertDeduction, affiliatorUserID, commissionID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, insertDeduction, affiliatorUserID, commissionID)
+	require.Equal(t, "23505", pgErrCode(t, err), "one refund deduction per commission")
+	_, err = pool.Exec(ctx,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at) VALUES ($1, 'refund_deduction', 'posted', -1, now())`,
+		affiliatorUserID,
+	)
+	require.Equal(t, "23514", pgErrCode(t, err), "a deduction needs a parent")
+
+	// One payout in flight per affiliator; the decided one frees the slot and
+	// only moves along requested -> processing -> paid|rejected.
+	var payoutID uuid.UUID
+	const insertPayout = `INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at, detail)
+		VALUES ($1, 'payout', 'requested', -10000, now(), '{"bank_account":{"bank_name":"BCA"}}') RETURNING id`
+	require.NoError(t, pool.QueryRow(ctx, insertPayout, affiliatorUserID).Scan(&payoutID))
+	_, err = pool.Exec(ctx, insertPayout, affiliatorUserID)
+	require.Equal(t, "23505", pgErrCode(t, err), "a second in-flight payout must violate the partial unique index")
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET detail = '{}' WHERE id = $1`, payoutID)
+	require.Error(t, err, "a payout's detail changes only together with its status")
+	_, err = pool.Exec(ctx,
+		`UPDATE affiliate_transactions SET status = 'rejected', detail = detail || '{"reject_reason":"x"}' WHERE id = $1`, payoutID)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE affiliate_transactions SET status = 'paid' WHERE id = $1`, payoutID)
+	require.Error(t, err, "a rejected payout is final")
+	require.NoError(t, pool.QueryRow(ctx, insertPayout, affiliatorUserID).Scan(&payoutID), "a decided payout frees the in-flight slot")
+
+	// The balance on a date is the sum of what had taken effect by then.
+	var saldo float64
+	require.NoError(t, pool.QueryRow(ctx,
+		`SELECT COALESCE(SUM(amount), 0) FROM affiliate_transactions WHERE affiliator_id = $1 AND effective_at <= now()`,
+		affiliatorUserID,
+	).Scan(&saldo))
+	require.Equal(t, -20000.0, saldo, "commission 10000 - deduction 10000 - payout 10000 - payout 10000")
 
 	// Settings is a singleton whose levels column starts empty.
 	_, err = pool.Exec(ctx, `INSERT INTO affiliate_settings (id) VALUES (1)`)

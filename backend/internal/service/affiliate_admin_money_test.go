@@ -24,34 +24,14 @@ func seedAffiliateAdminActor(t *testing.T, repo *repository.Repository, email st
 
 func seedAffiliateMoneyPayout(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID, status string, amount float64, holder string) uuid.UUID {
 	t.Helper()
-	var id uuid.UUID
-	if err := repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO affiliate_payouts (affiliator_id, amount, status, bank_name, bank_account_number, bank_account_holder)
-		 VALUES ($1, $2, $3, 'BCA', '1234567890', $4)
-		 RETURNING id`,
-		affiliatorID, amount, status, holder,
-	).Scan(&id); err != nil {
-		t.Fatalf("seed affiliate payout: %v", err)
-	}
-	return id
-}
-
-func seedAffiliatePayoutDeduction(t *testing.T, repo *repository.Repository, affiliatorID, payoutID uuid.UUID, amount float64) {
-	t.Helper()
-	if _, err := repo.Pool().Exec(context.Background(),
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, payout_id)
-		 VALUES ($1, 'payout', $2, $3)`,
-		affiliatorID, -amount, payoutID,
-	); err != nil {
-		t.Fatalf("seed payout deduction: %v", err)
-	}
+	return seedAffiliateTxPayout(t, repo, affiliatorID, status, amount, holder, time.Now().UTC())
 }
 
 func countAffiliateAdjustmentsFor(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID) int {
 	t.Helper()
 	var n int
 	if err := repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_adjustments WHERE affiliator_id = $1`, affiliatorID,
+		`SELECT count(*) FROM affiliate_transactions WHERE type = 'adjustment' AND affiliator_id = $1`, affiliatorID,
 	).Scan(&n); err != nil {
 		t.Fatalf("count adjustments: %v", err)
 	}
@@ -62,7 +42,7 @@ func countAffiliateLedgerByTypeFor(t *testing.T, repo *repository.Repository, af
 	t.Helper()
 	var n int
 	if err := repo.Pool().QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_ledger_entries WHERE affiliator_id = $1 AND entry_type = $2`,
+		`SELECT count(*) FROM affiliate_transactions WHERE effective_at IS NOT NULL AND affiliator_id = $1 AND type = $2`,
 		affiliatorID, entryType,
 	).Scan(&n); err != nil {
 		t.Fatalf("count ledger entries: %v", err)
@@ -111,8 +91,8 @@ func TestAdminCreateAffiliateAdjustment_immediateApplication(t *testing.T) {
 	var note string
 	var adjustmentID, actorID uuid.UUID
 	if err := repo.Pool().QueryRow(ctx,
-		`SELECT amount, note, adjustment_id, actor_id FROM affiliate_ledger_entries
-		 WHERE affiliator_id = $1 AND entry_type = 'adjustment'`, owner.affiliatorID,
+		`SELECT amount, note, id, actor_id FROM affiliate_transactions
+		 WHERE affiliator_id = $1 AND type = 'adjustment'`, owner.affiliatorID,
 	).Scan(&amount, &note, &adjustmentID, &actorID); err != nil {
 		t.Fatalf("read ledger row: %v", err)
 	}
@@ -238,22 +218,22 @@ func TestAdminListAffiliatePayouts_defaultAndFilters(t *testing.T) {
 	ctx := context.Background()
 	owner := seedAffiliatorOwner(t, repo, "aff-pay-list-"+uniqueSuffix()+"@test.local", "", "active")
 
+	other := seedAffiliatorOwner(t, repo, "aff-pay-list-b-"+uniqueSuffix()+"@test.local", "", "active")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 100000, "Payer One")
-	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 200000, "Payer Two")
-	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "processing", 300000, "Payer Three")
+	seedAffiliateMoneyPayout(t, repo, other.affiliatorID, "processing", 300000, "Payer Three")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "paid", 400000, "ShouldNotAppear")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "rejected", 500000, "ShouldNotAppear")
 
-	rows, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Limit: 100})
+	rows, total, err := svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Limit: 1000})
 	if err != nil {
 		t.Fatalf("AdminListAffiliatePayouts default: %v", err)
 	}
-	if total < 3 {
-		t.Errorf("total = %d, want at least 3", total)
+	if total < 2 {
+		t.Errorf("total = %d, want at least 2", total)
 	}
 	mine := 0
 	for _, row := range rows {
-		if row.AffiliatorCode != owner.code {
+		if row.AffiliatorCode != owner.code && row.AffiliatorCode != other.code {
 			continue
 		}
 		mine++
@@ -264,8 +244,8 @@ func TestAdminListAffiliatePayouts_defaultAndFilters(t *testing.T) {
 			t.Errorf("queue row missing affiliator/bank snapshot: %+v", row)
 		}
 	}
-	if mine != 3 {
-		t.Errorf("default queue rows for this affiliator = %d, want 3", mine)
+	if mine != 2 {
+		t.Errorf("default queue rows for these affiliators = %d, want 2", mine)
 	}
 
 	rows, _, err = svc.AdminListAffiliatePayouts(ctx, AffiliateAdminQueueFilter{Q: owner.code, Status: "paid", Limit: 100})
@@ -296,7 +276,6 @@ func TestAdminAffiliatePayoutsCSV_queueContentsAndInjection(t *testing.T) {
 	owner := seedAffiliatorOwner(t, repo, "aff-pay-csv-"+uniqueSuffix()+"@test.local", "", "active")
 
 	requested := seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 150000, "=EVILCELL")
-	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "processing", 250000, "Normal Holder")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "paid", 350000, "ShouldNotAppear")
 
 	data, err := svc.AdminAffiliatePayoutsCSV(ctx, AffiliateAdminQueueFilter{Q: owner.code})
@@ -308,8 +287,8 @@ func TestAdminAffiliatePayoutsCSV_queueContentsAndInjection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("export is not parseable CSV: %v", err)
 	}
-	if len(records) < 3 {
-		t.Fatalf("records = %d, want header plus at least 2 rows", len(records))
+	if len(records) < 2 {
+		t.Fatalf("records = %d, want header plus at least 1 row", len(records))
 	}
 	wantHeader := []string{"affiliator_name", "code", "bank_name", "bank_account_number", "bank_account_holder", "amount", "status", "requested_at"}
 	for i, col := range wantHeader {
@@ -375,7 +354,6 @@ func TestAdminDecideAffiliatePayout_paid(t *testing.T) {
 	owner := seedAffiliatorOwner(t, repo, "aff-pay-paid-"+uniqueSuffix()+"@test.local", "", "active")
 	actor := seedAffiliateAdminActor(t, repo, "admin-pay-paid-"+uniqueSuffix()+"@test.local")
 	payoutID := seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 300000, "Paid Holder")
-	seedAffiliatePayoutDeduction(t, repo, owner.affiliatorID, payoutID, 300000)
 	proof := "payment_proof/" + actor + "/proof-" + uniqueSuffix() + ".jpg"
 
 	updated, err := svc.AdminDecideAffiliatePayout(ctx, actor, payoutID.String(), AdminPayoutDecisionInput{
@@ -411,7 +389,6 @@ func TestAdminDecideAffiliatePayout_rejectWithDeductionWritesReversal(t *testing
 	owner := seedAffiliatorOwner(t, repo, "aff-pay-rej-"+uniqueSuffix()+"@test.local", "", "active")
 	actor := seedAffiliateAdminActor(t, repo, "admin-pay-rej-"+uniqueSuffix()+"@test.local")
 	payoutID := seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 200000, "Reject Holder")
-	seedAffiliatePayoutDeduction(t, repo, owner.affiliatorID, payoutID, 200000)
 
 	updated, err := svc.AdminDecideAffiliatePayout(ctx, actor, payoutID.String(), AdminPayoutDecisionInput{
 		Decision: "reject",
@@ -430,8 +407,8 @@ func TestAdminDecideAffiliatePayout_rejectWithDeductionWritesReversal(t *testing
 	var note string
 	var payoutRef, actorRef uuid.UUID
 	if err := repo.Pool().QueryRow(ctx,
-		`SELECT amount, note, payout_id, actor_id FROM affiliate_ledger_entries
-		 WHERE affiliator_id = $1 AND entry_type = 'payout_reversal'`, owner.affiliatorID,
+		`SELECT amount, note, parent_id, actor_id FROM affiliate_transactions
+		 WHERE affiliator_id = $1 AND type = 'payout_reversal'`, owner.affiliatorID,
 	).Scan(&amount, &note, &payoutRef, &actorRef); err != nil {
 		t.Fatalf("read reversal row: %v", err)
 	}
@@ -450,28 +427,6 @@ func TestAdminDecideAffiliatePayout_rejectWithDeductionWritesReversal(t *testing
 	}
 	if n := countAffiliateAudit(t, repo, "affiliate.payout_rejected", payoutID.String()); n != 1 {
 		t.Errorf("affiliate.payout_rejected audit rows = %d, want 1", n)
-	}
-}
-
-func TestAdminDecideAffiliatePayout_rejectWithoutDeduction(t *testing.T) {
-	svc, repo := newRealDBService(t)
-	ctx := context.Background()
-	owner := seedAffiliatorOwner(t, repo, "aff-pay-rej2-"+uniqueSuffix()+"@test.local", "", "active")
-	actor := seedAffiliateAdminActor(t, repo, "admin-pay-rej2-"+uniqueSuffix()+"@test.local")
-	payoutID := seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "processing", 100000, "No Ledger Holder")
-
-	updated, err := svc.AdminDecideAffiliatePayout(ctx, actor, payoutID.String(), AdminPayoutDecisionInput{
-		Decision: "reject",
-		Reason:   "flagged for review",
-	})
-	if err != nil {
-		t.Fatalf("AdminDecideAffiliatePayout reject: %v", err)
-	}
-	if updated.Status != "rejected" {
-		t.Errorf("status = %q, want rejected", updated.Status)
-	}
-	if n := countAffiliateLedgerByTypeFor(t, repo, owner.affiliatorID, "payout_reversal"); n != 0 {
-		t.Errorf("payout_reversal rows = %d, want 0 without a deduction", n)
 	}
 }
 
@@ -497,7 +452,7 @@ func TestAdminDecideAffiliatePayout_invalidDecisions(t *testing.T) {
 				t.Fatalf("err = %v, want ErrAffiliatePayoutInvalid", err)
 			}
 			var status string
-			if err := repo.Pool().QueryRow(ctx, `SELECT status FROM affiliate_payouts WHERE id = $1`, payoutID).Scan(&status); err != nil {
+			if err := repo.Pool().QueryRow(ctx, `SELECT status FROM affiliate_transactions WHERE id = $1`, payoutID).Scan(&status); err != nil {
 				t.Fatalf("read payout: %v", err)
 			}
 			if status != "requested" {

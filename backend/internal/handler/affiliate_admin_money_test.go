@@ -123,9 +123,11 @@ func seedAffiliateAdminMoneyPayout(t *testing.T, pool *pgxpool.Pool, affiliatorI
 	t.Helper()
 	var id uuid.UUID
 	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliate_payouts (affiliator_id, amount, status, bank_name, bank_account_number, bank_account_holder)
-		 VALUES ($1, $2, $3, 'BCA', '1234567890', $4) RETURNING id`,
-		affiliatorID, amount, status, holder,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, status, amount, effective_at, created_at, detail)
+		 VALUES ($1, 'payout', $2, -$3::numeric, $4, $4,
+		     jsonb_build_object('bank_account', jsonb_build_object(
+		         'bank_name', 'BCA', 'account_number', '1234567890', 'account_holder', $5::text))) RETURNING id`,
+		affiliatorID, status, amount, time.Now().UTC(), holder,
 	).Scan(&id); err != nil {
 		t.Fatalf("seed payout: %v", err)
 	}
@@ -204,7 +206,7 @@ func TestAffiliateAdminCreateAdjustmentHandler(t *testing.T) {
 
 	var ledgerN int
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_ledger_entries WHERE adjustment_id = $1 AND entry_type = 'adjustment'`,
+		`SELECT count(*) FROM affiliate_transactions WHERE id = $1 AND type = 'adjustment' AND effective_at IS NOT NULL`,
 		adj.ID,
 	).Scan(&ledgerN); err != nil {
 		t.Fatalf("count ledger: %v", err)
@@ -378,7 +380,7 @@ func TestAffiliateAdminDecidePayoutHandler(t *testing.T) {
 	}
 	var proof string
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT proof_url FROM affiliate_payouts WHERE id = $1`, payoutID,
+		`SELECT detail->>'proof_url' FROM affiliate_transactions WHERE id = $1`, payoutID,
 	).Scan(&proof); err != nil {
 		t.Fatalf("read payout: %v", err)
 	}
@@ -391,12 +393,6 @@ func TestAffiliateAdminDecidePayoutHandler_reject(t *testing.T) {
 	env := newAffiliateAdminMoneyEnv(t)
 	affiliatorID, _, _ := seedAffiliateAdminMoneyAffiliator(t, env.pool)
 	payoutID := seedAffiliateAdminMoneyPayout(t, env.pool, affiliatorID, "requested", 200000, "Reject Holder")
-	if _, err := env.pool.Exec(context.Background(),
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, payout_id) VALUES ($1, 'payout', -200000, $2)`,
-		affiliatorID, payoutID,
-	); err != nil {
-		t.Fatalf("seed deduction: %v", err)
-	}
 	token := env.tokenFor(t, service.RoleSuperAdmin)
 
 	rec := postJSONWithToken(t, env.e, "/admin/affiliate-payouts/"+payoutID.String()+"/decide", token,
@@ -416,7 +412,7 @@ func TestAffiliateAdminDecidePayoutHandler_reject(t *testing.T) {
 	}
 	var reversalN int
 	if err := env.pool.QueryRow(context.Background(),
-		`SELECT count(*) FROM affiliate_ledger_entries WHERE payout_id = $1 AND entry_type = 'payout_reversal'`,
+		`SELECT count(*) FROM affiliate_transactions WHERE parent_id = $1 AND type = 'payout_reversal'`,
 		payoutID,
 	).Scan(&reversalN); err != nil {
 		t.Fatalf("count reversal: %v", err)

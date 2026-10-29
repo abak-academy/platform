@@ -52,11 +52,8 @@ func TestAffiliateAdminDetailAggregatesSummaries(t *testing.T) {
 		createdAt: now.AddDate(0, 0, -5), paidAt: now.AddDate(0, 0, -5),
 	})
 
-	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, note)
-		 VALUES ($1, 'commission', 25000, 'seed detail'), ($1, 'payout', -5000, 'seed detail')`,
-		id)
-	require.NoError(t, err)
+	seedAffiliateTxBalance(t, repo, id, 13000)
+	seedAffiliateTxPayout(t, repo, id, "paid", 5000, "Detail Seed", time.Now().UTC())
 
 	detail, err := svc.GetAffiliateAdminDetail(ctx, id.String())
 	require.NoError(t, err)

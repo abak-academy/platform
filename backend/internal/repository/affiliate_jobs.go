@@ -2,8 +2,6 @@ package repository
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -11,11 +9,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
-
-// ErrAffiliateLedgerEntryExists reports that this commission already carries a
-// ledger entry of the given type (uq_affiliate_ledger_commission): the job
-// already released it, not a failure.
-var ErrAffiliateLedgerEntryExists = errors.New("affiliate ledger entry already exists for commission")
 
 // AffiliateDueCommission is a pending commission whose wait_until has passed,
 // with the order item name the release ledger note references.
@@ -36,13 +29,11 @@ type AffiliatePendingPhysical struct {
 // before now, oldest wait first, with the order item name for the ledger note.
 func (r *Repository) GetDuePendingCommissions(ctx context.Context, now time.Time, limit int) ([]AffiliateDueCommission, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT c.id, c.affiliator_id, c.student_id, c.order_id, c.order_item_id, c.product_type,
-		        c.base_amount, c.commission_type, c.commission_value, c.level_snapshot, c.amount, c.status, c.wait_until, c.paid_at,
-		        c.created_at, c.updated_at, oi.name
-		 FROM affiliate_commissions c
+		`SELECT `+affiliateCommissionSelect("c")+`, oi.name
+		 FROM affiliate_transactions c
 		 JOIN order_item oi ON oi.id = c.order_item_id
-		 WHERE c.status = 'pending' AND c.wait_until IS NOT NULL AND c.wait_until <= $1
-		 ORDER BY c.wait_until
+		 WHERE c.type = 'commission' AND c.status = 'pending' AND c.release_at IS NOT NULL AND c.release_at <= $1
+		 ORDER BY c.release_at
 		 LIMIT $2`, now, limit)
 	if err != nil {
 		return nil, err
@@ -53,9 +44,7 @@ func (r *Repository) GetDuePendingCommissions(ctx context.Context, now time.Time
 	for rows.Next() {
 		var c model.AffiliateCommission
 		var name string
-		if err := rows.Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType,
-			&c.BaseAmount, &c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt,
-			&c.CreatedAt, &c.UpdatedAt, &name); err != nil {
+		if err := rows.Scan(append(affiliateCommissionDest(&c), &name)...); err != nil {
 			return nil, err
 		}
 		out = append(out, AffiliateDueCommission{Commission: c, ItemName: name})
@@ -63,15 +52,14 @@ func (r *Repository) GetDuePendingCommissions(ctx context.Context, now time.Time
 	return out, rows.Err()
 }
 
-// ReleaseAffiliateCommissionTx performs the pending→available transition and
-// the commission ledger insert atomically for one commission, locking the row
-// first so a refund settling the same commission wins or loses cleanly. It
-// returns false when the row is gone, no longer pending, or the ledger entry
-// already exists (released by an earlier run).
+// ReleaseAffiliateCommissionTx performs the pending→available transition for
+// one commission, locking the row first so a refund settling the same
+// commission wins or loses cleanly. The commission takes effect on the balance
+// now. It returns false when the row is gone or no longer pending.
 func (r *Repository) ReleaseAffiliateCommissionTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, note string) (bool, error) {
 	var status string
 	err := tx.QueryRow(ctx,
-		`SELECT status FROM affiliate_commissions WHERE id = $1 FOR UPDATE`, id,
+		`SELECT status FROM affiliate_transactions WHERE id = $1 AND type = 'commission' FOR UPDATE`, id,
 	).Scan(&status)
 	if isNotFound(err) {
 		return false, nil
@@ -82,27 +70,13 @@ func (r *Repository) ReleaseAffiliateCommissionTx(ctx context.Context, tx pgx.Tx
 	if status != "pending" {
 		return false, nil
 	}
-	tag, err := tx.Exec(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id, note)
-		 SELECT affiliator_id, 'commission', amount, id, $2 FROM affiliate_commissions WHERE id = $1
-		 ON CONFLICT (commission_id, entry_type) WHERE commission_id IS NOT NULL DO NOTHING`,
-		id, note,
+	_, err = tx.Exec(ctx,
+		`UPDATE affiliate_transactions
+		 SET status = 'available', effective_at = now(), note = $2, updated_at = now()
+		 WHERE id = $1`, id, note,
 	)
 	if err != nil {
 		return false, err
-	}
-	if tag.RowsAffected() == 0 {
-		return false, ErrAffiliateLedgerEntryExists
-	}
-	tag, err = tx.Exec(ctx,
-		`UPDATE affiliate_commissions SET status = 'available', updated_at = now()
-		 WHERE id = $1 AND status = 'pending'`, id,
-	)
-	if err != nil {
-		return false, err
-	}
-	if tag.RowsAffected() == 0 {
-		return false, fmt.Errorf("commission %s left pending while row-locked", id)
 	}
 	return true, nil
 }
@@ -111,10 +85,10 @@ func (r *Repository) ReleaseAffiliateCommissionTx(ctx context.Context, tx pgx.Tx
 // with no wait_until whose order has been completed by an admin.
 func (r *Repository) GetPendingPhysicalCommissions(ctx context.Context, limit int) ([]AffiliatePendingPhysical, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT c.id, c.level_snapshot, o.completed_at
-		 FROM affiliate_commissions c
+		`SELECT c.id, c.detail->>'level', o.completed_at
+		 FROM affiliate_transactions c
 		 JOIN orders o ON o.id = c.order_id
-		 WHERE c.status = 'pending' AND c.wait_until IS NULL
+		 WHERE c.type = 'commission' AND c.status = 'pending' AND c.release_at IS NULL
 		   AND c.product_type IN ('book', 'merchandise', 'medal')
 		   AND o.completed_at IS NOT NULL
 		 ORDER BY c.created_at
@@ -139,8 +113,8 @@ func (r *Repository) GetPendingPhysicalCommissions(ctx context.Context, limit in
 // physical commission; the wait_until IS NULL guard keeps repeat runs no-ops.
 func (r *Repository) SetAffiliateCommissionWaitUntil(ctx context.Context, id uuid.UUID, waitUntil time.Time) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE affiliate_commissions SET wait_until = $2, updated_at = now()
-		 WHERE id = $1 AND status = 'pending' AND wait_until IS NULL`,
+		`UPDATE affiliate_transactions SET release_at = $2, updated_at = now()
+		 WHERE id = $1 AND type = 'commission' AND status = 'pending' AND release_at IS NULL`,
 		id, waitUntil,
 	)
 	return err
@@ -171,16 +145,16 @@ func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.A
 
 // GetAffiliateQuarterNetRevenue sums the base amounts of the affiliator's
 // available and paid commissions that became final inside the window, i.e.
-// whose wait_until (paid_at when there is none) falls in it. A commission
+// whose release_at (order_paid_at when there is none) falls in it. A commission
 // refunded after release is cancelled, so it drops out (BR-LVL-07); counting by
 // the final date keeps a physical order that settles after the evaluation day
 // in the next quarter instead of in none.
 func (r *Repository) GetAffiliateQuarterNetRevenue(ctx context.Context, affiliatorID uuid.UUID, from, to time.Time) (float64, error) {
 	var net float64
 	err := r.pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(base_amount), 0) FROM affiliate_commissions
-		 WHERE affiliator_id = $1 AND status = 'available'
-		   AND COALESCE(wait_until, paid_at) >= $2 AND COALESCE(wait_until, paid_at) < $3`,
+		`SELECT COALESCE(SUM(base_amount), 0) FROM affiliate_transactions
+		 WHERE type = 'commission' AND affiliator_id = $1 AND status = 'available'
+		   AND COALESCE(release_at, order_paid_at) >= $2 AND COALESCE(release_at, order_paid_at) < $3`,
 		affiliatorID, from, to,
 	).Scan(&net)
 	return net, err
@@ -225,7 +199,7 @@ func (r *Repository) ListPaidOrdersMissingAffiliateCommissions(ctx context.Conte
 		       SELECT 1 FROM order_item oi
 		       WHERE oi.order_id = o.id
 		         AND oi.product_type IN ('exam', 'course', 'book', 'merchandise', 'medal')
-		         AND NOT EXISTS (SELECT 1 FROM affiliate_commissions c WHERE c.order_item_id = oi.id))
+		         AND NOT EXISTS (SELECT 1 FROM affiliate_transactions c WHERE c.type = 'commission' AND c.order_item_id = oi.id))
 		 ORDER BY o.paid_at, o.id
 		 LIMIT $3`,
 		paidSince, paidBefore, limit)

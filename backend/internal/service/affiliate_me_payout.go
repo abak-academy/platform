@@ -47,9 +47,8 @@ func affiliateBankIncomplete(aff *model.Affiliator) bool {
 // RequestMyAffiliatePayout files one payout request (BR-PCR-01..05): active
 // status, no freeze, no requested/processing payout in flight, saldo at or
 // above the level's min_payout, bank fields complete. A nil amount defaults
-// to the full saldo. One transaction writes the payout row (bank snapshot),
-// the negative ledger deduction the admin decide path reverses on rejection,
-// and the audit row; the affiliator row is locked FOR UPDATE so two
+// to the full saldo. One transaction writes the payout row (bank snapshot, debiting
+// the balance from the request on) and the audit row; the affiliator row is locked FOR UPDATE so two
 // concurrent requests cannot both pass the in-flight check.
 func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, amount *float64) (*model.AffiliatePayout, error) {
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
@@ -112,18 +111,10 @@ func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, a
 		BankAccountHolder: *fresh.BankAccountHolder,
 	}
 	if err := s.storeRepo.InsertAffiliatePayoutTx(ctx, tx, payout); err != nil {
+		if errors.Is(err, repository.ErrAffiliatePayoutInFlight) {
+			return nil, ErrAffiliatePayoutInFlight
+		}
 		return nil, fmt.Errorf("insert affiliate payout: %w", err)
-	}
-	note := "payout requested"
-	if err := s.storeRepo.InsertAffiliateLedgerEntryTx(ctx, tx, &model.AffiliateLedgerEntry{
-		AffiliatorID: fresh.ID,
-		EntryType:    "payout",
-		Amount:       -payoutAmount,
-		PayoutID:     &payout.ID,
-		Note:         &note,
-		ActorID:      &fresh.ID,
-	}); err != nil {
-		return nil, fmt.Errorf("insert payout ledger entry: %w", err)
 	}
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &userID, "affiliate_payout", payout.ID.String(), "affiliate.payout_requested", map[string]any{
 		"affiliator_id": fresh.ID,

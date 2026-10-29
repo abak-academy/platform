@@ -371,9 +371,6 @@ func TestAffiliateConfigReportSummary(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_bindings WHERE affiliator_id IN ($1, $2)`, owner.affiliatorID, other.affiliatorID)
 	})
 	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_commissions WHERE affiliator_id IN ($1, $2)`, owner.affiliatorID, other.affiliatorID)
-	})
-	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1, $2, $3, $4, $5)`, owner.userID, other.userID, studentA.ID, studentB.ID, studentC.ID)
 	})
 
@@ -467,9 +464,6 @@ func TestAffiliateConfigReportSummary_dateOnlyWindowIncludesPaidDay(t *testing.T
 
 	owner := seedAffiliatorOwner(t, repo, "affcfg-day-"+uniqueSuffix()+"@test.local", "", "active")
 	student := seedAffiliateTestStudent(t, repo, "affcfg-day-s-"+uniqueSuffix()+"@test.local", "")
-	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_commissions WHERE affiliator_id = $1`, owner.affiliatorID)
-	})
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1, $2)`, owner.userID, student.ID) })
 
 	paidAt := time.Now().In(affiliateWIBLocation())
@@ -494,15 +488,6 @@ func TestAffiliateConfigReportLiability(t *testing.T) {
 
 	owner := seedAffiliatorOwner(t, repo, "affcfg-liab-"+uniqueSuffix()+"@test.local", "", "active")
 	student := seedAffiliateTestStudent(t, repo, "affcfg-liab-s-"+uniqueSuffix()+"@test.local", "")
-	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_ledger_entries WHERE affiliator_id = $1`, owner.affiliatorID)
-	})
-	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_payouts WHERE affiliator_id = $1`, owner.affiliatorID)
-	})
-	t.Cleanup(func() {
-		_, _ = pool.Exec(ctx, `DELETE FROM affiliate_commissions WHERE affiliator_id = $1`, owner.affiliatorID)
-	})
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id IN ($1, $2)`, owner.userID, student.ID) })
 
 	// Delta baseline: the shared fixture carries other tests' ledger/payout rows.
@@ -513,14 +498,15 @@ func TestAffiliateConfigReportLiability(t *testing.T) {
 		productType: "exam", base: 100000, pct: 10, amount: 10000, status: "available", level: "bronze", createdAt: time.Now(),
 	})
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id) VALUES ($1, 'commission', 10000, $2) RETURNING id`,
-		owner.affiliatorID, cAvailable.ID).Scan(new(uuid.UUID)))
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id) VALUES ($1, 'refund_deduction', -4000, $2) RETURNING id`,
-		owner.affiliatorID, cAvailable.ID).Scan(new(uuid.UUID)))
+		`INSERT INTO affiliate_transactions
+		     (affiliator_id, type, status, amount, effective_at, parent_id, student_id, order_id, order_item_id, product_type)
+		 SELECT affiliator_id, 'refund_deduction', 'posted', -4000, now(), id, student_id, order_id, order_item_id, product_type
+		 FROM affiliate_transactions WHERE id = $1 RETURNING id`,
+		cAvailable.ID).Scan(new(uuid.UUID)))
 
 	payoutRequested := seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "requested", 30000, "Liability Seed")
-	payoutProcessing := seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "processing", 10000, "Liability Seed")
+	processingOwner := seedAffiliatorOwner(t, repo, "affcfg-liab-p-"+uniqueSuffix()+"@test.local", "", "active")
+	payoutProcessing := seedAffiliateMoneyPayout(t, repo, processingOwner.affiliatorID, "processing", 10000, "Liability Seed")
 	seedAffiliateMoneyPayout(t, repo, owner.affiliatorID, "paid", 50000, "Liability Seed")
 	_ = payoutRequested
 	_ = payoutProcessing

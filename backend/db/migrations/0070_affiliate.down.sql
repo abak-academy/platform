@@ -1,11 +1,8 @@
-DROP TRIGGER IF EXISTS trg_affiliate_ledger_append_only ON affiliate_ledger_entries;
-DROP FUNCTION IF EXISTS affiliate_ledger_append_only();
+DROP TRIGGER IF EXISTS trg_affiliate_transactions_guard ON affiliate_transactions;
+DROP FUNCTION IF EXISTS affiliate_transactions_guard();
 
 DROP TABLE IF EXISTS affiliate_settings;
-DROP TABLE IF EXISTS affiliate_ledger_entries;
-DROP TABLE IF EXISTS affiliate_adjustments;
-DROP TABLE IF EXISTS affiliate_payouts;
-DROP TABLE IF EXISTS affiliate_commissions;
+DROP TABLE IF EXISTS affiliate_transactions;
 DROP TABLE IF EXISTS affiliate_bindings;
 DROP TABLE IF EXISTS affiliators;
 

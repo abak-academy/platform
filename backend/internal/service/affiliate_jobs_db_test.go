@@ -129,11 +129,12 @@ func seedAffiliateJobCommission(t *testing.T, repo *repository.Repository, affil
 	).Scan(&itemID))
 	var c model.AffiliateCommission
 	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO affiliate_commissions (affiliator_id, student_id, order_id, order_item_id, product_type,
-		     base_amount, commission_value, level_snapshot, amount, status, wait_until, paid_at, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-		 RETURNING id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
-		           commission_type, commission_value, level_snapshot, amount, status, wait_until, paid_at, created_at`,
+		`INSERT INTO affiliate_transactions (affiliator_id, type, student_id, order_id, order_item_id, product_type,
+		     quantity, base_amount, detail, amount, status, release_at, order_paid_at, created_at, effective_at)
+		 VALUES ($1, 'commission', $2, $3, $4, $5, 1, $6,
+		     jsonb_build_object('rule', jsonb_build_object('type', 'percent', 'value', $7::numeric), 'level', $8::text),
+		     $9, $10, $11, $12, $13, CASE WHEN $10::text = 'available' THEN $13::timestamptz END)
+		 RETURNING `+testCommissionSelect,
 		affiliatorID, studentID, orderID, itemID, seed.productType, seed.base, seed.pct, seed.level,
 		seed.amount, seed.status, seed.waitUntil, seed.paidAt, seed.createdAt,
 	).Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType, &c.BaseAmount,
@@ -158,13 +159,14 @@ func getAffiliateJobAffiliator(t *testing.T, repo *repository.Repository, id uui
 	return a
 }
 
+const testCommissionSelect = `id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
+		detail->'rule'->>'type', (detail->'rule'->>'value')::numeric, detail->>'level', amount, status, release_at, order_paid_at, created_at`
+
 func getAffiliateJobCommission(t *testing.T, repo *repository.Repository, id uuid.UUID) *model.AffiliateCommission {
 	t.Helper()
 	var c model.AffiliateCommission
 	err := repo.Pool().QueryRow(context.Background(),
-		`SELECT id, affiliator_id, student_id, order_id, order_item_id, product_type, base_amount,
-		        commission_type, commission_value, level_snapshot, amount, status, wait_until, paid_at, created_at
-		 FROM affiliate_commissions WHERE id = $1`, id,
+		`SELECT `+testCommissionSelect+` FROM affiliate_transactions WHERE type = 'commission' AND id = $1`, id,
 	).Scan(&c.ID, &c.AffiliatorID, &c.StudentID, &c.OrderID, &c.OrderItemID, &c.ProductType, &c.BaseAmount,
 		&c.CommissionType, &c.CommissionValue, &c.LevelSnapshot, &c.Amount, &c.Status, &c.WaitUntil, &c.PaidAt, &c.CreatedAt)
 	if err != nil {
@@ -176,8 +178,9 @@ func getAffiliateJobCommission(t *testing.T, repo *repository.Repository, id uui
 func affiliateJobLedgerRows(t *testing.T, repo *repository.Repository, commissionID uuid.UUID) []model.AffiliateLedgerEntry {
 	t.Helper()
 	rows, err := repo.Pool().Query(context.Background(),
-		`SELECT id, affiliator_id, entry_type, amount, commission_id, note, actor_id, created_at
-		 FROM affiliate_ledger_entries WHERE commission_id = $1 ORDER BY created_at`, commissionID)
+		`SELECT id, affiliator_id, type, amount, CASE type WHEN 'commission' THEN id ELSE parent_id END, note, actor_id, effective_at
+		 FROM affiliate_transactions
+		 WHERE effective_at IS NOT NULL AND (id = $1 OR parent_id = $1) ORDER BY effective_at`, commissionID)
 	require.NoError(t, err)
 	defer rows.Close()
 
@@ -316,27 +319,6 @@ func TestAffiliateJobCommissionRelease_transitionsLedgerAndIdempotent(t *testing
 		require.NoError(t, err)
 		require.Equal(t, 0, res.CommissionsReleased)
 		require.Equal(t, "pending", affiliateCommissionsForOrder(t, repo, fresh.ID)[0].Status)
-	})
-
-	t.Run("existing ledger entry is treated as already done", func(t *testing.T) {
-		stuck := seedAffiliateJobCommission(t, repo, owner.affiliatorID, uuid.MustParse(student.ID), affiliateJobCommissionSeed{
-			productType: "exam", base: 100000, pct: 10, amount: 10000, status: "pending", level: "bronze",
-			createdAt: time.Now().UTC().AddDate(0, 0, -10), paidAt: time.Now().UTC().AddDate(0, 0, -10),
-			waitUntil: timePtr(time.Now().UTC().Add(-time.Hour)),
-		})
-		note := "seeded entry"
-		_, err := repo.Pool().Exec(ctx,
-			`INSERT INTO affiliate_ledger_entries (affiliator_id, entry_type, amount, commission_id, note)
-			 VALUES ($1, 'commission', $2, $3, $4)`,
-			owner.affiliatorID, stuck.Amount, stuck.ID, note)
-		require.NoError(t, err)
-
-		res, err := svc.RunAffiliateJob(ctx, "commissions", nil)
-		require.NoError(t, err)
-		require.Equal(t, "pending", getAffiliateJobCommission(t, repo, stuck.ID).Status,
-			"ledger conflict means already released: no second transition")
-		require.Len(t, affiliateJobLedgerRows(t, repo, stuck.ID), 1)
-		_ = res
 	})
 }
 
