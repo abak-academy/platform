@@ -1691,30 +1691,6 @@ export interface AffiliateAdjustmentPage {
   total: number;
 }
 
-export interface AffiliateViolation {
-  id: string;
-  affiliator_id: string;
-  category: string;
-  description: string;
-  sanction: string;
-  suspension_until: string | null;
-  status: string;
-  decided_by: string;
-  decided_at: string;
-  appeal_text: string | null;
-  appeal_status: string;
-  appeal_decided_by: string | null;
-  appeal_decided_at: string | null;
-  created_at: string;
-}
-
-export interface AffiliateViolationPage {
-  data: AffiliateViolation[];
-  page: number;
-  per_page: number;
-  total: number;
-}
-
 // Affiliate admin (super_admin) — mirrors the admin handler/service JSON.
 
 export interface AffiliateAdminRow {
@@ -1768,7 +1744,6 @@ export interface AffiliateAdminDetail {
   commissions: { counts: Record<string, number>; total_amount: number };
   saldo: number;
   level_history: AffiliateLevelHistoryEntry[];
-  violations: AffiliateViolation[];
 }
 
 export interface AffiliateAdminPayout extends AffiliatePayout {
@@ -1842,25 +1817,6 @@ export interface AffiliateProductOverride {
   value: number;
   updated_by: string | null;
   updated_at: string;
-}
-
-export interface AffiliateFlagRow {
-  id: string;
-  affiliator_id: string;
-  rule: string;
-  payload: Record<string, unknown> | null;
-  status: string;
-  note: string | null;
-  reviewed_by: string | null;
-  reviewed_at: string | null;
-  created_at: string;
-  affiliator_code: string;
-  affiliator_name: string;
-}
-
-export interface AffiliateAppealRow extends AffiliateViolation {
-  affiliator_code: string;
-  affiliator_name: string;
 }
 
 export interface AffiliateReportRow {

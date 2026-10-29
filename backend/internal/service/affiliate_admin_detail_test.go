@@ -65,13 +65,6 @@ func TestAffiliateAdminDetailAggregatesSummaries(t *testing.T) {
 		id)
 	require.NoError(t, err)
 
-	decider := insertAdminActor(t, repo, "affdetail")
-	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_violations (affiliator_id, category, description, sanction, status, decided_by)
-		 VALUES ($1, 'self_purchase', 'pembelian dengan kode sendiri', 'warning', 'open', $2)`,
-		id, uuid.MustParse(decider))
-	require.NoError(t, err)
-
 	detail, err := svc.GetAffiliateAdminDetail(ctx, id.String())
 	require.NoError(t, err)
 	require.NotNil(t, detail)
@@ -105,10 +98,6 @@ func TestAffiliateAdminDetailAggregatesSummaries(t *testing.T) {
 	require.Equal(t, "gold", detail.LevelHistory[0].ToLevel)
 	require.Equal(t, "2026-Q1", detail.LevelHistory[1].Quarter)
 	require.Equal(t, "silver", detail.LevelHistory[1].ToLevel)
-
-	require.Len(t, detail.Violations, 1)
-	require.Equal(t, "self_purchase", detail.Violations[0].Category)
-	require.Equal(t, "open", detail.Violations[0].Status)
 }
 
 func TestAffiliateAdminDetail_unknownOrMalformedID(t *testing.T) {
@@ -135,6 +124,5 @@ func TestAffiliateAdminDetail_emptyListsAreArrays(t *testing.T) {
 	raw, err := json.Marshal(detail)
 	require.NoError(t, err)
 	require.Contains(t, string(raw), `"level_history":[]`)
-	require.Contains(t, string(raw), `"violations":[]`)
 	require.Contains(t, string(raw), `"data":[]`)
 }

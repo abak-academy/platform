@@ -32,22 +32,6 @@ type AffiliatePendingPhysical struct {
 	CompletedAt   time.Time
 }
 
-// AffiliateSmallRepeatRow is one affiliator's count of small repeat purchases
-// in the flag window and how many came from bindings that were extended.
-type AffiliateSmallRepeatRow struct {
-	AffiliatorID uuid.UUID
-	Total        int
-	Extended     int
-}
-
-// AffiliateRefundRatioRow is one affiliator's commission total in the flag
-// window and how many of those are cancelled by refund.
-type AffiliateRefundRatioRow struct {
-	AffiliatorID uuid.UUID
-	Total        int
-	Cancelled    int
-}
-
 // GetDuePendingCommissions returns pending commissions with wait_until at or
 // before now, oldest wait first, with the order item name for the ledger note.
 func (r *Repository) GetDuePendingCommissions(ctx context.Context, now time.Time, limit int) ([]AffiliateDueCommission, error) {
@@ -184,82 +168,6 @@ func (r *Repository) ExpireAffiliateSanctions(ctx context.Context, now time.Time
 		return changed, err
 	}
 	return changed + tag.RowsAffected(), nil
-}
-
-// InsertAffiliateFlagOnce persists one rule flag row unless the affiliator
-// already has an open flag for the same rule; returns whether a row was added.
-func (r *Repository) InsertAffiliateFlagOnce(ctx context.Context, affiliatorID uuid.UUID, rule string, payload []byte) (bool, error) {
-	tag, err := r.pool.Exec(ctx,
-		`INSERT INTO affiliate_flags (affiliator_id, rule, payload, status)
-		 SELECT $1, $2, $3, 'open'
-		 WHERE NOT EXISTS (
-		     SELECT 1 FROM affiliate_flags
-		     WHERE affiliator_id = $1 AND rule = $2 AND status = 'open')`,
-		affiliatorID, rule, payload,
-	)
-	if err != nil {
-		return false, err
-	}
-	return tag.RowsAffected() > 0, nil
-}
-
-// CountSmallRepeatCommissions groups the window's small commissions per
-// affiliator and counts how many came from students whose active binding was
-// extended (last_extended_at set), for the BR-PLG-08 boundary rule.
-func (r *Repository) CountSmallRepeatCommissions(ctx context.Context, windowStart time.Time, minAmount, maxAmount float64, minCount int) ([]AffiliateSmallRepeatRow, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT c.affiliator_id, count(*) AS total,
-		        count(*) FILTER (WHERE b.last_extended_at IS NOT NULL) AS extended
-		 FROM affiliate_commissions c
-		 LEFT JOIN affiliate_bindings b
-		        ON b.student_id = c.student_id AND b.affiliator_id = c.affiliator_id AND b.status = 'active'
-		 WHERE c.created_at >= $1 AND c.base_amount >= $2 AND c.base_amount <= $3
-		 GROUP BY c.affiliator_id
-		 HAVING count(*) >= $4`,
-		windowStart, minAmount, maxAmount, minCount,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []AffiliateSmallRepeatRow
-	for rows.Next() {
-		var row AffiliateSmallRepeatRow
-		if err := rows.Scan(&row.AffiliatorID, &row.Total, &row.Extended); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	return out, rows.Err()
-}
-
-// CountRefundCancelledCommissions groups the window's commissions per
-// affiliator with their cancelled-by-refund counts, for BR-PLG-08.
-func (r *Repository) CountRefundCancelledCommissions(ctx context.Context, windowStart time.Time, minTotal int) ([]AffiliateRefundRatioRow, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT c.affiliator_id, count(*) AS total,
-		        count(*) FILTER (WHERE c.status = 'cancelled') AS cancelled
-		 FROM affiliate_commissions c
-		 WHERE c.created_at >= $1
-		 GROUP BY c.affiliator_id
-		 HAVING count(*) >= $2`,
-		windowStart, minTotal,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []AffiliateRefundRatioRow
-	for rows.Next() {
-		var row AffiliateRefundRatioRow
-		if err := rows.Scan(&row.AffiliatorID, &row.Total, &row.Cancelled); err != nil {
-			return nil, err
-		}
-		out = append(out, row)
-	}
-	return out, rows.Err()
 }
 
 // ListAffiliatorsForLevelEval returns every affiliator the quarterly level

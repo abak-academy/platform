@@ -118,11 +118,6 @@ type affiliateMePayoutRequest struct {
 	Amount *float64 `json:"amount"`
 }
 
-// affiliateMeAppealRequest is the body only the violation appeal route reads.
-type affiliateMeAppealRequest struct {
-	Text string `json:"text"`
-}
-
 // AffiliateMeRequestPayout backs POST /affiliates/me/payouts (BR-PCR-01..05).
 func (h *Handler) AffiliateMeRequestPayout(c echo.Context) error {
 	claims := claimsFromContext(c)
@@ -177,42 +172,6 @@ func (h *Handler) AffiliateMeAdjustments(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, page)
-}
-
-// AffiliateMeViolations backs GET /affiliates/me/violations — own violations
-// with sanction and appeal fields.
-func (h *Handler) AffiliateMeViolations(c echo.Context) error {
-	filter, err := affiliateMeListQuery(c)
-	if err != nil {
-		return badRequest(c, err.Error())
-	}
-	claims := claimsFromContext(c)
-	if claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
-	}
-	page, err := h.svc.ListMyAffiliateViolations(c.Request().Context(), claims.Sub, filter)
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, page)
-}
-
-// AffiliateMeAppealViolation backs POST /affiliates/me/violations/:id/appeal
-// (BR-PLG-06).
-func (h *Handler) AffiliateMeAppealViolation(c echo.Context) error {
-	claims := claimsFromContext(c)
-	if claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
-	}
-	var req affiliateMeAppealRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	violation, err := h.svc.AppealMyAffiliateViolation(c.Request().Context(), claims.Sub, c.Param("id"), req.Text)
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, violation)
 }
 
 // affiliateSearchText trims the search box text and caps it so a pasted

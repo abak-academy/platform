@@ -5,7 +5,7 @@ import Link from "next/link";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
-import { AppealBadge, StatusBadge } from "@/components/affiliate/StatusBadge";
+import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
@@ -14,7 +14,7 @@ import { useAdminAffiliate } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { AffiliateBinding, AffiliateLevelHistoryEntry, AffiliateViolation } from "@/lib/types";
+import type { AffiliateBinding, AffiliateLevelHistoryEntry } from "@/lib/types";
 
 export default function AdminAffiliateDetailPage({ params }: { params: Promise<{ id: string }> }) {
   return (
@@ -85,12 +85,6 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
     { key: "source", header: t("admin_aff_col_source"), cell: (r) => affLabel(t, r.source) },
     { key: "reason", header: t("aff_col_reason_text"), cell: (r) => r.reason ?? "—" },
   ];
-  const violationColumns: DataTableColumn<AffiliateViolation>[] = [
-    { key: "date", header: t("aff_col_date"), cell: (r) => formatAffDate(r.decided_at) },
-    { key: "description", header: t("aff_col_description"), cell: (r) => r.description },
-    { key: "sanction", header: t("aff_col_sanction"), cell: (r) => affLabel(t, r.sanction) },
-    { key: "appeal", header: t("aff_col_appeal"), cell: (r) => <AppealBadge status={r.appeal_status} /> },
-  ];
 
   return (
     <div className="space-y-6">
@@ -124,10 +118,6 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_levels")}</h2>
         <DataTable columns={levelColumns} rows={d.level_history} rowKey={(r) => r.id} empty={t("aff_empty")} />
-      </section>
-      <section className="space-y-2">
-        <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_violations")}</h2>
-        <DataTable columns={violationColumns} rows={d.violations} rowKey={(r) => r.id} empty={t("aff_viol_empty")} />
       </section>
     </div>
   );

@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -111,15 +110,6 @@ func endActiveAffiliateBinding(t *testing.T, repo *repository.Repository, studen
 	require.NoError(t, err)
 }
 
-func latestAffiliateFlag(t *testing.T, repo *repository.Repository, affiliatorID uuid.UUID) (rule, payload string) {
-	t.Helper()
-	require.NoError(t, repo.Pool().QueryRow(context.Background(),
-		`SELECT rule, payload::text FROM affiliate_flags WHERE affiliator_id = $1 ORDER BY created_at DESC LIMIT 1`,
-		affiliatorID,
-	).Scan(&rule, &payload))
-	return rule, payload
-}
-
 func TestResolveBinding_ManualWinsOverCookie(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -180,7 +170,7 @@ func TestResolveBinding_UnknownOrInactiveCode_NoBinding(t *testing.T) {
 	require.Equal(t, 0, countAffiliateBindings(t, repo, student.ID))
 }
 
-func TestResolveBinding_SelfPurchase_NoBindingAndFlag(t *testing.T) {
+func TestResolveBinding_SelfPurchase_NoBinding(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	launch := time.Now().UTC().Add(-24 * time.Hour)
@@ -194,29 +184,6 @@ func TestResolveBinding_SelfPurchase_NoBindingAndFlag(t *testing.T) {
 		decision, err := svc.ResolveBinding(ctx, student, &code, nil)
 		require.NoError(t, err)
 		require.Nil(t, decision)
-		rule, payload := latestAffiliateFlag(t, repo, owner.affiliatorID)
-		require.Equal(t, "self_purchase", rule)
-		var fields map[string]string
-		require.NoError(t, json.Unmarshal([]byte(payload), &fields))
-		require.Equal(t, student.ID, fields["user_id"])
-		require.Equal(t, "email", fields["matched_field"])
-	})
-
-	t.Run("a repeat for the same user keeps one open flag", func(t *testing.T) {
-		email := "self-repeat-" + uniqueSuffix() + "@test.local"
-		owner := seedAffiliatorOwner(t, repo, email, "", "active")
-		student := &model.User{ID: uuid.NewString(), Email: &email, CreatedAt: time.Now().UTC()}
-		code := owner.code
-		for i := 0; i < 3; i++ {
-			decision, err := svc.ResolveBinding(ctx, student, &code, nil)
-			require.NoError(t, err)
-			require.Nil(t, decision)
-		}
-		var n int
-		require.NoError(t, repo.Pool().QueryRow(ctx,
-			`SELECT count(*) FROM affiliate_flags WHERE affiliator_id = $1 AND rule = 'self_purchase'`, owner.affiliatorID,
-		).Scan(&n))
-		require.Equal(t, 1, n)
 	})
 
 	t.Run("same phone", func(t *testing.T) {
@@ -227,11 +194,6 @@ func TestResolveBinding_SelfPurchase_NoBindingAndFlag(t *testing.T) {
 		decision, err := svc.ResolveBinding(ctx, student, &code, nil)
 		require.NoError(t, err)
 		require.Nil(t, decision)
-		rule, payload := latestAffiliateFlag(t, repo, owner.affiliatorID)
-		require.Equal(t, "self_purchase", rule)
-		var fields map[string]string
-		require.NoError(t, json.Unmarshal([]byte(payload), &fields))
-		require.Equal(t, "phone", fields["matched_field"])
 	})
 }
 

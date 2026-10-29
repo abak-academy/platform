@@ -146,7 +146,7 @@ func TestAffiliateMeLists_SearchFilterAndPaginate(t *testing.T) {
 	})
 }
 
-func TestAffiliateMeLists_PayoutsAdjustmentsAndViolationsFilters(t *testing.T) {
+func TestAffiliateMeLists_PayoutsAndAdjustmentsFilters(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateMeFlag(t, repo, "true")
@@ -157,8 +157,6 @@ func TestAffiliateMeLists_PayoutsAdjustmentsAndViolationsFilters(t *testing.T) {
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "paid", 100000, now.AddDate(0, 0, -30))
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "rejected", 100000, now.AddDate(0, 0, -5))
 	seedAffiliateMePayoutRow(t, repo, aff.ID, "requested", 100000, now.AddDate(0, 0, -1))
-	seedAffiliateMeViolation(t, repo, aff.ID, deciderID, "open", "none", now.AddDate(0, 0, -2))
-	seedAffiliateMeViolation(t, repo, aff.ID, deciderID, "resolved", "upheld", now.AddDate(0, 0, -20))
 	unique := uniqueSuffix()
 	_, err := repo.Pool().Exec(ctx,
 		`INSERT INTO affiliate_adjustments (affiliator_id, category, amount, reason, created_by, created_at) VALUES
@@ -187,14 +185,5 @@ func TestAffiliateMeLists_PayoutsAdjustmentsAndViolationsFilters(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, adj.Total)
 	_, err = svc.ListMyAffiliateAdjustments(ctx, userID, with(func(f *AffiliateMeListFilter) { f.Type = "bogus" }))
-	require.ErrorIs(t, err, ErrInvalidStatusFilter)
-
-	viol, err := svc.ListMyAffiliateViolations(ctx, userID, with(func(f *AffiliateMeListFilter) { f.Status = "open" }))
-	require.NoError(t, err)
-	require.Equal(t, 1, viol.Total)
-	viol, err = svc.ListMyAffiliateViolations(ctx, userID, with(func(f *AffiliateMeListFilter) { f.Status = "resolved" }))
-	require.NoError(t, err)
-	require.Equal(t, 1, viol.Total)
-	_, err = svc.ListMyAffiliateViolations(ctx, userID, with(func(f *AffiliateMeListFilter) { f.Type = "bogus" }))
 	require.ErrorIs(t, err, ErrInvalidStatusFilter)
 }

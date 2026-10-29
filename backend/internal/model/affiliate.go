@@ -107,23 +107,6 @@ type AffiliateAdjustment struct {
 	CreatedAt      time.Time  `json:"created_at"`
 }
 
-type AffiliateViolation struct {
-	ID              uuid.UUID  `json:"id"`
-	AffiliatorID    uuid.UUID  `json:"affiliator_id"`
-	Category        string     `json:"category"`
-	Description     string     `json:"description"`
-	Sanction        string     `json:"sanction"`
-	SuspensionUntil *time.Time `json:"suspension_until"`
-	Status          string     `json:"status"`
-	DecidedBy       uuid.UUID  `json:"decided_by"`
-	DecidedAt       time.Time  `json:"decided_at"`
-	AppealText      *string    `json:"appeal_text"`
-	AppealStatus    string     `json:"appeal_status"`
-	AppealDecidedBy *uuid.UUID `json:"appeal_decided_by"`
-	AppealDecidedAt *time.Time `json:"appeal_decided_at"`
-	CreatedAt       time.Time  `json:"created_at"`
-}
-
 type AffiliateLevelHistory struct {
 	ID           uuid.UUID  `json:"id"`
 	AffiliatorID uuid.UUID  `json:"affiliator_id"`
@@ -196,16 +179,4 @@ type AffiliateClick struct {
 	UserAgent    *string   `json:"user_agent"`
 	ClickDay     time.Time `json:"click_day"`
 	CreatedAt    time.Time `json:"created_at"`
-}
-
-type AffiliateFlag struct {
-	ID           uuid.UUID       `json:"id"`
-	AffiliatorID uuid.UUID       `json:"affiliator_id"`
-	Rule         string          `json:"rule"`
-	Payload      json.RawMessage `json:"payload"`
-	Status       string          `json:"status"`
-	Note         *string         `json:"note"`
-	ReviewedBy   *uuid.UUID      `json:"reviewed_by"`
-	ReviewedAt   *time.Time      `json:"reviewed_at"`
-	CreatedAt    time.Time       `json:"created_at"`
 }

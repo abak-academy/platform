@@ -9,9 +9,7 @@ import type {
   AffiliateAdminPayout,
   AffiliateAdminPayoutPage,
   AffiliateAdjustment,
-  AffiliateAppealRow,
   AffiliateCommission,
-  AffiliateFlagRow,
   AffiliateJobResult,
   AffiliateLiabilityReport,
   AffiliateOverrideProduct,
@@ -20,7 +18,6 @@ import type {
   AffiliateReportSummary,
   AffiliateSettingsInput,
   AffiliateSettingsView,
-  AffiliateViolation,
 } from "@/lib/types";
 
 interface AdminQueuePage<T> {
@@ -38,8 +35,6 @@ export const adminAffiliateKeys = {
   settings: () => [...adminAffiliateKeys.all, "settings"] as const,
   overrides: (p?: AdminQueueParams) => [...adminAffiliateKeys.all, "overrides", p ?? null] as const,
   overrideProducts: (q: string) => [...adminAffiliateKeys.all, "override-products", q] as const,
-  flags: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "flags", p] as const,
-  appeals: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "appeals", p] as const,
   report: (p: AdminReportParams) => [...adminAffiliateKeys.all, "report", p] as const,
   reportOrders: (p: AdminQueueParams) => [...adminAffiliateKeys.all, "report-orders", p] as const,
   commissions: (id: string, p: AdminQueueParams) => [...adminAffiliateKeys.all, "commissions", id, p] as const,
@@ -54,8 +49,7 @@ export interface AdminAffiliateListParams {
   per_page?: number;
 }
 
-// The payout, flag and appeal queues share one query: search, status, date
-// range and paging. An empty status means every status.
+// The admin queues share one query: search, status, date range and paging. An empty status means every status.
 export interface AdminQueueParams {
   q?: string;
   status?: string;
@@ -153,16 +147,6 @@ export function useCreateAffiliateAdjustment() {
   );
 }
 
-export function useCreateAffiliateViolation() {
-  return useAffiliateAction<
-    { id: string; category: string; description: string; sanction: string; days?: number; level?: string },
-    AffiliateViolation
-  >(
-    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/violations`,
-    ({ category, description, sanction, days, level }) => post({ category, description, sanction, days, level }),
-  );
-}
-
 export function useAdminAffiliatePayouts(params: AdminQueueParams) {
   return useQuery({
     queryKey: adminAffiliateKeys.payouts(params),
@@ -189,7 +173,7 @@ export function useDecideAffiliatePayout() {
 
 // Downloads the CSV behind a queue, honouring the filters currently applied.
 export async function downloadAffiliateCsv(
-  kind: "payouts" | "flags" | "appeals" | "commissions" | "report-orders",
+  kind: "payouts" | "commissions" | "report-orders",
   params: AdminQueueParams = {},
   affiliatorId?: string,
 ): Promise<void> {
@@ -288,34 +272,6 @@ export function useDeleteAffiliateOverride() {
       invalidateOverrides(qc);
     },
   });
-}
-
-export function useAdminAffiliateFlags(params: AdminQueueParams) {
-  return useQuery({
-    queryKey: adminAffiliateKeys.flags(params),
-    queryFn: () => authFetch<AdminQueuePage<AffiliateFlagRow>>(`/admin/affiliate-flags${queueQuery(params)}`),
-  });
-}
-
-export function useReviewAffiliateFlag() {
-  return useAffiliateAction<{ id: string; status: string; note?: string }, AffiliateFlagRow>(
-    ({ id }) => `/admin/affiliate-flags/${encodeURIComponent(id)}/review`,
-    ({ status, note }) => post({ status, note }),
-  );
-}
-
-export function useAdminAffiliateAppeals(params: AdminQueueParams) {
-  return useQuery({
-    queryKey: adminAffiliateKeys.appeals(params),
-    queryFn: () => authFetch<AdminQueuePage<AffiliateAppealRow>>(`/admin/affiliate-appeals${queueQuery(params)}`),
-  });
-}
-
-export function useDecideAffiliateAppeal() {
-  return useAffiliateAction<{ id: string; outcome: "upheld" | "rejected"; note?: string }, AffiliateViolation>(
-    ({ id }) => `/admin/affiliate-appeals/${encodeURIComponent(id)}/decide`,
-    ({ outcome, note }) => post({ outcome, note }),
-  );
 }
 
 export interface AdminReportParams {

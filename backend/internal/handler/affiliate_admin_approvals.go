@@ -136,38 +136,3 @@ func (h *Handler) AdminChangeAffiliateLevel(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, aff)
 }
-
-type adminAffiliateViolationRequest struct {
-	Category      string   `json:"category"`
-	Description   string   `json:"description"`
-	Sanction      string   `json:"sanction"`
-	Days          *int     `json:"days"`
-	Level         string   `json:"level"`
-	LockUntil     string   `json:"lock_until"`
-	CommissionIDs []string `json:"commission_ids"`
-}
-
-// AdminRecordAffiliateViolation backs POST /admin/affiliates/:id/violations.
-func (h *Handler) AdminRecordAffiliateViolation(c echo.Context) error {
-	claims := claimsFromContext(c)
-	if claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
-	}
-	var req adminAffiliateViolationRequest
-	if err := c.Bind(&req); err != nil {
-		return badRequest(c, "invalid request body")
-	}
-	violation, err := h.svc.AdminRecordAffiliateViolation(c.Request().Context(), claims.Sub, c.Param("id"), service.AdminViolationInput{
-		Category:      req.Category,
-		Description:   req.Description,
-		Sanction:      req.Sanction,
-		Days:          req.Days,
-		Level:         req.Level,
-		LockUntil:     req.LockUntil,
-		CommissionIDs: req.CommissionIDs,
-	})
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusCreated, violation)
-}

@@ -11,15 +11,14 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-// Feature-local sentinels for the affiliator money/violation surfaces
-// (BR-PCR-01..05, BR-PLG-06); the parent owns their mapServiceError cases.
+// Feature-local sentinels for the affiliator money surfaces (BR-PCR-01..05);
+// the parent owns their mapServiceError cases.
 var (
 	ErrAffiliateFrozen              = errors.New("affiliator balance is frozen")
 	ErrAffiliateBankMissing         = errors.New("bank account is not set")
 	ErrAffiliatePayoutBelowMin      = errors.New("saldo is below the minimum payout")
 	ErrAffiliatePayoutInFlight      = errors.New("a payout is already requested or processing")
 	ErrAffiliatePayoutAmountInvalid = errors.New("payout amount must be at least the minimum payout and at most the saldo")
-	ErrAffiliateNotAppealable       = errors.New("violation is not appealable")
 )
 
 type AffiliateMePayoutPage struct {
@@ -37,13 +36,6 @@ type AffiliateMeAdjustmentsPage struct {
 	Page    int                                         `json:"page"`
 	PerPage int                                         `json:"per_page"`
 	Total   int                                         `json:"total"`
-}
-
-type AffiliateMeViolationsPage struct {
-	Data    []model.AffiliateViolation `json:"data"`
-	Page    int                        `json:"page"`
-	PerPage int                        `json:"per_page"`
-	Total   int                        `json:"total"`
 }
 
 // affiliateBankIncomplete is BR-PCR-02: all three bank fields must be filled
@@ -206,71 +198,4 @@ func (s *Service) ListMyAffiliateAdjustments(ctx context.Context, userID string,
 	page.Total = total
 	page.Data = rows
 	return page, nil
-}
-
-// ListMyAffiliateViolations returns the affiliator's own violations newest
-// first, with the sanction and appeal fields.
-func (s *Service) ListMyAffiliateViolations(ctx context.Context, userID string, filter AffiliateMeListFilter) (AffiliateMeViolationsPage, error) {
-	page := AffiliateMeViolationsPage{Data: []model.AffiliateViolation{}, Page: filter.Page, PerPage: filter.PerPage}
-	if err := checkAffiliateFilter(affiliateMeSanctions, filter.Type); err != nil {
-		return page, err
-	}
-	if err := checkAffiliateFilter(affiliateMeViolationState, filter.Status); err != nil {
-		return page, err
-	}
-	aff, err := s.affiliateMeAffiliator(ctx, userID)
-	if err != nil {
-		return page, err
-	}
-	rows, total, err := s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, aff.ID, filter.repoQuery(), filter.PerPage, (filter.Page-1)*filter.PerPage)
-	if err != nil {
-		return page, fmt.Errorf("list affiliate violations: %w", err)
-	}
-	page.Total = total
-	page.Data = rows
-	return page, nil
-}
-
-// AppealMyAffiliateViolation records an appeal on one violation (BR-PLG-06):
-// only a still-open violation with no appeal yet accepts one, and it moves only
-// to 'pending' — deciding the appeal (which resolves it) stays an admin action.
-func (s *Service) AppealMyAffiliateViolation(ctx context.Context, userID, violationID, text string) (*model.AffiliateViolation, error) {
-	aff, err := s.affiliateMeAffiliator(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-	id, err := parseUUID(violationID)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil, fmt.Errorf("%w: text", ErrMissingField)
-	}
-
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin appeal tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-
-	violation, err := s.storeRepo.GetAffiliateViolationForUpdateTx(ctx, tx, id)
-	if err != nil {
-		return nil, fmt.Errorf("lock affiliate violation: %w", err)
-	}
-	if violation == nil || violation.AffiliatorID != aff.ID {
-		return nil, ErrAffiliateNotFound
-	}
-	if violation.Status != "open" || violation.AppealStatus != "none" {
-		return nil, ErrAffiliateNotAppealable
-	}
-
-	updated, err := s.storeRepo.UpdateAffiliateViolationAppealTx(ctx, tx, id, text)
-	if err != nil {
-		return nil, fmt.Errorf("record violation appeal: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit appeal: %w", err)
-	}
-	return updated, nil
 }

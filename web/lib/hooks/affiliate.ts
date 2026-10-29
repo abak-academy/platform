@@ -12,8 +12,6 @@ import type {
   AffiliateProfile,
   AffiliateStats,
   AffiliateValidation,
-  AffiliateViolation,
-  AffiliateViolationPage,
 } from "@/lib/types";
 
 export interface AffiliateListParams {
@@ -48,7 +46,6 @@ export const affiliateKeys = {
   ledger: (p?: AffiliateListParams) => [...affiliateKeys.all, "ledger", p ?? null] as const,
   payouts: (p?: AffiliateListParams) => [...affiliateKeys.all, "payouts", p ?? null] as const,
   adjustments: (p?: AffiliateListParams) => [...affiliateKeys.all, "adjustments", p ?? null] as const,
-  violations: (p?: AffiliateListParams) => [...affiliateKeys.all, "violations", p ?? null] as const,
   stats: (range?: AffiliateStatsRange) => [...affiliateKeys.all, "stats", range ?? null] as const,
 };
 
@@ -108,13 +105,6 @@ export function useAffiliateAdjustments(params?: AffiliateListParams) {
   });
 }
 
-export function useAffiliateViolations(params?: AffiliateListParams) {
-  return useQuery({
-    queryKey: affiliateKeys.violations(params),
-    queryFn: () => authFetch<AffiliateViolationPage>(`/affiliates/me/violations${listQuery(params)}`),
-  });
-}
-
 export interface AffiliateStatsRange {
   from?: string;
   to?: string;
@@ -144,20 +134,6 @@ export function useRequestAffiliatePayout() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: affiliateKeys.all });
-    },
-  });
-}
-
-export function useAppealViolation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, text }: { id: string; text: string }) =>
-      authFetch<AffiliateViolation>(`/affiliates/me/violations/${encodeURIComponent(id)}/appeal`, {
-        method: "POST",
-        body: JSON.stringify({ text }),
-      }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: [...affiliateKeys.all, "violations"] });
     },
   });
 }

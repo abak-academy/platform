@@ -400,8 +400,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	affiliatesMe.GET("/payouts", h.AffiliateMePayouts)
 	affiliatesMe.POST("/payouts", h.AffiliateMeRequestPayout)
 	affiliatesMe.GET("/adjustments", h.AffiliateMeAdjustments)
-	affiliatesMe.GET("/violations", h.AffiliateMeViolations)
-	affiliatesMe.POST("/violations/:id/appeal", h.AffiliateMeAppealViolation)
 	affiliatesMe.GET("/stats", h.AffiliateMeStats)
 
 	adminAffiliates := admin.Group("/affiliates")
@@ -413,7 +411,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliates.POST("/:id/freeze", h.AdminFreezeAffiliateBalance)
 	adminAffiliates.POST("/:id/unfreeze", h.AdminUnfreezeAffiliateBalance)
 	adminAffiliates.POST("/:id/level", h.AdminChangeAffiliateLevel)
-	adminAffiliates.POST("/:id/violations", h.AdminRecordAffiliateViolation)
 	adminAffiliates.POST("/:id/adjustments", h.AdminCreateAffiliateAdjustment)
 	adminAffiliates.GET("/:id/adjustments", h.AdminListAffiliateAdjustments)
 	adminAffiliates.GET("/:id/commissions", h.AdminListAffiliateCommissions)
@@ -437,18 +434,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliateOverrides.GET("/products", h.AdminSearchAffiliateOverrideProducts)
 	adminAffiliateOverrides.PUT("/:product_id", h.AdminUpsertAffiliateOverride)
 	adminAffiliateOverrides.DELETE("/:product_id", h.AdminDeleteAffiliateOverride)
-
-	adminAffiliateFlags := admin.Group("/affiliate-flags")
-	adminAffiliateFlags.Use(handler.RBACMiddleware("affiliates:*"))
-	adminAffiliateFlags.GET("", h.AdminListAffiliateFlags)
-	adminAffiliateFlags.GET("/export", h.AdminAffiliateFlagsExport)
-	adminAffiliateFlags.POST("/:id/review", h.AdminReviewAffiliateFlag)
-
-	adminAffiliateAppeals := admin.Group("/affiliate-appeals")
-	adminAffiliateAppeals.Use(handler.RBACMiddleware("affiliates:*"))
-	adminAffiliateAppeals.GET("", h.AdminListAffiliateAppeals)
-	adminAffiliateAppeals.GET("/export", h.AdminAffiliateAppealsExport)
-	adminAffiliateAppeals.POST("/:id/decide", h.AdminDecideAffiliateAppeal)
 
 	adminAffiliateReports := admin.Group("/affiliate-reports")
 	adminAffiliateReports.Use(handler.RBACMiddleware("affiliates:*"))

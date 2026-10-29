@@ -75,7 +75,6 @@ type AffiliateAdminListPage struct {
 const (
 	affiliateDetailBindingsLimit = 10
 	affiliateDetailHistoryCap    = 50
-	affiliateDetailViolationsCap = 50
 )
 
 // AffiliateAdminBindingsSummary counts the bindings by status and carries the
@@ -103,7 +102,6 @@ type AffiliateAdminDetail struct {
 	Commissions  AffiliateAdminCommissionSummary `json:"commissions"`
 	Saldo        float64                         `json:"saldo"`
 	LevelHistory []model.AffiliateLevelHistory   `json:"level_history"`
-	Violations   []model.AffiliateViolation      `json:"violations"`
 }
 
 // ListAffiliateAdmin backs GET /admin/affiliates.
@@ -566,13 +564,6 @@ func (s *Service) GetAffiliateAdminDetail(ctx context.Context, id string) (*Affi
 	}
 	if detail.LevelHistory == nil {
 		detail.LevelHistory = []model.AffiliateLevelHistory{}
-	}
-	detail.Violations, _, err = s.storeRepo.ListAffiliateViolationsForAffiliator(ctx, affID, repository.AffiliateListQuery{}, affiliateDetailViolationsCap, 0)
-	if err != nil {
-		return nil, fmt.Errorf("list affiliate violations: %w", err)
-	}
-	if detail.Violations == nil {
-		detail.Violations = []model.AffiliateViolation{}
 	}
 	return detail, nil
 }

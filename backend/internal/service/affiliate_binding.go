@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -22,7 +21,6 @@ const (
 
 	affiliateBindingStatusActive    = "active"
 	affiliateAffiliatorStatusActive = "active"
-	affiliateFlagRuleSelfPurchase   = "self_purchase"
 )
 
 // AffiliateBindingDecision is the attribution outcome for one student; a nil
@@ -51,10 +49,7 @@ func (s *Service) ResolveBinding(ctx context.Context, student *model.User, manua
 		return nil, nil
 	}
 
-	if matched, field := affiliateSelfMatch(owner.Email, owner.Phone, student.Email, student.Phone); matched {
-		if err := s.recordSelfPurchaseFlag(ctx, owner.ID, student.ID, field); err != nil {
-			return nil, fmt.Errorf("record self-purchase flag: %w", err)
-		}
+	if affiliateSelfMatch(owner.Email, owner.Phone, student.Email, student.Phone) {
 		return nil, nil
 	}
 
@@ -94,33 +89,13 @@ func affiliateCodeString(p *string) string {
 	return strings.ToUpper(strings.TrimSpace(*p))
 }
 
-func affiliateSelfMatch(affEmail, affPhone, studentEmail, studentPhone *string) (bool, string) {
+func affiliateSelfMatch(affEmail, affPhone, studentEmail, studentPhone *string) bool {
 	if affEmail != nil && studentEmail != nil &&
 		strings.EqualFold(strings.TrimSpace(*affEmail), strings.TrimSpace(*studentEmail)) {
-		return true, "email"
+		return true
 	}
-	if affPhone != nil && studentPhone != nil &&
-		strings.TrimSpace(*affPhone) == strings.TrimSpace(*studentPhone) {
-		return true, "phone"
-	}
-	return false, ""
-}
-
-func (s *Service) recordSelfPurchaseFlag(ctx context.Context, affiliatorID uuid.UUID, studentID, matchedField string) error {
-	payload, err := json.Marshal(map[string]string{"user_id": studentID, "matched_field": matchedField})
-	if err != nil {
-		return fmt.Errorf("marshal self-purchase payload: %w", err)
-	}
-	flag := &model.AffiliateFlag{
-		AffiliatorID: affiliatorID,
-		Rule:         affiliateFlagRuleSelfPurchase,
-		Payload:      payload,
-		Status:       "open",
-	}
-	if _, err := s.storeRepo.InsertAffiliateFlagForUserOnce(ctx, flag, studentID); err != nil {
-		return fmt.Errorf("insert affiliate flag: %w", err)
-	}
-	return nil
+	return affPhone != nil && studentPhone != nil &&
+		strings.TrimSpace(*affPhone) == strings.TrimSpace(*studentPhone)
 }
 
 // affiliateBindingMonths is the binding length for an affiliator: its current

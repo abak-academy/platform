@@ -7,7 +7,6 @@ import {
   useDecideAffiliateApproval,
   useDecideAffiliatePayout,
   useAdminAffiliateCommissions,
-  useAdminAffiliateFlags,
   useAffiliateReportSummary,
   useRunAffiliateJob,
 } from "./admin-affiliates";
@@ -73,16 +72,6 @@ describe("admin affiliate hooks", () => {
       method: "POST",
       body: JSON.stringify({ decision: "reject", proof_url: "", reason: "rekening salah" }),
     });
-  });
-
-  it("returns the flag list body as sent", async () => {
-    mockAuthFetch.mockResolvedValueOnce({ data: [{ id: "f1" }] });
-    const { wrapper } = wrapperFactory();
-    const { result } = renderHook(() => useAdminAffiliateFlags({ q: "budi", status: "", page: 2, per_page: 20 }), { wrapper });
-
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/affiliate-flags?q=budi&status=all&page=2&per_page=20");
-    expect(result.current.data).toEqual({ data: [{ id: "f1" }] });
   });
 
   it("asks for one affiliator's commissions with the filters", async () => {

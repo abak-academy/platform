@@ -22,7 +22,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// affiliatePayoutEnv wires the /affiliates/me payout and violation routes with
+// affiliatePayoutEnv wires the /affiliates/me payout routes with
 // the real JWT and AffiliatorOnlyMiddleware, one migrated database per test.
 type affiliatePayoutEnv struct {
 	pool   *pgxpool.Pool
@@ -67,8 +67,6 @@ func newAffiliatePayoutEnv(t *testing.T) *affiliatePayoutEnv {
 	me.POST("/payouts", h.AffiliateMeRequestPayout)
 	me.GET("/payouts", h.AffiliateMePayouts)
 	me.GET("/adjustments", h.AffiliateMeAdjustments)
-	me.GET("/violations", h.AffiliateMeViolations)
-	me.POST("/violations/:id/appeal", h.AffiliateMeAppealViolation)
 
 	t.Cleanup(pool.Close)
 	return &affiliatePayoutEnv{pool: pool, e: e, signer: signer, rdb: rdb}
@@ -138,32 +136,6 @@ func seedAffiliatePayoutRow(t *testing.T, pool *pgxpool.Pool, affiliatorID uuid.
 	return id
 }
 
-func seedAffiliatePayoutDecider(t *testing.T, pool *pgxpool.Pool, name string) uuid.UUID {
-	t.Helper()
-	var id string
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO users (name, username, role, status, otp_enabled)
-		 VALUES ($1, $2, 'super_admin', 'active', false) RETURNING id`,
-		name, "paydec_"+uniqueHandlerSuffix(),
-	).Scan(&id); err != nil {
-		t.Fatalf("seed decider: %v", err)
-	}
-	return uuid.MustParse(id)
-}
-
-func seedAffiliatePayoutViolation(t *testing.T, pool *pgxpool.Pool, affiliatorID, deciderID uuid.UUID, status, appealStatus string, createdAt time.Time) uuid.UUID {
-	t.Helper()
-	var id uuid.UUID
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliate_violations (affiliator_id, category, description, sanction, status, decided_by, decided_at, appeal_status, created_at)
-		 VALUES ($1, 'self_purchase', 'pesan sendiri', 'warning', $2, $3, $4, $5, $4) RETURNING id`,
-		affiliatorID, status, deciderID, createdAt, appealStatus,
-	).Scan(&id); err != nil {
-		t.Fatalf("seed violation: %v", err)
-	}
-	return id
-}
-
 func TestAffiliateMePayoutHandler_roleGates(t *testing.T) {
 	env := newAffiliatePayoutEnv(t)
 	setAffiliateFlag(t, env.pool, "true")
@@ -190,8 +162,6 @@ func TestAffiliateMePayoutHandler_roleGates(t *testing.T) {
 				{http.MethodPost, "/api/v1/affiliates/me/payouts"},
 				{http.MethodGet, "/api/v1/affiliates/me/payouts"},
 				{http.MethodGet, "/api/v1/affiliates/me/adjustments"},
-				{http.MethodGet, "/api/v1/affiliates/me/violations"},
-				{http.MethodPost, "/api/v1/affiliates/me/violations/" + uuid.NewString() + "/appeal"},
 			} {
 				req := httptest.NewRequest(tc.method, tc.path, nil)
 				if token != "" {
@@ -217,11 +187,9 @@ func TestAffiliateMePayoutHandler_noLeakBetweenAffiliators(t *testing.T) {
 	ownerA := seedAffiliatePayoutOwner(t, env.pool, "Affiliator Pay A "+uniqueHandlerSuffix())
 	ownerB := seedAffiliatePayoutOwner(t, env.pool, "Affiliator Pay B "+uniqueHandlerSuffix())
 
-	decider := seedAffiliatePayoutDecider(t, env.pool, "Admin Pay Privacy "+uniqueHandlerSuffix())
 	seedAffiliatePayoutBank(t, env.pool, ownerA.affID)
 	seedAffiliatePayoutSaldo(t, env.pool, ownerA.affID, 200000)
 	seedAffiliatePayoutRow(t, env.pool, ownerA.affID, "requested", 100000, time.Now().UTC())
-	seedAffiliatePayoutViolation(t, env.pool, ownerA.affID, decider, "resolved", "none", time.Now().UTC())
 
 	tokenB := env.tokenFor(t, ownerB.userID, service.RoleAffiliator)
 
@@ -238,20 +206,6 @@ func TestAffiliateMePayoutHandler_noLeakBetweenAffiliators(t *testing.T) {
 	}
 	if payoutPage.Total != 0 || len(payoutPage.Data) != 0 {
 		t.Errorf("payouts for B = %v, want empty (A's rows are private)", payoutPage)
-	}
-
-	violations := getWithToken(t, env.e, "/api/v1/affiliates/me/violations", tokenB)
-	if violations.Code != http.StatusOK {
-		t.Fatalf("GET violations as B: want 200, got %d: %s", violations.Code, violations.Body.String())
-	}
-	var violationPage struct {
-		Total int `json:"total"`
-	}
-	if err := json.Unmarshal(violations.Body.Bytes(), &violationPage); err != nil {
-		t.Fatalf("unmarshal violations B: %v", err)
-	}
-	if violationPage.Total != 0 {
-		t.Errorf("violations for B = %d, want 0", violationPage.Total)
 	}
 
 	adjustments := getWithToken(t, env.e, "/api/v1/affiliates/me/adjustments", tokenB)
@@ -277,9 +231,6 @@ func TestAffiliateMePayoutHandler_validationErrors(t *testing.T) {
 		{"broken json is rejected", http.MethodPost, "/api/v1/affiliates/me/payouts", `{"amount":`},
 		{"page 0 is rejected", http.MethodGet, "/api/v1/affiliates/me/payouts?page=0", ""},
 		{"bad page on adjustments is rejected", http.MethodGet, "/api/v1/affiliates/me/adjustments?page=many", ""},
-		{"bad page on violations is rejected", http.MethodGet, "/api/v1/affiliates/me/violations?page=-3", ""},
-		{"bad violation id is rejected", http.MethodPost, "/api/v1/affiliates/me/violations/nope/appeal", `{"text":"saya keberatan"}`},
-		{"empty appeal text is rejected", http.MethodPost, "/api/v1/affiliates/me/violations/" + uuid.NewString() + "/appeal", `{"text":"   "}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -372,43 +323,5 @@ func TestAffiliateMePayoutHandler_requestPayoutHappyPath(t *testing.T) {
 	}
 	if page.PayoutDayOfMonth != nil {
 		t.Errorf("payout_day_of_month = %v, want unset by default", *page.PayoutDayOfMonth)
-	}
-}
-
-func TestAffiliateMeAppealHandler_recordsPendingAppeal(t *testing.T) {
-	env := newAffiliatePayoutEnv(t)
-	setAffiliateFlag(t, env.pool, "true")
-	owner := seedAffiliatePayoutOwner(t, env.pool, "Affiliator Appeal Ok "+uniqueHandlerSuffix())
-	decider := seedAffiliatePayoutDecider(t, env.pool, "Admin Appeal Ok "+uniqueHandlerSuffix())
-	violationID := seedAffiliatePayoutViolation(t, env.pool, owner.affID, decider, "open", "none", time.Now().UTC())
-	token := env.tokenFor(t, owner.userID, service.RoleAffiliator)
-
-	body := `{"text":"Saya keberatan, bukan pembelian sendiri."}`
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/affiliates/me/violations/"+violationID.String()+"/appeal", strings.NewReader(body))
-	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
-	req.Header.Set("Authorization", "Bearer "+token)
-	rec := httptest.NewRecorder()
-	env.e.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("POST appeal: want 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var updated struct {
-		AppealStatus string `json:"appeal_status"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
-		t.Fatalf("unmarshal appeal: %v", err)
-	}
-	if updated.AppealStatus != "pending" {
-		t.Errorf("appeal_status = %q, want pending", updated.AppealStatus)
-	}
-
-	var persisted string
-	if err := env.pool.QueryRow(context.Background(),
-		`SELECT appeal_status FROM affiliate_violations WHERE id = $1`, violationID,
-	).Scan(&persisted); err != nil {
-		t.Fatalf("read violation: %v", err)
-	}
-	if persisted != "pending" {
-		t.Errorf("persisted appeal_status = %q, want pending", persisted)
 	}
 }

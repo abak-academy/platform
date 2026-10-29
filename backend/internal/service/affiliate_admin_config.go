@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -14,21 +13,9 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-// Feature-local sentinels (see affiliate_admin.go for the precedent); the
-// parent owns their mapServiceError cases. ErrAffiliateNotFound lives in
-// affiliate_admin_money.go and reports unknown flag/appeal/override ids here.
-var (
-	// ErrAffiliateFlagNotOpen reports reviewing a flag that is no longer open.
-	ErrAffiliateFlagNotOpen = errors.New("affiliate flag is not open for review")
-	// ErrAffiliateAppealNotPending reports deciding an appeal that is not pending.
-	ErrAffiliateAppealNotPending = errors.New("affiliate appeal is not pending")
-)
-
 const (
 	affiliateAuditSettings = "affiliate.settings_update"
 	affiliateAuditOverride = "affiliate.product_override"
-	affiliateAuditFlag     = "affiliate.flag_review"
-	affiliateAuditAppeal   = "affiliate.appeal_decide"
 )
 
 // AffiliateAdminLevelInput is one level row in the PUT settings body; nil
@@ -75,18 +62,6 @@ type AffiliateAdminSettingsView struct {
 	Levels   []model.AffiliateLevelSettings `json:"levels"`
 }
 
-// AffiliateFlagReviewInput is the POST /admin/affiliate-flags/:id/review body.
-type AffiliateAdminFlagReviewInput struct {
-	Status string  `json:"status"`
-	Note   *string `json:"note"`
-}
-
-// AffiliateAdminAppealDecisionInput is the POST /admin/affiliate-appeals/:id/decide body.
-type AffiliateAdminAppealDecisionInput struct {
-	Outcome string  `json:"outcome"`
-	Note    *string `json:"note"`
-}
-
 // AffiliateReportSummary is the GET /admin/affiliate-reports/summary response.
 type AffiliateReportSummary struct {
 	Data    []repository.AffiliateReportRow `json:"data"`
@@ -104,10 +79,6 @@ type AffiliateReportOptions struct {
 	Page  int
 	Limit int
 }
-
-var affiliateFlagStatuses = []string{"open", "reviewed", "valid", "ignored"}
-
-var affiliateAppealStatuses = []string{"pending", "upheld", "rejected"}
 
 // validateAffiliateSettingsInput enforces every BRD range on the PUT body.
 func validateAffiliateSettingsInput(in AffiliateAdminSettingsInput) error {
@@ -587,99 +558,6 @@ func (s *Service) AdminDeleteAffiliateOverride(ctx context.Context, actorID, pro
 		return fmt.Errorf("write override audit: %w", err)
 	}
 	return tx.Commit(ctx)
-}
-
-// AdminReviewAffiliateFlag backs POST /admin/affiliate-flags/:id/review. Only
-// open flags are reviewable — a second review needs a new detection row.
-func (s *Service) AdminReviewAffiliateFlag(ctx context.Context, actorID, flagID string, in AffiliateAdminFlagReviewInput) (*model.AffiliateFlag, error) {
-	if !slices.Contains(affiliateFlagStatuses[1:], in.Status) {
-		return nil, fmt.Errorf("%w: flag review status must be reviewed, valid or ignored", ErrValidation)
-	}
-	id, err := parseUUID(flagID)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	actor, err := parseUUID(actorID)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	flag, err := s.storeRepo.FindAffiliateFlagByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("find affiliate flag: %w", err)
-	}
-	if flag == nil {
-		return nil, ErrAffiliateNotFound
-	}
-	if flag.Status != "open" {
-		return nil, ErrAffiliateFlagNotOpen
-	}
-
-	meta := map[string]any{"status": in.Status}
-	if in.Note != nil {
-		meta["note"] = *in.Note
-	}
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	if err := s.storeRepo.UpdateAffiliateFlagReviewTx(ctx, tx, id, in.Status, in.Note, actor); err != nil {
-		return nil, fmt.Errorf("review affiliate flag: %w", err)
-	}
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, "affiliate_flag", id.String(), affiliateAuditFlag, meta); err != nil {
-		return nil, fmt.Errorf("write flag review audit: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit flag review: %w", err)
-	}
-	return s.storeRepo.FindAffiliateFlagByID(ctx, id)
-}
-
-// AdminDecideAffiliateAppeal backs POST /admin/affiliate-appeals/:id/decide.
-// The decision resolves the violation row; applying an upheld sanction stays a
-// deliberate manual step through the affiliate status/level endpoints.
-func (s *Service) AdminDecideAffiliateAppeal(ctx context.Context, actorID, violationID string, in AffiliateAdminAppealDecisionInput) (*model.AffiliateViolation, error) {
-	if in.Outcome != "upheld" && in.Outcome != "rejected" {
-		return nil, fmt.Errorf("%w: appeal outcome must be upheld or rejected", ErrValidation)
-	}
-	id, err := parseUUID(violationID)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	actor, err := parseUUID(actorID)
-	if err != nil {
-		return nil, ErrInvalidUUID
-	}
-	violation, err := s.storeRepo.FindAffiliateViolationByID(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("find affiliate violation: %w", err)
-	}
-	if violation == nil {
-		return nil, ErrAffiliateNotFound
-	}
-	if violation.AppealStatus != "pending" {
-		return nil, ErrAffiliateAppealNotPending
-	}
-
-	meta := map[string]any{"outcome": in.Outcome}
-	if in.Note != nil {
-		meta["note"] = *in.Note
-	}
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx)
-	if err := s.storeRepo.DecideAffiliateAppealTx(ctx, tx, id, in.Outcome, actor); err != nil {
-		return nil, fmt.Errorf("decide affiliate appeal: %w", err)
-	}
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actorID, "affiliate_violation", id.String(), affiliateAuditAppeal, meta); err != nil {
-		return nil, fmt.Errorf("write appeal audit: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("commit appeal decision: %w", err)
-	}
-	return s.storeRepo.FindAffiliateViolationByID(ctx, id)
 }
 
 // AdminAffiliateReportSummary backs GET /admin/affiliate-reports/summary?from&to:

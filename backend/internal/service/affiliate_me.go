@@ -76,8 +76,6 @@ func checkAffiliateFilter(allowed map[string]bool, value string) error {
 var (
 	affiliateMeBindingSources = map[string]bool{"link": true, "manual_code": true, "checkout_code": true}
 	affiliateMeLedgerTypes    = map[string]bool{"commission": true, "refund_deduction": true, "adjustment": true, "payout": true, "payout_reversal": true}
-	affiliateMeViolationState = map[string]bool{"open": true, "resolved": true}
-	affiliateMeSanctions      = map[string]bool{"warning": true, "commission_cancel": true, "balance_freeze": true, "level_change": true, "suspend": true, "deactivate": true}
 )
 
 // AffiliateMeBinding is one affiliator-facing student row: name is

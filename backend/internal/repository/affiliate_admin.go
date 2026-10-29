@@ -273,17 +273,6 @@ func (r *Repository) GetAffiliateCommissionsByIDsTx(ctx context.Context, tx pgx.
 	return out, rows.Err()
 }
 
-// InsertAffiliateViolationTx records one violation as decided by an admin
-// (status open, no appeal) and fills the generated fields.
-func (r *Repository) InsertAffiliateViolationTx(ctx context.Context, tx pgx.Tx, v *model.AffiliateViolation) error {
-	return tx.QueryRow(ctx,
-		`INSERT INTO affiliate_violations (affiliator_id, category, description, sanction, suspension_until, decided_by)
-		 VALUES ($1, $2, $3, $4, $5, $6)
-		 RETURNING id, status, decided_at, appeal_status, created_at`,
-		v.AffiliatorID, v.Category, v.Description, v.Sanction, v.SuspensionUntil, v.DecidedBy,
-	).Scan(&v.ID, &v.Status, &v.DecidedAt, &v.AppealStatus, &v.CreatedAt)
-}
-
 // SetAffiliateStatusTx writes the affiliator status; suspendedUntil is only
 // set for suspensions and nil otherwise.
 func (r *Repository) SetAffiliateStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, status string, suspendedUntil *time.Time) error {

@@ -51,12 +51,6 @@ func newAffiliateAdminConfigRouter(t *testing.T, h *handler.Handler, svc *servic
 	cfg.DELETE("/affiliate-product-overrides/:product_id", h.AdminDeleteAffiliateOverride)
 	cfg.GET("/affiliates/:id/commissions", h.AdminListAffiliateCommissions)
 	cfg.GET("/affiliates/:id/commissions/export", h.AdminAffiliateCommissionsExport)
-	cfg.GET("/affiliate-flags", h.AdminListAffiliateFlags)
-	cfg.GET("/affiliate-flags/export", h.AdminAffiliateFlagsExport)
-	cfg.POST("/affiliate-flags/:id/review", h.AdminReviewAffiliateFlag)
-	cfg.GET("/affiliate-appeals", h.AdminListAffiliateAppeals)
-	cfg.GET("/affiliate-appeals/export", h.AdminAffiliateAppealsExport)
-	cfg.POST("/affiliate-appeals/:id/decide", h.AdminDecideAffiliateAppeal)
 	cfg.GET("/affiliate-reports/summary", h.AdminAffiliateReportSummary)
 	cfg.GET("/affiliate-reports/liability", h.AdminAffiliateReportLiability)
 	cfg.GET("/affiliate-reports/orders", h.AdminListAffiliateReportOrders)
@@ -176,51 +170,10 @@ func seedConfigOverrideProduct(t *testing.T, pool *pgxpool.Pool) uuid.UUID {
 	return id
 }
 
-func seedConfigFlag(t *testing.T, pool *pgxpool.Pool, affiliatorID string) string {
-	t.Helper()
-	var id string
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliate_flags (affiliator_id, rule, payload, status)
-		 VALUES ($1, 'self_purchase', '{}', 'open') RETURNING id`,
-		affiliatorID,
-	).Scan(&id); err != nil {
-		t.Fatalf("seed flag: %v", err)
-	}
-	return id
-}
-
-func seedConfigAdminUser(t *testing.T, pool *pgxpool.Pool) string {
-	t.Helper()
-	var id string
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO users (name, username, role, status) VALUES ($1, $2, 'super_admin', 'active') RETURNING id`,
-		"Config Admin "+uniqueHandlerSuffix(), "affcfg_"+uniqueHandlerSuffix(),
-	).Scan(&id); err != nil {
-		t.Fatalf("seed admin user: %v", err)
-	}
-	return id
-}
-
-func seedConfigPendingAppeal(t *testing.T, pool *pgxpool.Pool, affiliatorID string) string {
-	t.Helper()
-	decider := seedConfigAdminUser(t, pool)
-	var id string
-	if err := pool.QueryRow(context.Background(),
-		`INSERT INTO affiliate_violations (affiliator_id, category, description, sanction, status, decided_by, decided_at, appeal_status)
-		 VALUES ($1, 'self_purchase', 'pesan sendiri', 'warning', 'resolved', $2, now(), 'pending') RETURNING id`,
-		affiliatorID, decider,
-	).Scan(&id); err != nil {
-		t.Fatalf("seed pending appeal: %v", err)
-	}
-	return id
-}
-
 func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 	env := newAffiliateAdminConfigEnv(t)
-	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
+	seedAffiliateAdminRow(t, env.pool, "active")
 	productID := seedConfigOverrideProduct(t, env.pool)
-	flagID := seedConfigFlag(t, env.pool, affID)
-	appealID := seedConfigPendingAppeal(t, env.pool, affID)
 	from := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	to := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 
@@ -236,12 +189,6 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 		{"overrides product search", http.MethodGet, "/api/v1/admin/affiliate-product-overrides/products?q=a", ""},
 		{"overrides write", http.MethodPut, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), `{"type":"percent","value":10}`},
 		{"overrides delete", http.MethodDelete, "/api/v1/admin/affiliate-product-overrides/" + productID.String(), ""},
-		{"flags read", http.MethodGet, "/api/v1/admin/affiliate-flags", ""},
-		{"flags export", http.MethodGet, "/api/v1/admin/affiliate-flags/export", ""},
-		{"flags review", http.MethodPost, "/api/v1/admin/affiliate-flags/" + flagID + "/review", `{"status":"reviewed"}`},
-		{"appeals read", http.MethodGet, "/api/v1/admin/affiliate-appeals", ""},
-		{"appeals export", http.MethodGet, "/api/v1/admin/affiliate-appeals/export", ""},
-		{"appeals decide", http.MethodPost, "/api/v1/admin/affiliate-appeals/" + appealID + "/decide", `{"outcome":"upheld"}`},
 		{"reports summary", http.MethodGet, "/api/v1/admin/affiliate-reports/summary?from=" + from + "&to=" + to, ""},
 		{"reports orders", http.MethodGet, "/api/v1/admin/affiliate-reports/orders", ""},
 		{"reports orders export", http.MethodGet, "/api/v1/admin/affiliate-reports/orders/export", ""},
@@ -342,26 +289,6 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 			t.Errorf("DELETE override: want 200, got %d: %s", rec.Code, rec.Body.String())
 		}
 
-		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-flags", token)
-		if rec.Code != http.StatusOK {
-			t.Errorf("GET flags: want 200, got %d: %s", rec.Code, rec.Body.String())
-		}
-
-		rec = postJSONWithToken(t, env.e, "/api/v1/admin/affiliate-flags/"+flagID+"/review", token, `{"status":"reviewed","note":"cek"}`)
-		if rec.Code != http.StatusOK {
-			t.Errorf("POST flag review: want 200, got %d: %s", rec.Code, rec.Body.String())
-		}
-
-		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-appeals", token)
-		if rec.Code != http.StatusOK {
-			t.Errorf("GET appeals: want 200, got %d: %s", rec.Code, rec.Body.String())
-		}
-
-		rec = postJSONWithToken(t, env.e, "/api/v1/admin/affiliate-appeals/"+appealID+"/decide", token, `{"outcome":"upheld"}`)
-		if rec.Code != http.StatusOK {
-			t.Errorf("POST appeal decide: want 200, got %d: %s", rec.Code, rec.Body.String())
-		}
-
 		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-reports/summary?from="+from+"&to="+to, token)
 		if rec.Code != http.StatusOK {
 			t.Errorf("GET reports summary: want 200, got %d: %s", rec.Code, rec.Body.String())
@@ -391,48 +318,6 @@ func TestAffiliateAdminConfigHandlerRBAC(t *testing.T) {
 			t.Errorf("PUT settings cookie_days 0: want 422, got %d: %s", rec.Code, rec.Body.String())
 		}
 	})
-}
-
-func TestAffiliateAdminQueueListsAreFilteredPagedAndExportable(t *testing.T) {
-	env := newAffiliateAdminConfigEnv(t)
-	affID, _ := seedAffiliateAdminRow(t, env.pool, "active")
-	seedConfigFlag(t, env.pool, affID)
-	seedConfigPendingAppeal(t, env.pool, affID)
-	token := env.tokenFor(t, service.RoleSuperAdmin)
-
-	for _, kind := range []string{"flags", "appeals"} {
-		rec := getWithToken(t, env.e, "/api/v1/admin/affiliate-"+kind+"?status=all&per_page=1&page=1", token)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("GET %s: want 200, got %d: %s", kind, rec.Code, rec.Body.String())
-		}
-		var page struct {
-			Data    []json.RawMessage `json:"data"`
-			Total   int               `json:"total"`
-			Page    int               `json:"page"`
-			PerPage int               `json:"per_page"`
-		}
-		if err := json.Unmarshal(rec.Body.Bytes(), &page); err != nil {
-			t.Fatalf("decode %s: %v", kind, err)
-		}
-		if page.Total < 1 || page.Page != 1 || page.PerPage != 1 || len(page.Data) != 1 {
-			t.Errorf("%s page = %+v, want total>=1, page 1, per_page 1, one row", kind, page)
-		}
-
-		rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-"+kind+"/export?status=all", token)
-		if rec.Code != http.StatusOK || !strings.HasPrefix(rec.Header().Get("Content-Type"), "text/csv") {
-			t.Errorf("export %s: code %d type %q", kind, rec.Code, rec.Header().Get("Content-Type"))
-		}
-		if !strings.Contains(rec.Header().Get("Content-Disposition"), "affiliate-"+kind+".csv") {
-			t.Errorf("export %s disposition = %q", kind, rec.Header().Get("Content-Disposition"))
-		}
-
-		for _, bad := range []string{"?from=nope", "?page=0", "?status=bogus"} {
-			rec = getWithToken(t, env.e, "/api/v1/admin/affiliate-"+kind+bad, token)
-			if rec.Code != http.StatusBadRequest && rec.Code != http.StatusUnprocessableEntity {
-				t.Errorf("GET %s%s: want 400/422, got %d", kind, bad, rec.Code)
-			}
-		}
-	}
 }
 
 func TestAffiliateAdminCommissionsEndpoint(t *testing.T) {

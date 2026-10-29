@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -27,7 +26,6 @@ const (
 
 	affiliateScopeBindings    = "bindings"
 	affiliateScopeCommissions = "commissions"
-	affiliateScopeFlags       = "flags"
 	affiliateScopeLevels      = "levels"
 	affiliateScopeReleases    = "releases"
 
@@ -41,23 +39,11 @@ const (
 	affiliateLevelActionWarn = "warn"
 	affiliateLevelActionDrop = "drop"
 	affiliateLevelActionNone = "none"
-
-	affiliateFlagRuleSmallRepeat = "small_repeat_purchase"
-	affiliateFlagRuleHighRefund  = "high_refund_ratio"
-
-	// Basic BR-PLG-08 thresholds; admin tunables come later.
-	affiliateFlagSmallRepeatWindow = 7  // days
-	affiliateFlagSmallRepeatMin    = 5  // commissions in the window
-	affiliateFlagSmallRepeatSpread = 3  // base_amount spans [min_extend, min_extend*3]
-	affiliateFlagRefundWindow      = 90 // days
-	affiliateFlagRefundMinTotal    = 10 // commissions in the window
-	affiliateFlagRefundRatioPct    = 30 // cancelled share of the window's commissions
 )
 
 var affiliateJobScopes = map[string]bool{
 	affiliateScopeBindings:    true,
 	affiliateScopeCommissions: true,
-	affiliateScopeFlags:       true,
 	affiliateScopeLevels:      true,
 	affiliateScopeReleases:    true,
 }
@@ -81,7 +67,6 @@ type AffiliateJobResult struct {
 	CommissionsReleased int    `json:"commissions_released"`
 	OrdersReconciled    int    `json:"orders_reconciled"`
 	SanctionsExpired    int    `json:"sanctions_expired"`
-	FlagsRaised         int    `json:"flags_raised"`
 	LevelsEvaluated     int    `json:"levels_evaluated"`
 	LevelsChanged       int    `json:"levels_changed"`
 }
@@ -145,12 +130,6 @@ func (s *Service) RunAffiliateJob(ctx context.Context, scope string, quarter *st
 			return res, err
 		}
 		res.CommissionsReleased = released
-	case affiliateScopeFlags:
-		raised, err := s.runAffiliateFlagRules(ctx, now)
-		if err != nil {
-			return res, err
-		}
-		res.FlagsRaised = raised
 	case affiliateScopeLevels:
 		return s.runAffiliateQuarterly(ctx, now, quarter)
 	case affiliateScopeReleases:
@@ -184,9 +163,6 @@ func (s *Service) runAffiliateDailyBatch(ctx context.Context, now time.Time, cfg
 	}
 	if _, err := s.storeRepo.ExpireAffiliateSanctions(ctx, now); err != nil {
 		return fmt.Errorf("expire affiliate sanctions: %w", err)
-	}
-	if _, err := s.runAffiliateFlagRules(ctx, now); err != nil {
-		return err
 	}
 	return s.storeRepo.UpsertSystemConfig(ctx, affiliateDailyLastRunKey, dayKey, false)
 }
@@ -338,98 +314,6 @@ func (s *Service) backfillPhysicalWaitUntil(ctx context.Context) (int, error) {
 			return backfilled, nil
 		}
 	}
-}
-
-// runAffiliateFlagRules writes the cheap deterministic BR-PLG-08 flags.
-// registration_spike and similar_contacts are skipped: TODO: uncertain — they
-// need richer click/identity data than Fase 1 captures.
-func (s *Service) runAffiliateFlagRules(ctx context.Context, now time.Time) (int, error) {
-	raised, err := s.flagSmallRepeatPurchases(ctx, now)
-	if err != nil {
-		return 0, err
-	}
-	highRefund, err := s.flagHighRefundRatios(ctx, now)
-	if err != nil {
-		return raised, err
-	}
-	return raised + highRefund, nil
-}
-
-func (s *Service) flagSmallRepeatPurchases(ctx context.Context, now time.Time) (int, error) {
-	settings, err := s.LoadAffiliateSettings(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("load affiliate settings: %w", err)
-	}
-	maxAmount := settings.MinExtendAmount * affiliateFlagSmallRepeatSpread
-	if maxAmount <= 0 {
-		// min_extend_amount unset (0 default): there is no boundary to farm.
-		return 0, nil
-	}
-	rows, err := s.storeRepo.CountSmallRepeatCommissions(ctx,
-		now.AddDate(0, 0, -affiliateFlagSmallRepeatWindow),
-		settings.MinExtendAmount, maxAmount, affiliateFlagSmallRepeatMin,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("count small repeat commissions: %w", err)
-	}
-	raised := 0
-	for _, row := range rows {
-		// "last_extended_at set for most of them": at least half the window's
-		// small purchases came from bindings that were extended.
-		if row.Extended*2 < row.Total {
-			continue
-		}
-		inserted, err := s.insertAffiliateFlag(ctx, row.AffiliatorID, affiliateFlagRuleSmallRepeat, map[string]any{
-			"count":       row.Total,
-			"window_days": affiliateFlagSmallRepeatWindow,
-		})
-		if err != nil {
-			return raised, err
-		}
-		if inserted {
-			raised++
-		}
-	}
-	return raised, nil
-}
-
-func (s *Service) flagHighRefundRatios(ctx context.Context, now time.Time) (int, error) {
-	rows, err := s.storeRepo.CountRefundCancelledCommissions(ctx,
-		now.AddDate(0, 0, -affiliateFlagRefundWindow), affiliateFlagRefundMinTotal,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("count refund cancelled commissions: %w", err)
-	}
-	raised := 0
-	for _, row := range rows {
-		if row.Cancelled*100 < row.Total*affiliateFlagRefundRatioPct {
-			continue
-		}
-		inserted, err := s.insertAffiliateFlag(ctx, row.AffiliatorID, affiliateFlagRuleHighRefund, map[string]any{
-			"cancelled":   row.Cancelled,
-			"total":       row.Total,
-			"window_days": affiliateFlagRefundWindow,
-		})
-		if err != nil {
-			return raised, err
-		}
-		if inserted {
-			raised++
-		}
-	}
-	return raised, nil
-}
-
-func (s *Service) insertAffiliateFlag(ctx context.Context, affiliatorID uuid.UUID, rule string, payload map[string]any) (bool, error) {
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return false, fmt.Errorf("marshal affiliate flag payload: %w", err)
-	}
-	inserted, err := s.storeRepo.InsertAffiliateFlagOnce(ctx, affiliatorID, rule, raw)
-	if err != nil {
-		return false, fmt.Errorf("insert affiliate flag: %w", err)
-	}
-	return inserted, nil
 }
 
 // runAffiliateQuarterly evaluates the just-ended WIB quarter once it reaches

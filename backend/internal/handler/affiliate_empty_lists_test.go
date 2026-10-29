@@ -60,7 +60,7 @@ func TestEmptyListsAnswerAnEmptyArray(t *testing.T) {
 	affToken := token(userID, service.RoleAffiliator)
 	adminToken := token(adminID, service.RoleSuperAdmin)
 
-	for _, path := range []string{"bindings", "commissions", "ledger", "payouts", "adjustments", "violations"} {
+	for _, path := range []string{"bindings", "commissions", "ledger", "payouts", "adjustments"} {
 		rec := getWithToken(t, env.e, "/api/v1/affiliates/me/"+path, affToken)
 		assertDataIsArray(t, "affiliator "+path, rec.Body.String(), rec.Code)
 	}
@@ -69,8 +69,6 @@ func TestEmptyListsAnswerAnEmptyArray(t *testing.T) {
 		"/api/v1/admin/affiliates?q=tidak-ada-yang-cocok",
 		"/api/v1/admin/affiliates/" + affID + "/adjustments",
 		"/api/v1/admin/affiliate-payouts",
-		"/api/v1/admin/affiliate-flags",
-		"/api/v1/admin/affiliate-appeals",
 		"/api/v1/admin/affiliate-product-overrides",
 	}
 	for _, path := range adminPaths {
@@ -115,8 +113,6 @@ func TestAffiliateMeListQueryParams(t *testing.T) {
 		{"payouts?status=bogus", http.StatusBadRequest},
 		{"adjustments?type=bonus", http.StatusOK},
 		{"adjustments?type=bogus", http.StatusBadRequest},
-		{"violations?type=warning&status=open", http.StatusOK},
-		{"violations?status=bogus", http.StatusBadRequest},
 		{"ledger?from=not-a-date", http.StatusBadRequest},
 	}
 	for _, tc := range cases {

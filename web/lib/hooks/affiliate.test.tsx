@@ -9,7 +9,6 @@ import {
   useAffiliateStats,
   useUpdateAffiliateBank,
   useRequestAffiliatePayout,
-  useAppealViolation,
   useValidateAffiliateCode,
   affiliateKeys,
 } from "./affiliate";
@@ -245,29 +244,6 @@ describe("affiliate hooks", () => {
         "http://localhost:8080/api/v1/affiliates/me/payouts",
         expect.objectContaining({ method: "POST", body: "{}" }),
       );
-    });
-  });
-
-  describe("useAppealViolation", () => {
-    it("posts the appeal text to the violation route and invalidates violations", async () => {
-      fetchMock.mockResolvedValueOnce(ok({ id: "v1", appeal_status: "submitted" }));
-
-      const { wrapper, queryClient } = wrapperFactory();
-      const spy = vi.spyOn(queryClient, "invalidateQueries");
-      const { result } = renderHook(() => useAppealViolation(), { wrapper });
-
-      await act(() => result.current.mutateAsync({ id: "v1", text: "saya keberatan" }));
-
-      expect(fetchMock).toHaveBeenCalledWith(
-        "http://localhost:8080/api/v1/affiliates/me/violations/v1/appeal",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({ text: "saya keberatan" }),
-        }),
-      );
-      expect(spy).toHaveBeenCalledWith({
-        queryKey: [affiliateKeys.all[0], "violations"],
-      });
     });
   });
 
