@@ -112,6 +112,10 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_promo", Message: err.Error()}
 	case errors.Is(err, service.ErrPromoMinOrder):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_order", Message: err.Error()}
+	case errors.Is(err, service.ErrPromoMinQty):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_qty", Message: err.Error()}
+	case errors.Is(err, service.ErrPromoNotStarted):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_not_started", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidSignature):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_signature", Message: err.Error()}
 	case errors.Is(err, service.ErrCourseLinkRequired):
@@ -160,6 +164,18 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "incomplete_school_location", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolRequired):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "school_required", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorSchoolsRequired):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "schools_required", Message: err.Error()}
+	case errors.Is(err, service.ErrNotAdminSchool):
+		status, apiErr = http.StatusConflict, APIError{Code: "not_admin_school", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorSchoolNotAllowed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "school_not_assigned", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorProductType):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "affiliator_product_type", Message: err.Error()}
+	case errors.Is(err, service.ErrOpenCartExists):
+		status, apiErr = http.StatusConflict, APIError{Code: "open_cart_exists", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "affiliator_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolNotAllowed):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "school_not_allowed", Message: err.Error()}
 	case errors.Is(err, service.ErrSchoolDeactivated):
@@ -187,6 +203,8 @@ func mapServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrInvalidCSV):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingCSVHeader):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv_headers", Message: err.Error()}
+	case errors.Is(err, service.ErrMissingAffiliatorCSVHeader):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv_headers", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingSchoolCSVHeader):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_csv_headers", Message: err.Error()}

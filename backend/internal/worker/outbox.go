@@ -215,18 +215,31 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 				slog.Warn("no courses linked to product, skipping", "order_id", payload.OrderID, "product_id", item.ProductID)
 				continue
 			}
+			// Fan-out mirrors the exam branch: participant rows mean the buyer
+			// paid for other students, who get the access instead.
+			enrollIDs := []uuid.UUID{order.StudentID}
+			participants, err := w.repo.GetOrderParticipants(ctx, payload.OrderID)
+			if err != nil {
+				slog.Error("get order participants", "order_id", payload.OrderID, "err", err)
+				return
+			}
+			if len(participants) > 0 {
+				enrollIDs = participants
+			}
 			for _, course := range courses {
-				session := model.CourseSession{
-					StudentID:  order.StudentID,
-					CourseID:   course.ID,
-					OrderID:    &payload.OrderID,
-					Status:     "active",
-					Source:     "order",
-					EnrolledAt: time.Now(),
-				}
-				if err := w.repo.CreateCourseSession(ctx, tx, session); err != nil {
-					slog.Error("create course session", "order_id", payload.OrderID, "course_id", course.ID, "err", err)
-					return
+				for _, sid := range enrollIDs {
+					session := model.CourseSession{
+						StudentID:  sid,
+						CourseID:   course.ID,
+						OrderID:    &payload.OrderID,
+						Status:     "active",
+						Source:     "order",
+						EnrolledAt: time.Now(),
+					}
+					if err := w.repo.CreateCourseSession(ctx, tx, session); err != nil {
+						slog.Error("create course session", "order_id", payload.OrderID, "course_id", course.ID, "err", err)
+						return
+					}
 				}
 			}
 		case "exam":

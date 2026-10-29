@@ -292,3 +292,31 @@ func TestCanManageAllStudents(t *testing.T) {
 		})
 	}
 }
+
+func TestAffiliatorCapabilities(t *testing.T) {
+	tests := []struct {
+		name     string
+		role     string
+		required string
+		want     bool
+	}{
+		{"affiliator has own area", RoleAffiliator, "affiliates:self", true},
+		{"affiliator has its scope marker", RoleAffiliator, "student-scope:affiliator", true},
+		{"affiliator is not global student admin", RoleAffiliator, "student-scope:all", false},
+		{"affiliator is in the students group", RoleAffiliator, "students:read", true},
+		{"affiliator cannot set student passwords", RoleAffiliator, "student-passwords:write", false},
+		{"affiliator is not a system admin", RoleAffiliator, "system:admin", false},
+		{"admin_school has no affiliator area", RoleAdminSchool, "affiliates:self", false},
+		{"student has no affiliator area", RoleStudent, "affiliates:self", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasCapability(tt.role, tt.required); got != tt.want {
+				t.Errorf("HasCapability(%q, %q) = %v, want %v", tt.role, tt.required, got, tt.want)
+			}
+		})
+	}
+	if CanManageAllStudents(RoleAffiliator) {
+		t.Error("CanManageAllStudents(affiliator) = true, want false")
+	}
+}

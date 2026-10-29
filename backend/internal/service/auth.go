@@ -116,11 +116,11 @@ func (s *Service) Login(ctx context.Context, identifier, password, ip string) (a
 	if !comparePassword(user.PasswordHash, password, metrics.OpLogin) {
 		return "", "", "", ErrInvalidCredentials
 	}
-	switch user.Status {
-	case "active":
+	switch {
+	case canHoldSession(user):
 		accessToken, refreshToken, err = s.mintSession(ctx, user)
 		return accessToken, refreshToken, "", err
-	case "pending_verification":
+	case user.Status == "pending_verification":
 		challenge, err := s.startOTPChallenge(ctx, user, ip)
 		if err != nil {
 			return "", "", "", err
@@ -389,7 +389,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (newAccessTo
 	if err != nil {
 		return "", "", err
 	}
-	if user == nil || user.Status != "active" {
+	if user == nil || !canHoldSession(user) {
 		return "", "", ErrInvalidRefreshToken
 	}
 

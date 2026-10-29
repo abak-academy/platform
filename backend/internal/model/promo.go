@@ -18,4 +18,9 @@ type PromoCode struct {
 	ExpiresAt         *time.Time `json:"expires_at"`
 	CreatedAt         time.Time  `json:"created_at"`
 	IsPublic          bool       `json:"is_public"`
+	StartsAt          *time.Time `json:"starts_at"`
+	MinQty            *int       `json:"min_qty"`
+	AffiliatorOnly    bool       `json:"affiliator_only"`
+	// ProductIDs limits the promo to these products; empty means every product.
+	ProductIDs []string `json:"product_ids"`
 }

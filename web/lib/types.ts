@@ -90,6 +90,8 @@ export interface AdminStudent {
   school_name?: string | null;
   /** What a self-registering user typed when their school wasn't listed. */
   unlisted_school_name?: string | null;
+  /** The affiliator that registered this student, when one did. */
+  registered_by?: string | null;
   created_at: string;
 }
 
@@ -401,6 +403,12 @@ export interface PromoCode {
   created_at?: string;
   /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
   is_public?: boolean;
+  starts_at?: string | null;
+  min_qty?: number | null;
+  /** Usable only by affiliators and never listed to students. */
+  affiliator_only?: boolean;
+  /** Empty means the promo applies to every product. */
+  product_ids?: string[];
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -412,13 +420,14 @@ export interface AdminCreatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
   is_public?: boolean;
+  starts_at?: string;
+  min_qty?: number;
+  affiliator_only?: boolean;
+  product_ids?: string[];
 }
 
-export interface AdminUpdatePromoCodeInput {
-  max_uses?: number;
-  expires_at?: string;
-  is_public?: boolean;
-}
+// PUT replaces every editable field, so an omitted key clears it.
+export type AdminUpdatePromoCodeInput = Omit<AdminCreatePromoCodeInput, "code">;
 
 // GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
 // used_count, and max_uses; see backend/internal/handler/order.go
@@ -1517,4 +1526,229 @@ export interface UnitSalesResponse {
   from: string | null;
   to: string | null;
   types: UnitSalesType[];
+}
+
+// ── Affiliate program ─────────────────────────────────────────────────────
+// Wire shapes of backend/internal/service/affiliator*.go and
+// backend/internal/repository/affiliator*.go.
+
+export interface Affiliator {
+  id: string;
+  name: string;
+  email: string | null;
+  status: "active" | "deactivated";
+  school_ids: string[];
+  /** Filled by the detail and self reads. */
+  schools?: SchoolOption[];
+  created_at: string;
+  updated_at: string;
+  student_count: number;
+  order_count: number;
+  paid_amount: number;
+  /** Present only on the create response, when the password was generated. */
+  temp_password?: string;
+}
+
+export interface AffiliatorInput {
+  email: string;
+  name: string;
+  /** Empty means the server generates one and returns it once. */
+  password?: string;
+  school_ids: string[];
+}
+
+/** An active admin_school account that can become an affiliator. */
+export interface PromotableAdmin {
+  id: string;
+  name: string;
+  email: string | null;
+  school_id: string | null;
+  school_name: string | null;
+  created_at: string;
+}
+
+export interface AffiliatorPage<T> {
+  data: T[];
+  next_cursor?: string;
+  total: number;
+}
+
+export interface ReportPage<T> {
+  data: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AffiliatorReportRow {
+  affiliator_id: string;
+  name: string;
+  email: string | null;
+  status: string;
+  school_count: number;
+  student_count: number;
+  paid_orders: number;
+  paid_units: number;
+  paid_amount: number;
+  discount_total: number;
+  pending_orders: number;
+  pending_amount: number;
+  expired_orders: number;
+  orders_in_period: number;
+  last_order_at: string | null;
+}
+
+export interface SchoolReportRow {
+  school_id: string;
+  school_name: string;
+  affiliator_count: number;
+  student_count: number;
+  covered_students: number;
+  unpurchased_students: number;
+  paid_orders: number;
+  paid_units: number;
+  paid_amount: number;
+  discount_total: number;
+}
+
+export interface ProductReportRow {
+  school_id: string;
+  school_name: string;
+  product_id: string;
+  product_name: string;
+  product_type: string;
+  units: number;
+  orders: number;
+}
+
+export interface PromoReportRow {
+  code: string;
+  affiliator_only: boolean;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  min_qty: number | null;
+  min_order_amount: number | null;
+  starts_at: string | null;
+  expires_at: string | null;
+  max_uses: number | null;
+  used_count: number;
+  active_now: boolean;
+  orders: number;
+  discount_total: number;
+}
+
+export interface TrendReportRow {
+  month: string;
+  orders: number;
+  units: number;
+  amount: number;
+  discount: number;
+  active_affiliators: number;
+}
+
+/** One school assigned to one affiliator (a row of the "Daftar sekolah" tab). */
+export interface AffiliatorSchoolRow {
+  affiliator_id: string;
+  affiliator_name: string;
+  affiliator_email: string | null;
+  affiliator_status: string;
+  school_id: string;
+  school_name: string;
+  school_code: string;
+  school_npsn: string | null;
+  school_status: string;
+  student_count: number;
+}
+
+export type AffiliateReportName = "affiliators" | "schools" | "products" | "promos" | "trend";
+
+export interface AffiliatorSchoolCount {
+  school_id: string;
+  school_name: string;
+  student_count: number;
+}
+
+export interface AffiliatorOrderTotals {
+  paid_orders: number;
+  paid_units: number;
+  paid_amount: number;
+  discount_total: number;
+  pending_orders: number;
+}
+
+export interface AffiliatorMonthPoint {
+  month: string;
+  orders: number;
+  units: number;
+  amount: number;
+}
+
+export interface AffiliatorSchoolProduct {
+  school_id: string;
+  school_name: string;
+  product_id: string;
+  product_name: string;
+  product_type: string;
+  units: number;
+}
+
+export interface AffiliatorDashboard {
+  schools: AffiliatorSchoolCount[];
+  totals: AffiliatorOrderTotals;
+  monthly: AffiliatorMonthPoint[];
+  top_products: AffiliatorSchoolProduct[];
+  unpurchased_students: number;
+}
+
+export interface AffiliatorOrderRow {
+  id: string;
+  status: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+  product_name: string;
+  product_type: string;
+  participant_count: number;
+  school_name: string | null;
+  promo_code: string | null;
+  payment_expires_at: string | null;
+  created_at: string;
+}
+
+export interface AffiliatorPurchaseRow {
+  order_id: string;
+  order_status: string;
+  created_at: string;
+  student_id: string;
+  student_name: string;
+  student_username: string | null;
+  school_name: string | null;
+  product_name: string;
+  product_type: string;
+  unit_price: number;
+  promo_code: string | null;
+}
+
+export interface AffiliatorDetail {
+  affiliator: Affiliator;
+  totals: AffiliatorOrderTotals;
+  recent_orders: AffiliatorOrderRow[];
+}
+
+export interface AffiliatorOrderPreview {
+  net_new_count: number;
+  excluded?: { student_id: string; name: string; reason: string }[];
+  /** The students the order would cover, each with the school they belong to. */
+  students: { student_id: string; name: string; school_id: string | null; school_name: string | null }[];
+  unit_price: number;
+  subtotal: number;
+  discount: number;
+  total: number;
+  promo_code?: string;
+}
+
+export interface AffiliatorOrderInput {
+  product_id: string;
+  student_ids: string[];
+  promo_code?: string;
 }

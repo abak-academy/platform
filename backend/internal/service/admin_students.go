@@ -81,6 +81,7 @@ type StudentResponse struct {
 	// school wasn't listed. Both are surfaced so operations can follow up.
 	SchoolName         *string `json:"school_name"`
 	UnlistedSchoolName *string `json:"unlisted_school_name"`
+	RegisteredBy       *string `json:"registered_by"`
 	CreatedAt          string  `json:"created_at"`
 }
 
@@ -104,6 +105,7 @@ func toStudentResponse(row repository.StudentRow) StudentResponse {
 		Jenjang:            row.Jenjang,
 		SchoolName:         row.SchoolName,
 		UnlistedSchoolName: row.UnlistedSchoolName,
+		RegisteredBy:       row.RegisteredBy,
 		CreatedAt:          row.CreatedAt.Format(time.RFC3339),
 	}
 }
@@ -182,6 +184,11 @@ func (s *Service) registerStudent(ctx context.Context, actorID, schoolID string,
 		}
 	}
 
+	registeredBy, err := s.affiliatorRegistration(ctx, actorID, schoolID)
+	if err != nil {
+		return nil, err
+	}
+
 	// School is optional: not every registrant is a school pupil — university
 	// students and members of the public sign up for IELTS and similar. When
 	// one is given it is still validated; when it is omitted an operator
@@ -210,7 +217,7 @@ func (s *Service) registerStudent(ctx context.Context, actorID, schoolID string,
 		}
 	}
 
-	gender, err := normalizeGender(gender)
+	gender, err = normalizeGender(gender)
 	if err != nil {
 		return nil, err
 	}
@@ -297,6 +304,7 @@ func (s *Service) registerStudent(ctx context.Context, actorID, schoolID string,
 		PasswordHash:       string(hash),
 		Role:               RoleStudent,
 		SchoolID:           schoolIDPtr,
+		RegisteredBy:       registeredBy,
 		UnlistedSchoolName: unlistedSchoolName,
 		Status:             "active",
 		OTPEnabled:         false,

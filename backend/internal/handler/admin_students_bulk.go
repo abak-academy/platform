@@ -19,12 +19,16 @@ import (
 // school comes from the CSV identity columns, same as enqueue.
 func (h *Handler) AdminPresignStudentBulkUpload(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	schoolID, err := h.resolveStudentSchoolScope(c, claims)
-	if scopeHandled(err) {
-		return nil
-	}
-	if err != nil {
-		return err
+	var schoolID string
+	if claims.Role != service.RoleAffiliator {
+		var err error
+		schoolID, err = h.resolveStudentSchoolScope(c, claims)
+		if scopeHandled(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
 	}
 	// super_admin/admin_exam with no school: folder UUID is a storage namespace, not a
 	// real school. Enqueue UUID-parses the second path segment for the prefix
@@ -55,8 +59,12 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 
 	var schoolID string
 
+	// An affiliator's CSV names the school per row like the global roles do;
+	// each row is checked against its assigned schools when it is registered.
+	crossSchool := service.CanManageAllStudents(claims.Role) || claims.Role == service.RoleAffiliator
+
 	switch {
-	case service.CanManageAllStudents(claims.Role):
+	case crossSchool:
 		// super_admin/admin_exam: school is determined per-row from the CSV; skip
 		// resolveSchoolScope entirely. schoolID will be extracted from
 		// fileKey below for storage validation.
@@ -85,7 +93,7 @@ func (h *Handler) AdminBulkImportStudents(c echo.Context) error {
 	// (the presign endpoint already encoded it). This is only needed for
 	// storage-level validation in EnqueueStudentBulkJob; it is not a school
 	// id. Row school comes from the CSV identity columns.
-	if service.CanManageAllStudents(claims.Role) {
+	if crossSchool {
 		parts := strings.SplitN(req.FileKey, "/", 3)
 		if len(parts) < 3 || parts[0] != "student-bulk" {
 			return badRequest(c, "invalid file_key")

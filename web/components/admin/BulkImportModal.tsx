@@ -22,6 +22,7 @@ import {
 import { useJobStatus } from "@/lib/hooks/jobs";
 import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import {
+  AFFILIATOR_STUDENT_BULK_FIELDS,
   STUDENT_BULK_FIELDS,
   STUDENT_GUIDE_PITFALL_KEYS,
   SUPER_ADMIN_STUDENT_BULK_FIELDS,
@@ -30,17 +31,19 @@ import {
   downloadTextFile,
 } from "@/lib/bulk-import-format";
 
-function downloadTemplate(allowExplicitPassword: boolean): void {
-  downloadTextFile("bulk_register_template.csv", buildStudentTemplateCSV(allowExplicitPassword), "text/csv;charset=utf-8");
+function downloadTemplate(allowExplicitPassword: boolean, schoolPerRow: boolean): void {
+  downloadTextFile("bulk_register_template.csv", buildStudentTemplateCSV(allowExplicitPassword, schoolPerRow), "text/csv;charset=utf-8");
 }
 
 interface BulkImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   allowExplicitPassword: boolean;
+  // The CSV names the school on every row (no password column), as for an affiliator.
+  schoolPerRow?: boolean;
 }
 
-export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: BulkImportModalProps) {
+export function BulkImportModal({ open, onOpenChange, allowExplicitPassword, schoolPerRow = false }: BulkImportModalProps) {
   const { t } = useTranslation();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -90,7 +93,11 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
   const jobData = job.data;
   const isTerminalSuccess = jobData?.status === "succeeded";
   const isTerminalFailed = jobData?.status === "failed";
-  const bulkFields = allowExplicitPassword ? SUPER_ADMIN_STUDENT_BULK_FIELDS : STUDENT_BULK_FIELDS;
+  const bulkFields = allowExplicitPassword
+    ? SUPER_ADMIN_STUDENT_BULK_FIELDS
+    : schoolPerRow
+      ? AFFILIATOR_STUDENT_BULK_FIELDS
+      : STUDENT_BULK_FIELDS;
 
   return (
     <Dialog
@@ -117,7 +124,7 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
                 variant="outline"
                 size="sm"
                 className="rounded-full"
-                onClick={() => downloadTemplate(allowExplicitPassword)}
+                onClick={() => downloadTemplate(allowExplicitPassword, schoolPerRow)}
               >
                 <Download className="mr-2 size-4" />
                 {t("bulk_register_download_template")}
@@ -130,7 +137,7 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: B
                 onClick={() =>
                   downloadTextFile(
                     "bulk_register_guide.txt",
-                    buildStudentGuideText(t, allowExplicitPassword),
+                    buildStudentGuideText(t, allowExplicitPassword, schoolPerRow),
                     "text/plain;charset=utf-8",
                   )
                 }

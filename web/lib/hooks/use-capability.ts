@@ -13,6 +13,7 @@ const ROLE_CAPABILITIES: Record<string, string[]> = {
   admin_store: ["products(book|course):write", "sections:*", "orders:*", "promos:*", "notifications:*", "uploads:write"],
   admin_school: ["students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"],
   super_admin: ["*", "schools:write"],
+  affiliator: ["affiliates:self", "students:*", "student-scope:affiliator"],
 };
 
 export function hasCapability(role: string | undefined, required: string): boolean {

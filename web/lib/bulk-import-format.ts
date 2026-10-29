@@ -25,7 +25,12 @@ export type BulkFieldSpec = {
     | "bulk_format_school_school_types"
     | "bulk_format_school_alamat"
     | "bulk_format_school_provinsi"
-    | "bulk_format_school_kota";
+    | "bulk_format_school_kota"
+    | "bulk_format_aff_name"
+    | "bulk_format_aff_email"
+    | "bulk_format_aff_password"
+    | "bulk_format_aff_school_npsn"
+    | "bulk_format_aff_school_code";
   example: string;
 };
 
@@ -43,6 +48,19 @@ export const SUPER_ADMIN_STUDENT_TEMPLATE_HEADER =
 export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = [
   'Budi Santoso,20100001,,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132,',
   "Siti Aminah,,YAYASANBIAN,SMA,,,,,,,,,,,",
+];
+
+export const AFFILIATOR_STUDENT_TEMPLATE_HEADER =
+  "name,school_npsn,school_code,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
+
+export const AFFILIATOR_STUDENT_TEMPLATE_ROWS = SUPER_ADMIN_STUDENT_TEMPLATE_ROWS.map((row) => row.replace(/,$/, ""));
+
+export const AFFILIATOR_ACCOUNT_TEMPLATE_HEADER = "name,email,password,school_npsn,school_code";
+
+export const AFFILIATOR_ACCOUNT_TEMPLATE_ROWS = [
+  "Andi Pratama,andi@example.com,,20100001,",
+  "Andi Pratama,andi@example.com,,,YAYASANBIAN",
+  "Bela Sari,bela@example.com,Rahasia123,20100002,",
 ];
 
 export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat,provinsi,kota";
@@ -80,6 +98,11 @@ export const SUPER_ADMIN_STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "password", required: false, ruleKey: "bulk_format_student_password", example: "" },
 ];
 
+// An affiliator names the school on every row like a super admin does, but cannot set passwords.
+export const AFFILIATOR_STUDENT_BULK_FIELDS: BulkFieldSpec[] = SUPER_ADMIN_STUDENT_BULK_FIELDS.filter(
+  (f) => f.column !== "password",
+);
+
 export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "name", required: true, ruleKey: "bulk_format_school_name", example: "SMAN 1 Jakarta" },
   { column: "code", required: true, ruleKey: "bulk_format_school_code", example: "SMAN1JKT" },
@@ -89,6 +112,24 @@ export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "provinsi", required: false, ruleKey: "bulk_format_school_provinsi", example: "DKI JAKARTA" },
   { column: "kota", required: false, ruleKey: "bulk_format_school_kota", example: "KOTA JAKARTA PUSAT" },
 ];
+
+export const AFFILIATOR_ACCOUNT_BULK_FIELDS: BulkFieldSpec[] = [
+  { column: "name", required: true, ruleKey: "bulk_format_aff_name", example: "Andi Pratama" },
+  { column: "email", required: true, ruleKey: "bulk_format_aff_email", example: "andi@example.com" },
+  { column: "password", required: false, ruleKey: "bulk_format_aff_password", example: "" },
+  { column: "school_npsn", required: false, ruleKey: "bulk_format_aff_school_npsn", example: "20100001" },
+  { column: "school_code", required: false, ruleKey: "bulk_format_aff_school_code", example: "YAYASANBIAN" },
+];
+
+export const AFFILIATOR_ACCOUNT_GUIDE_PITFALL_KEYS = [
+  "bulk_format_pitfall_csv",
+  "bulk_format_pitfall_header",
+  "bulk_format_pitfall_comma",
+  "bulk_format_aff_rows",
+  "bulk_format_aff_atomic",
+  "bulk_format_aff_result",
+  "bulk_format_max_rows",
+] as const satisfies readonly I18nKey[];
 
 export const STUDENT_GUIDE_PITFALL_KEYS = [
   "bulk_format_pitfall_csv",
@@ -107,10 +148,17 @@ export const SCHOOL_GUIDE_PITFALL_KEYS = [
   "bulk_format_max_rows",
 ] as const satisfies readonly I18nKey[];
 
-export function buildStudentTemplateCSV(includePassword = false): string {
+export function buildStudentTemplateCSV(includePassword = false, schoolPerRow = false): string {
+  if (!includePassword && schoolPerRow) {
+    return `${AFFILIATOR_STUDENT_TEMPLATE_HEADER}\n${AFFILIATOR_STUDENT_TEMPLATE_ROWS.join("\n")}\n`;
+  }
   const header = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_HEADER : STUDENT_TEMPLATE_HEADER;
   const rows = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_ROWS : STUDENT_TEMPLATE_ROWS;
   return `${header}\n${rows.join("\n")}\n`;
+}
+
+export function buildAffiliatorTemplateCSV(): string {
+  return `${AFFILIATOR_ACCOUNT_TEMPLATE_HEADER}\n${AFFILIATOR_ACCOUNT_TEMPLATE_ROWS.join("\n")}\n`;
 }
 
 export function buildSchoolTemplateCSV(): string {
@@ -128,14 +176,29 @@ function formatFieldGuide(fields: BulkFieldSpec[], t: Translate): string {
     .join("\n\n");
 }
 
-export function buildStudentGuideText(t: Translate, includePassword = false): string {
-  const fields = includePassword ? SUPER_ADMIN_STUDENT_BULK_FIELDS : STUDENT_BULK_FIELDS;
+export function buildStudentGuideText(t: Translate, includePassword = false, schoolPerRow = false): string {
+  const fields = includePassword
+    ? SUPER_ADMIN_STUDENT_BULK_FIELDS
+    : schoolPerRow
+      ? AFFILIATOR_STUDENT_BULK_FIELDS
+      : STUDENT_BULK_FIELDS;
   return [
     t("bulk_format_student_guide_title"),
     "",
     formatFieldGuide(fields, t),
     "",
     ...STUDENT_GUIDE_PITFALL_KEYS.map((k) => `- ${t(k)}`),
+    "",
+  ].join("\n");
+}
+
+export function buildAffiliatorGuideText(t: Translate): string {
+  return [
+    t("bulk_format_aff_guide_title"),
+    "",
+    formatFieldGuide(AFFILIATOR_ACCOUNT_BULK_FIELDS, t),
+    "",
+    ...AFFILIATOR_ACCOUNT_GUIDE_PITFALL_KEYS.map((k) => `- ${t(k)}`),
     "",
   ].join("\n");
 }

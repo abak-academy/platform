@@ -699,3 +699,75 @@ func TestOrderPaidHandler_ExamItem_EmptyParticipants_RegistersBuyer(t *testing.T
 		t.Errorf("registration status = %q, want %q", capturedRegistration.Status, "registered")
 	}
 }
+
+func TestOrderPaidHandler_CourseItem_WithParticipants_EnrollsEachParticipantNotBuyer(t *testing.T) {
+	ctx := context.Background()
+	orderID := uuid.New()
+	buyerID := uuid.New()
+	participant1 := uuid.New()
+	participant2 := uuid.New()
+	productID := uuid.New()
+	course1ID := uuid.New()
+	course2ID := uuid.New()
+
+	var sessions []model.CourseSession
+
+	repo := &mockRepository{
+		claimOutboxEventsFn: func(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+			payload, _ := json.Marshal(OrderPaidPayload{
+				OrderID: orderID,
+				Items:   []OrderItemMini{{ProductID: productID, ProductType: "course"}},
+			})
+			return []model.OutboxEvent{
+				{ID: 11, AggregateID: orderID, EventType: "OrderPaid", Payload: payload, CreatedAt: time.Now().String()},
+			}, nil
+		},
+		getOrderByIDFn: func(ctx context.Context, id uuid.UUID) (model.Order, error) {
+			return model.Order{ID: orderID, StudentID: buyerID, Status: "paid"}, nil
+		},
+		getCoursesByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Course, error) {
+			return []model.Course{{ID: course1ID, Title: "Math"}, {ID: course2ID, Title: "Science"}}, nil
+		},
+		getOrderParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
+			return []uuid.UUID{participant1, participant2}, nil
+		},
+		createCourseSessionFn: func(ctx context.Context, tx pgx.Tx, s model.CourseSession) error {
+			sessions = append(sessions, s)
+			return nil
+		},
+		setOrderStatusFn: func(ctx context.Context, tx pgx.Tx, id uuid.UUID, status, reason string) error {
+			return nil
+		},
+		markOutboxProcessedFn: func(ctx context.Context, tx pgx.Tx, id int64) error {
+			return nil
+		},
+		beginTxFn: func(ctx context.Context) (pgx.Tx, error) {
+			return &mockTx{commitFn: func(ctx context.Context) error { return nil }, rollbackFn: func(ctx context.Context) error { return nil }}, nil
+		},
+	}
+
+	w := &Worker{repo: repo}
+	w.pollOutbox(ctx)
+
+	// 2 participants × 2 courses = 4 enrollments, none for the buyer.
+	if len(sessions) != 4 {
+		t.Fatalf("expected 4 course sessions, got %d", len(sessions))
+	}
+	participantSet := map[uuid.UUID]bool{participant1: true, participant2: true}
+	perStudent := map[uuid.UUID]int{}
+	for _, s := range sessions {
+		if s.StudentID == buyerID {
+			t.Errorf("buyer %v was enrolled but should not be when participants exist", buyerID)
+		}
+		if !participantSet[s.StudentID] {
+			t.Errorf("unexpected student_id %v", s.StudentID)
+		}
+		if s.OrderID == nil || *s.OrderID != orderID {
+			t.Errorf("session order_id = %v, want %v", s.OrderID, orderID)
+		}
+		perStudent[s.StudentID]++
+	}
+	if perStudent[participant1] != 2 || perStudent[participant2] != 2 {
+		t.Errorf("sessions per participant = %v, want 2 each", perStudent)
+	}
+}

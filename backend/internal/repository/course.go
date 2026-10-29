@@ -417,3 +417,30 @@ func deserializeCompletedLessons(data []byte, m *map[uuid.UUID]time.Time) error 
 	}
 	return json.Unmarshal(data, m)
 }
+
+// FilterAlreadyEnrolled returns the subset of studentIDs with an active
+// enrollment in the course. A revoked enrollment is no access, so re-ordering
+// the course must re-grant it.
+func (r *Repository) FilterAlreadyEnrolled(ctx context.Context, courseID uuid.UUID, studentIDs []uuid.UUID) ([]uuid.UUID, error) {
+	if len(studentIDs) == 0 {
+		return []uuid.UUID{}, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT student_id FROM course_session WHERE course_id = $1 AND student_id = ANY($2) AND status = 'active'`,
+		courseID, studentIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}

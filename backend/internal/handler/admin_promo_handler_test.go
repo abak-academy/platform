@@ -51,8 +51,9 @@ func TestAdminPromoCode_IsPublic_RoundTripsThroughCreateUpdateList(t *testing.T)
 		t.Fatalf("create response: want is_public=true, got false (body=%s)", createRec.Body.String())
 	}
 
-	// FR-13: flip it off via admin update, and it must persist.
-	updateBody := `{"is_public":false}`
+	// FR-13: flip it off via admin update, and it must persist. PUT replaces the
+	// whole definition, so the discount travels with it.
+	updateBody := `{"discount_percent":10,"is_public":false}`
 	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/admin/promo-codes/"+created.ID, strings.NewReader(updateBody))
 	updateReq.Header.Set("Content-Type", "application/json")
 	updateReq.Header.Set("Authorization", "Bearer "+token)

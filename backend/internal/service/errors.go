@@ -71,13 +71,19 @@ var (
 	// that signs in via Google and has never set a password — doing so would
 	// leave the account with neither door open (spec FR-9). Indonesian,
 	// user-facing copy per spec C-4.
-	ErrGoogleAccountNoPassword = errors.New("akun ini masuk menggunakan Google dan belum memiliki kata sandi. Super admin harus mengatur kata sandi melalui aksi reset password terlebih dahulu.")
-	ErrInvalidRoleFilter       = errors.New("invalid role filter")
-	ErrInvalidStatusFilter     = errors.New("invalid status filter")
-	ErrAccountNoEmail          = errors.New("account has no email for reset")
-	ErrMissingField            = errors.New("missing required field")
-	ErrSchoolRequired          = errors.New("school_id is required for admin_school role")
-	ErrSchoolNotAllowed        = errors.New("school_id must be empty for this role")
+	ErrGoogleAccountNoPassword    = errors.New("akun ini masuk menggunakan Google dan belum memiliki kata sandi. Super admin harus mengatur kata sandi melalui aksi reset password terlebih dahulu.")
+	ErrInvalidRoleFilter          = errors.New("invalid role filter")
+	ErrInvalidStatusFilter        = errors.New("invalid status filter")
+	ErrAccountNoEmail             = errors.New("account has no email for reset")
+	ErrMissingField               = errors.New("missing required field")
+	ErrSchoolRequired             = errors.New("school_id is required for admin_school role")
+	ErrSchoolNotAllowed           = errors.New("school_id must be empty for this role")
+	ErrAffiliatorSchoolsRequired  = errors.New("at least one school is required for an affiliator")
+	ErrNotAdminSchool             = errors.New("only an admin_school account can be promoted to affiliator")
+	ErrAffiliatorNotFound         = errors.New("affiliator not found")
+	ErrAffiliatorSchoolNotAllowed = errors.New("school is not assigned to this affiliator")
+	ErrAffiliatorProductType      = errors.New("affiliators can only order exam and course products")
+	ErrOpenCartExists             = errors.New("an unfinished order already exists")
 )
 
 // --- from announcement.go ---
@@ -339,6 +345,8 @@ var (
 	ErrCourseNotFound          = errors.New("course not found")
 	ErrInvalidPromo            = errors.New("invalid or expired promo code")
 	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
+	ErrPromoMinQty             = errors.New("order quantity below promo minimum")
+	ErrPromoNotStarted         = errors.New("promo code is not active yet")
 	ErrOutOfStock              = errors.New("product out of stock")
 	ErrInsufficientStock       = errors.New("insufficient stock")
 	ErrOrderNotEditable        = errors.New("order not editable")
@@ -395,6 +403,9 @@ var (
 	// message names name/jenjang/school) because the school-bulk header set is
 	// name/code and that message would mislead here.
 	ErrMissingSchoolCSVHeader = errors.New("csv missing required name/code header")
+	// ErrMissingAffiliatorCSVHeader names the affiliator-bulk header set: name, email
+	// and at least one of school_npsn / school_code.
+	ErrMissingAffiliatorCSVHeader = errors.New("csv missing required name/email and school_npsn or school_code header")
 )
 
 // --- from system_config.go ---

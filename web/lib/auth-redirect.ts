@@ -12,6 +12,7 @@ const ADMIN_HOME: Record<UserRole, string> = {
   admin_exam: "/admin/exam",
   admin_school: "/admin/school",
   super_admin: "/admin",
+  affiliator: "/admin/affiliate",
 };
 
 export function adminHomeForRole(role: UserRole): string {

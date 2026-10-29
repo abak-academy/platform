@@ -10,6 +10,7 @@ import {
   useUpdatePromoCode,
   useDeletePromoCode,
 } from "@/lib/hooks/admin-promos";
+import { useAdminProducts } from "@/lib/hooks/admin-products";
 import { useTranslation } from "@/lib/i18n";
 import { PromoModal } from "@/components/admin/PromoModal";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export default function PromosPage() {
   const [editingPromo, setEditingPromo] = useState<PromoCode | null>(null);
 
   const { data: promos, isLoading, isError, error } = useAdminPromoCodes();
+  const { data: products } = useAdminProducts();
   const create = useCreatePromoCode();
   const update = useUpdatePromoCode();
   const remove = useDeletePromoCode();
@@ -145,7 +147,11 @@ export default function PromosPage() {
                   <td className="px-4 py-3">{usageText(promo)}</td>
                   <td className="px-4 py-3">{expiryText(promo.expires_at)}</td>
                   <td className="px-4 py-3">
-                    {promo.is_public ? (
+                    {promo.affiliator_only ? (
+                      <Badge variant="outline" className="border-transparent bg-success-bg text-success">
+                        {t("promo_affiliator_only")}
+                      </Badge>
+                    ) : promo.is_public ? (
                       <Badge variant="outline" className="border-transparent bg-success-bg text-success">
                         {t("th_public")}
                       </Badge>
@@ -186,6 +192,7 @@ export default function PromosPage() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         promo={editingPromo}
+        products={products ?? []}
         onSubmit={handleSubmit}
         isPending={create.isPending || update.isPending}
       />

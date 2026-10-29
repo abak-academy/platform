@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,6 +45,45 @@ func RBACMiddleware(required string) echo.MiddlewareFunc {
 				return c.JSON(http.StatusUnauthorized, map[string]string{"code": "unauthorized", "message": "missing or invalid token"})
 			}
 			if !service.HasCapability(claims.Role, required) {
+				return c.JSON(http.StatusForbidden, map[string]string{"code": "forbidden", "message": "insufficient permissions"})
+			}
+			return next(c)
+		}
+	}
+}
+
+// AffiliatorWriteGuard keeps a deactivated affiliator read-only: login still works,
+// every non-read request is rejected. Other roles pass through untouched.
+func AffiliatorWriteGuard(isActive func(ctx context.Context, userID string) (bool, error)) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			claims, _ := c.Get(claimsKey).(*infra.Claims)
+			if claims == nil || claims.Role != service.RoleAffiliator {
+				return next(c)
+			}
+			switch c.Request().Method {
+			case http.MethodGet, http.MethodHead, http.MethodOptions:
+				return next(c)
+			}
+			active, err := isActive(c.Request().Context(), claims.Sub)
+			if err != nil {
+				return err
+			}
+			if !active {
+				return c.JSON(http.StatusForbidden, map[string]string{"code": "account_deactivated", "message": "account is deactivated and read-only"})
+			}
+			return next(c)
+		}
+	}
+}
+
+// ForbidRoles rejects the listed roles on routes that sit in a group they can
+// otherwise enter.
+func ForbidRoles(roles ...string) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			claims, _ := c.Get(claimsKey).(*infra.Claims)
+			if claims != nil && slices.Contains(roles, claims.Role) {
 				return c.JSON(http.StatusForbidden, map[string]string{"code": "forbidden", "message": "insufficient permissions"})
 			}
 			return next(c)

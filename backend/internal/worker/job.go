@@ -75,6 +75,8 @@ func (w *Worker) pollJobs(ctx context.Context) {
 		w.runStudentBulkJob(ctx, *job)
 	case "school_bulk":
 		w.runSchoolBulkJob(ctx, *job)
+	case "affiliator_bulk":
+		w.runAffiliatorBulkJob(ctx, *job)
 	case "exam_grant_bulk":
 		w.runExamGrantBulkJob(ctx, *job)
 	case "exam_revoke_bulk":
