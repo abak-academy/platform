@@ -306,8 +306,11 @@ export function PromoModal({ open, onOpenChange, promo, products = [], onSubmit,
                 id="promo-is-public"
                 type="checkbox"
                 checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                disabled={isPending || affiliatorOnly}
+                onChange={(e) => {
+                  setIsPublic(e.target.checked);
+                  if (e.target.checked) setAffiliatorOnly(false);
+                }}
+                disabled={isPending}
               />
               Tampilkan di checkout
             </label>

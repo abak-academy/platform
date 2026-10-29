@@ -241,7 +241,7 @@ describe("PromoModal", () => {
     });
   });
 
-  it("turns off and locks the checkout toggle for an affiliator-only promo", () => {
+  it("switches between the checkout and affiliator-only options with one click", () => {
     render(
       <PromoModal
         open={true}
@@ -256,7 +256,12 @@ describe("PromoModal", () => {
     fireEvent.click(screen.getByLabelText(/hanya untuk affiliator/i));
 
     expect(screen.getByLabelText(/tampilkan di checkout/i)).not.toBeChecked();
-    expect(screen.getByLabelText(/tampilkan di checkout/i)).toBeDisabled();
+    expect(screen.getByLabelText(/tampilkan di checkout/i)).toBeEnabled();
+
+    fireEvent.click(screen.getByLabelText(/tampilkan di checkout/i));
+
+    expect(screen.getByLabelText(/tampilkan di checkout/i)).toBeChecked();
+    expect(screen.getByLabelText(/hanya untuk affiliator/i)).not.toBeChecked();
   });
 
   it("filters the product list by search", () => {
