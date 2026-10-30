@@ -19,6 +19,9 @@ import (
 const (
 	affiliateDailyLastRunKey      = "affiliate_daily_last_run"
 	affiliateLevelsLastQuarterKey = "affiliate_levels_last_quarter"
+	// affiliateEnabledSinceKey is when the program was last switched on; orders
+	// paid before it were never eligible, so reconciliation leaves them alone.
+	affiliateEnabledSinceKey = "affiliate_enabled_since"
 	affiliateDayKeyFormat         = "2006-01-02"
 
 	affiliateCommissionBatchLimit = 100
@@ -213,8 +216,16 @@ const (
 // discount) are re-examined harmlessly until they age out of the window. It
 // returns how many orders gained at least one commission.
 func (s *Service) reconcileMissingCommissions(ctx context.Context, now time.Time) (int, error) {
+	paidSince := now.AddDate(0, 0, -affiliateReconcileWindowDays)
+	if raw, found, err := s.storeRepo.GetSystemConfigValue(ctx, affiliateEnabledSinceKey); err != nil {
+		return 0, fmt.Errorf("read %s: %w", affiliateEnabledSinceKey, err)
+	} else if found {
+		if since, perr := time.Parse(time.RFC3339, raw); perr == nil && since.After(paidSince) {
+			paidSince = since
+		}
+	}
 	ids, err := s.storeRepo.ListPaidOrdersMissingAffiliateCommissions(ctx,
-		now.AddDate(0, 0, -affiliateReconcileWindowDays), now.Add(-affiliateReconcileMinAge), affiliateReconcileBatchLimit)
+		paidSince, now.Add(-affiliateReconcileMinAge), affiliateReconcileBatchLimit)
 	if err != nil {
 		return 0, fmt.Errorf("list orders missing affiliate commissions: %w", err)
 	}

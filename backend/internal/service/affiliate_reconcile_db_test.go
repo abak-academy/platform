@@ -97,3 +97,59 @@ func TestReconcileMissingCommissions_SkipsInactiveAffiliatorAndFlagOff(t *testin
 	require.NoError(t, err)
 	require.Empty(t, affiliateCommissionsForOrder(t, repo, order.ID))
 }
+
+func TestReconcileMissingCommissions_IgnoresOrdersPaidBeforeTheProgramWasSwitchedOn(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	launch := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	seedAffiliateSettingsForBinding(t, repo, affiliateSettingsSeed{launchDate: &launch, bindingMonths: 3})
+	setAffiliateFlagForCommission(t, repo, "true")
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key = $1`, affiliateEnabledSinceKey)
+	})
+	owner := seedAffiliatorOwner(t, repo, "aff-recon-since-"+uniqueSuffix()+"@test.local", "", "active")
+	student := seedAffiliateTestStudent(t, repo, "student-recon-since-"+uniqueSuffix()+"@test.local", "")
+	createAffiliateBindingCommitted(t, svc, repo, student.ID, owner.affiliatorID, "checkout_code")
+	_, err := repo.Pool().Exec(ctx, `UPDATE affiliate_bindings SET started_at = now() - interval '5 days' WHERE student_id = $1`, student.ID)
+	require.NoError(t, err)
+
+	whileOff := seedCommissionOrder(t, repo, student.ID, time.Now().UTC().Add(-72*time.Hour), 0,
+		commissionSeedItem{productType: "exam", jumlah: 100000})
+	afterOn := seedCommissionOrder(t, repo, student.ID, time.Now().UTC().Add(-24*time.Hour), 0,
+		commissionSeedItem{productType: "exam", jumlah: 100000})
+	switchedOn := time.Now().UTC().Add(-48 * time.Hour).Format(time.RFC3339)
+	require.NoError(t, repo.UpsertSystemConfig(ctx, affiliateEnabledSinceKey, switchedOn, false))
+
+	_, err = svc.RunAffiliateJob(ctx, "commissions", nil)
+	require.NoError(t, err)
+
+	require.Empty(t, affiliateCommissionsForOrder(t, repo, whileOff.ID), "a purchase made while the program was off earns nothing, even after it is switched on")
+	require.Len(t, affiliateCommissionsForOrder(t, repo, afterOn.ID), 1)
+}
+
+func TestUpdateSystemConfig_RecordsWhenTheProgramWasSwitchedOn(t *testing.T) {
+	svc, repo := newShippingWebhookTestService(t, nil)
+	ctx := context.Background()
+	actor := seedRevokeActor(t, repo)
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key = $1`, affiliateEnabledSinceKey)
+		setAffiliateFlagForCommission(t, repo, "true")
+	})
+	setAffiliateFlagForCommission(t, repo, "false")
+	_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key = $1`, affiliateEnabledSinceKey)
+
+	_, err := svc.UpdateSystemConfig(ctx, actor.String(), map[string]string{"affiliate_enabled": "true"})
+	require.NoError(t, err)
+	first, found, err := repo.GetSystemConfigValue(ctx, affiliateEnabledSinceKey)
+	require.NoError(t, err)
+	require.True(t, found)
+	_, err = time.Parse(time.RFC3339, first)
+	require.NoError(t, err)
+
+	time.Sleep(1100 * time.Millisecond)
+	_, err = svc.UpdateSystemConfig(ctx, actor.String(), map[string]string{"affiliate_enabled": "true"})
+	require.NoError(t, err)
+	again, _, err := repo.GetSystemConfigValue(ctx, affiliateEnabledSinceKey)
+	require.NoError(t, err)
+	require.Equal(t, first, again, "saving the page again with the flag already on keeps the original moment")
+}

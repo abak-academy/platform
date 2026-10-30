@@ -123,10 +123,11 @@ func TestRefundOrder_AvailableCommissionWritesNegativeDeduction(t *testing.T) {
 	require.Equal(t, 0.0, affiliateLedgerSaldo(t, repo, owner.affiliatorID))
 }
 
-func TestRefundOrder_FlagOffLeavesCommissionsAndLedgerUntouched(t *testing.T) {
+func TestRefundOrder_SettlesCommissionsEvenWhenTheProgramIsOff(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateFlagForCommission(t, repo, "false")
+	t.Cleanup(func() { setAffiliateFlagForCommission(t, repo, "true") })
 	owner := seedAffiliatorOwner(t, repo, "aff-refund-off-"+uniqueSuffix()+"@test.local", "", "active")
 	actor := seedRevokeActor(t, repo)
 
@@ -134,9 +135,9 @@ func TestRefundOrder_FlagOffLeavesCommissionsAndLedgerUntouched(t *testing.T) {
 
 	require.NoError(t, svc.AdminRefundOrder(ctx, actor.String(), orderID.String(), "refund_proof/"+uniqueSuffix()+".png"))
 
-	require.Equal(t, "available", commissionStatusByID(t, repo, commissionID))
-	require.Empty(t, refundDeductionEntries(t, repo, commissionID))
-	require.Equal(t, 1, commissionLedgerCount(t, repo, commissionID))
+	require.Equal(t, "cancelled", commissionStatusByID(t, repo, commissionID))
+	require.Len(t, refundDeductionEntries(t, repo, commissionID), 1)
+	require.Equal(t, 0.0, affiliateLedgerSaldo(t, repo, owner.affiliatorID))
 }
 
 func TestRefundOrder_DoubleRefundRefusedBeforeAffiliateSettlement(t *testing.T) {

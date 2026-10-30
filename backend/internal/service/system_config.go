@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"akademi-bimbel/internal/repository"
 )
@@ -332,6 +333,12 @@ func (s *Service) UpdateSystemConfig(ctx context.Context, actorID string, values
 	for key, val := range processed {
 		def := configKeyCatalog[key]
 		if err := s.storeRepo.UpsertSystemConfig(ctx, key, val, def.secret); err != nil {
+			return nil, err
+		}
+	}
+
+	if values["affiliate_enabled"] == "true" && before["affiliate_enabled"] != "true" {
+		if err := s.storeRepo.UpsertSystemConfig(ctx, affiliateEnabledSinceKey, time.Now().UTC().Format(time.RFC3339), false); err != nil {
 			return nil, err
 		}
 	}

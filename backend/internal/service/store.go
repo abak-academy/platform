@@ -1965,14 +1965,10 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 
 	// Settle commissions in this same tx so a half-refunded commission state
 	// cannot outlive a failed refund.
-	enabled, err := s.affiliateEnabledErr(ctx)
-	if err != nil {
+	// Settled whether or not the program is switched on: a refund must never
+	// leave a commission standing for money that went back to the buyer.
+	if err := s.settleAffiliateRefundTx(ctx, tx, id, actorID); err != nil {
 		return err
-	}
-	if enabled {
-		if err := s.settleAffiliateRefundTx(ctx, tx, id, actorID); err != nil {
-			return err
-		}
 	}
 
 	actor := &actorID
