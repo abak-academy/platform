@@ -208,7 +208,7 @@ function OrdersTab() {
         </div>
       ),
     },
-    { key: "order", header: t("admin_aff_col_order"), cell: (r) => <code className="text-xs">{r.order_id.slice(0, 8)}</code> },
+    { key: "order", header: t("admin_aff_col_order"), cell: (r) => <code className="text-xs">#{r.order_id.slice(-8)}</code> },
     { key: "student", header: t("aff_col_student"), cell: (r) => r.student_name ?? "—" },
     { key: "product", header: t("aff_col_product_name"), cell: (r) => r.product_name ?? "—" },
     { key: "category", header: t("aff_col_product"), cell: (r) => affLabel(t, r.product_type) },
