@@ -180,7 +180,7 @@ func TestAffiliateAdminCreateAdjustmentHandler(t *testing.T) {
 	token := env.tokenFor(t, service.RoleSuperAdmin)
 
 	rec := postJSONWithToken(t, env.e, "/admin/affiliates/"+affiliatorID.String()+"/adjustments", token,
-		`{"category":"correction","amount":-25000,"reason":"koreksi refund","note":"catatan"}`)
+		`{"category":"correction","amount":-25000,"reason":"koreksi refund"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("want 201, got %d: %s", rec.Code, rec.Body.String())
 	}
@@ -189,7 +189,6 @@ func TestAffiliateAdminCreateAdjustmentHandler(t *testing.T) {
 		Category       string  `json:"category"`
 		Amount         float64 `json:"amount"`
 		ApprovalStatus *string `json:"approval_status"`
-		Note           *string `json:"note"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &adj); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -199,9 +198,6 @@ func TestAffiliateAdminCreateAdjustmentHandler(t *testing.T) {
 	}
 	if adj.ApprovalStatus != nil {
 		t.Errorf("approval_status = %v, want nil", adj.ApprovalStatus)
-	}
-	if adj.Note == nil || *adj.Note != "catatan" {
-		t.Errorf("note = %v, want catatan", adj.Note)
 	}
 
 	var ledgerN int

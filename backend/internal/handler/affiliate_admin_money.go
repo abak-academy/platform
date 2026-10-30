@@ -14,7 +14,6 @@ type adminAdjustmentRequest struct {
 	Category string  `json:"category"`
 	Amount   float64 `json:"amount"`
 	Reason   string  `json:"reason"`
-	Note     *string `json:"note"`
 }
 
 // AdminCreateAffiliateAdjustment backs POST /admin/affiliates/:id/adjustments.
@@ -31,7 +30,6 @@ func (h *Handler) AdminCreateAffiliateAdjustment(c echo.Context) error {
 		Category: req.Category,
 		Amount:   req.Amount,
 		Reason:   req.Reason,
-		Note:     req.Note,
 	})
 	if err != nil {
 		return mapServiceError(c, err)

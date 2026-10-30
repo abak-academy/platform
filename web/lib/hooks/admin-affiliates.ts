@@ -128,11 +128,11 @@ export function useChangeAffiliateLevel() {
 
 export function useCreateAffiliateAdjustment() {
   return useAffiliateAction<
-    { id: string; category: string; amount: number; reason: string; note?: string },
+    { id: string; category: string; amount: number; reason: string },
     AffiliateAdjustment
   >(
     ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/adjustments`,
-    ({ category, amount, reason, note }) => post({ category, amount, reason, note }),
+    ({ category, amount, reason }) => post({ category, amount, reason }),
   );
 }
 

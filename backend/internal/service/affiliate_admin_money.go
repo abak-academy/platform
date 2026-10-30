@@ -52,7 +52,6 @@ type AdminAdjustmentInput struct {
 	Category string
 	Amount   float64
 	Reason   string
-	Note     *string
 }
 
 // AdminPayoutDecisionInput is the body of POST /admin/affiliate-payouts/:id/decide.
@@ -101,7 +100,6 @@ func (s *Service) AdminCreateAffiliateAdjustment(ctx context.Context, actorID, a
 		Category:     in.Category,
 		Amount:       in.Amount,
 		Reason:       reason,
-		Note:         in.Note,
 		CreatedBy:    actor,
 	}
 	if err := s.storeRepo.InsertAffiliateAdjustmentTx(ctx, tx, adj); err != nil {

@@ -51,11 +51,11 @@ func affiliatePayoutDest(p *model.AffiliatePayout) []any {
 
 func affiliateAdjustmentSelect(t string) string {
 	return t + `.id, ` + t + `.affiliator_id, ` + t + `.detail->>'category', ` + t + `.amount, COALESCE(` + t + `.note, ''), ` +
-		t + `.detail->>'note', ` + t + `.actor_id, ` + t + `.created_at`
+		t + `.actor_id, ` + t + `.created_at`
 }
 
 func affiliateAdjustmentDest(a *model.AffiliateAdjustment) []any {
-	return []any{&a.ID, &a.AffiliatorID, &a.Category, &a.Amount, &a.Reason, &a.Note, &a.CreatedBy, &a.CreatedAt}
+	return []any{&a.ID, &a.AffiliatorID, &a.Category, &a.Amount, &a.Reason, &a.CreatedBy, &a.CreatedAt}
 }
 
 // affiliateLedgerSelect projects a taken-effect transaction as a ledger entry;
@@ -262,11 +262,7 @@ func (r *Repository) InsertAffiliatePayoutReversalTx(ctx context.Context, tx pgx
 // InsertAffiliateAdjustmentTx posts one admin adjustment inside tx, taking
 // effect immediately, and fills ID/CreatedAt.
 func (r *Repository) InsertAffiliateAdjustmentTx(ctx context.Context, tx pgx.Tx, a *model.AffiliateAdjustment) error {
-	detail := map[string]any{"category": a.Category}
-	if a.Note != nil {
-		detail["note"] = *a.Note
-	}
-	raw, err := json.Marshal(detail)
+	raw, err := json.Marshal(map[string]any{"category": a.Category})
 	if err != nil {
 		return err
 	}

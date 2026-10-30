@@ -95,7 +95,6 @@ type AffiliateAdjustment struct {
 	Category       string     `json:"category"`
 	Amount         float64    `json:"amount"`
 	Reason         string     `json:"reason"`
-	Note           *string    `json:"note"`
 	ApprovalStatus *string    `json:"approval_status"`
 	ApproverID     *uuid.UUID `json:"approver_id"`
 	ApprovedAt     *time.Time `json:"approved_at"`

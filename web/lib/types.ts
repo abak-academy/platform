@@ -1675,7 +1675,6 @@ export interface AffiliateAdjustment {
   category: string;
   amount: number;
   reason: string;
-  note: string | null;
   approval_status: string | null;
   approver_id: string | null;
   approved_at: string | null;

@@ -102,7 +102,7 @@ describe("AdminAffiliateDetailPage", () => {
 
     await waitFor(() =>
       expect(h.adjust).toHaveBeenCalledWith(
-        { id: "a1", category: "correction", amount: -20000, reason: "koreksi salah hitung", note: undefined },
+        { id: "a1", category: "correction", amount: -20000, reason: "koreksi salah hitung" },
         expect.anything(),
       ),
     );

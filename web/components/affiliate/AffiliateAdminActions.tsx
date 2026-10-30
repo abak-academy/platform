@@ -53,7 +53,6 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
   const [amount, setAmount] = useState("");
   const [deduct, setDeduct] = useState(false);
-  const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
 
   const changeStatus = useChangeAffiliateStatus();
@@ -65,7 +64,6 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
     setReason("");
     setAmount("");
     setDeduct(false);
-    setNote("");
   };
   const done = () => {
     toast.success(t("admin_aff_act_done"));
@@ -87,7 +85,7 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
     } else if (action === "adjust") {
       const n = Number(amount);
       if (!Number.isFinite(n) || n === 0) return invalid();
-      adjust.mutate({ id, category, amount: deduct ? -n : n, reason: reason.trim(), note: note.trim() || undefined }, opts);
+      adjust.mutate({ id, category, amount: deduct ? -n : n, reason: reason.trim() }, opts);
     }
   };
 
@@ -167,9 +165,6 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
                     value={amount}
                     onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
                   />
-                </Field>
-                <Field id="aff-note" label={t("admin_aff_field_note")}>
-                  <Input id="aff-note" value={note} onChange={(e) => setNote(e.target.value)} />
                 </Field>
               </>
             )}

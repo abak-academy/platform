@@ -96,13 +96,12 @@ type AffiliateAdjustmentWithApplied struct {
 }
 
 // ListAffiliateAdjustmentsWithApplied returns one affiliator's adjustments
-// newest first. Type filters the category; the text search covers the reason
-// and the note.
+// newest first. Type filters the category; the text search covers the reason.
 func (r *Repository) ListAffiliateAdjustmentsWithApplied(ctx context.Context, affiliatorID uuid.UUID, q AffiliateListQuery, limit, offset int) ([]AffiliateAdjustmentWithApplied, int, error) {
 	p := newAffPredicate(2)
 	p.eq("a.detail->>'category'", q.Type)
 	p.dates("a.created_at", q.From, q.To)
-	p.search(q.Q, "a.note", "a.detail->>'note'")
+	p.search(q.Q, "a.note")
 	args := append([]interface{}{affiliatorID}, p.args...)
 
 	var total int
