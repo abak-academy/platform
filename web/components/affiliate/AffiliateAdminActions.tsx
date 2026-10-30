@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ChoiceGroup } from "@/components/affiliate/ChoiceGroup";
+import { OptionSelect } from "@/components/affiliate/OptionSelect";
 import { LEVEL_TONE } from "@/components/affiliate/LevelBadge";
 import { STATUS_TONE } from "@/components/affiliate/StatusBadge";
 import { Input } from "@/components/ui/input";
@@ -120,42 +120,46 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
           <div className="space-y-3">
             {action === "status" && (
               <Field id="aff-status" label={t("admin_aff_field_status")}>
-                <ChoiceGroup
+                <OptionSelect
+                  id="aff-status"
                   label={t("admin_aff_field_status")}
                   value={status}
                   onChange={setStatus}
-                  choices={STATUS_TARGETS.map((v) => ({ value: v, label: affLabel(t, v), activeClass: STATUS_TONE[v] }))}
+                  options={STATUS_TARGETS.map((v) => ({ value: v, label: affLabel(t, v), tone: STATUS_TONE[v] }))}
                 />
               </Field>
             )}
             {action === "level" && (
               <Field id="aff-level" label={t("admin_aff_field_level")}>
-                <ChoiceGroup
+                <OptionSelect
+                  id="aff-level"
                   label={t("admin_aff_field_level")}
                   value={level}
                   onChange={setLevel}
-                  choices={LEVELS.map((v) => ({ value: v, label: affLabel(t, v), activeClass: LEVEL_TONE[v] }))}
+                  options={LEVELS.map((v) => ({ value: v, label: affLabel(t, v), tone: LEVEL_TONE[v] }))}
                 />
               </Field>
             )}
             {action === "adjust" && (
               <>
                 <Field id="aff-category" label={t("admin_aff_field_category")}>
-                  <ChoiceGroup
+                  <OptionSelect
+                    id="aff-category"
                     label={t("admin_aff_field_category")}
                     value={category}
                     onChange={setCategory}
-                    choices={CATEGORIES.map((v) => ({ value: v, label: affLabel(t, v) }))}
+                    options={CATEGORIES.map((v) => ({ value: v, label: affLabel(t, v) }))}
                   />
                 </Field>
                 <Field id="aff-amount" label={t("admin_aff_field_amount")}>
-                  <ChoiceGroup
+                  <OptionSelect
+                    id="aff-direction"
                     label={t("admin_aff_field_direction")}
                     value={deduct ? "deduct" : "add"}
                     onChange={(v) => setDeduct(v === "deduct")}
-                    choices={[
-                      { value: "add", label: t("admin_aff_dir_add"), activeClass: "bg-success/15 text-success" },
-                      { value: "deduct", label: t("admin_aff_dir_deduct"), activeClass: "bg-danger/15 text-danger" },
+                    options={[
+                      { value: "add", label: t("admin_aff_dir_add"), tone: "bg-success/15 text-success" },
+                      { value: "deduct", label: t("admin_aff_dir_deduct"), tone: "bg-danger/15 text-danger" },
                     ]}
                   />
                   <Input

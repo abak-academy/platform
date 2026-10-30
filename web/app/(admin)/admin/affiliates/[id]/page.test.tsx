@@ -40,6 +40,11 @@ const detail = {
   saldo: 30000,
 };
 
+async function choose(trigger: HTMLElement, option: string) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
+
 async function renderPage() {
   await act(async () => {
     render(
@@ -90,7 +95,7 @@ describe("AdminAffiliateDetailPage", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Penyesuaian saldo" }));
-    fireEvent.click(await screen.findByRole("radio", { name: "Pengurangan" }));
+    await choose(await screen.findByRole("combobox", { name: "Jenis penyesuaian" }), "Pengurangan");
     fireEvent.change(screen.getByLabelText(/Jumlah/), { target: { value: "-2a0.000" } });
     expect(screen.getByLabelText(/Jumlah/)).toHaveValue("20000");
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
@@ -112,7 +117,7 @@ describe("AdminAffiliateDetailPage", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Ubah status" }));
-    fireEvent.click(await screen.findByRole("radio", { name: "Ditangguhkan" }));
+    await choose(await screen.findByRole("combobox", { name: "Status baru" }), "Ditangguhkan");
     expect(screen.queryByLabelText("Lama (hari)")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
 
@@ -130,7 +135,7 @@ describe("AdminAffiliateDetailPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ubah level" }));
     expect(screen.queryByLabelText(/Kunci/)).toBeNull();
-    fireEvent.click(await screen.findByRole("radio", { name: "Gold" }));
+    await choose(await screen.findByRole("combobox", { name: "Level" }), "Gold");
     fireEvent.change(screen.getByLabelText("Alasan"), { target: { value: "mitra utama" } });
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
 
