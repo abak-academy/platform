@@ -78,7 +78,10 @@ func TestAdminAffiliateCommissions_fullNamesFiltersAndCSV(t *testing.T) {
 	require.NoError(t, err)
 	records := parseAdminCSV(t, data)
 	require.Len(t, records, 3)
-	require.Equal(t, "student_name", records[0][2])
+	require.Equal(t, "order_number", records[0][1])
+	require.Equal(t, "student_name", records[0][3])
+	require.Regexp(t, `^#[0-9a-f]{8}$`, records[1][1], "the order number matches the orders menu")
+	require.Equal(t, records[1][2][len(records[1][2])-8:], records[1][1][1:])
 }
 
 func TestAdminAffiliateReportSummary_searchLevelAndPaging(t *testing.T) {
@@ -161,5 +164,31 @@ func TestAdminAffiliateReportOrders_acrossAffiliators(t *testing.T) {
 
 	data, err := svc.AdminAffiliateReportOrdersCSV(ctx, AffiliateAdminQueueFilter{Q: unique})
 	require.NoError(t, err)
-	require.Len(t, parseAdminCSV(t, data), 3)
+	records := parseAdminCSV(t, data)
+	require.Len(t, records, 3)
+	require.Equal(t, "order_number", records[0][3])
+	require.Regexp(t, `^#[0-9a-f]{8}$`, records[1][3])
+}
+
+func TestAdminAffiliatorsCSV_filtersAndNeutralisesCells(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	unique := uniqueSuffix()
+	seedAffiliateMeAffiliator(t, repo, "=Evil Export "+unique, "active", "silver")
+	seedAffiliateMeAffiliator(t, repo, "Pending Export "+unique, "pending_approval", "bronze")
+
+	data, err := svc.AdminAffiliatorsCSV(ctx, AffiliateAdminListFilter{Query: unique, Status: "all"})
+	require.NoError(t, err)
+	records := parseAdminCSV(t, data)
+	require.Equal(t, []string{"name", "email", "phone", "code", "status", "level", "joined_at"}, records[0])
+	require.Len(t, records, 3)
+
+	data, err = svc.AdminAffiliatorsCSV(ctx, AffiliateAdminListFilter{Query: unique, Status: "active", Level: "silver"})
+	require.NoError(t, err)
+	records = parseAdminCSV(t, data)
+	require.Len(t, records, 2)
+	require.Equal(t, "'=Evil Export "+unique, records[1][0], "a formula-looking name is neutralised")
+
+	_, err = svc.AdminAffiliatorsCSV(ctx, AffiliateAdminListFilter{Status: "bogus"})
+	require.ErrorIs(t, err, ErrInvalidStatusFilter)
 }

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 // AffiliateAdminQueueFilter is the query every admin affiliate list shares.
@@ -63,6 +65,12 @@ func derefString(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// affiliateOrderNumber is the short order number the orders menu shows: "#" and
+// the last eight characters of the order id.
+func affiliateOrderNumber(id uuid.UUID) string {
+	return "#" + id.String()[len(id.String())-8:]
 }
 
 func formatOptionalTime(t *time.Time) string {
@@ -121,12 +129,13 @@ func (s *Service) AdminAffiliateCommissionsCSV(ctx context.Context, affiliatorID
 		return nil, err
 	}
 	return buildAdminCSV(
-		[]string{"paid_at", "order_id", "student_name", "product_name", "category", "base_amount", "commission_type", "commission_value", "commission", "status", "available_from"},
+		[]string{"paid_at", "order_number", "order_id", "student_name", "product_name", "category", "base_amount", "commission_type", "commission_value", "commission", "status", "available_from"},
 		len(rows),
 		func(i int) []string {
 			row := rows[i]
 			return []string{
 				formatOptionalTime(row.PaidAt),
+				affiliateOrderNumber(row.OrderID),
 				row.OrderID.String(),
 				csvSafeField(row.StudentName),
 				csvSafeField(row.ProductName),
@@ -174,7 +183,7 @@ func (s *Service) AdminAffiliateReportOrdersCSV(ctx context.Context, f Affiliate
 		return nil, err
 	}
 	return buildAdminCSV(
-		[]string{"paid_at", "affiliator_name", "code", "order_id", "student_name", "product_name", "category", "base_amount", "commission_type", "commission_value", "commission", "status", "available_from"},
+		[]string{"paid_at", "affiliator_name", "code", "order_number", "order_id", "student_name", "product_name", "category", "base_amount", "commission_type", "commission_value", "commission", "status", "available_from"},
 		len(rows),
 		func(i int) []string {
 			row := rows[i]
@@ -182,6 +191,7 @@ func (s *Service) AdminAffiliateReportOrdersCSV(ctx context.Context, f Affiliate
 				formatOptionalTime(row.PaidAt),
 				csvSafeField(row.AffiliatorName),
 				csvSafeField(row.AffiliatorCode),
+				affiliateOrderNumber(row.OrderID),
 				row.OrderID.String(),
 				csvSafeField(row.StudentName),
 				csvSafeField(row.ProductName),

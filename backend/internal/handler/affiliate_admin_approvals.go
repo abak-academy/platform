@@ -126,3 +126,22 @@ func (h *Handler) AdminBulkCreateAffiliators(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": results})
 }
+
+// AdminAffiliatorsExport backs GET /admin/affiliates/export: the CSV of the
+// affiliators matching the list filters. The level arrives as "type", like the
+// other admin exports.
+func (h *Handler) AdminAffiliatorsExport(c echo.Context) error {
+	level := c.QueryParam("type")
+	if level == "" {
+		level = c.QueryParam("level")
+	}
+	data, err := h.svc.AdminAffiliatorsCSV(c.Request().Context(), service.AffiliateAdminListFilter{
+		Status: c.QueryParam("status"),
+		Level:  level,
+		Query:  c.QueryParam("q"),
+	})
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return csvDownload(c, "affiliators.csv", data)
+}

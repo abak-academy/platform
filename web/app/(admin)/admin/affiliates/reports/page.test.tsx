@@ -126,7 +126,7 @@ describe("AdminAffiliateReportsPage", () => {
     expect(h.summary).not.toHaveBeenCalled();
     expect(h.orders).toHaveBeenLastCalledWith({ q: "sari", status: "available", type: "", from: "", to: "", page: 1, per_page: 20 });
     expect(screen.getByText("Sari Wulandari")).toBeInTheDocument();
-    expect(screen.getByText("#00000000")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "#00000000" })).toHaveAttribute("href", "/admin/orders?order=8f3a1b2c-0000-0000-0000-000000000000");
     expect(screen.getByText("BUDI1234")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Unduh CSV" }));

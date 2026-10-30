@@ -5,6 +5,7 @@ import AdminAffiliatesPage from "./page";
 const h = vi.hoisted(() => ({
   list: vi.fn(),
   decide: vi.fn(),
+  download: vi.fn(),
   capability: vi.fn(),
   replace: vi.fn(),
   search: { value: "" },
@@ -20,6 +21,7 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useAdminAffiliates: h.list,
   useDecideAffiliateApproval: () => ({ mutate: h.decide, isPending: false }),
+  downloadAffiliateCsv: h.download,
   useCreateAffiliator: () => ({ mutate: vi.fn(), isPending: false }),
   useBulkCreateAffiliators: () => ({ mutate: vi.fn(), isPending: false }),
 }));
@@ -68,6 +70,16 @@ describe("AdminAffiliatesPage", () => {
     expect(screen.getAllByRole("button", { name: "Setujui" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Tolak" })).toHaveLength(1);
     expect(screen.getAllByRole("link", { name: "Detail" })).toHaveLength(2);
+  });
+
+  it("downloads the affiliator list with the current filters", () => {
+    h.search.value = "q=budi&status=active&type=gold";
+    h.download.mockResolvedValue(undefined);
+    render(<AdminAffiliatesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Unduh CSV" }));
+
+    expect(h.download).toHaveBeenCalledWith("affiliators", { q: "budi", status: "active", type: "gold" });
   });
 
   it("lets an admin reopen a rejected application", () => {

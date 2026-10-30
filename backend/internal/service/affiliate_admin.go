@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"slices"
 	"strings"
+	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -129,6 +130,42 @@ func (s *Service) ListAffiliateAdmin(ctx context.Context, filter AffiliateAdminL
 		PerPage: filter.PerPage,
 		Total:   total,
 	}, nil
+}
+
+// AdminAffiliatorsCSV exports the affiliators matching the list filters, capped
+// at affiliateAdminExportLimit rows. Status "all" means no status filter.
+func (s *Service) AdminAffiliatorsCSV(ctx context.Context, filter AffiliateAdminListFilter) ([]byte, error) {
+	if filter.Status == "all" {
+		filter.Status = ""
+	}
+	if filter.Status != "" && !slices.Contains(affiliateAdminStatuses, filter.Status) {
+		return nil, fmt.Errorf("%w: %s", ErrInvalidStatusFilter, filter.Status)
+	}
+	if filter.Level != "" && !affiliateValidLevel(filter.Level) {
+		return nil, fmt.Errorf("%w: %s", ErrAffiliateInvalidLevel, filter.Level)
+	}
+	rows, _, err := s.storeRepo.ListAffiliateAdmins(ctx, repository.AffiliateAdminFilter{
+		Status: filter.Status, Level: filter.Level, Query: filter.Query, Limit: affiliateAdminExportLimit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list affiliators for export: %w", err)
+	}
+	return buildAdminCSV(
+		[]string{"name", "email", "phone", "code", "status", "level", "joined_at"},
+		len(rows),
+		func(i int) []string {
+			row := rows[i]
+			return []string{
+				csvSafeField(row.Name),
+				csvSafeField(derefString(row.Email)),
+				csvSafeField(derefString(row.Phone)),
+				csvSafeField(row.Code),
+				row.Status,
+				row.Level,
+				row.CreatedAt.Format(time.RFC3339),
+			}
+		},
+	)
 }
 
 // DecideAffiliateApproval backs POST /admin/affiliates/:id/approval. Approval

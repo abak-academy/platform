@@ -162,7 +162,7 @@ export function useDecideAffiliatePayout() {
 
 // Downloads the CSV behind a queue, honouring the filters currently applied.
 export async function downloadAffiliateCsv(
-  kind: "payouts" | "commissions" | "report-orders",
+  kind: "payouts" | "commissions" | "report-orders" | "affiliators",
   params: AdminQueueParams = {},
   affiliatorId?: string,
 ): Promise<void> {
@@ -173,7 +173,9 @@ export async function downloadAffiliateCsv(
       ? `/admin/affiliates/${encodeURIComponent(affiliatorId ?? "")}/commissions/export`
       : kind === "report-orders"
         ? "/admin/affiliate-reports/orders/export"
-        : `/admin/affiliate-${kind}/export`;
+        : kind === "affiliators"
+          ? "/admin/affiliates/export"
+          : `/admin/affiliate-${kind}/export`;
   const res = await fetch(`${API_BASE}${path}${queueQuery({ ...params, page: undefined, per_page: undefined })}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

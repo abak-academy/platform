@@ -2,6 +2,7 @@
 
 import { Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Download, FileBarChart, Hourglass, Wallet, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -208,7 +209,7 @@ function OrdersTab() {
         </div>
       ),
     },
-    { key: "order", header: t("admin_aff_col_order"), cell: (r) => <code className="text-xs">#{r.order_id.slice(-8)}</code> },
+    { key: "order", header: t("admin_aff_col_order"), cell: (r) => <Link href={`/admin/orders?order=${r.order_id}`} className="font-mono text-xs text-brand-700 underline-offset-2 hover:underline">#{r.order_id.slice(-8)}</Link> },
     { key: "student", header: t("aff_col_student"), cell: (r) => r.student_name ?? "—" },
     { key: "product", header: t("aff_col_product_name"), cell: (r) => r.product_name ?? "—" },
     { key: "category", header: t("aff_col_product"), cell: (r) => affLabel(t, r.product_type) },

@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { HandCoins } from "lucide-react";
+import { Download, HandCoins } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
-import { useAdminAffiliates, useDecideAffiliateApproval } from "@/lib/hooks/admin-affiliates";
+import { downloadAffiliateCsv, useAdminAffiliates, useDecideAffiliateApproval } from "@/lib/hooks/admin-affiliates";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { useListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation } from "@/lib/i18n";
@@ -51,6 +51,14 @@ function AffiliatesContent() {
       { id: row.id, decision: "approve" },
       { onSuccess: () => toast.success(t("admin_aff_approved")), onError: fail },
     );
+
+  const exportCsv = async () => {
+    try {
+      await downloadAffiliateCsv("affiliators", { q: params.q, status: params.status, type: params.type });
+    } catch {
+      toast.error(t("admin_aff_export_failed"));
+    }
+  };
 
   const reopen = (row: AffiliateAdminRow) =>
     decide.mutate(
@@ -118,7 +126,11 @@ function AffiliatesContent() {
   return (
     <div className="space-y-4">
       <AdminPageHeader icon={HandCoins} title={t("admin_aff_title")} description={t("admin_aff_desc")} />
-      <div className="flex justify-end">
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={exportCsv}>
+          <Download className="size-4" aria-hidden />
+          {t("admin_aff_export_csv")}
+        </Button>
         <Button onClick={() => setAdding(true)}>{t("admin_aff_add")}</Button>
       </div>
       <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />

@@ -405,6 +405,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliates := admin.Group("/affiliates")
 	adminAffiliates.Use(handler.RBACMiddleware("affiliates:*"))
 	adminAffiliates.GET("", h.AdminListAffiliates)
+	adminAffiliates.GET("/export", h.AdminAffiliatorsExport)
 	adminAffiliates.POST("", h.AdminCreateAffiliator)
 	adminAffiliates.POST("/bulk", h.AdminBulkCreateAffiliators)
 	adminAffiliates.GET("/:id", h.AdminGetAffiliate)
