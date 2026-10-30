@@ -18,9 +18,24 @@ import (
 var (
 	ErrAffiliateProfileNotFound = errors.New("affiliator profile not found")
 	ErrAffiliateNotActive       = errors.New("affiliator account is not active")
+	ErrAffiliateProgramOff      = errors.New("affiliate program is switched off")
 )
 
 const affiliateReferralLinkPrefix = "/r/"
+
+// AffiliateProgramEnabled reports the program switch for the public status endpoint.
+func (s *Service) AffiliateProgramEnabled(ctx context.Context) bool {
+	return s.affiliateEnabled(ctx)
+}
+
+// requireAffiliateProgramOn refuses affiliator-initiated changes while the
+// program is switched off.
+func (s *Service) requireAffiliateProgramOn(ctx context.Context) error {
+	if !s.affiliateEnabled(ctx) {
+		return ErrAffiliateProgramOff
+	}
+	return nil
+}
 
 type AffiliateMeLevelProgress struct {
 	Quarter       string   `json:"quarter"`
@@ -35,6 +50,7 @@ type AffiliateMeProfile struct {
 	ReferralLink      string                    `json:"referral_link"`
 	Level             string                    `json:"level"`
 	Status            string                    `json:"status"`
+	ProgramEnabled    bool                      `json:"program_enabled"`
 	RejectionReason   *string                   `json:"rejection_reason,omitempty"`
 	WarnQuarters      int                       `json:"warn_quarters"`
 	BankName          *string                   `json:"bank_name"`
@@ -138,12 +154,10 @@ func affiliateStudentDisplayName(name string) string {
 }
 
 // affiliateMeAffiliator resolves the affiliators row behind the JWT user_id —
-// the privacy boundary for every /affiliates/me read (BR-PRV-01). Flag off or
-// no profile row is the same 404 sentinel so flag-off pages look absent.
+// the privacy boundary for every /affiliates/me read (BR-PRV-01). Reads keep
+// working while the program is switched off; the writes call
+// requireAffiliateProgramOn.
 func (s *Service) affiliateMeAffiliator(ctx context.Context, userID string) (*model.Affiliator, error) {
-	if !s.affiliateEnabled(ctx) {
-		return nil, ErrAffiliateProfileNotFound
-	}
 	aff, err := s.storeRepo.GetAffiliatorByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("get affiliator by user: %w", err)
@@ -161,7 +175,7 @@ func (s *Service) ListMyAffiliatePromos(ctx context.Context, userID string) ([]m
 	if err != nil {
 		return nil, err
 	}
-	if aff.Status != affiliateAffiliatorStatusActive {
+	if aff.Status != affiliateAffiliatorStatusActive || !s.affiliateEnabled(ctx) {
 		return []model.PromoCode{}, nil
 	}
 	return s.storeRepo.ListAffiliatorOnlyPromos(ctx)
@@ -181,6 +195,7 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 		ReferralLink:      referralLink,
 		Level:             aff.Level,
 		Status:            aff.Status,
+		ProgramEnabled:    s.affiliateEnabled(ctx),
 		RejectionReason:   aff.RejectionReason,
 		WarnQuarters:      aff.WarnQuarters,
 		BankName:          aff.BankName,
@@ -219,6 +234,9 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 }
 
 func (s *Service) UpdateMyAffiliateBank(ctx context.Context, userID string, bankName, bankAccountNumber, bankAccountHolder string) (AffiliateMeProfile, error) {
+	if err := s.requireAffiliateProgramOn(ctx); err != nil {
+		return AffiliateMeProfile{}, err
+	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return AffiliateMeProfile{}, err

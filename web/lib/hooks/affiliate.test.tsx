@@ -22,6 +22,7 @@ const profile: AffiliateProfile = {
   referral_link: "/r/BUDI10",
   level: "bronze",
   status: "active",
+  program_enabled: true,
   warn_quarters: 0,
   bank_name: null,
   bank_account_number: null,

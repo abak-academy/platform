@@ -16,6 +16,12 @@ vi.mock("@/lib/hooks/auth", () => ({
   useGoogleLogin: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
+const programStatus = vi.hoisted(() => ({ value: { enabled: true } as { enabled: boolean } | undefined }));
+
+vi.mock("@/lib/hooks/affiliate", () => ({
+  useAffiliateProgramStatus: () => ({ data: programStatus.value }),
+}));
+
 vi.mock("@/components/auth/GoogleSignInButton", () => ({
   GoogleSignInButton: ({ text }: { text: string }) => (
     <div data-testid="google-sign-in" data-text={text} />
@@ -39,6 +45,17 @@ describe("LoginPage", () => {
 
     fireEvent.click(affiliate);
     expect(pushMock).toHaveBeenCalledWith("/affiliate-register");
+  });
+
+  it("hides the affiliate sign-up link while the program is off or unknown", () => {
+    programStatus.value = { enabled: false };
+    const { rerender } = render(<LoginPage />);
+    expect(screen.queryByRole("button", { name: "Daftar sebagai affiliator" })).toBeNull();
+
+    programStatus.value = undefined;
+    rerender(<LoginPage />);
+    expect(screen.queryByRole("button", { name: "Daftar sebagai affiliator" })).toBeNull();
+    programStatus.value = { enabled: true };
   });
 
   // Google moved below the credential form (client, 2026-08-03): most sign-ins

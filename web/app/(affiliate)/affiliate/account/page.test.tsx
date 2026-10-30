@@ -72,4 +72,12 @@ describe("AffiliateAccountPage", () => {
     expect(screen.getByRole("button", { name: "Simpan rekening" })).toBeDisabled();
     expect(screen.getByText(/hanya bisa diubah saat akunmu aktif/)).toBeInTheDocument();
   });
+
+  it("locks the bank form and says why while the program is off", () => {
+    h.profile.mockReturnValue(profile({ program_enabled: false }));
+    render(<AffiliateAccountPage />);
+    expect(screen.getByLabelText("Nama bank")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Simpan rekening" })).toBeDisabled();
+    expect(screen.getByText(/program affiliator sedang dinonaktifkan/i)).toBeInTheDocument();
+  });
 });

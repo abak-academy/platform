@@ -51,6 +51,9 @@ func affiliateBankIncomplete(aff *model.Affiliator) bool {
 // the balance from the request on) and the audit row; the affiliator row is locked FOR UPDATE so two
 // concurrent requests cannot both pass the in-flight check.
 func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, amount *float64) (*model.AffiliatePayout, error) {
+	if err := s.requireAffiliateProgramOn(ctx); err != nil {
+		return nil, err
+	}
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {
 		return nil, err

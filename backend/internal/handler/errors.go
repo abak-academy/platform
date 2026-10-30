@@ -309,6 +309,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_cursor", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateNotFound), errors.Is(err, service.ErrAffiliateProfileNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "affiliate_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateProgramOff):
+		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_program_off", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateSelfAdjustment):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_self_adjustment", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateBankMissing):

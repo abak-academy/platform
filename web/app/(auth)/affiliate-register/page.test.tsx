@@ -15,6 +15,12 @@ vi.mock("@/lib/hooks/auth", () => ({
   useRegisterAffiliator: () => ({ mutateAsync: registerMock, isPending: false }),
 }));
 
+const programStatus = vi.hoisted(() => ({ value: { enabled: true } as { enabled: boolean } | undefined }));
+
+vi.mock("@/lib/hooks/affiliate", () => ({
+  useAffiliateProgramStatus: () => ({ data: programStatus.value }),
+}));
+
 const toastError = vi.hoisted(() => vi.fn());
 
 vi.mock("sonner", () => ({
@@ -92,6 +98,16 @@ describe("AffiliateRegisterPage", () => {
       terms_version: AFFILIATE_TERMS_VERSION,
     });
     expect(sessionStorage.getItem("abak-pending-token")).toBe("tok");
+  });
+
+  it("shows a closed notice instead of the form while the program is off", () => {
+    programStatus.value = { enabled: false };
+    render(<AffiliateRegisterPage />);
+
+    expect(screen.getByText(/pendaftaran affiliator sedang ditutup/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Nama Lengkap")).toBeNull();
+    expect(screen.getByRole("link", { name: "Kembali ke halaman masuk" })).toHaveAttribute("href", "/login");
+    programStatus.value = { enabled: true };
   });
 
   it("stays on the form when registration is closed", async () => {

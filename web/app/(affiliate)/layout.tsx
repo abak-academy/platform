@@ -6,6 +6,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { AppShell } from "@/components/shell/AppShell";
+import { ProgramOffBanner } from "@/components/affiliate/ProgramOffBanner";
 import "../(admin)/admin-theme.css";
 
 export default function AffiliateLayout({ children }: { children: React.ReactNode }) {
@@ -32,5 +33,10 @@ export default function AffiliateLayout({ children }: { children: React.ReactNod
     );
   }
 
-  return <AppShell role="affiliator">{children}</AppShell>;
+  return (
+    <AppShell role="affiliator">
+      <ProgramOffBanner />
+      {children}
+    </AppShell>
+  );
 }

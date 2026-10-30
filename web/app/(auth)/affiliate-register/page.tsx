@@ -7,6 +7,7 @@ import { User, Mail, Phone, Lock, Eye, EyeOff, CheckCircle2, Loader2 } from "luc
 import { toast } from "sonner";
 
 import { useRegisterAffiliator } from "@/lib/hooks/auth";
+import { useAffiliateProgramStatus } from "@/lib/hooks/affiliate";
 import { ApiError } from "@/lib/api";
 import { AFFILIATE_TERMS_VERSION } from "@/lib/affiliate-terms";
 import { adoptResendBudget } from "@/lib/otp-budget";
@@ -27,6 +28,7 @@ export default function AffiliateRegisterPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const register = useRegisterAffiliator();
+  const programStatus = useAffiliateProgramStatus();
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [phone, setPhone] = React.useState("");
@@ -99,6 +101,18 @@ export default function AffiliateRegisterPage() {
       {error && <div className="mt-1 text-[11.5px] text-danger">{error}</div>}
     </div>
   );
+
+  if (programStatus.data?.enabled === false) {
+    return (
+      <div className="w-full max-w-[372px]" role="status">
+        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">{t("aff_reg_title")}</h2>
+        <p className="mt-3 text-[13.5px] leading-[1.55] text-ink-600">{t("aff_register_closed")}</p>
+        <Link href="/login" className="mt-5 inline-block text-sm font-bold text-success hover:text-success/80">
+          {t("aff_register_closed_back")}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-[372px]">

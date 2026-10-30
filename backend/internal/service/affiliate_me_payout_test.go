@@ -242,15 +242,17 @@ func TestListMyAffiliatePayouts_newestFirstWithSchedule(t *testing.T) {
 	require.Len(t, paged.Data, 1)
 }
 
-func TestListMyAffiliatePayouts_flagOffReturnsSentinel(t *testing.T) {
+func TestListMyAffiliatePayouts_flagOffStillReadable(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateMeFlag(t, repo, "false")
 
-	userID, _ := seedAffiliateMeAffiliator(t, repo, "Affiliator PayFlagOff "+uniqueSuffix(), "active", "bronze")
+	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator PayFlagOff "+uniqueSuffix(), "active", "bronze")
+	seedAffiliateMePayoutRow(t, repo, aff.ID, "paid", 50000, time.Now().UTC())
 
-	_, err := svc.ListMyAffiliatePayouts(ctx, userID, AffiliateMeListFilter{Page: 1, PerPage: 20})
-	require.ErrorIs(t, err, ErrAffiliateProfileNotFound)
+	page, err := svc.ListMyAffiliatePayouts(ctx, userID, AffiliateMeListFilter{Page: 1, PerPage: 20})
+	require.NoError(t, err)
+	require.Equal(t, 1, page.Total)
 }
 
 func TestListMyAffiliateAdjustments_listsOwnPostedRows(t *testing.T) {

@@ -63,6 +63,7 @@ func newAffiliatePublicEnv(t *testing.T) *affiliatePublicEnv {
 	e.HideBanner = true
 	v1 := e.Group("/api/v1")
 	v1.GET("/affiliates/public/validate", h.AffiliateValidateCode)
+	v1.GET("/affiliates/public/status", h.AffiliateProgramStatus)
 	v1.GET("/affiliates/public/validate-limited", h.AffiliateValidateCode, handler.AffiliateRateLimiter())
 
 	t.Cleanup(pool.Close)
@@ -191,5 +192,33 @@ func TestAffiliateRateLimiter_returns429(t *testing.T) {
 	}
 	if body["code"] != "rate_limited" {
 		t.Errorf("code = %q, want rate_limited", body["code"])
+	}
+}
+
+func TestAffiliateProgramStatusHandler(t *testing.T) {
+	for _, tt := range []struct {
+		flag string
+		want bool
+	}{{"true", true}, {"false", false}} {
+		t.Run("flag "+tt.flag, func(t *testing.T) {
+			env := newAffiliatePublicEnv(t)
+			setAffiliateFlag(t, env.pool, tt.flag)
+
+			rec := httptest.NewRecorder()
+			env.e.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/affiliates/public/status", nil))
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+			var body struct {
+				Enabled bool `json:"enabled"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("unmarshal %q: %v", rec.Body.String(), err)
+			}
+			if body.Enabled != tt.want {
+				t.Errorf("enabled = %v, want %v", body.Enabled, tt.want)
+			}
+		})
 	}
 }

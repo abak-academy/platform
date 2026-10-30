@@ -29,6 +29,7 @@ vi.mock("sonner", () => ({ toast: h.toast }));
 
 const profile = {
   status: "active",
+  program_enabled: true,
   bank_name: "BCA",
   bank_account_number: "1234567890",
   bank_account_holder: "Budi",
@@ -82,6 +83,13 @@ describe("AffiliateWalletPage", () => {
     render(<WalletPage />);
     expect(screen.getByRole("button", { name: "Ajukan penarikan" })).toBeDisabled();
     expect(screen.getByRole("note")).toHaveTextContent("Akunmu belum aktif");
+  });
+
+  it("blocks the request with the program-off reason even when everything else is fine", () => {
+    h.me.mockReturnValue({ data: { ...profile, program_enabled: false } });
+    render(<WalletPage />);
+    expect(screen.getByRole("button", { name: "Ajukan penarikan" })).toBeDisabled();
+    expect(screen.getByRole("note")).toHaveTextContent("Program affiliator sedang dinonaktifkan");
   });
 
   it("requests the whole balance when the amount is empty and an explicit amount otherwise", () => {

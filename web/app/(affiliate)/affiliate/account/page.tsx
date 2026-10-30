@@ -32,7 +32,8 @@ export default function AffiliateAccountPage() {
     setBankHolder(profile.data.bank_account_holder ?? "");
   }, [profile.data]);
 
-  const canEditBank = profile.data?.status === "active";
+  const programOn = profile.data?.program_enabled !== false;
+  const canEditBank = profile.data?.status === "active" && programOn;
 
   const onSaveBank = (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,7 +93,9 @@ export default function AffiliateAccountPage() {
           <h2 className="font-semibold text-ink-900">{t("aff_bank_title")}</h2>
           <p className="text-sm text-ink-600">{t("aff_acc_bank_desc")}</p>
         </div>
-        {p && !canEditBank && <p className="text-sm text-warn">{t("aff_acc_bank_locked")}</p>}
+        {p && !canEditBank && (
+          <p className="text-sm text-warn">{programOn ? t("aff_acc_bank_locked") : t("aff_account_program_off")}</p>
+        )}
         <form onSubmit={onSaveBank} className="grid gap-3 sm:grid-cols-3">
           <div>
             <Label htmlFor="bank_name">{t("aff_bank_name")}</Label>

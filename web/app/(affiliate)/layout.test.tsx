@@ -16,8 +16,13 @@ vi.mock("@/components/shell/AppShell", () => ({
   ),
 }));
 
+const meState = vi.hoisted(() => ({ value: { program_enabled: true } as { program_enabled: boolean } | undefined }));
 let token: string | null = null;
 let roleState = { role: undefined as string | undefined, hydrated: true, meIsError: false };
+
+vi.mock("@/lib/hooks/affiliate", () => ({
+  useAffiliateMe: () => ({ data: meState.value }),
+}));
 
 vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: { token: string | null }) => unknown) => selector({ token }),
@@ -44,6 +49,20 @@ describe("AffiliateLayout", () => {
     roleState = { role: "affiliator", hydrated: true, meIsError: false };
     const { getByTestId } = render(<AffiliateLayout>portal</AffiliateLayout>);
     await waitFor(() => expect(getByTestId("shell")).toHaveAttribute("data-role", "affiliator"));
+  });
+
+  it("tells the affiliator on every menu that the program is off, and only then", async () => {
+    token = "t";
+    roleState = { role: "affiliator", hydrated: true, meIsError: false };
+    meState.value = { program_enabled: false };
+    const off = render(<AffiliateLayout>portal</AffiliateLayout>);
+    await waitFor(() => expect(off.getByRole("status")).toHaveTextContent(/sedang dinonaktifkan/i));
+    off.unmount();
+
+    meState.value = { program_enabled: true };
+    const on = render(<AffiliateLayout>portal</AffiliateLayout>);
+    await waitFor(() => expect(on.getByTestId("shell")).toBeInTheDocument());
+    expect(on.queryByRole("status")).toBeNull();
   });
 
   it("sends a student back to their own home and renders nothing of the portal", async () => {

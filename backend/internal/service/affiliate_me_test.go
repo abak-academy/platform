@@ -245,15 +245,33 @@ func TestGetMyAffiliateProfile_missingProfileReturnsSentinel(t *testing.T) {
 	require.ErrorIs(t, err, ErrAffiliateProfileNotFound)
 }
 
-func TestGetMyAffiliateProfile_flagOffReturnsSentinel(t *testing.T) {
+func TestGetMyAffiliateProfile_flagOffStillReadableAndSaysSo(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	setAffiliateMeFlag(t, repo, "false")
 
-	userID, _ := seedAffiliateMeAffiliator(t, repo, "Affiliator FlagOff "+uniqueSuffix(), "active", "bronze")
+	userID, aff := seedAffiliateMeAffiliator(t, repo, "Affiliator FlagOff "+uniqueSuffix(), "active", "bronze")
 
-	_, err := svc.GetMyAffiliateProfile(ctx, userID)
-	require.ErrorIs(t, err, ErrAffiliateProfileNotFound)
+	profile, err := svc.GetMyAffiliateProfile(ctx, userID)
+	require.NoError(t, err)
+	require.False(t, profile.ProgramEnabled)
+	require.Equal(t, aff.Code, profile.Code)
+}
+
+func TestMyAffiliateWrites_flagOffRefused(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	setAffiliateMeFlag(t, repo, "false")
+
+	userID, _ := seedAffiliateMeAffiliator(t, repo, "Affiliator FlagOffW "+uniqueSuffix(), "active", "bronze")
+
+	_, err := svc.UpdateMyAffiliateBank(ctx, userID, "BCA", "1234567890", "Budi")
+	require.ErrorIs(t, err, ErrAffiliateProgramOff)
+	_, err = svc.RequestMyAffiliatePayout(ctx, userID, nil)
+	require.ErrorIs(t, err, ErrAffiliateProgramOff)
+	promos, err := svc.ListMyAffiliatePromos(ctx, userID)
+	require.NoError(t, err)
+	require.Empty(t, promos)
 }
 
 func TestUpdateMyAffiliateBank_persistsAndAudits(t *testing.T) {

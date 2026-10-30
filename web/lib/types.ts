@@ -1548,6 +1548,8 @@ export interface AffiliateProfile {
   referral_link: string;
   level: string;
   status: string;
+  /** False while the admin has switched the affiliate program off: the portal is read-only. */
+  program_enabled: boolean;
   rejection_reason?: string;
   warn_quarters: number;
   bank_name: string | null;

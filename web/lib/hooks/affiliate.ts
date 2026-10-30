@@ -146,6 +146,14 @@ export function useValidateAffiliateCode() {
   });
 }
 
+export function useAffiliateProgramStatus() {
+  return useQuery({
+    queryKey: [...affiliateKeys.all, "program-status"],
+    queryFn: () => apiFetch<{ enabled: boolean }>("/affiliates/public/status"),
+    staleTime: 60_000,
+  });
+}
+
 export function useAffiliatePromos() {
   return useQuery({
     queryKey: [...affiliateKeys.all, "promos"],

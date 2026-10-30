@@ -387,6 +387,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	affiliates := v1.Group("/affiliates")
 	affiliates.GET("/public/validate", h.AffiliateValidateCode, handler.AffiliateRateLimiter())
+	affiliates.GET("/public/status", h.AffiliateProgramStatus, handler.AffiliateRateLimiter())
 
 	affiliatesMe := v1.Group("/affiliates/me")
 	affiliatesMe.Use(handler.JWTMiddleware(svc, jwtSigner))

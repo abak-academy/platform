@@ -62,7 +62,8 @@ function WalletContent() {
   const bankReady = Boolean(profile?.bank_name && profile.bank_account_number && profile.bank_account_holder);
 
   let blocked: React.ReactNode = null;
-  if (profile && profile.status !== "active") blocked = t("aff_wallet_block_inactive");
+  if (profile && !profile.program_enabled) blocked = t("aff_wallet_block_program_off");
+  else if (profile && profile.status !== "active") blocked = t("aff_wallet_block_inactive");
   else if (profile && !bankReady) {
     blocked = (
       <>

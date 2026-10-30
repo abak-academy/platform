@@ -19,6 +19,12 @@ func (h *Handler) AffiliateValidateCode(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+// AffiliateProgramStatus backs GET /api/v1/affiliates/public/status: whether
+// sign-up and referral links are currently open, so the web can hide them.
+func (h *Handler) AffiliateProgramStatus(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]bool{"enabled": h.svc.AffiliateProgramEnabled(c.Request().Context())})
+}
+
 // AffiliateRateLimiter mirrors LoginRateLimiter for the public affiliate
 // surfaces; its constants stay matched to LoginRateLimiter's.
 func AffiliateRateLimiter() echo.MiddlewareFunc {
