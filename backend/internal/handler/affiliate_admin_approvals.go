@@ -54,8 +54,8 @@ func (h *Handler) AdminDecideAffiliateApproval(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	if req.Decision != "approve" && req.Decision != "reject" {
-		return badRequest(c, "decision must be approve or reject")
+	if req.Decision != "approve" && req.Decision != "reject" && req.Decision != "reopen" {
+		return badRequest(c, "decision must be approve, reject or reopen")
 	}
 	claims := claimsFromContext(c)
 	aff, err := h.svc.DecideAffiliateApproval(c.Request().Context(), claims.Sub, c.Param("id"), req.Decision, req.Reason)
@@ -94,4 +94,35 @@ func (h *Handler) AdminChangeAffiliateLevel(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, aff)
+}
+
+// AdminCreateAffiliator backs POST /admin/affiliates: one affiliator added by an admin.
+func (h *Handler) AdminCreateAffiliator(c echo.Context) error {
+	var req service.AdminCreateAffiliatorInput
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims := claimsFromContext(c)
+	created, err := h.svc.AdminCreateAffiliator(c.Request().Context(), claims.Sub, req)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, created)
+}
+
+// AdminBulkCreateAffiliators backs POST /admin/affiliates/bulk: the parsed rows
+// of an upload, each created independently.
+func (h *Handler) AdminBulkCreateAffiliators(c echo.Context) error {
+	var req struct {
+		Rows []service.AdminCreateAffiliatorInput `json:"rows"`
+	}
+	if err := c.Bind(&req); err != nil || len(req.Rows) == 0 {
+		return badRequest(c, "rows is required")
+	}
+	claims := claimsFromContext(c)
+	results, err := h.svc.AdminBulkCreateAffiliators(c.Request().Context(), claims.Sub, req.Rows)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": results})
 }

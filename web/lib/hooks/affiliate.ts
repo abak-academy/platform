@@ -3,6 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch, authFetch } from "@/lib/api";
 import type {
+  AffiliatePromo,
   AffiliateAdjustmentPage,
   AffiliateBindingPage,
   AffiliateCommissionPage,
@@ -142,5 +143,12 @@ export function useValidateAffiliateCode() {
   return useMutation({
     mutationFn: (code: string) =>
       apiFetch<AffiliateValidation>(`/affiliates/public/validate?code=${encodeURIComponent(code)}`),
+  });
+}
+
+export function useAffiliatePromos() {
+  return useQuery({
+    queryKey: [...affiliateKeys.all, "promos"],
+    queryFn: () => authFetch<{ data: AffiliatePromo[] }>("/affiliates/me/promos"),
   });
 }

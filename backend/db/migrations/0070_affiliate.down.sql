@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS affiliate_bindings;
 DROP TABLE IF EXISTS affiliators;
 
 ALTER TABLE product DROP COLUMN IF EXISTS affiliate_commission;
+ALTER TABLE promo_code DROP COLUMN IF EXISTS affiliator_only;
 ALTER TABLE orders DROP COLUMN IF EXISTS affiliate_code;
 
 DELETE FROM users WHERE role = 'affiliator';

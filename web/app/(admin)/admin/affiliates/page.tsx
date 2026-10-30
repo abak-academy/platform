@@ -9,6 +9,8 @@ import { NoAccess } from "@/components/admin/NoAccess";
 import { AffiliateList } from "@/components/affiliate/AffiliateList";
 import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
+import { AddAffiliatorDialog } from "@/components/affiliate/AddAffiliatorDialog";
+import { LevelBadge } from "@/components/affiliate/LevelBadge";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
@@ -36,6 +38,7 @@ function AffiliatesContent() {
   const canManage = useHasCapability("affiliates:*");
   const { params, update, reset, hasFilters } = useListParams();
   const [rejecting, setRejecting] = useState<AffiliateAdminRow | null>(null);
+  const [adding, setAdding] = useState(false);
   const query = useAdminAffiliates({ status: params.status, level: params.type, q: params.q, page: params.page, per_page: params.per_page });
   const decide = useDecideAffiliateApproval();
 
@@ -47,6 +50,12 @@ function AffiliatesContent() {
     decide.mutate(
       { id: row.id, decision: "approve" },
       { onSuccess: () => toast.success(t("admin_aff_approved")), onError: fail },
+    );
+
+  const reopen = (row: AffiliateAdminRow) =>
+    decide.mutate(
+      { id: row.id, decision: "reopen" },
+      { onSuccess: () => toast.success(t("admin_aff_reopened")), onError: fail },
     );
 
   const reject = (reason: string) => {
@@ -76,7 +85,7 @@ function AffiliatesContent() {
     },
     { key: "code", header: t("admin_aff_col_code"), cell: (r) => r.code || "—" },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
-    { key: "level", header: t("admin_aff_col_level"), cell: (r) => affLabel(t, r.level) },
+    { key: "level", header: t("admin_aff_col_level"), cell: (r) => <LevelBadge level={r.level} /> },
     { key: "joined", header: t("admin_aff_col_joined"), cell: (r) => formatAffDate(r.created_at) },
     {
       key: "actions",
@@ -93,6 +102,11 @@ function AffiliatesContent() {
               </Button>
             </>
           )}
+          {r.status === "rejected" && (
+            <Button size="sm" variant="outline" onClick={() => reopen(r)} disabled={decide.isPending}>
+              {t("admin_aff_reopen")}
+            </Button>
+          )}
           <Button size="sm" variant="ghost" asChild>
             <Link href={`/admin/affiliates/${r.id}`}>{t("admin_aff_view")}</Link>
           </Button>
@@ -104,6 +118,10 @@ function AffiliatesContent() {
   return (
     <div className="space-y-4">
       <AdminPageHeader icon={HandCoins} title={t("admin_aff_title")} description={t("admin_aff_desc")} />
+      <div className="flex justify-end">
+        <Button onClick={() => setAdding(true)}>{t("admin_aff_add")}</Button>
+      </div>
+      <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />
       <ListToolbar
         params={params}
         onChange={update}

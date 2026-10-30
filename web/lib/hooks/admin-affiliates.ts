@@ -6,6 +6,9 @@ import type {
   AffiliateCommissionRuleType,
   AffiliateAdminDetail,
   AffiliateAdminListPage,
+  AffiliateBulkResult,
+  AffiliateCreateInput,
+  AffiliateCreated,
   AffiliateAdminPayout,
   AffiliateAdminPayoutPage,
   AffiliateAdjustment,
@@ -103,7 +106,7 @@ function useAffiliateAction<TInput, TResult = unknown>(path: (input: TInput) => 
 }
 
 export function useDecideAffiliateApproval() {
-  return useAffiliateAction<{ id: string; decision: "approve" | "reject"; reason?: string }>(
+  return useAffiliateAction<{ id: string; decision: "approve" | "reject" | "reopen"; reason?: string }>(
     ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/approval`,
     ({ decision, reason }) => post({ decision, reason: reason ?? "" }),
   );
@@ -311,4 +314,15 @@ export function useRunAffiliateJob() {
       qc.invalidateQueries({ queryKey: adminAffiliateKeys.all });
     },
   });
+}
+
+export function useCreateAffiliator() {
+  return useAffiliateAction<AffiliateCreateInput, AffiliateCreated>(() => "/admin/affiliates", (input) => post(input));
+}
+
+export function useBulkCreateAffiliators() {
+  return useAffiliateAction<AffiliateCreateInput[], { data: AffiliateBulkResult[] }>(
+    () => "/admin/affiliates/bulk",
+    (rows) => post({ rows }),
+  );
 }

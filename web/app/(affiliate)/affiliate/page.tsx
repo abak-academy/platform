@@ -7,6 +7,8 @@ import { DashboardHero } from "@/components/admin/DashboardHero";
 import { PeriodBar, presetRange, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
 import { QuickActionTiles } from "@/components/admin/QuickActionTiles";
 import { StatCard } from "@/components/admin/StatCard";
+import { AffiliatePromos } from "@/components/affiliate/AffiliatePromos";
+import { LevelBadge } from "@/components/affiliate/LevelBadge";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -116,6 +118,7 @@ export default function AffiliateDashboardPage() {
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="font-semibold text-ink-900">{t("aff_dash_link_section")}</h2>
           <StatusBadge status={profile.status} />
+          <LevelBadge level={profile.level} />
         </div>
         <div>
           <div className="text-xs text-ink-500">{t("aff_dash_code")}</div>
@@ -155,10 +158,12 @@ export default function AffiliateDashboardPage() {
         </div>
       )}
 
+      {active && <AffiliatePromos />}
+
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="md-card-outlined space-y-1 p-5 text-sm text-ink-700">
           <div className="text-xs text-ink-500">{t("aff_dash_level")}</div>
-          <div className="font-serif text-xl font-bold text-ink-900">{affLabel(t, profile.level)}</div>
+          <div><LevelBadge level={profile.level} /></div>
           {progress && (
             <>
               <p>

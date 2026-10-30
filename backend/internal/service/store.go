@@ -2101,15 +2101,21 @@ func (s *Service) AdminListPromoCodes(ctx context.Context) ([]model.PromoCode, e
 }
 
 func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
+	if p.AffiliatorOnly {
+		p.IsPublic = false
+	}
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic bool) error {
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic)
+	if affiliatorOnly {
+		isPublic = false
+	}
+	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic, affiliatorOnly)
 }
 
 // ListActivePublicPromos returns is_public promo codes that are still valid

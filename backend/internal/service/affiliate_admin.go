@@ -20,7 +20,7 @@ import (
 // affiliate_admin_money.go and reports an unknown affiliator here too.
 var (
 	ErrAffiliateNotPending              = errors.New("affiliator is not awaiting approval")
-	ErrAffiliateInvalidDecision         = errors.New("decision must be approve or reject")
+	ErrAffiliateInvalidDecision         = errors.New("decision must be approve, reject or reopen")
 	ErrAffiliateRejectReasonRequired    = errors.New("reason is required to reject an affiliator")
 	ErrAffiliateInvalidStatus           = errors.New("invalid affiliator status")
 	ErrAffiliateReasonRequired          = errors.New("reason is required")
@@ -140,7 +140,7 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 	if err != nil {
 		return nil, ErrInvalidUUID
 	}
-	if decision != "approve" && decision != "reject" {
+	if decision != "approve" && decision != "reject" && decision != "reopen" {
 		return nil, fmt.Errorf("%w: %s", ErrAffiliateInvalidDecision, decision)
 	}
 	aff, err := s.storeRepo.GetAffiliatorByID(ctx, nil, affID)
@@ -150,7 +150,11 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 	if aff == nil {
 		return nil, ErrAffiliateNotFound
 	}
-	if aff.Status != "pending_approval" {
+	if decision == "reopen" {
+		if aff.Status != "rejected" {
+			return nil, fmt.Errorf("%w: status %s", ErrAffiliateInvalidTransition, aff.Status)
+		}
+	} else if aff.Status != "pending_approval" {
 		return nil, fmt.Errorf("%w: status %s", ErrAffiliateNotPending, aff.Status)
 	}
 
@@ -175,6 +179,14 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 			return nil, ErrAffiliateNotPending
 		}
 		meta["code"] = code
+	case "reopen":
+		reopened, err := s.storeRepo.ReopenRejectedAffiliatorTx(ctx, tx, affID)
+		if err != nil {
+			return nil, fmt.Errorf("reopen affiliator: %w", err)
+		}
+		if !reopened {
+			return nil, ErrAffiliateInvalidTransition
+		}
 	case "reject":
 		if strings.TrimSpace(reason) == "" {
 			return nil, ErrAffiliateRejectReasonRequired

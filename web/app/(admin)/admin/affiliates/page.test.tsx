@@ -20,6 +20,8 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useAdminAffiliates: h.list,
   useDecideAffiliateApproval: () => ({ mutate: h.decide, isPending: false }),
+  useCreateAffiliator: () => ({ mutate: vi.fn(), isPending: false }),
+  useBulkCreateAffiliators: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock("@/lib/hooks/use-capability", () => ({
@@ -66,6 +68,28 @@ describe("AdminAffiliatesPage", () => {
     expect(screen.getAllByRole("button", { name: "Setujui" })).toHaveLength(1);
     expect(screen.getAllByRole("button", { name: "Tolak" })).toHaveLength(1);
     expect(screen.getAllByRole("link", { name: "Detail" })).toHaveLength(2);
+  });
+
+  it("lets an admin reopen a rejected application", () => {
+    h.list.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { data: [{ ...pending, id: "a3", status: "rejected" }], page: 1, per_page: 20, total: 1 },
+    });
+    render(<AdminAffiliatesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Buka kembali" }));
+
+    expect(h.decide).toHaveBeenCalledWith({ id: "a3", decision: "reopen" }, expect.anything());
+  });
+
+  it("opens the add-affiliator dialog with single and CSV modes", async () => {
+    render(<AdminAffiliatesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tambah affiliator" }));
+
+    expect(await screen.findByLabelText("Nomor telepon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Unggah CSV" })).toBeInTheDocument();
   });
 
   it("approves without a reason", () => {

@@ -403,6 +403,8 @@ export interface PromoCode {
   created_at?: string;
   /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
   is_public?: boolean;
+  /** Listed only on the affiliator dashboard; hidden from the student listing. */
+  affiliator_only?: boolean;
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -414,12 +416,14 @@ export interface AdminCreatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
   is_public?: boolean;
+  affiliator_only?: boolean;
 }
 
 export interface AdminUpdatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
   is_public?: boolean;
+  affiliator_only?: boolean;
 }
 
 // GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
@@ -1825,4 +1829,38 @@ export interface AffiliateOverrideProduct {
 export interface AffiliateReportOrder extends AffiliateCommission {
   affiliator_name: string;
   affiliator_code: string;
+}
+
+export interface AffiliatePromo {
+  id: string;
+  code: string;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  min_order_amount: number | null;
+  max_discount_amount: number | null;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+}
+
+export interface AffiliateCreateInput {
+  name: string;
+  email: string;
+  phone: string;
+}
+
+export interface AffiliateCreated {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  code: string;
+  temp_password: string;
+}
+
+export interface AffiliateBulkResult {
+  row: number;
+  email: string;
+  created?: AffiliateCreated;
+  error?: string;
 }

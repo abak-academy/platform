@@ -154,6 +154,19 @@ func (s *Service) affiliateMeAffiliator(ctx context.Context, userID string) (*mo
 	return aff, nil
 }
 
+// ListMyAffiliatePromos lists the still-valid promo codes meant for affiliators
+// to share with their students. Only an active affiliator sees them.
+func (s *Service) ListMyAffiliatePromos(ctx context.Context, userID string) ([]model.PromoCode, error) {
+	aff, err := s.affiliateMeAffiliator(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if aff.Status != affiliateAffiliatorStatusActive {
+		return []model.PromoCode{}, nil
+	}
+	return s.storeRepo.ListAffiliatorOnlyPromos(ctx)
+}
+
 func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (AffiliateMeProfile, error) {
 	aff, err := s.affiliateMeAffiliator(ctx, userID)
 	if err != nil {

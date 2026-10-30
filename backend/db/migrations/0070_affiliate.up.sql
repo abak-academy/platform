@@ -6,6 +6,8 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS affiliate_code TEXT;
 
 ALTER TABLE product ADD COLUMN IF NOT EXISTS affiliate_commission JSONB;
 
+ALTER TABLE promo_code ADD COLUMN IF NOT EXISTS affiliator_only BOOLEAN NOT NULL DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS affiliators (
     user_id                UUID PRIMARY KEY REFERENCES users (id),
     referral_code          TEXT UNIQUE,

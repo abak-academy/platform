@@ -112,6 +112,19 @@ func (h *Handler) AffiliateMeStats(c echo.Context) error {
 	return c.JSON(http.StatusOK, stats)
 }
 
+// AffiliateMePromos backs GET /affiliates/me/promos.
+func (h *Handler) AffiliateMePromos(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	promos, err := h.svc.ListMyAffiliatePromos(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": promos})
+}
+
 // affiliateMePayoutRequest is the body only POST /affiliates/me/payouts reads;
 // an empty body defaults the amount to the full available saldo.
 type affiliateMePayoutRequest struct {
