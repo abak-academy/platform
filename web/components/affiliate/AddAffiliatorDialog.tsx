@@ -7,6 +7,7 @@ import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import {
@@ -154,14 +155,23 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
               (["name", "email", "phone", "password"] as const).map((key) => (
                 <div key={key} className="space-y-1">
                   <Label htmlFor={`aff-add-${key}`}>{t(`admin_aff_add_${key}` as Parameters<typeof t>[0])}</Label>
-                  <Input
-                    id={`aff-add-${key}`}
-                    type={key === "email" ? "email" : key === "phone" ? "tel" : key === "password" ? "password" : "text"}
-                    autoComplete={key === "password" ? "new-password" : undefined}
-                    value={form[key] ?? ""}
-                    onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                    disabled={pending}
-                  />
+                  {key === "password" ? (
+                    <PasswordInput
+                      id="aff-add-password"
+                      autoComplete="new-password"
+                      value={form.password ?? ""}
+                      onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      disabled={pending}
+                    />
+                  ) : (
+                    <Input
+                      id={`aff-add-${key}`}
+                      type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
+                      value={form[key] ?? ""}
+                      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+                      disabled={pending}
+                    />
+                  )}
                   {key === "password" && <p className="text-xs text-ink-500">{t("admin_aff_add_password_hint")}</p>}
                 </div>
               ))
@@ -203,9 +213,8 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="aff-add-default-password">{t("admin_aff_add_default_password")}</Label>
-                    <Input
+                    <PasswordInput
                       id="aff-add-default-password"
-                      type="password"
                       autoComplete="new-password"
                       value={defaultPassword}
                       onChange={(e) => setDefaultPassword(e.target.value)}

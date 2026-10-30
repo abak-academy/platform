@@ -39,7 +39,21 @@ describe("AddAffiliatorDialog", () => {
   it("lets the admin set a password for a single account", () => {
     render(<AddAffiliatorDialog open onOpenChange={() => {}} />);
 
-    expect(screen.getByLabelText("Password (opsional)")).toBeInTheDocument();
+    const input = screen.getByLabelText("Password (opsional)");
+    expect(input).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Tampilkan kata sandi" }));
+    expect(input).toHaveAttribute("type", "text");
+  });
+
+  it("has the same eye toggle on the default password in bulk mode", () => {
+    render(<AddAffiliatorDialog open onOpenChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Unggah CSV" }));
+
+    const input = screen.getByLabelText("Password default (opsional)");
+    fireEvent.click(screen.getByRole("button", { name: "Tampilkan kata sandi" }));
+
+    expect(input).toHaveAttribute("type", "text");
   });
 
   it("processes the CSV only after the upload button, filling empty passwords with the default", async () => {
