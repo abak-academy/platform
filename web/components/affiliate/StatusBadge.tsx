@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { affLabel } from "@/lib/affiliate-labels";
 import { useTranslation } from "@/lib/i18n";
 
-const TONE: Record<string, string> = {
+export const STATUS_TONE: Record<string, string> = {
   paid: "bg-success/15 text-success",
   available: "bg-success/15 text-success",
   active: "bg-success/15 text-success",
@@ -21,7 +21,7 @@ const TONE: Record<string, string> = {
 export function StatusBadge({ status }: { status: string }) {
   const { t } = useTranslation();
   return (
-    <Badge variant="secondary" className={TONE[status] ?? "bg-surface-2 text-ink-600"}>
+    <Badge variant="secondary" className={STATUS_TONE[status] ?? "bg-surface-2 text-ink-600"}>
       {affLabel(t, status)}
     </Badge>
   );

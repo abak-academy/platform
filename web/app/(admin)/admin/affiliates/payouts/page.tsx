@@ -127,6 +127,12 @@ function PayoutsContent() {
         title={t("admin_aff_pay_title")}
         description={t("admin_aff_pay_desc")}
       />
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={exportCsv}>
+          <Download className="size-4" aria-hidden />
+          {t("admin_aff_export_csv")}
+        </Button>
+      </div>
       <ListToolbar
         params={params}
         onChange={update}
@@ -135,12 +141,6 @@ function PayoutsContent() {
         filters={[{ key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
         dateLabel={t("admin_aff_date_requested")}
       />
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={exportCsv}>
-          <Download className="size-4" aria-hidden />
-          {t("admin_aff_export_csv")}
-        </Button>
-      </div>
       <AffiliateList
         query={query}
         columns={columns}

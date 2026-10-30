@@ -90,7 +90,9 @@ describe("AdminAffiliateDetailPage", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Penyesuaian saldo" }));
-    fireEvent.change(await screen.findByLabelText(/Jumlah/), { target: { value: "-20000" } });
+    fireEvent.click(await screen.findByRole("radio", { name: "Pengurangan" }));
+    fireEvent.change(screen.getByLabelText(/Jumlah/), { target: { value: "-2a0.000" } });
+    expect(screen.getByLabelText(/Jumlah/)).toHaveValue("20000");
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
     expect(h.adjust).not.toHaveBeenCalled();
     expect(h.toast.error).toHaveBeenCalledWith("Alasan wajib diisi");
@@ -110,7 +112,7 @@ describe("AdminAffiliateDetailPage", () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole("button", { name: "Ubah status" }));
-    fireEvent.change(await screen.findByLabelText("Status baru"), { target: { value: "suspended" } });
+    fireEvent.click(await screen.findByRole("radio", { name: "Ditangguhkan" }));
     expect(screen.queryByLabelText("Lama (hari)")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
 
@@ -128,7 +130,7 @@ describe("AdminAffiliateDetailPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Ubah level" }));
     expect(screen.queryByLabelText(/Kunci/)).toBeNull();
-    fireEvent.change(await screen.findByLabelText("Level"), { target: { value: "gold" } });
+    fireEvent.click(await screen.findByRole("radio", { name: "Gold" }));
     fireEvent.change(screen.getByLabelText("Alasan"), { target: { value: "mitra utama" } });
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
 

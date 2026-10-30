@@ -2,9 +2,11 @@
 
 import { Suspense, use } from "react";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
+import { LevelBadge } from "@/components/affiliate/LevelBadge";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -41,9 +43,12 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
 
   if (!canManage) return <NoAccess />;
   const back = (
-    <Link href="/admin/affiliates" className="text-sm text-success underline">
-      {t("admin_aff_back")}
-    </Link>
+    <Button variant="outline" size="sm" asChild className="w-fit">
+      <Link href="/admin/affiliates">
+        <ArrowLeft className="size-4" aria-hidden />
+        {t("admin_aff_back")}
+      </Link>
+    </Button>
   );
 
   if (query.isLoading) return <div className="text-sm text-ink-500">{t("aff_loading")}</div>;
@@ -83,9 +88,10 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-serif text-2xl font-bold text-ink-900">{d.name}</h1>
         <StatusBadge status={aff.status} />
+        <LevelBadge level={aff.level} />
       </div>
       <p className="text-sm text-ink-600">
-        {d.email ?? "—"} · {aff.code || "—"} · {affLabel(t, aff.level)}
+        {d.email ?? "—"} · {aff.code || "—"}
       </p>
 
       <div className="grid gap-4 sm:grid-cols-3">

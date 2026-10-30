@@ -10,6 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ChoiceGroup } from "@/components/affiliate/ChoiceGroup";
+import { LEVEL_TONE } from "@/components/affiliate/LevelBadge";
+import { STATUS_TONE } from "@/components/affiliate/StatusBadge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
@@ -42,8 +45,6 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-const selectClass = "h-9 w-full rounded-md border border-line bg-surface px-3 text-sm";
-
 export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props) {
   const { t } = useTranslation();
   const [action, setAction] = useState<Action>(null);
@@ -51,6 +52,7 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
   const [level, setLevel] = useState(currentLevel);
   const [category, setCategory] = useState<string>(CATEGORIES[0]);
   const [amount, setAmount] = useState("");
+  const [deduct, setDeduct] = useState(false);
   const [note, setNote] = useState("");
   const [reason, setReason] = useState("");
 
@@ -62,6 +64,7 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
     setAction(null);
     setReason("");
     setAmount("");
+    setDeduct(false);
     setNote("");
   };
   const done = () => {
@@ -84,7 +87,7 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
     } else if (action === "adjust") {
       const n = Number(amount);
       if (!Number.isFinite(n) || n === 0) return invalid();
-      adjust.mutate({ id, category, amount: n, reason: reason.trim(), note: note.trim() || undefined }, opts);
+      adjust.mutate({ id, category, amount: deduct ? -n : n, reason: reason.trim(), note: note.trim() || undefined }, opts);
     }
   };
 
@@ -99,14 +102,14 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
     <>
       <div className="flex flex-wrap gap-2">
         {currentStatus !== "pending_approval" && currentStatus !== "rejected" && (
-          <Button variant="outline" size="sm" onClick={() => setAction("status")}>
+          <Button variant="outline" size="sm" className="border-warn/40 bg-warn/10 text-warn hover:bg-warn/20" onClick={() => setAction("status")}>
             {t("admin_aff_act_status")}
           </Button>
         )}
-        <Button variant="outline" size="sm" onClick={() => setAction("level")}>
+        <Button variant="outline" size="sm" className="border-brand-700/30 bg-brand-50 text-brand-700 hover:bg-brand-100" onClick={() => setAction("level")}>
           {t("admin_aff_act_level")}
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setAction("adjust")}>
+        <Button variant="outline" size="sm" className="border-success/40 bg-success/10 text-success hover:bg-success/20" onClick={() => setAction("adjust")}>
           {t("admin_aff_act_adjust")}
         </Button>
       </div>
@@ -119,39 +122,51 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
           <div className="space-y-3">
             {action === "status" && (
               <Field id="aff-status" label={t("admin_aff_field_status")}>
-                <select id="aff-status" value={status} onChange={(e) => setStatus(e.target.value)} className={selectClass}>
-                  {STATUS_TARGETS.map((s) => (
-                    <option key={s} value={s}>
-                      {affLabel(t, s)}
-                    </option>
-                  ))}
-                </select>
+                <ChoiceGroup
+                  label={t("admin_aff_field_status")}
+                  value={status}
+                  onChange={setStatus}
+                  choices={STATUS_TARGETS.map((v) => ({ value: v, label: affLabel(t, v), activeClass: STATUS_TONE[v] }))}
+                />
               </Field>
             )}
             {action === "level" && (
               <Field id="aff-level" label={t("admin_aff_field_level")}>
-                <select id="aff-level" value={level} onChange={(e) => setLevel(e.target.value)} className={selectClass}>
-                  {LEVELS.map((l) => (
-                    <option key={l} value={l}>
-                      {affLabel(t, l)}
-                    </option>
-                  ))}
-                </select>
+                <ChoiceGroup
+                  label={t("admin_aff_field_level")}
+                  value={level}
+                  onChange={setLevel}
+                  choices={LEVELS.map((v) => ({ value: v, label: affLabel(t, v), activeClass: LEVEL_TONE[v] }))}
+                />
               </Field>
             )}
             {action === "adjust" && (
               <>
                 <Field id="aff-category" label={t("admin_aff_field_category")}>
-                  <select id="aff-category" value={category} onChange={(e) => setCategory(e.target.value)} className={selectClass}>
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {affLabel(t, c)}
-                      </option>
-                    ))}
-                  </select>
+                  <ChoiceGroup
+                    label={t("admin_aff_field_category")}
+                    value={category}
+                    onChange={setCategory}
+                    choices={CATEGORIES.map((v) => ({ value: v, label: affLabel(t, v) }))}
+                  />
                 </Field>
                 <Field id="aff-amount" label={t("admin_aff_field_amount")}>
-                  <Input id="aff-amount" inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value)} />
+                  <ChoiceGroup
+                    label={t("admin_aff_field_direction")}
+                    value={deduct ? "deduct" : "add"}
+                    onChange={(v) => setDeduct(v === "deduct")}
+                    choices={[
+                      { value: "add", label: t("admin_aff_dir_add"), activeClass: "bg-success/15 text-success" },
+                      { value: "deduct", label: t("admin_aff_dir_deduct"), activeClass: "bg-danger/15 text-danger" },
+                    ]}
+                  />
+                  <Input
+                    id="aff-amount"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+                  />
                 </Field>
                 <Field id="aff-note" label={t("admin_aff_field_note")}>
                   <Input id="aff-note" value={note} onChange={(e) => setNote(e.target.value)} />
