@@ -45,7 +45,7 @@ test.describe("affiliator portal", () => {
     await page.goto("/affiliate");
 
     await expect(page.getByText(/kode referral/i).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /siswa binaan/i })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("link", { name: /siswa binaan/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /keranjang/i })).toHaveCount(0);
   });
 
