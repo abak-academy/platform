@@ -140,14 +140,11 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                   type="button"
                   aria-pressed={mode === m}
                   onClick={() => setMode(m)}
-                  className={`flex-1 border-r border-line px-3 py-1.5 text-label transition-colors last:border-r-0 ${
-                    mode === m ? "hover:opacity-90" : "hover:bg-brand-50 hover:text-brand-700"
-                  }`}
-                  style={
+                  className={`flex-1 border-r border-line px-3 py-2 text-sm transition-colors last:border-r-0 ${
                     mode === m
-                      ? { backgroundColor: "var(--md-sys-color-primary)", color: "var(--md-sys-color-on-primary)", fontWeight: 600 }
-                      : undefined
-                  }
+                      ? "bg-primary font-semibold text-primary-foreground hover:bg-primary/90"
+                      : "bg-surface text-ink-700 hover:bg-brand-50 hover:text-brand-700"
+                  }`}
                 >
                   {t(m === "single" ? "admin_aff_add_single" : "admin_aff_add_bulk")}
                 </button>

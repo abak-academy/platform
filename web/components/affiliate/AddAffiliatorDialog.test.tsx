@@ -32,6 +32,8 @@ describe("AddAffiliatorDialog", () => {
       expect(screen.getByText(column)).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: "Unggah CSV" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Unggah CSV" })).toHaveClass("bg-primary");
+    expect(screen.getByRole("button", { name: "Satu akun" })).not.toHaveClass("bg-primary");
   });
 
   it("lets the admin set a password for a single account", () => {
