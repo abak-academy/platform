@@ -3,29 +3,7 @@ import type { I18nKey } from "./i18n";
 export type BulkFieldSpec = {
   column: string;
   required: boolean;
-  ruleKey:
-    | "bulk_format_student_name"
-    | "bulk_format_student_school_npsn"
-    | "bulk_format_student_school_code"
-    | "bulk_format_student_jenjang"
-    | "bulk_format_student_email"
-    | "bulk_format_student_dob"
-    | "bulk_format_student_gender"
-    | "bulk_format_student_grade"
-    | "bulk_format_student_target_exam"
-    | "bulk_format_student_alamat_domisili"
-    | "bulk_format_student_provinsi"
-    | "bulk_format_student_kota"
-    | "bulk_format_student_kecamatan"
-    | "bulk_format_student_kode_pos"
-    | "bulk_format_student_password"
-    | "bulk_format_school_name"
-    | "bulk_format_school_code"
-    | "bulk_format_school_npsn"
-    | "bulk_format_school_school_types"
-    | "bulk_format_school_alamat"
-    | "bulk_format_school_provinsi"
-    | "bulk_format_school_kota";
+  ruleKey: I18nKey;
   example: string;
 };
 
@@ -105,6 +83,24 @@ export const SCHOOL_GUIDE_PITFALL_KEYS = [
   "bulk_format_pitfall_comma",
   "bulk_format_school_reupload",
   "bulk_format_max_rows",
+] as const satisfies readonly I18nKey[];
+
+export const AFFILIATOR_TEMPLATE_HEADER = "name,email,phone,password";
+
+export const AFFILIATOR_TEMPLATE_ROWS = ["Budi Santoso,budi@example.com,081234567890,", "Siti Aminah,siti@example.com,081298765432,SandiAwal123"];
+
+export const AFFILIATOR_BULK_FIELDS: BulkFieldSpec[] = [
+  { column: "name", required: true, ruleKey: "bulk_format_affiliator_name", example: "Budi Santoso" },
+  { column: "email", required: true, ruleKey: "bulk_format_affiliator_email", example: "budi@example.com" },
+  { column: "phone", required: true, ruleKey: "bulk_format_affiliator_phone", example: "081234567890" },
+  { column: "password", required: false, ruleKey: "bulk_format_affiliator_password", example: "" },
+];
+
+export const AFFILIATOR_GUIDE_PITFALL_KEYS = [
+  "bulk_format_pitfall_csv",
+  "bulk_format_pitfall_header",
+  "bulk_format_pitfall_comma",
+  "admin_aff_add_pitfall_max",
 ] as const satisfies readonly I18nKey[];
 
 export function buildStudentTemplateCSV(includePassword = false): string {

@@ -70,7 +70,7 @@ func TestCheckout_GatewayFailureStillExpiresAndFreesStock(t *testing.T) {
 	orderID, book := mixedCart(t, svc, repo, student)
 	pay.failCreate.Store(true)
 
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err == nil {
+	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), ""); err == nil {
 		t.Fatal("Checkout with a failing gateway succeeded")
 	}
 	if deadlineOf(t, repo, orderID) == nil {
@@ -171,7 +171,7 @@ func TestCheckout_OrderThatExpiresDuringTheGatewayCallGetsNoPaymentLink(t *testi
 		sweepOrder(t, repo, orderID)
 	}
 
-	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey())
+	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), "")
 
 	if !errors.Is(err, ErrPaymentExpired) {
 		t.Fatalf("err = %v, want ErrPaymentExpired", err)
@@ -198,7 +198,7 @@ func TestCheckout_AdvertisedExpiryNeverExceedsTheOrderDeadline(t *testing.T) {
 	course := seedCourseTarget(t, repo)
 	orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, course))
 
-	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey())
+	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), "")
 	if err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestCheckout_CachedReplayNeverOffersAnExpiredOrAnotherStudentsOrder(t *test
 			student := newDigitalStudent(t, repo)
 			orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
 			key := checkoutKey()
-			first, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
+			first, err := svc.Checkout(ctx, student.String(), orderID.String(), key, "")
 			if err != nil {
 				t.Fatalf("Checkout: %v", err)
 			}
@@ -242,7 +242,7 @@ func TestCheckout_CachedReplayNeverOffersAnExpiredOrAnotherStudentsOrder(t *test
 			}
 			before := pay.creates.Load()
 
-			replay, err := svc.Checkout(ctx, caller.String(), orderID.String(), key)
+			replay, err := svc.Checkout(ctx, caller.String(), orderID.String(), key, "")
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("replay err = %v, want %v", err, tt.wantErr)
@@ -276,7 +276,7 @@ func TestCheckout_ReusedKeyNeverHandsOutAnotherOrdersReference(t *testing.T) {
 			studentA := newDigitalStudent(t, repo)
 			orderA := cartOf(t, svc, studentA, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
 			key := checkoutKey()
-			first, err := svc.Checkout(ctx, studentA.String(), orderA.String(), key)
+			first, err := svc.Checkout(ctx, studentA.String(), orderA.String(), key, "")
 			if err != nil {
 				t.Fatalf("Checkout A: %v", err)
 			}
@@ -286,7 +286,7 @@ func TestCheckout_ReusedKeyNeverHandsOutAnotherOrdersReference(t *testing.T) {
 			}
 			orderB, _, _ := pendingCourseOrder(t, svc, repo, studentB)
 
-			got, err := svc.Checkout(ctx, studentB.String(), orderB.String(), key)
+			got, err := svc.Checkout(ctx, studentB.String(), orderB.String(), key, "")
 
 			if got.GatewayRef != "" || got.GatewayRef == first.GatewayRef {
 				t.Errorf("order B was handed reference %q, which belongs to order A", got.GatewayRef)
@@ -307,7 +307,7 @@ func TestCheckout_FreeOrderReplayStillReturnsFreeWithoutGateway(t *testing.T) {
 	key := checkoutKey()
 
 	for i := 0; i < 2; i++ {
-		result, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
+		result, err := svc.Checkout(ctx, student.String(), orderID.String(), key, "")
 		if err != nil || !result.Free {
 			t.Fatalf("free checkout #%d = %+v, %v; want Free", i, result, err)
 		}

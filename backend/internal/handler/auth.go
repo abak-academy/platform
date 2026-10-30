@@ -35,6 +35,33 @@ func (h *Handler) Register(c echo.Context) error {
 	})
 }
 
+func (h *Handler) RegisterAffiliator(c echo.Context) error {
+	var req struct {
+		Email        string `json:"email"`
+		Password     string `json:"password"`
+		Name         string `json:"name"`
+		Phone        string `json:"phone"`
+		TermsVersion string `json:"terms_version"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if req.Email == "" || req.Password == "" || req.Name == "" || req.Phone == "" || req.TermsVersion == "" {
+		return badRequest(c, "email, password, name, phone and terms_version are required")
+	}
+	chall, err := h.svc.RegisterAffiliator(c.Request().Context(), req.Email, req.Password, req.Name, req.Phone, req.TermsVersion, c.RealIP())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, map[string]any{
+		"otp_required":  true,
+		"pending_token": chall.PendingToken,
+		"email_failed":  chall.EmailFailed,
+		"otp_active":    chall.OTPActive,
+		"resend_after":  chall.ResendAfter,
+	})
+}
+
 func (h *Handler) Login(c echo.Context) error {
 	var req struct {
 		Identifier string `json:"identifier"`
@@ -82,7 +109,9 @@ func (h *Handler) Login(c echo.Context) error {
 
 func (h *Handler) GoogleLogin(c echo.Context) error {
 	var req struct {
-		IDToken string `json:"id_token"`
+		IDToken            string `json:"id_token"`
+		ReferralCode       string `json:"referral_code"`
+		ReferralCodeCookie string `json:"referral_code_cookie"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -90,7 +119,10 @@ func (h *Handler) GoogleLogin(c echo.Context) error {
 	if req.IDToken == "" {
 		return badRequest(c, "id_token is required")
 	}
-	access, refresh, err := h.svc.GoogleLogin(c.Request().Context(), req.IDToken)
+	access, refresh, err := h.svc.GoogleLogin(c.Request().Context(), req.IDToken, service.AffiliateReferral{
+		ManualCode: req.ReferralCode,
+		CookieCode: req.ReferralCodeCookie,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -131,8 +163,10 @@ func (h *Handler) SendOTP(c echo.Context) error {
 
 func (h *Handler) VerifyOTP(c echo.Context) error {
 	var req struct {
-		PendingToken string `json:"pending_token"`
-		Code         string `json:"code"`
+		PendingToken       string `json:"pending_token"`
+		Code               string `json:"code"`
+		ReferralCode       string `json:"referral_code"`
+		ReferralCodeCookie string `json:"referral_code_cookie"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -140,7 +174,10 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 	if req.PendingToken == "" || req.Code == "" {
 		return badRequest(c, "pending_token and code are required")
 	}
-	access, refresh, err := h.svc.VerifyOTP(c.Request().Context(), req.PendingToken, req.Code, c.RealIP())
+	access, refresh, err := h.svc.VerifyOTP(c.Request().Context(), req.PendingToken, req.Code, c.RealIP(), service.AffiliateReferral{
+		ManualCode: req.ReferralCode,
+		CookieCode: req.ReferralCodeCookie,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}

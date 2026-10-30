@@ -73,10 +73,27 @@ export function useRegister() {
   });
 }
 
+export interface RegisterAffiliatorInput extends RegisterInput {
+  phone: string;
+  terms_version: string;
+}
+
+export function useRegisterAffiliator() {
+  return useMutation({
+    mutationFn: (input: RegisterAffiliatorInput) =>
+      apiFetch<RegisterResponse>(`/auth/affiliators/register`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  });
+}
+
 export interface VerifyOtpInput {
   identifier: string;
   code: string;
   pending_token?: string;
+  referral_code?: string;
+  referral_code_cookie?: string;
 }
 
 export interface SendOtpInput {
@@ -138,6 +155,8 @@ export function useLogout() {
 
 export interface GoogleLoginInput {
   id_token: string;
+  referral_code?: string;
+  referral_code_cookie?: string;
 }
 
 export function useGoogleLogin() {

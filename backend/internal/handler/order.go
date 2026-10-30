@@ -2,10 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"time"
 
 	"akademi-bimbel/internal/infra"
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
@@ -25,7 +28,10 @@ func (h *Handler) MintCart(c echo.Context) error {
 	if isNew {
 		status = http.StatusCreated
 	}
-	return c.JSON(status, order)
+	return c.JSON(status, struct {
+		model.Order
+		AffiliateCodeEligible bool `json:"affiliate_code_eligible"`
+	}{order, h.svc.AffiliateCodeEligible(c.Request().Context(), claims.Sub)})
 }
 
 func (h *Handler) GetOrders(c echo.Context) error {
@@ -188,7 +194,16 @@ func (h *Handler) Checkout(c echo.Context) error {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key)
+	// The body is optional: older clients send none, newer ones may carry the
+	// referral code for attribution at settlement.
+	var req struct {
+		AffiliateCode string `json:"affiliate_code"`
+	}
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return badRequest(c, "invalid request body")
+	}
+
+	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, req.AffiliateCode)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

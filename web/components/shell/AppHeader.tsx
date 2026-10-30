@@ -52,11 +52,13 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
   const setLang = useUIStore((s) => s.setLang);
 
   const cartCount = useCartStore((s) => s.count);
-  const isStudent = !ADMIN_ROLES.includes(user?.role as UserRole);
+  const isStudent = !ADMIN_ROLES.includes(user?.role as UserRole) && user?.role !== "affiliator";
   const { role: resolvedRole } = useResolvedRole();
   const profileHref = ADMIN_ROLES.includes(resolvedRole as UserRole)
     ? "/admin/profile"
-    : "/profile";
+    : resolvedRole === "affiliator"
+      ? "/affiliate/account"
+      : "/profile";
 
   const initial = (user?.name ?? user?.email ?? user?.username ?? "A")
     .trim()

@@ -145,7 +145,11 @@ export default function PromosPage() {
                   <td className="px-4 py-3">{usageText(promo)}</td>
                   <td className="px-4 py-3">{expiryText(promo.expires_at)}</td>
                   <td className="px-4 py-3">
-                    {promo.is_public ? (
+                    {promo.affiliator_only ? (
+                      <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
+                        {t("th_affiliator_only")}
+                      </Badge>
+                    ) : promo.is_public ? (
                       <Badge variant="outline" className="border-transparent bg-success-bg text-success">
                         {t("th_public")}
                       </Badge>

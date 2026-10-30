@@ -16,6 +16,12 @@ vi.mock("@/lib/hooks/auth", () => ({
   useGoogleLogin: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
+const programStatus = vi.hoisted(() => ({ value: { enabled: true } as { enabled: boolean } | undefined }));
+
+vi.mock("@/lib/hooks/affiliate", () => ({
+  useAffiliateProgramStatus: () => ({ data: programStatus.value }),
+}));
+
 vi.mock("@/components/auth/GoogleSignInButton", () => ({
   GoogleSignInButton: ({ text }: { text: string }) => (
     <div data-testid="google-sign-in" data-text={text} />
@@ -28,6 +34,28 @@ describe("LoginPage", () => {
     pushMock.mockClear();
     mutateAsyncMock.mockClear();
     sessionStorage.clear();
+  });
+
+  it("links to the affiliate sign-up under the student sign-up link", () => {
+    render(<LoginPage />);
+
+    const student = screen.getByRole("button", { name: "Daftar sekarang" });
+    const affiliate = screen.getByRole("button", { name: "Daftar sebagai affiliator" });
+    expect(student.compareDocumentPosition(affiliate)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+
+    fireEvent.click(affiliate);
+    expect(pushMock).toHaveBeenCalledWith("/affiliate-register");
+  });
+
+  it("hides the affiliate sign-up link while the program is off or unknown", () => {
+    programStatus.value = { enabled: false };
+    const { rerender } = render(<LoginPage />);
+    expect(screen.queryByRole("button", { name: "Daftar sebagai affiliator" })).toBeNull();
+
+    programStatus.value = undefined;
+    rerender(<LoginPage />);
+    expect(screen.queryByRole("button", { name: "Daftar sebagai affiliator" })).toBeNull();
+    programStatus.value = { enabled: true };
   });
 
   // Google moved below the credential form (client, 2026-08-03): most sign-ins

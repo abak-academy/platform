@@ -4,6 +4,7 @@ import "strings"
 
 const (
 	RoleStudent     = "student"
+	RoleAffiliator  = "affiliator"
 	RoleAdminSchool = "admin_school"
 	RoleAdminExam   = "admin_exam"
 	RoleAdminStore  = "admin_store"
@@ -11,8 +12,9 @@ const (
 )
 
 var roleCapabilities = map[string][]string{
-	RoleStudent:   {},
-	RoleAdminExam: {"questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "students:*", "student-passwords:write", "student-scope:all", "results-answers:read", "results-workspace:read", "exam-grants:write", "product-relations:write", "schools:read"},
+	RoleStudent:    {},
+	RoleAffiliator: {},
+	RoleAdminExam:  {"questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "students:*", "student-passwords:write", "student-scope:all", "results-answers:read", "results-workspace:read", "exam-grants:write", "product-relations:write", "schools:read"},
 	// No revenue:read — store admins fulfil orders; revenue reporting is
 	// super_admin's. Per-order totals stay visible to them on the orders page,
 	// because confirming a manual transfer means matching the receipt to the

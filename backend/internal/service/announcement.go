@@ -34,9 +34,10 @@ var validAnnouncementTypes = map[string]bool{
 
 // validRecipientGroups is the set of valid recipient group values.
 var validRecipientGroups = map[string]bool{
-	"all":      true,
-	"students": true,
-	"admins":   true,
+	"all":         true,
+	"students":    true,
+	"admins":      true,
+	"affiliators": true,
 }
 
 // validAnnouncementStatuses is the set of valid announcement status values.

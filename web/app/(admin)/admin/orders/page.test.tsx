@@ -66,11 +66,12 @@ let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, is
 // assert on the query object the page actually built, not just what renders.
 const mockUseAdminOrders = vi.fn((_query?: AdminOrderQuery, _cursor?: string) => ordersState);
 const mockUseAdminOrderSummary = vi.fn((_query?: AdminOrderQuery) => summaryState);
+const mockUseAdminOrder = vi.fn((_id?: string): { data?: Order } => ({}));
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
   useAdminOrders: (query: AdminOrderQuery, cursor: string) => mockUseAdminOrders(query, cursor),
   useAdminOrderSummary: (query: AdminOrderQuery) => mockUseAdminOrderSummary(query),
-  useAdminOrder: () => ({}),
+  useAdminOrder: (id: string) => mockUseAdminOrder(id),
   useConfirmOrder: () => confirmState,
   useShipOrder: () => shipState,
   useShipOrderManual: () => shipManualState,
@@ -663,6 +664,16 @@ describe("OrdersPage", () => {
     openFilters();
     await waitFor(() => expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Sedang dalam pengiriman"));
     expect(mockUseAdminOrders.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ status: "all", queue: "in_transit" }));
+  });
+
+  it("opens the order detail named by ?order= so the affiliate report can link to it", async () => {
+    mockUseAdminOrder.mockImplementation((id) => (id === sampleOrders[1].id ? { data: sampleOrders[1] } : {}));
+    window.history.replaceState({}, "", `/admin/orders?order=${sampleOrders[1].id}`);
+    render(<OrdersPage />);
+    await waitFor(() => expect(mockUseAdminOrder).toHaveBeenCalledWith(sampleOrders[1].id));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    mockUseAdminOrder.mockImplementation(() => ({}));
+    window.history.replaceState({}, "", "/admin/orders");
   });
 
   it("adopts ?queue= from the URL so the dashboard can deep link", async () => {
