@@ -85,6 +85,24 @@ export const SCHOOL_GUIDE_PITFALL_KEYS = [
   "bulk_format_max_rows",
 ] as const satisfies readonly I18nKey[];
 
+export const AFFILIATOR_TEMPLATE_HEADER = "name,email,phone,password";
+
+export const AFFILIATOR_TEMPLATE_ROWS = ["Budi Santoso,budi@example.com,081234567890,", "Siti Aminah,siti@example.com,081298765432,SandiAwal123"];
+
+export const AFFILIATOR_BULK_FIELDS: BulkFieldSpec[] = [
+  { column: "name", required: true, ruleKey: "bulk_format_affiliator_name", example: "Budi Santoso" },
+  { column: "email", required: true, ruleKey: "bulk_format_affiliator_email", example: "budi@example.com" },
+  { column: "phone", required: true, ruleKey: "bulk_format_affiliator_phone", example: "081234567890" },
+  { column: "password", required: false, ruleKey: "bulk_format_affiliator_password", example: "" },
+];
+
+export const AFFILIATOR_GUIDE_PITFALL_KEYS = [
+  "bulk_format_pitfall_csv",
+  "bulk_format_pitfall_header",
+  "bulk_format_pitfall_comma",
+  "admin_aff_add_pitfall_max",
+] as const satisfies readonly I18nKey[];
+
 export function buildStudentTemplateCSV(includePassword = false): string {
   const header = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_HEADER : STUDENT_TEMPLATE_HEADER;
   const rows = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_ROWS : STUDENT_TEMPLATE_ROWS;

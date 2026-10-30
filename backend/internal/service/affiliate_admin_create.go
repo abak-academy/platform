@@ -24,10 +24,12 @@ type AdminCreateAffiliatorInput struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 	Phone string `json:"phone"`
+	// Password is optional: empty means a generated temporary password.
+	Password string `json:"password"`
 }
 
-// AdminCreatedAffiliator carries the new account and its temporary password,
-// which is shown once.
+// AdminCreatedAffiliator carries the new account and its temporary password
+// (the admin-chosen one, or the generated one), which is shown once.
 type AdminCreatedAffiliator struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
@@ -71,9 +73,14 @@ func (s *Service) AdminCreateAffiliator(ctx context.Context, actorID string, in 
 	if existing != nil {
 		return nil, ErrEmailTaken
 	}
-	temp, err := genTempPassword()
-	if err != nil {
-		return nil, err
+	temp := in.Password
+	if temp == "" {
+		temp, err = genTempPassword()
+		if err != nil {
+			return nil, err
+		}
+	} else if len(temp) < minPasswordLen {
+		return nil, ErrWeakPassword
 	}
 	hash, err := hashPassword(temp)
 	if err != nil {
@@ -117,6 +124,8 @@ func (s *Service) AdminBulkCreateAffiliators(ctx context.Context, actorID string
 			res.Error = "email_taken"
 		case errors.Is(err, ErrAffiliatePhoneRequired):
 			res.Error = "phone_required"
+		case errors.Is(err, ErrWeakPassword):
+			res.Error = "weak_password"
 		case errors.Is(err, ErrInvalidCredentials):
 			res.Error = "invalid_row"
 		default:

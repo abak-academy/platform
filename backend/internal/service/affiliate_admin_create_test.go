@@ -31,6 +31,11 @@ func TestAdminCreateAffiliator_activeWithCodeAndTempPassword(t *testing.T) {
 
 	_, err = svc.AdminCreateAffiliator(ctx, actor, AdminCreateAffiliatorInput{Name: "Pak Baru", Email: email, Phone: "081234567890"})
 	require.ErrorIs(t, err, ErrEmailTaken)
+	chosen, err := svc.AdminCreateAffiliator(ctx, actor, AdminCreateAffiliatorInput{Name: "Pilih Sandi", Email: "pw-" + uniqueSuffix() + "@test.local", Phone: "0811", Password: "SandiPilihan1"})
+	require.NoError(t, err)
+	require.Equal(t, "SandiPilihan1", chosen.TempPassword, "an admin-chosen password is used as given")
+	_, err = svc.AdminCreateAffiliator(ctx, actor, AdminCreateAffiliatorInput{Name: "Sandi Pendek", Email: "pw2-" + uniqueSuffix() + "@test.local", Phone: "0811", Password: "short"})
+	require.ErrorIs(t, err, ErrWeakPassword)
 	_, err = svc.AdminCreateAffiliator(ctx, actor, AdminCreateAffiliatorInput{Name: "Tanpa Telepon", Email: "np-" + uniqueSuffix() + "@test.local"})
 	require.ErrorIs(t, err, ErrAffiliatePhoneRequired, "the phone number is mandatory")
 }

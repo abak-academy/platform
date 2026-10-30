@@ -2,11 +2,20 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
+import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
+import {
+  AFFILIATOR_BULK_FIELDS,
+  AFFILIATOR_GUIDE_PITFALL_KEYS,
+  AFFILIATOR_TEMPLATE_HEADER,
+  AFFILIATOR_TEMPLATE_ROWS,
+  downloadTextFile,
+} from "@/lib/bulk-import-format";
 import { useBulkCreateAffiliators, useCreateAffiliator } from "@/lib/hooks/admin-affiliates";
 import { useTranslation } from "@/lib/i18n";
 import type { AffiliateCreateInput, AffiliateCreated } from "@/lib/types";
@@ -18,7 +27,7 @@ export function parseAffiliatorCsv(text: string): AffiliateCreateInput[] {
   const rows = lines.map((l) => l.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
   const header = rows[0]?.map((c) => c.toLowerCase());
   const hasHeader = header?.[0] === "name" && header?.[1] === "email";
-  return (hasHeader ? rows.slice(1) : rows).map(([name = "", email = "", phone = ""]) => ({ name, email, phone }));
+  return (hasHeader ? rows.slice(1) : rows).map(([name = "", email = "", phone = "", password = ""]) => ({ name, email, phone, password }));
 }
 
 function credentialsCsv(items: AffiliateCreated[]): string {
@@ -38,7 +47,7 @@ function downloadCsv(items: AffiliateCreated[]) {
 export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation();
   const [mode, setMode] = useState<"single" | "bulk">("single");
-  const [form, setForm] = useState<AffiliateCreateInput>({ name: "", email: "", phone: "" });
+  const [form, setForm] = useState<AffiliateCreateInput>({ name: "", email: "", phone: "", password: "" });
   const [created, setCreated] = useState<AffiliateCreated[]>([]);
   const [failures, setFailures] = useState<string[]>([]);
   const create = useCreateAffiliator();
@@ -47,7 +56,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
 
   const close = () => {
     onOpenChange(false);
-    setForm({ name: "", email: "", phone: "" });
+    setForm({ name: "", email: "", phone: "", password: "" });
     setCreated([]);
     setFailures([]);
   };
@@ -90,7 +99,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-h-[90vh] sm:max-w-xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("admin_aff_add_title")}</DialogTitle>
         </DialogHeader>
@@ -117,32 +126,68 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="flex gap-2">
-              <Button size="sm" variant={mode === "single" ? "default" : "outline"} onClick={() => setMode("single")}>
-                {t("admin_aff_add_single")}
-              </Button>
-              <Button size="sm" variant={mode === "bulk" ? "default" : "outline"} onClick={() => setMode("bulk")}>
-                {t("admin_aff_add_bulk")}
-              </Button>
+            <div className="flex overflow-hidden rounded-[10px] border border-line" role="group">
+              {(["single", "bulk"] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={mode === m}
+                  onClick={() => setMode(m)}
+                  className="flex-1 border-r border-line px-3 py-1.5 text-label last:border-r-0"
+                  style={
+                    mode === m
+                      ? { backgroundColor: "var(--md-sys-color-primary)", color: "var(--md-sys-color-on-primary)", fontWeight: 600 }
+                      : undefined
+                  }
+                >
+                  {t(m === "single" ? "admin_aff_add_single" : "admin_aff_add_bulk")}
+                </button>
+              ))}
             </div>
             {mode === "single" ? (
-              (["name", "email", "phone"] as const).map((key) => (
+              (["name", "email", "phone", "password"] as const).map((key) => (
                 <div key={key} className="space-y-1">
                   <Label htmlFor={`aff-add-${key}`}>{t(`admin_aff_add_${key}` as Parameters<typeof t>[0])}</Label>
                   <Input
                     id={`aff-add-${key}`}
-                    type={key === "email" ? "email" : key === "phone" ? "tel" : "text"}
-                    value={form[key]}
+                    type={key === "email" ? "email" : key === "phone" ? "tel" : key === "password" ? "password" : "text"}
+                    autoComplete={key === "password" ? "new-password" : undefined}
+                    value={form[key] ?? ""}
                     onChange={(e) => setForm({ ...form, [key]: e.target.value })}
                     disabled={pending}
                   />
+                  {key === "password" && <p className="text-xs text-ink-500">{t("admin_aff_add_password_hint")}</p>}
                 </div>
               ))
             ) : (
-              <div className="space-y-1">
-                <Label htmlFor="aff-add-file">{t("admin_aff_add_bulk")}</Label>
-                <Input id="aff-add-file" type="file" accept=".csv,text/csv" disabled={pending} onChange={(e) => onFile(e.target.files?.[0])} />
-                <p className="text-xs text-ink-500">{t("admin_aff_add_bulk_hint")}</p>
+              <div className="space-y-4">
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_add_step_template")}</h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() =>
+                      downloadTextFile(
+                        "affiliator_template.csv",
+                        [AFFILIATOR_TEMPLATE_HEADER, ...AFFILIATOR_TEMPLATE_ROWS].join("\n"),
+                        "text/csv;charset=utf-8",
+                      )
+                    }
+                  >
+                    <Download className="mr-2 size-4" aria-hidden />
+                    {t("admin_aff_add_template")}
+                  </Button>
+                  <BulkFormatGuide fields={AFFILIATOR_BULK_FIELDS} pitfallKeys={AFFILIATOR_GUIDE_PITFALL_KEYS} />
+                </section>
+                <section className="space-y-1">
+                  <h3 className="text-sm font-semibold text-ink-900">
+                    <Label htmlFor="aff-add-file">{t("admin_aff_add_step_upload")}</Label>
+                  </h3>
+                  <Input id="aff-add-file" type="file" accept=".csv,text/csv" disabled={pending} onChange={(e) => onFile(e.target.files?.[0])} />
+                  <p className="text-xs text-ink-500">{t("admin_aff_add_bulk_hint")}</p>
+                </section>
               </div>
             )}
           </div>
