@@ -48,6 +48,8 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
   const { t } = useTranslation();
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [form, setForm] = useState<AffiliateCreateInput>({ name: "", email: "", phone: "", password: "" });
+  const [file, setFile] = useState<File | null>(null);
+  const [defaultPassword, setDefaultPassword] = useState("");
   const [created, setCreated] = useState<AffiliateCreated[]>([]);
   const [failures, setFailures] = useState<string[]>([]);
   const create = useCreateAffiliator();
@@ -57,6 +59,8 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
   const close = () => {
     onOpenChange(false);
     setForm({ name: "", email: "", phone: "", password: "" });
+    setFile(null);
+    setDefaultPassword("");
     setCreated([]);
     setFailures([]);
   };
@@ -70,9 +74,12 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
     create.mutate(form, { onSuccess: (c) => setCreated([c]), onError: fail });
   };
 
-  const onFile = async (file: File | undefined) => {
-    if (!file) return;
-    const rows = parseAffiliatorCsv(await file.text());
+  const onUpload = async () => {
+    if (!file) {
+      toast.error(t("bulk_register_no_file"));
+      return;
+    }
+    const rows = parseAffiliatorCsv(await file.text()).map((r) => ({ ...r, password: r.password || defaultPassword }));
     if (rows.length === 0 || rows.length > BULK_MAX) {
       toast.error(t("admin_aff_add_bulk_hint"));
       return;
@@ -133,7 +140,9 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                   type="button"
                   aria-pressed={mode === m}
                   onClick={() => setMode(m)}
-                  className="flex-1 border-r border-line px-3 py-1.5 text-label last:border-r-0"
+                  className={`flex-1 border-r border-line px-3 py-1.5 text-label transition-colors last:border-r-0 ${
+                    mode === m ? "hover:opacity-90" : "hover:bg-brand-50 hover:text-brand-700"
+                  }`}
                   style={
                     mode === m
                       ? { backgroundColor: "var(--md-sys-color-primary)", color: "var(--md-sys-color-on-primary)", fontWeight: 600 }
@@ -181,12 +190,35 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                   </Button>
                   <BulkFormatGuide fields={AFFILIATOR_BULK_FIELDS} pitfallKeys={AFFILIATOR_GUIDE_PITFALL_KEYS} />
                 </section>
-                <section className="space-y-1">
-                  <h3 className="text-sm font-semibold text-ink-900">
-                    <Label htmlFor="aff-add-file">{t("admin_aff_add_step_upload")}</Label>
-                  </h3>
-                  <Input id="aff-add-file" type="file" accept=".csv,text/csv" disabled={pending} onChange={(e) => onFile(e.target.files?.[0])} />
-                  <p className="text-xs text-ink-500">{t("admin_aff_add_bulk_hint")}</p>
+                <section className="space-y-2">
+                  <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_add_step_upload")}</h3>
+                  <div className="space-y-1">
+                    <Label htmlFor="aff-add-file">{t("bulk_register_choose_file")}</Label>
+                    <Input
+                      id="aff-add-file"
+                      type="file"
+                      accept=".csv,text/csv"
+                      disabled={pending}
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                    />
+                    {file && <p className="text-sm text-ink-600">{file.name}</p>}
+                    <p className="text-xs text-ink-500">{t("admin_aff_add_bulk_hint")}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="aff-add-default-password">{t("admin_aff_add_default_password")}</Label>
+                    <Input
+                      id="aff-add-default-password"
+                      type="password"
+                      autoComplete="new-password"
+                      value={defaultPassword}
+                      onChange={(e) => setDefaultPassword(e.target.value)}
+                      disabled={pending}
+                    />
+                    <p className="text-xs text-ink-500">{t("admin_aff_add_default_password_hint")}</p>
+                  </div>
+                  <Button type="button" className="rounded-full" onClick={onUpload} disabled={pending || !file}>
+                    {t("bulk_register_upload")}
+                  </Button>
                 </section>
               </div>
             )}
