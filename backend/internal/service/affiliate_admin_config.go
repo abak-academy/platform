@@ -7,6 +7,7 @@ import (
 	"math"
 	"reflect"
 	"slices"
+	"strconv"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -51,8 +52,9 @@ type AffiliateAdminSettingsInput struct {
 // AffiliateAdminSettingsView is the GET/PUT affiliate-settings response: the
 // global singleton plus all three level rows (missing rows synthesized empty).
 type AffiliateAdminSettingsView struct {
-	Settings *model.AffiliateSettings       `json:"settings"`
-	Levels   []model.AffiliateLevelSettings `json:"levels"`
+	Settings       *model.AffiliateSettings       `json:"settings"`
+	Levels         []model.AffiliateLevelSettings `json:"levels"`
+	ProgramEnabled bool                           `json:"program_enabled"`
 }
 
 // AffiliateReportSummary is the GET /admin/affiliate-reports/summary response.
@@ -299,9 +301,18 @@ func (s *Service) GetAffiliateAdminSettings(ctx context.Context) (*AffiliateAdmi
 		return nil, fmt.Errorf("load affiliate level settings: %w", err)
 	}
 	return &AffiliateAdminSettingsView{
-		Settings: settings,
-		Levels:   affiliateSettingsLevelsView(levels),
+		Settings:       settings,
+		Levels:         affiliateSettingsLevelsView(levels),
+		ProgramEnabled: s.affiliateEnabled(ctx),
 	}, nil
+}
+
+// SetAffiliateProgramEnabled switches the whole program on or off. It goes
+// through UpdateSystemConfig so the audit row and the "switched on at" marker
+// the reconcile job relies on are written the same way as from the config API.
+func (s *Service) SetAffiliateProgramEnabled(ctx context.Context, actorID string, enabled bool) error {
+	_, err := s.UpdateSystemConfig(ctx, actorID, map[string]string{"affiliate_enabled": strconv.FormatBool(enabled)})
+	return err
 }
 
 func affiliateSettingsLevelsView(rows []model.AffiliateLevelSettings) []model.AffiliateLevelSettings {

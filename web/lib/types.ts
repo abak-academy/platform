@@ -1776,6 +1776,7 @@ export interface AffiliateLevelSettings {
 export interface AffiliateSettingsView {
   settings: AffiliateSettings;
   levels: AffiliateLevelSettings[];
+  program_enabled: boolean;
 }
 
 export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_at"> & {

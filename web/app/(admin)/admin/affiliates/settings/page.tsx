@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
 import { toast } from "sonner";
+import { ProgramSwitchCard } from "@/components/affiliate/ProgramSwitchCard";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -177,6 +178,8 @@ function SettingsContent() {
   return (
     <div className="space-y-6">
       <AdminPageHeader icon={Settings} title={t("admin_aff_set_title")} description={t("admin_aff_set_desc")} />
+
+      <ProgramSwitchCard enabled={loaded?.program_enabled ?? false} launchDateSet={Boolean(loaded?.settings.launch_date)} />
 
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList>

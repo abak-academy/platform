@@ -559,3 +559,30 @@ func TestAdminUpsertAffiliateOverride_fixedRule(t *testing.T) {
 	_, err = svc.AdminUpsertAffiliateOverride(ctx, actor, productID.String(), model.AffiliateCommissionRule{Type: "rupiah", Value: 1})
 	require.ErrorIs(t, err, ErrValidation, "unknown type")
 }
+
+func TestSetAffiliateProgramEnabled_switchesTheFlagAndShowsInTheSettingsView(t *testing.T) {
+	svc, repo := newShippingWebhookTestService(t, nil)
+	ctx := context.Background()
+	actor := seedRevokeActor(t, repo)
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key IN ('affiliate_enabled', $1)`, affiliateEnabledSinceKey)
+	})
+	setAffiliateFlagForCommission(t, repo, "false")
+
+	view, err := svc.GetAffiliateAdminSettings(ctx)
+	require.NoError(t, err)
+	require.False(t, view.ProgramEnabled)
+
+	require.NoError(t, svc.SetAffiliateProgramEnabled(ctx, actor.String(), true))
+	view, err = svc.GetAffiliateAdminSettings(ctx)
+	require.NoError(t, err)
+	require.True(t, view.ProgramEnabled)
+	_, found, err := repo.GetSystemConfigValue(ctx, affiliateEnabledSinceKey)
+	require.NoError(t, err)
+	require.True(t, found, "switching on records when the program started")
+
+	require.NoError(t, svc.SetAffiliateProgramEnabled(ctx, actor.String(), false))
+	view, err = svc.GetAffiliateAdminSettings(ctx)
+	require.NoError(t, err)
+	require.False(t, view.ProgramEnabled)
+}

@@ -168,3 +168,18 @@ func (h *Handler) AdminAffiliateReportOrdersExport(c echo.Context) error {
 	}
 	return csvDownload(c, "affiliate-report-orders.csv", data)
 }
+
+// AdminSetAffiliateProgram backs PUT /admin/affiliate-settings/program.
+func (h *Handler) AdminSetAffiliateProgram(c echo.Context) error {
+	var req struct {
+		Enabled *bool `json:"enabled"`
+	}
+	if err := c.Bind(&req); err != nil || req.Enabled == nil {
+		return badRequest(c, "enabled is required")
+	}
+	claims := claimsFromContext(c)
+	if err := h.svc.SetAffiliateProgramEnabled(c.Request().Context(), claims.Sub, *req.Enabled); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]bool{"enabled": *req.Enabled})
+}

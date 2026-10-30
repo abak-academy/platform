@@ -197,6 +197,20 @@ export function useAdminAffiliateSettings() {
   });
 }
 
+export function useSetAffiliateProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      authFetch<{ enabled: boolean }>("/admin/affiliate-settings/program", {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminAffiliateKeys.settings() });
+    },
+  });
+}
+
 export function useUpdateAffiliateSettings() {
   const qc = useQueryClient();
   return useMutation({

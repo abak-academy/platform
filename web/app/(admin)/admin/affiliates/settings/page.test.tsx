@@ -5,6 +5,7 @@ import SettingsPage from "./page";
 const h = vi.hoisted(() => ({
   settings: vi.fn(),
   update: vi.fn(),
+  program: vi.fn(),
   overrides: vi.fn(),
   upsert: vi.fn(),
   remove: vi.fn(),
@@ -25,6 +26,7 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useAffiliateOverrideProducts: h.products,
   useAdminAffiliateSettings: h.settings,
   useUpdateAffiliateSettings: () => ({ mutate: h.update, isPending: false }),
+  useSetAffiliateProgram: () => ({ mutate: h.program, isPending: false }),
   useAdminAffiliateOverrides: h.overrides,
   useUpsertAffiliateOverride: () => ({ mutate: h.upsert, isPending: false }),
   useDeleteAffiliateOverride: () => ({ mutate: h.remove, isPending: false }),
@@ -34,6 +36,7 @@ vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability })
 vi.mock("sonner", () => ({ toast: h.toast }));
 
 const view = {
+  program_enabled: false,
   settings: {
     id: 1,
     cookie_days: 30,
@@ -84,6 +87,25 @@ describe("AdminAffiliateSettingsPage", () => {
     render(<SettingsPage />);
 
     expect(screen.getByTestId("no-access")).toBeInTheDocument();
+  });
+
+  it("shows the program as off and turns it on only after confirming", async () => {
+    render(<SettingsPage />);
+
+    expect(screen.getByText("Nonaktif")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Aktifkan program" }));
+    expect(h.program).not.toHaveBeenCalled();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Konfirmasi" }));
+    expect(h.program).toHaveBeenCalledWith(true, expect.anything());
+  });
+
+  it("offers to turn an active program off", () => {
+    h.settings.mockReturnValue({ isLoading: false, isError: false, data: { ...view, program_enabled: true } });
+    render(<SettingsPage />);
+
+    expect(screen.getByText("Aktif")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nonaktifkan program" })).toBeInTheDocument();
   });
 
   it("loads the current values into the form", async () => {
