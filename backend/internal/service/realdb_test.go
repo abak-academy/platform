@@ -15,6 +15,9 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
+// audit_log.actor_id is a NOT NULL uuid (migration 0022).
+var testActorID = uuid.NewString()
+
 // realDBOnce/realDBSvc back newRealDBService: storeRepo is *repository.Repository
 // (a concrete type, not an interface), so school/student Service methods that
 // touch it cannot be exercised against a fake — a real Postgres instance is the

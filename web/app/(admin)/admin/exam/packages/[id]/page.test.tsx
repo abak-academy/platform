@@ -955,17 +955,36 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
   });
 
-  it("admin_exam sees the Results tab content, not UnderMaintenance", async () => {
+  it("admin_exam sees the unified Results workspace instead of Results/Leaderboard", async () => {
     mockRole = "admin_exam";
     render(<ExamPackageDetailPage />);
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
+    expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /^hasil$/i }));
 
-    expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
+    expect(screen.getByTestId("results-workspace-tab")).toHaveTextContent("exam-1");
+    expect(screen.queryByTestId("exam-results-tab")).not.toBeInTheDocument();
     expect(screen.queryByText(/sedang dalam pengembangan/i)).not.toBeInTheDocument();
+  });
+
+  it("admin_exam skips legacy leaderboard queries but keeps tests/grading enabled", async () => {
+    mockRole = "admin_exam";
+    useExamAnalyticsSpy.mockClear();
+    useExamLeaderboardSpy.mockClear();
+    useGradingSessionsSpy.mockClear();
+
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+
+    expect(useExamAnalyticsSpy).toHaveBeenLastCalledWith("exam-1", false);
+    expect(useExamLeaderboardSpy).toHaveBeenLastCalledWith("exam-1", { limit: 20 }, false);
+    expect(useGradingSessionsSpy).toHaveBeenLastCalledWith("exam-1", true);
   });
 
   it("super_admin sees the unified Results tab content", async () => {

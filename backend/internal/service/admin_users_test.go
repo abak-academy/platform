@@ -409,7 +409,7 @@ func TestChangeAccountStatus_ReactivatesDeactivatedAccount(t *testing.T) {
 	if user == nil || user.Status != "active" {
 		t.Errorf("want status active after reactivation, got %v", user)
 	}
-	access, refresh, _, err := svc.Login(ctx, email, "password123")
+	access, refresh, _, err := svc.Login(ctx, email, "password123", "1.1.1.1")
 	if err != nil {
 		t.Fatalf("Login after reactivation: %v", err)
 	}

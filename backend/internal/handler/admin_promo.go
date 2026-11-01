@@ -29,6 +29,7 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		MaxUses           *int       `json:"max_uses"`
 		ExpiresAt         *time.Time `json:"expires_at"`
 		IsPublic          bool       `json:"is_public"`
+		AffiliatorOnly    bool       `json:"affiliator_only"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -46,6 +47,7 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		MaxUses:           req.MaxUses,
 		ExpiresAt:         req.ExpiresAt,
 		IsPublic:          req.IsPublic,
+		AffiliatorOnly:    req.AffiliatorOnly,
 	}
 
 	created, err := h.svc.AdminCreatePromoCode(c.Request().Context(), promo)
@@ -60,15 +62,16 @@ func (h *Handler) AdminUpdatePromoCode(c echo.Context) error {
 	id := c.Param("id")
 
 	var req struct {
-		MaxUses   *int       `json:"max_uses"`
-		ExpiresAt *time.Time `json:"expires_at"`
-		IsPublic  bool       `json:"is_public"`
+		MaxUses        *int       `json:"max_uses"`
+		ExpiresAt      *time.Time `json:"expires_at"`
+		IsPublic       bool       `json:"is_public"`
+		AffiliatorOnly bool       `json:"affiliator_only"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
-	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic)
+	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic, req.AffiliatorOnly)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

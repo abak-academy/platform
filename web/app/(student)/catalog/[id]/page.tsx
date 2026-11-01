@@ -81,6 +81,8 @@ export default function ProductDetailPage({
   const isDigital = isDigitalType(product.type);
   const isPhysical = isPhysicalType(product.type);
   const alreadyInCart = cart?.items?.some((i) => i.product_id === product.id) ?? false;
+  const limitedExam = product.type === "exam" && Boolean(product.stock_limited);
+  const soldOutExam = limitedExam && product.stock === 0;
 
   // Warns before checkout instead of only after — the backend still enforces
   // this gate at checkout regardless.
@@ -165,6 +167,11 @@ export default function ProductDetailPage({
             {isPhysical && (
               <p className="text-xs text-ink-500">
                 {t("product_stock_label")}: {product.stock ?? 0} · {t("product_shipped_to_address")}
+              </p>
+            )}
+            {limitedExam && (
+              <p className="text-xs text-ink-500">
+                {soldOutExam ? t("product_sold_out") : `${t("product_stock_label")}: ${product.stock ?? 0}`}
               </p>
             )}
           </div>
@@ -258,7 +265,7 @@ export default function ProductDetailPage({
               <Button
                 size="lg"
                 className="w-full"
-                disabled={addToCart.isPending}
+                disabled={addToCart.isPending || (soldOutExam && !alreadyInCart)}
                 onClick={() => alreadyInCart ? router.push("/cart") : handleAdd()}
               >
                 <ShoppingCart className="size-4" />
@@ -268,7 +275,7 @@ export default function ProductDetailPage({
                 size="lg"
                 variant="secondary"
                 className="w-full"
-                disabled={addToCart.isPending}
+                disabled={addToCart.isPending || soldOutExam}
                 onClick={() => handleAdd(() => router.push("/cart"))}
               >
                 {t("product_buy_now")}

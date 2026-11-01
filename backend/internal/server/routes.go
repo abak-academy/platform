@@ -13,6 +13,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	auth := v1.Group("/auth")
 	auth.POST("/register", h.Register)
+	auth.POST("/affiliators/register", h.RegisterAffiliator, handler.AffiliateRateLimiter())
 	auth.POST("/login", h.Login, handler.LoginRateLimiter())
 	auth.POST("/google", h.GoogleLogin)
 	auth.POST("/otp/send", h.SendOTP)
@@ -39,7 +40,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminProducts.POST("", h.AdminCreateProduct)
 	adminProducts.GET("/:id", h.AdminGetProduct)
 	adminProducts.PATCH("/:id", h.AdminUpdateProduct)
-	adminProducts.PUT("/:id/relations", h.AdminUpdateProductRelations)
+	adminProducts.PUT("/:id/relations", h.AdminUpdateProductRelations, handler.RBACMiddleware("product-relations:write"))
 	adminProducts.POST("/:id/publish", h.AdminPublishProduct)
 	adminProducts.DELETE("/:id", h.AdminDeleteProduct)
 
@@ -177,6 +178,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.GET("", h.AdminListOrders)
 	// Registered before /:id so "summary" is never read as an order id.
 	adminOrders.GET("/summary", h.AdminOrdersSummary)
+	adminOrders.GET("/unit-sales", h.AdminUnitSales)
+	adminOrders.GET("/unit-sales/export", h.AdminUnitSalesExport)
+	adminOrders.POST("/labels", h.AdminGetShippingLabels)
 	adminOrders.GET("/:id", h.AdminGetOrder)
 	adminOrders.GET("/:id/payment-proof", h.AdminGetPaymentProof)
 	adminOrders.GET("/:id/refund-proof", h.AdminGetRefundProof)
@@ -218,7 +222,6 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Admin school routes
 	adminSchools := admin.Group("/schools")
 	adminSchools.Use(handler.RBACMiddleware("schools:write"))
-	adminSchools.GET("", h.AdminListSchools)
 	adminSchools.GET("/options", h.AdminListSchoolOptions)
 	adminSchools.POST("", h.AdminCreateSchool)
 	adminSchools.PUT("/:id", h.AdminUpdateSchool)
@@ -226,12 +229,18 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSchools.POST("/bulk/presign", h.AdminPresignSchoolBulkUpload)
 	adminSchools.POST("/bulk", h.AdminBulkImportSchools)
 
+	// Sibling group, not a sub-route of adminSchools: that group's schools:write
+	// would lock out admin_exam, which only reads the list for its school filters.
+	adminSchoolsRead := admin.Group("/schools")
+	adminSchoolsRead.Use(handler.RBACMiddleware("schools:read"))
+	adminSchoolsRead.GET("", h.AdminListSchools)
+
 	// Admin student routes (row-scoped via JWT schoolID)
 	adminStudents := admin.Group("/students")
 	adminStudents.Use(handler.RBACMiddleware("students:*"))
 	adminStudents.GET("", h.AdminListStudents)
 	adminStudents.POST("", h.AdminRegisterStudent)
-	adminStudents.PATCH("/:id/password", h.AdminSetStudentPassword, handler.RBACMiddleware("system:admin"))
+	adminStudents.PATCH("/:id/password", h.AdminSetStudentPassword, handler.RBACMiddleware("student-passwords:write"))
 	adminStudents.PATCH("/:id", h.AdminChangeStudentStatus)
 	adminStudents.GET("/:id/credentials", h.AdminGetStudentCredentials)
 	adminStudents.POST("/bulk/presign", h.AdminPresignStudentBulkUpload)
@@ -309,9 +318,10 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.GET("/:id/registrations/counts", h.AdminExamRegistrationCounts)
 	adminExamsRead.GET("/:id/registrations/export", h.AdminExportExamRegistrations)
 
-	// Admin exam results workspace (Issue 124) — super_admin only. "results-workspace:read"
-	// is claimed by no other role, so RBACMiddleware rejects everyone else with 403
-	// (mirrors the adminSystem group's "system:admin" idiom).
+	// Admin exam results workspace (Issue 124) — super_admin and admin_exam.
+	// "results-workspace:read" is claimed by no other role, so RBACMiddleware
+	// rejects everyone else with 403 (mirrors the adminSystem group's
+	// "system:admin" idiom).
 	adminResultsWorkspace := admin.Group("/exams")
 	adminResultsWorkspace.Use(handler.RBACMiddleware("results-workspace:read"))
 	adminResultsWorkspace.GET("/:id/results-workspace", h.AdminGetExamResultsWorkspace)
@@ -324,17 +334,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminUploads.POST("/image", h.AdminUploadImage)
 	adminUploads.POST("/audio", h.AdminUploadAudio)
 
-	// Admin exam grant routes (super_admin only — satisfies "exam-grants:write"
-	// via the "*" wildcard; see rbac.go:29-48)
+	// Admin exam grant routes (super_admin and admin_exam). The bulk CSV routes
+	// need "exam-grants-bulk:write" on top, which only super_admin's "*" satisfies.
 	adminExamGrants := admin.Group("/exam-grants")
 	adminExamGrants.Use(handler.RBACMiddleware("exam-grants:write"))
 	adminExamGrants.POST("", h.AdminGrantExamAccess)
 	adminExamGrants.POST("/revoke", h.AdminRevokeExamAccess)
 	adminExamGrants.GET("/students/search", h.AdminSearchGrantStudents)
-	adminExamGrants.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload)
-	adminExamGrants.POST("/bulk", h.AdminEnqueueExamGrantBulk)
-	adminExamGrants.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload)
-	adminExamGrants.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk)
+	adminExamGrants.POST("/bulk/presign", h.AdminPresignExamGrantBulkUpload, handler.RBACMiddleware("exam-grants-bulk:write"))
+	adminExamGrants.POST("/bulk", h.AdminEnqueueExamGrantBulk, handler.RBACMiddleware("exam-grants-bulk:write"))
+	adminExamGrants.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload, handler.RBACMiddleware("exam-grants-bulk:write"))
+	adminExamGrants.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk, handler.RBACMiddleware("exam-grants-bulk:write"))
 
 	// Admin bulk-exam-order routes (FR-BULK-01..07). admin_school +
 	// super_admin + admin_store may all order exams; capability is
@@ -374,6 +384,70 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminSchoolDashboard := admin.Group("/dashboard")
 	adminSchoolDashboard.Use(handler.RBACMiddleware("students:read"))
 	adminSchoolDashboard.GET("/school", h.AdminSchoolDashboard)
+
+	affiliates := v1.Group("/affiliates")
+	affiliates.GET("/public/validate", h.AffiliateValidateCode, handler.AffiliateRateLimiter())
+	affiliates.GET("/public/status", h.AffiliateProgramStatus, handler.AffiliateRateLimiter())
+
+	affiliatesMe := v1.Group("/affiliates/me")
+	affiliatesMe.Use(handler.JWTMiddleware(svc, jwtSigner))
+	affiliatesMe.Use(handler.AffiliatorOnlyMiddleware())
+	affiliatesMe.GET("", h.AffiliateMe)
+	affiliatesMe.PATCH("/bank", h.AffiliateMeUpdateBank)
+	affiliatesMe.GET("/bindings", h.AffiliateMeBindings)
+	affiliatesMe.GET("/commissions", h.AffiliateMeCommissions)
+	affiliatesMe.GET("/ledger", h.AffiliateMeLedger)
+	affiliatesMe.GET("/payouts", h.AffiliateMePayouts)
+	affiliatesMe.POST("/payouts", h.AffiliateMeRequestPayout)
+	affiliatesMe.GET("/adjustments", h.AffiliateMeAdjustments)
+	affiliatesMe.GET("/stats", h.AffiliateMeStats)
+	affiliatesMe.GET("/promos", h.AffiliateMePromos)
+
+	adminAffiliates := admin.Group("/affiliates")
+	adminAffiliates.Use(handler.RBACMiddleware("affiliates:*"))
+	adminAffiliates.GET("", h.AdminListAffiliates)
+	adminAffiliates.GET("/export", h.AdminAffiliatorsExport)
+	adminAffiliates.POST("", h.AdminCreateAffiliator)
+	adminAffiliates.POST("/bulk", h.AdminBulkCreateAffiliators)
+	adminAffiliates.GET("/:id", h.AdminGetAffiliate)
+	adminAffiliates.POST("/:id/approval", h.AdminDecideAffiliateApproval)
+	adminAffiliates.PATCH("/:id/status", h.AdminChangeAffiliateStatus)
+	adminAffiliates.POST("/:id/level", h.AdminChangeAffiliateLevel)
+	adminAffiliates.POST("/:id/adjustments", h.AdminCreateAffiliateAdjustment)
+	adminAffiliates.GET("/:id/adjustments", h.AdminListAffiliateAdjustments)
+	adminAffiliates.GET("/:id/commissions", h.AdminListAffiliateCommissions)
+	adminAffiliates.GET("/:id/commissions/export", h.AdminAffiliateCommissionsExport)
+
+	adminAffiliatePayouts := admin.Group("/affiliate-payouts")
+	adminAffiliatePayouts.Use(handler.RBACMiddleware("affiliates:*"))
+	adminAffiliatePayouts.GET("", h.AdminListAffiliatePayouts)
+	adminAffiliatePayouts.GET("/export", h.AdminAffiliatePayoutsExport)
+	adminAffiliatePayouts.POST("/:id/decide", h.AdminDecideAffiliatePayout)
+	adminAffiliatePayouts.POST("/:id/process", h.AdminProcessAffiliatePayout)
+
+	adminAffiliateSettings := admin.Group("/affiliate-settings")
+	adminAffiliateSettings.Use(handler.RBACMiddleware("affiliates:*"))
+	adminAffiliateSettings.GET("", h.AdminGetAffiliateSettings)
+	adminAffiliateSettings.PUT("", h.AdminUpdateAffiliateSettings)
+	adminAffiliateSettings.PUT("/program", h.AdminSetAffiliateProgram)
+
+	adminAffiliateOverrides := admin.Group("/affiliate-product-overrides")
+	adminAffiliateOverrides.Use(handler.RBACMiddleware("affiliates:*"))
+	adminAffiliateOverrides.GET("", h.AdminListAffiliateOverrides)
+	adminAffiliateOverrides.GET("/products", h.AdminSearchAffiliateOverrideProducts)
+	adminAffiliateOverrides.PUT("/:product_id", h.AdminUpsertAffiliateOverride)
+	adminAffiliateOverrides.DELETE("/:product_id", h.AdminDeleteAffiliateOverride)
+
+	adminAffiliateReports := admin.Group("/affiliate-reports")
+	adminAffiliateReports.Use(handler.RBACMiddleware("affiliates:*"))
+	adminAffiliateReports.GET("/summary", h.AdminAffiliateReportSummary)
+	adminAffiliateReports.GET("/liability", h.AdminAffiliateReportLiability)
+	adminAffiliateReports.GET("/orders", h.AdminListAffiliateReportOrders)
+	adminAffiliateReports.GET("/orders/export", h.AdminAffiliateReportOrdersExport)
+
+	adminAffiliateJobs := admin.Group("/affiliate-jobs")
+	adminAffiliateJobs.Use(handler.RBACMiddleware("affiliates:*"))
+	adminAffiliateJobs.POST("/run", h.AdminRunAffiliateJobs)
 }
 
 // RegisterRoutesForTest is the same as registerRoutes but exported for handler tests.

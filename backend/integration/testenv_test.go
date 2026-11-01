@@ -31,11 +31,12 @@ import (
 )
 
 type testEnv struct {
-	pool   *pgxpool.Pool
-	rdb    *redis.Client
-	svc    *service.Service
-	signer *infra.JWTSigner
-	server *httptest.Server
+	pool    *pgxpool.Pool
+	rdb     *redis.Client
+	svc     *service.Service
+	signer  *infra.JWTSigner
+	server  *httptest.Server
+	otpCode *service.RecordingOTPProvider
 }
 
 // One Postgres and one Redis container serve the whole package. Migrations run
@@ -144,6 +145,7 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Cleanup(func() { pool.Close() })
 
 	repo := repository.New(pool)
+	require.NoError(t, repo.UpsertSystemConfig(ctx, "biteship_services", "jne:reg,jne:yes,tiki:ons", false))
 	signer := infra.NewJWTSigner("test-secret-32-bytes-0000000000!", 15*time.Minute)
 
 	cfg := &config.Config{
@@ -154,13 +156,15 @@ func newTestEnv(t *testing.T) *testEnv {
 		OTPTTL:             5 * time.Minute,
 		WorkerPollInterval: 5 * time.Second,
 		CORSOrigins:        []string{"*"},
+		OTPSecret:          "integration-otp-secret",
 	}
+	otpCode := service.NewRecordingOTPProvider()
 
 	svc := service.NewWithStore(
 		repo, repo,
 		rdb,
 		signer,
-		&service.NoopOTPProvider{},
+		otpCode,
 		&service.NoopEmailProvider{},
 		&service.NoopPaymentClient{},
 		stubLogisticsClient{},
@@ -176,11 +180,12 @@ func newTestEnv(t *testing.T) *testEnv {
 	t.Cleanup(ts.Close)
 
 	return &testEnv{
-		pool:   pool,
-		rdb:    rdb,
-		svc:    svc,
-		signer: signer,
-		server: ts,
+		pool:    pool,
+		rdb:     rdb,
+		svc:     svc,
+		signer:  signer,
+		server:  ts,
+		otpCode: otpCode,
 	}
 }
 
@@ -326,8 +331,8 @@ type stubLogisticsClient struct{}
 
 func (stubLogisticsClient) GetRates(context.Context, service.ShippingQuoteRequest) ([]service.CourierRate, error) {
 	return []service.CourierRate{
-		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000},
-		{Courier: "TIKI", Service: "ONS", EstimatedDays: 1, Price: 25000},
+		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000, CourierCode: "jne", ServiceCode: "reg"},
+		{Courier: "TIKI", Service: "ONS", EstimatedDays: 1, Price: 25000, CourierCode: "tiki", ServiceCode: "ons"},
 	}, nil
 }
 

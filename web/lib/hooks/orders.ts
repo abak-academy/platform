@@ -141,14 +141,16 @@ export function useValidatePromo() {
   });
 }
 
-export function useCheckout(basePath?: string) {
+export function useCheckout(basePath?: string, affiliateCode?: string) {
   const qc = useQueryClient();
   const pathPrefix = basePath ?? "/orders";
+  const code = affiliateCode?.trim();
   return useMutation({
     mutationFn: (orderId: string) =>
       authFetch<CheckoutResult>(`${pathPrefix}/${encodeURIComponent(orderId)}/checkout`, {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
+        ...(code ? { body: JSON.stringify({ affiliate_code: code }) } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ordersKeys.cart() });

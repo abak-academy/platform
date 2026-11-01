@@ -2,14 +2,16 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, ShieldCheck, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, Info } from "lucide-react";
 
-import { useVerifyOtp } from "@/lib/hooks/auth";
+import { useVerifyOtp, useSendOtp } from "@/lib/hooks/auth";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/auth/OtpInput";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { clearManualReferral, readReferralFields } from "@/lib/referral";
+import { adoptResendBudget, clearResendBudget, readResendBudget } from "@/lib/otp-budget";
 
 function maskContact(contact: string): string {
   if (!contact) return "•••••";
@@ -19,6 +21,16 @@ function maskContact(contact: string): string {
   return contact.replace(/(\+?\d{2,4})\d+(\d{3})/, "$1•••••$2");
 }
 
+// The resend endpoint's errors carry user-facing Indonesian copy except a
+// failed delivery, whose raw message is technical — map both to friendly text.
+// A stale pending token (otp_invalid) never reaches the user as-is: the page
+// sends the email alongside the token, so the server resolves it either way.
+function resendErrorMessage(err: unknown, t: (key: I18nKey) => string): string {
+  if (!(err instanceof ApiError)) return t("otp_resend_failed");
+  if (err.code === "email_delivery_failed") return t("otp_send_failed");
+  return t("otp_resend_failed");
+}
+
 function OtpForm() {
   const router = useRouter();
   const { t } = useTranslation();
@@ -26,8 +38,41 @@ function OtpForm() {
   const identifier = params.get("id") ?? "";
 
   const verify = useVerifyOtp();
+  const sendOtp = useSendOtp();
   const [digits, setDigits] = React.useState<string[]>(Array(6).fill(""));
   const [error, setError] = React.useState<string | null>(null);
+  const [banner, setBanner] = React.useState<string | null>(null);
+  const [resendIn, setResendIn] = React.useState<number>(60);
+
+  // Applies a server-issued budget to BOTH layers: the wall-clock anchor in
+  // sessionStorage (so later mounts resume it) and this render's state (so
+  // the countdown shows immediately).
+  const applyResendBudget = React.useCallback((budgetSec: number) => {
+    const budget = Math.max(0, Math.ceil(budgetSec) || 0);
+    adoptResendBudget(budget);
+    setResendIn(budget);
+  }, []);
+
+  // Flags written by the login/register pages describe how this challenge was
+  // armed: a failed delivery, a live code (no send), and the server's own
+  // wall-clock-anchored resend budget (lib/otp-budget). Read once on mount —
+  // re-running it on every render (t's identity churns) would clobber the
+  // countdown adopted from a 429.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const failed = sessionStorage.getItem("abak-email-failed") === "1";
+    const active = sessionStorage.getItem("abak-otp-active") === "1";
+    if (failed) setBanner(t("otp_email_failed_banner"));
+    else if (active) setBanner(t("otp_active_banner"));
+    setResendIn(readResendBudget());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = setInterval(() => setResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(timer);
+  }, [resendIn]);
 
   const code = digits.join("");
   const allFilled = digits.every((d) => d !== "");
@@ -41,13 +86,40 @@ function OtpForm() {
     try {
       const pending_token =
         typeof window !== "undefined" ? sessionStorage.getItem("abak-pending-token") ?? "" : "";
-      const data = await verify.mutateAsync({ identifier, code, pending_token });
-      if (typeof window !== "undefined") sessionStorage.removeItem("abak-pending-token");
+      const data = await verify.mutateAsync({ identifier, code, pending_token, ...readReferralFields() });
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("abak-pending-token");
+        sessionStorage.removeItem("abak-email-failed");
+        sessionStorage.removeItem("abak-otp-active");
+        clearManualReferral();
+        clearResendBudget();
+      }
       router.push(redirectForRole(data.user?.role));
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : t("otp_invalid");
       setError(msg);
+    }
+  };
+
+  const onResend = async () => {
+    if (resendIn > 0 || sendOtp.isPending) return;
+    setError(null);
+    const pending_token =
+      typeof window !== "undefined" ? sessionStorage.getItem("abak-pending-token") ?? "" : "";
+    try {
+      const data = await sendOtp.mutateAsync({ pending_token, email: identifier });
+      // A successful resend re-arms the pending token server-side; keep the
+      // freshest one so the next verify works even after the old expired.
+      if (data.pending_token && typeof window !== "undefined") {
+        sessionStorage.setItem("abak-pending-token", data.pending_token);
+      }
+      setBanner(t("otp_resent"));
+      const serverBudget = Number(data.resend_after);
+      applyResendBudget(Number.isFinite(serverBudget) && serverBudget > 0 ? serverBudget : 60);
+    } catch (err) {
+      if (err instanceof ApiError && err.retryAfter) applyResendBudget(err.retryAfter);
+      setError(resendErrorMessage(err, t));
     }
   };
 
@@ -76,6 +148,16 @@ function OtpForm() {
         <strong className="text-ink-700">{maskContact(identifier)}</strong>
         {t("otp_subtitle_suffix")}
       </p>
+
+      {banner && (
+        <div
+          role="status"
+          className="mb-4 flex items-start gap-2 rounded-lg border border-warn/30 bg-warn-bg px-3 py-2.5 text-[12.5px] leading-[1.5] text-ink-700"
+        >
+          <Info size={14} className="mt-0.5 shrink-0 text-warn" />
+          <span>{banner}</span>
+        </div>
+      )}
 
       <OtpInput
         value={digits}
@@ -110,9 +192,23 @@ function OtpForm() {
         )}
       </Button>
 
-      <p className="mt-5 text-center text-[12px] leading-[1.6] text-ink-400">
-        {t("otp_help")}
-      </p>
+      <div className="mt-5 flex flex-col items-center gap-1.5 text-center text-[12px] leading-[1.6] text-ink-400">
+        <p>{t("otp_help")}</p>
+        {resendIn > 0 ? (
+          <p className="text-ink-500">
+            {t("otp_resend_countdown").replace("{s}", String(resendIn))}
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={onResend}
+            disabled={sendOtp.isPending}
+            className="font-semibold text-brand-600 underline underline-offset-2 transition-colors hover:text-brand-700 disabled:opacity-60"
+          >
+            {sendOtp.isPending ? t("otp_submitting") : t("otp_resend")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

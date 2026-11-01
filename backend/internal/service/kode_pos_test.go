@@ -41,8 +41,8 @@ func TestValidateKodePos(t *testing.T) {
 }
 
 // The quote is the path that matters most: an unresolvable destination is not
-// reported by the courier API, it silently degrades to the flat rate, so a
-// postcode typo would otherwise surface as a wrong price rather than an error.
+// reported by the courier API, it comes back as an unserved route, so a
+// postcode typo would otherwise look like a coverage gap rather than an error.
 func TestGetShippingRates_RejectsNonNumericKodePos(t *testing.T) {
 	svc := &Service{}
 

@@ -2,9 +2,15 @@ package service
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	"akademi-bimbel/internal/model"
 )
+
+var ErrLabelsNotPrintable = errors.New("orders are not printable")
+
+var ErrInvalidLabelRequest = errors.New("invalid shipping label request")
 
 var (
 	// ErrStorageNotConfigured replaces eight separate inline allocations of the
@@ -94,9 +100,18 @@ var (
 
 // --- from auth.go ---
 var (
-	ErrEmailTaken          = errors.New("email already registered")
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrOTPRateLimit        = errors.New("otp requested too recently")
+	ErrEmailTaken         = errors.New("email already registered")
+	ErrInvalidCredentials = errors.New("invalid credentials")
+	// ErrOTPRateLimit means the resend ladder or the sendfail gate is still
+	// holding the user off. User-facing copy (spec C-4); the precise wait
+	// rides the Retry-After header and the typed OTPRateLimitError below.
+	ErrOTPRateLimit = errors.New("Terlalu sering meminta kode OTP. Tunggu sebentar lalu coba lagi.")
+	// ErrOTPAttemptsExceeded means the verification code was invalidated after
+	// too many wrong entries; a fresh code is required. User-facing copy.
+	ErrOTPAttemptsExceeded = errors.New("Terlalu banyak percobaan salah. Silakan minta kode baru.")
+	// ErrEmailDeliveryFailed means the email provider rejected or failed a
+	// send (e.g. SMTP relay 451 rate limit). Maps to 503.
+	ErrEmailDeliveryFailed = errors.New("email delivery failed")
 	ErrOTPExpired          = errors.New("otp expired")
 	ErrInvalidOTP          = errors.New("invalid otp")
 	ErrInvalidPendingToken = errors.New("invalid pending token")
@@ -114,6 +129,56 @@ var (
 	ErrInvalidUUID         = errors.New("invalid uuid")
 	ErrVerificationPending = errors.New("email verification pending")
 )
+
+// OTPRateLimitError reports the resend cooldown with its remaining duration so
+// the handler can set a precise Retry-After. Satisfies
+// errors.Is(err, ErrOTPRateLimit).
+type OTPRateLimitError struct {
+	RetryAfter time.Duration
+}
+
+func (e *OTPRateLimitError) Error() string { return ErrOTPRateLimit.Error() }
+
+func (e *OTPRateLimitError) Is(target error) bool { return target == ErrOTPRateLimit }
+
+// OTPGateError is an OTPRateLimitError carrying the limiter bucket that
+// tripped, for metrics only. The embedded pointer keeps errors.As of
+// OTPRateLimitError working for the existing handler mapping.
+type OTPGateError struct {
+	*OTPRateLimitError
+	Bucket string
+}
+
+func (e *OTPGateError) Unwrap() error { return e.OTPRateLimitError }
+
+// EmailDeliveryError reports a failed provider send with the short pause the
+// client should wait before retrying (konsep §9). Satisfies
+// errors.Is(err, ErrEmailDeliveryFailed).
+type EmailDeliveryError struct {
+	RetryAfter time.Duration
+	Err        error
+}
+
+func (e *EmailDeliveryError) Error() string {
+	return fmt.Sprintf("%s: %v", ErrEmailDeliveryFailed.Error(), e.Err)
+}
+
+func (e *EmailDeliveryError) Is(target error) bool { return target == ErrEmailDeliveryFailed }
+
+func (e *EmailDeliveryError) Unwrap() error { return e.Err }
+
+// VerificationPendingError carries the OTP dispatch outcome on the login 403
+// path so the client can warn when the send failed or tell the user a live
+// code is already waiting. Satisfies errors.Is(err, ErrVerificationPending).
+type VerificationPendingError struct {
+	EmailFailed bool // a send was attempted and failed
+	OTPActive   bool // a live code already existed — nothing was sent
+	ResendAfter int  // seconds until a new send is allowed; 0 = now
+}
+
+func (e *VerificationPendingError) Error() string { return ErrVerificationPending.Error() }
+
+func (e *VerificationPendingError) Is(target error) bool { return target == ErrVerificationPending }
 
 // --- from bulk_exam_order.go ---
 var (
@@ -250,9 +315,14 @@ var (
 
 // --- from shipping_rates.go ---
 var (
-	// ErrShippingUnavailable means no carrier quote could be obtained and no
-	// flat-rate fallback is configured.
+	// ErrShippingUnavailable means shipping is not configured or authorized.
 	ErrShippingUnavailable = errors.New("shipping is unavailable")
+
+	// ErrShippingRouteUnserved means no enabled carrier serves the destination.
+	ErrShippingRouteUnserved = errors.New("shipping route is unserved")
+
+	// ErrShippingTemporarilyUnavailable means the carrier quote request failed.
+	ErrShippingTemporarilyUnavailable = errors.New("shipping is temporarily unavailable")
 )
 
 // --- from biteship.go ---
@@ -302,6 +372,11 @@ var (
 	// deadline has passed, whether or not the worker has expired it yet.
 	// Expiry is final: the student starts over from a fresh cart. Maps to 409.
 	ErrPaymentExpired = errors.New("payment window has expired")
+
+	// ErrPaymentSessionUnavailable means the order already has a gateway
+	// session but its link is no longer stored, so a retry cannot hand it out
+	// and must not open a second session. Maps to 409.
+	ErrPaymentSessionUnavailable = errors.New("payment session is unavailable")
 )
 
 // --- from student_bulk.go ---

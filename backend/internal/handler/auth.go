@@ -22,13 +22,43 @@ func (h *Handler) Register(c echo.Context) error {
 	if req.Email == "" || req.Password == "" || req.Name == "" {
 		return badRequest(c, "email, password and name are required")
 	}
-	pendingToken, err := h.svc.Register(c.Request().Context(), req.Email, req.Password, req.Name)
+	chall, err := h.svc.Register(c.Request().Context(), req.Email, req.Password, req.Name, c.RealIP())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusCreated, map[string]any{
 		"otp_required":  true,
-		"pending_token": pendingToken,
+		"pending_token": chall.PendingToken,
+		"email_failed":  chall.EmailFailed,
+		"otp_active":    chall.OTPActive,
+		"resend_after":  chall.ResendAfter,
+	})
+}
+
+func (h *Handler) RegisterAffiliator(c echo.Context) error {
+	var req struct {
+		Email        string `json:"email"`
+		Password     string `json:"password"`
+		Name         string `json:"name"`
+		Phone        string `json:"phone"`
+		TermsVersion string `json:"terms_version"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	if req.Email == "" || req.Password == "" || req.Name == "" || req.Phone == "" || req.TermsVersion == "" {
+		return badRequest(c, "email, password, name, phone and terms_version are required")
+	}
+	chall, err := h.svc.RegisterAffiliator(c.Request().Context(), req.Email, req.Password, req.Name, req.Phone, req.TermsVersion, c.RealIP())
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusCreated, map[string]any{
+		"otp_required":  true,
+		"pending_token": chall.PendingToken,
+		"email_failed":  chall.EmailFailed,
+		"otp_active":    chall.OTPActive,
+		"resend_after":  chall.ResendAfter,
 	})
 }
 
@@ -43,13 +73,23 @@ func (h *Handler) Login(c echo.Context) error {
 	if req.Identifier == "" || req.Password == "" {
 		return badRequest(c, "identifier and password are required")
 	}
-	access, refresh, pendingToken, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password)
+	access, refresh, pendingToken, err := h.svc.Login(c.Request().Context(), req.Identifier, req.Password, c.RealIP())
 	if errors.Is(err, service.ErrVerificationPending) {
+		emailFailed, otpActive, resendAfter := false, false, 0
+		var vp *service.VerificationPendingError
+		if errors.As(err, &vp) {
+			emailFailed = vp.EmailFailed
+			otpActive = vp.OTPActive
+			resendAfter = vp.ResendAfter
+		}
 		return c.JSON(http.StatusForbidden, map[string]any{
 			"code":          "verification_pending",
 			"otp_required":  true,
 			"pending_token": pendingToken,
 			"id":            req.Identifier,
+			"email_failed":  emailFailed,
+			"otp_active":    otpActive,
+			"resend_after":  resendAfter,
 		})
 	}
 	if err != nil {
@@ -69,7 +109,9 @@ func (h *Handler) Login(c echo.Context) error {
 
 func (h *Handler) GoogleLogin(c echo.Context) error {
 	var req struct {
-		IDToken string `json:"id_token"`
+		IDToken            string `json:"id_token"`
+		ReferralCode       string `json:"referral_code"`
+		ReferralCodeCookie string `json:"referral_code_cookie"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -77,7 +119,10 @@ func (h *Handler) GoogleLogin(c echo.Context) error {
 	if req.IDToken == "" {
 		return badRequest(c, "id_token is required")
 	}
-	access, refresh, err := h.svc.GoogleLogin(c.Request().Context(), req.IDToken)
+	access, refresh, err := h.svc.GoogleLogin(c.Request().Context(), req.IDToken, service.AffiliateReferral{
+		ManualCode: req.ReferralCode,
+		CookieCode: req.ReferralCodeCookie,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -105,32 +150,23 @@ func (h *Handler) SendOTP(c echo.Context) error {
 		return badRequest(c, "pending_token or email is required")
 	}
 
-	ctx := c.Request().Context()
-	var userID string
-	if req.PendingToken != "" {
-		id, err := h.svc.ResolveUserFromPendingToken(ctx, req.PendingToken)
-		if err != nil {
-			return mapServiceError(c, err)
-		}
-		userID = id
-	} else {
-		id, err := h.svc.ResolveUserFromEmail(ctx, req.Email)
-		if err != nil {
-			return mapServiceError(c, err)
-		}
-		userID = id
-	}
-
-	if err := h.svc.SendOTP(ctx, userID); err != nil {
+	res, err := h.svc.ResendOTP(c.Request().Context(), req.PendingToken, req.Email, c.RealIP())
+	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]string{"message": "OTP sent"})
+	return c.JSON(http.StatusOK, map[string]any{
+		"message":       "OTP sent",
+		"pending_token": res.PendingToken,
+		"resend_after":  res.ResendAfter,
+	})
 }
 
 func (h *Handler) VerifyOTP(c echo.Context) error {
 	var req struct {
-		PendingToken string `json:"pending_token"`
-		Code         string `json:"code"`
+		PendingToken       string `json:"pending_token"`
+		Code               string `json:"code"`
+		ReferralCode       string `json:"referral_code"`
+		ReferralCodeCookie string `json:"referral_code_cookie"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -138,7 +174,10 @@ func (h *Handler) VerifyOTP(c echo.Context) error {
 	if req.PendingToken == "" || req.Code == "" {
 		return badRequest(c, "pending_token and code are required")
 	}
-	access, refresh, err := h.svc.VerifyOTP(c.Request().Context(), req.PendingToken, req.Code)
+	access, refresh, err := h.svc.VerifyOTP(c.Request().Context(), req.PendingToken, req.Code, c.RealIP(), service.AffiliateReferral{
+		ManualCode: req.ReferralCode,
+		CookieCode: req.ReferralCodeCookie,
+	})
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -212,7 +251,7 @@ func (h *Handler) ForgotPassword(c echo.Context) error {
 	if req.Email == "" {
 		return badRequest(c, "email is required")
 	}
-	if err := h.svc.ForgotPassword(c.Request().Context(), req.Email); err != nil {
+	if err := h.svc.ForgotPassword(c.Request().Context(), req.Email, c.RealIP()); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{
@@ -232,7 +271,7 @@ func (h *Handler) ResetPassword(c echo.Context) error {
 	if req.Token == "" || req.OTP == "" || req.NewPassword == "" {
 		return badRequest(c, "token, otp and new_password are required")
 	}
-	if err := h.svc.ResetPassword(c.Request().Context(), req.Token, req.OTP, req.NewPassword); err != nil {
+	if err := h.svc.ResetPassword(c.Request().Context(), req.Token, req.OTP, req.NewPassword, c.RealIP()); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]string{"message": "password reset successful"})

@@ -655,7 +655,7 @@ func TestPatchCart_PopulatesItemValueFromPhysicalItemLineTotal(t *testing.T) {
 	ctx := context.Background()
 	_, repo := newRealDBService(t)
 
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", CourierCode: "jne", ServiceCode: "reg", Price: 18000}}
 	svc := NewWithStore(repo, repo, nil, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, nil, spy, nil, nil, nil)
 
 	var productID string
@@ -1061,7 +1061,7 @@ func TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout(t *testi
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", CourierCode: "jne", ServiceCode: "reg", Price: 18000}}
 	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
 
 	var productID string
@@ -1130,7 +1130,7 @@ func TestPatchCart_PromoSurvivesAddressAndCourierPatchesThroughCheckout(t *testi
 		t.Fatalf("want discount=5000 (10%% of 50000), got %v", preCheckout.Discount)
 	}
 
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "seq-key-"+uniqueSuffix()); err != nil {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "seq-key-"+uniqueSuffix(), ""); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 
@@ -1338,7 +1338,7 @@ func TestCheckout_DigitalQtyGreaterThanOne_RefusedBeforePayment(t *testing.T) {
 
 	wantErr := ValidateItemQty("exam", 2)
 
-	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "qty-guard-key-"+uniqueSuffix())
+	_, err = svc.Checkout(ctx, studentID, order.ID.String(), "qty-guard-key-"+uniqueSuffix(), "")
 	if err == nil || err.Error() != wantErr.Error() {
 		t.Fatalf("want error %q, got %v", wantErr, err)
 	}
@@ -1373,7 +1373,7 @@ func TestCheckout_PhysicalQtyGreaterThanOne_Succeeds(t *testing.T) {
 	defer mr.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", Price: 18000}}
+	spy := &recordingLogisticsClient{rate: CourierRate{Courier: "JNE", Service: "REG", CourierCode: "jne", ServiceCode: "reg", Price: 18000}}
 	svc := NewWithStore(repo, repo, rdb, nil, &NoopOTPProvider{}, &NoopEmailProvider{}, &NoopPaymentClient{}, spy, nil, nil, nil)
 
 	var productID string
@@ -1408,7 +1408,7 @@ func TestCheckout_PhysicalQtyGreaterThanOne_Succeeds(t *testing.T) {
 		t.Fatalf("PatchCart: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "physqty-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "physqty-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout with physical item at qty 3: %v", err)
 	}
@@ -1452,7 +1452,7 @@ func TestCheckout_DigitalQtyOne_Succeeds(t *testing.T) {
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "digqtyone-key-"+uniqueSuffix())
+	result, err := svc.Checkout(ctx, studentID, order.ID.String(), "digqtyone-key-"+uniqueSuffix(), "")
 	if err != nil {
 		t.Fatalf("Checkout with well-formed digital item at qty 1: %v", err)
 	}
@@ -2894,7 +2894,7 @@ func TestCheckout_PromoBearingOrder_CreatePaymentFails_StillIncrementsUsedCount(
 		t.Fatalf("PatchCart (apply promo): %v", err)
 	}
 
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "promofail-key-"+uniqueSuffix()); err == nil {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "promofail-key-"+uniqueSuffix(), ""); err == nil {
 		t.Fatal("want Checkout to fail (CreatePayment fails on first call)")
 	}
 
@@ -2952,7 +2952,7 @@ func TestRetryPayment_RecoversFromCreatePaymentFailureOnCheckout(t *testing.T) {
 		t.Fatalf("AddItem: %v", err)
 	}
 
-	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "retryrec-checkout-"+uniqueSuffix()); err == nil {
+	if _, err := svc.Checkout(ctx, studentID, order.ID.String(), "retryrec-checkout-"+uniqueSuffix(), ""); err == nil {
 		t.Fatal("want Checkout to fail (CreatePayment fails on first call)")
 	}
 

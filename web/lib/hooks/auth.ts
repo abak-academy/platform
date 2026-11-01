@@ -58,6 +58,9 @@ export interface RegisterInput {
 export interface RegisterResponse {
   otp_required: boolean;
   pending_token: string;
+  email_failed?: boolean;
+  otp_active?: boolean;
+  resend_after?: number;
 }
 
 export function useRegister() {
@@ -70,10 +73,53 @@ export function useRegister() {
   });
 }
 
+export interface RegisterAffiliatorInput extends RegisterInput {
+  phone: string;
+  terms_version: string;
+}
+
+export function useRegisterAffiliator() {
+  return useMutation({
+    mutationFn: (input: RegisterAffiliatorInput) =>
+      apiFetch<RegisterResponse>(`/auth/affiliators/register`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  });
+}
+
 export interface VerifyOtpInput {
   identifier: string;
   code: string;
   pending_token?: string;
+  referral_code?: string;
+  referral_code_cookie?: string;
+}
+
+export interface SendOtpInput {
+  pending_token?: string;
+  email?: string;
+}
+
+// Resend the OTP for a pending verification. The backend enforces the resend
+// ladder: 429 carries retryAfter (Retry-After header) and 503 signals a failed
+// delivery — the caller owns the countdown and the error copy. The 200 body
+// hands back a fresh pending token (the old one expires server-side) and the
+// server's own resend budget.
+export interface SendOtpResponse {
+  message: string;
+  pending_token?: string;
+  resend_after?: number;
+}
+
+export function useSendOtp() {
+  return useMutation({
+    mutationFn: (input: SendOtpInput) =>
+      apiFetch<SendOtpResponse>(`/auth/otp/send`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  });
 }
 
 export function useVerifyOtp() {
@@ -109,6 +155,8 @@ export function useLogout() {
 
 export interface GoogleLoginInput {
   id_token: string;
+  referral_code?: string;
+  referral_code_cookie?: string;
 }
 
 export function useGoogleLogin() {

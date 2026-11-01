@@ -5,6 +5,9 @@ export function loginErrorMessage(err: unknown, t: ReturnType<typeof useTranslat
   if (err instanceof ApiError && err.code === "rate_limited") {
     return t("login_rate_limited");
   }
+  if (err instanceof ApiError && err.code === "otp_attempts_exceeded") {
+    return t("otp_attempts_exceeded");
+  }
   if (err instanceof ApiError) {
     return err.message;
   }

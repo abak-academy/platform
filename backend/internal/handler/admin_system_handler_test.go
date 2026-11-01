@@ -16,6 +16,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -407,5 +408,87 @@ func TestAdminChangeAccountRole_GoogleAccountNoPassword_WireContract(t *testing.
 	}
 	if resp["code"] != "account_has_no_password" {
 		t.Errorf("code: want account_has_no_password, got %v", resp["code"])
+	}
+}
+
+func TestAdminUpdateSystemConfig_BiteshipServices_400(t *testing.T) {
+	for _, value := range []string{"", "unknown:reg", "jne:unknown", "jne:reg,jne:reg"} {
+		t.Run(value, func(t *testing.T) {
+			env := newAdminSystemEnv(t)
+			body, err := json.Marshal(map[string]string{"biteship_services": value})
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := httptest.NewRequest(http.MethodPut, "/admin/system/config", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c := env.e.NewContext(req, rec)
+			setAdminClaims(c, "admin-u1")
+			if err := env.h.AdminUpdateSystemConfig(c); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("want 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdminUpdateSystemConfig_UnrelatedKeysWithEmptyBiteshipServices(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+	repo := repository.New(env.pool)
+	if err := repo.UpsertSystemConfig(ctx, "biteship_services", "", false); err != nil {
+		t.Fatal(err)
+	}
+	body, err := json.Marshal(map[string]string{"app_name": "Example Platform"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/system/config", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	token := mintTokenForEnv(t, env, uuid.NewString(), service.RoleSuperAdmin)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rec := httptest.NewRecorder()
+	env.e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["app_name"] != "Example Platform" || got["biteship_services"] != "" {
+		t.Fatalf("config=%v", got)
+	}
+}
+
+func TestAdminUpdateSystemConfig_FlatRate_400(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), "postgres://test:test@127.0.0.1:1/test?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+	repo := repository.New(pool)
+	svc := service.NewWithStore(repo, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := handler.New(svc)
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPut, "/admin/system/config", bytes.NewBufferString(`{"shipping_fallback_flat_rate":"50000"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+	setAdminClaims(c, uuid.NewString())
+	if err := h.AdminUpdateSystemConfig(c); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s, want 400", rec.Code, rec.Body.String())
+	}
+	var body handler.APIError
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Code != "invalid_request" {
+		t.Fatalf("code=%s want invalid_request", body.Code)
 	}
 }

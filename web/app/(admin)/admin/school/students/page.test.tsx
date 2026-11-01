@@ -919,4 +919,63 @@ describe("SchoolStudentsPage", () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith("Semua field harus diisi");
   });
+
+  // ── admin_exam gets the same student controls as super_admin ──
+
+  it("shows the school picker to admin_exam, not the legacy dropdown", async () => {
+    authStore = { token: "t", user: { role: "admin_exam" } };
+
+    render(<SchoolStudentsPage />);
+
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
+  });
+
+  it("offers admin_exam the set-password action", async () => {
+    authStore = { token: "t", user: { role: "admin_exam" } };
+    setPasswordMutateAsync.mockResolvedValueOnce({ message: "password updated" });
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    const rows = screen.getAllByRole("row");
+    const budiRow = rows.find((r) => within(r).queryByText("Budi Santoso"));
+    expect(budiRow).toBeTruthy();
+    fireEvent.pointerDown(
+      within(budiRow as HTMLElement).getByRole("button", { name: "" }),
+      { button: 0 },
+    );
+    fireEvent.click(await screen.findByText("Set Password"));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.input(within(dialog).getByPlaceholderText("Password Baru"), {
+      target: { value: "chosenPass123" },
+    });
+    fireEvent.input(within(dialog).getByPlaceholderText("Konfirmasi Password"), {
+      target: { value: "chosenPass123" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Set Password" }));
+
+    await waitFor(() => {
+      expect(setPasswordMutateAsync).toHaveBeenCalledWith({
+        id: "st1",
+        newPassword: "chosenPass123",
+      });
+    });
+  });
+
+  it("offers admin_exam the manual password field at registration", async () => {
+    authStore = { token: "t", user: { role: "admin_exam" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /daftarkan siswa/i }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByPlaceholderText("Password")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("school-picker-register-school")).toBeInTheDocument();
+  });
 });

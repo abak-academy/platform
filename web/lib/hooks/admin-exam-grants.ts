@@ -55,7 +55,7 @@ export interface EnqueueBulkResult {
 // ── Hooks ─────────────────────────────────────────────────────────────────
 
 /**
- * Search students across all schools (super_admin only).
+ * Search students across all schools (super_admin and admin_exam).
  * GET /admin/exam-grants/students/search
  * All filter params are optional.
  */
@@ -82,7 +82,7 @@ export function useSearchStudentsAcrossSchools(opts?: SearchStudentsAcrossSchool
 }
 
 /**
- * Grant free exam access to selected students (super_admin only).
+ * Grant free exam access to selected students (super_admin and admin_exam).
  * POST /admin/exam-grants
  */
 export function useGrantExamAccess() {
@@ -154,7 +154,7 @@ export interface RevokeExamAccessResponse {
 }
 
 /**
- * Soft-revoke exam registrations for selected students (super_admin only).
+ * Soft-revoke exam registrations for selected students (super_admin and admin_exam).
  * POST /admin/exam-grants/revoke
  */
 export function useRevokeExamAccess() {

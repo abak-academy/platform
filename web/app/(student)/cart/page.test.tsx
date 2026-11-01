@@ -3,6 +3,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import CartPage from "./page";
+import { ApiError } from "@/lib/api";
 import type { Order, OrderItem } from "@/lib/types";
 
 // Mock next/navigation
@@ -75,8 +76,12 @@ vi.mock("@/lib/i18n", () => ({
         students_field_kode_pos_placeholder: "E.g., 40123",
         cart_shipping_options: "Shipping Options",
         cart_shipping_error: "Unable to calculate",
+        cart_shipping_route_unserved: "Alamat tujuan belum terjangkau kurir. Periksa kode pos atau coba alamat lain.",
+        cart_shipping_temporarily_unavailable: "Layanan cek ongkir sedang gangguan. Coba lagi beberapa saat.",
+        cart_shipping_unavailable: "Pengiriman belum tersedia, hubungi admin.",
         update: "Update",
         checkout_process: "Process",
+        payment_pay: "Bayar",
         cart_address_change: "Change address",
         promo_sheet_trigger: "Use a promo",
         promo_sheet_trigger_count: "{n} ready",
@@ -1431,13 +1436,30 @@ describe("CartPage with Shipping", () => {
 
     // Review finding: destinationChanged alone used to drive the notice, even
     // when there was no rate list and no courier selection to clear.
+    it.each([
+      ["shipping_route_unserved", "Alamat tujuan belum terjangkau kurir. Periksa kode pos atau coba alamat lain."],
+      ["shipping_temporarily_unavailable", "Layanan cek ongkir sedang gangguan. Coba lagi beberapa saat."],
+      ["shipping_unavailable", "Pengiriman belum tersedia, hubungi admin."],
+      ["unexpected_code", "Pengiriman belum tersedia, hubungi admin."],
+    ])("explains %s and disables checkout", async (code, message) => {
+      mockCartWithPersistedAddress();
+      mockUseShippingRates.mockReturnValue({
+        mutate: vi.fn(), isPending: false, data: undefined, isError: true,
+        error: new ApiError(code, "raw provider text", 503),
+      });
+      renderWithQueryClient(<CartPage />);
+      expect(await screen.findByText(message)).toBeInTheDocument();
+      expect(screen.queryByText("raw provider text")).toBeNull();
+      expect(screen.getByRole("button", { name: /^Bayar$/i })).toBeDisabled();
+    });
+
     it("keeps checkout enabled while no cart mutation is pending", async () => {
       mockCartWithPersistedAddress();
       mockRatesAlreadyPresent();
 
       renderWithQueryClient(<CartPage />);
 
-      const checkoutButton = await screen.findByRole("button", { name: /Bayar di Tab Baru/i });
+      const checkoutButton = await screen.findByRole("button", { name: /^Bayar$/i });
       expect(checkoutButton).not.toBeDisabled();
     });
 
@@ -1451,7 +1473,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      const checkoutButton = await screen.findByRole("button", { name: /Bayar di Tab Baru/i });
+      const checkoutButton = await screen.findByRole("button", { name: /^Bayar$/i });
       expect(checkoutButton).toBeDisabled();
     });
 
@@ -1478,6 +1500,72 @@ describe("CartPage with Shipping", () => {
         expect(screen.getByRole("button", { name: "Change address" })).toBeInTheDocument();
       });
       expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("referral code field", () => {
+    const cartWith = (extra: Partial<Order>) => ({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [digitalItem],
+        ...extra,
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    it("is hidden when the server says no code could bind this student", async () => {
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: false }));
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByLabelText("register_referral_label")).not.toBeInTheDocument();
+    });
+
+    it("is hidden when the server does not report eligibility at all", async () => {
+      mockUseCart.mockReturnValue(cartWith({}));
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByLabelText("register_referral_label")).not.toBeInTheDocument();
+    });
+
+    it("starts from the referral cookie when the student is eligible", async () => {
+      document.cookie = "aff_ref=BUDI10; path=/";
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: true }));
+
+      renderWithQueryClient(<CartPage />);
+
+      expect(await screen.findByLabelText("register_referral_label")).toHaveValue("BUDI10");
+      document.cookie = "aff_ref=; path=/; max-age=0";
+    });
+
+    it("does not read the cookie for an ineligible student", async () => {
+      document.cookie = "aff_ref=BUDI10; path=/";
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: false }));
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByLabelText("register_referral_label")).not.toBeInTheDocument();
+      document.cookie = "aff_ref=; path=/; max-age=0";
+    });
+
+    it("is shown when the student is eligible", async () => {
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: true }));
+
+      renderWithQueryClient(<CartPage />);
+
+      expect(await screen.findByLabelText("register_referral_label")).toBeInTheDocument();
     });
   });
 });

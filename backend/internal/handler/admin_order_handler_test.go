@@ -6,13 +6,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"akademi-bimbel/config"
 	"akademi-bimbel/internal/handler"
 	"akademi-bimbel/internal/infra"
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/server"
 	"akademi-bimbel/internal/service"
 
 	"github.com/alicebob/miniredis/v2"
@@ -882,5 +885,171 @@ func TestAdminConfirmOrder_ValidProof_Returns200AndConfirms(t *testing.T) {
 	}
 	if raw["payment_proof_url"] != proofKey {
 		t.Errorf(`response["payment_proof_url"]: want %q, got %v`, proofKey, raw["payment_proof_url"])
+	}
+}
+
+func TestAdminOrders_InTransitAndLegacyStatusFilters(t *testing.T) {
+	h, svc, repo := newShipHandlerTestService(t, &fakeShipHandlerLogistics{})
+	ctx := context.Background()
+	for _, shipmentStatus := range append([]string{"", "in_transit"}, service.ShipmentFailureStatusValues()...) {
+		t.Run("shipment_"+shipmentStatus, func(t *testing.T) {
+			id := createShippableOrderForHandler(t, svc, repo, "shipped", true)
+			if shipmentStatus != "" {
+				if err := repo.SetShipmentStatus(ctx, id, shipmentStatus); err != nil {
+					t.Fatal(err)
+				}
+			}
+			q := id.String()[24:]
+			listCtx, listRec := newAdminOrdersGetCtx("/admin/orders?queue=in_transit&q=" + q)
+			if err := h.AdminListOrders(listCtx); err != nil {
+				t.Fatal(err)
+			}
+			if listRec.Code != http.StatusOK {
+				t.Fatalf("list: %d %s", listRec.Code, listRec.Body.String())
+			}
+			var rows orderIDListResponse
+			if err := json.Unmarshal(listRec.Body.Bytes(), &rows); err != nil {
+				t.Fatal(err)
+			}
+			want := 0
+			if shipmentStatus == "" || shipmentStatus == "in_transit" {
+				want = 1
+			}
+			if len(rows.Data) != want {
+				t.Fatalf("rows = %d, want %d", len(rows.Data), want)
+			}
+			sumCtx, sumRec := newAdminOrdersGetCtx("/admin/orders/summary?queue=in_transit&q=" + q)
+			if err := h.AdminOrdersSummary(sumCtx); err != nil {
+				t.Fatal(err)
+			}
+			if sumRec.Code != http.StatusOK {
+				t.Fatalf("summary: %d %s", sumRec.Code, sumRec.Body.String())
+			}
+			var summary handler.OrderSummaryResponse
+			if err := json.Unmarshal(sumRec.Body.Bytes(), &summary); err != nil {
+				t.Fatal(err)
+			}
+			if summary.Buckets.InTransit != want || summary.Buckets.Total != want {
+				t.Fatalf("buckets: %+v, want %d", summary.Buckets, want)
+			}
+		})
+	}
+	for _, status := range []string{"paid", "processing"} {
+		t.Run(status, func(t *testing.T) {
+			id := createShippableOrderForHandler(t, svc, repo, status, true)
+			c, rec := newAdminOrdersGetCtx("/admin/orders?status=" + status + "&q=" + id.String()[24:])
+			if err := h.AdminListOrders(c); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+			}
+			var rows orderIDListResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &rows); err != nil {
+				t.Fatal(err)
+			}
+			if len(rows.Data) != 1 || rows.Data[0].ID != id.String() {
+				t.Fatalf("rows: %+v", rows.Data)
+			}
+		})
+	}
+}
+
+func TestAdminShippingLabelInvalidRequests(t *testing.T) {
+	h := handler.New(service.NewForTest(nil))
+	tests := []string{`{}`, `{"order_ids":[],"size":"100x150"}`, `{"order_ids":["bad"],"size":"100x150"}`, `{"order_ids":["00000000-0000-0000-0000-000000000001"],"size":"a4"}`, `{"order_ids":["00000000-0000-0000-0000-000000000001"]}`, `{"order_ids":["00000000-0000-0000-0000-000000000001","00000000-0000-0000-0000-000000000001"],"size":"roll80"}`, `{`}
+	var ids []string
+	for i := 0; i < 101; i++ {
+		ids = append(ids, uuid.NewString())
+	}
+	tooMany, _ := json.Marshal(map[string]any{"order_ids": ids, "size": "100x150"})
+	tests = append(tests, string(tooMany))
+	for _, body := range tests {
+		t.Run(body[:min(60, len(body))], func(t *testing.T) {
+			c, rec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/labels", "", "", []byte(body))
+			if err := h.AdminGetShippingLabels(c); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != 400 || !strings.Contains(rec.Body.String(), `"code":"invalid_request"`) {
+				t.Fatalf("want 400 invalid_request, got %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdminShippingLabelsRoutePermission(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	svc := service.NewForTest(rdb)
+	signer := infra.NewJWTSigner("label-test-secret", time.Hour)
+	e := server.New(handler.New(svc), svc, signer, config.Config{})
+	for _, role := range []string{"student", "super_admin"} {
+		t.Run(role, func(t *testing.T) {
+			token, jti, err := signer.SignAccess(uuid.NewString(), role, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mr.Set("session:access:"+jti, "active")
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/orders/labels", strings.NewReader(`{}`))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+			want := http.StatusForbidden
+			if role == "super_admin" {
+				want = http.StatusBadRequest
+			}
+			if rec.Code != want {
+				t.Fatalf("role %s: want %d got %d %s", role, want, rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestAdminShippingLabelsHTTP(t *testing.T) {
+	h, svc, repo := newShipHandlerTestServiceWithRenderer(t, &fakeShipHandlerLogistics{})
+	id := createShippableOrderForHandler(t, svc, repo, "paid", true)
+	if _, err := repo.Pool().Exec(context.Background(), `UPDATE orders SET tracking_number='LABELHTTP123' WHERE id=$1`, id); err != nil {
+		t.Fatal(err)
+	}
+	for _, size := range []string{"100x150", "roll80"} {
+		t.Run(size, func(t *testing.T) {
+			body, _ := json.Marshal(map[string]any{"order_ids": []string{id.String()}, "size": size})
+			c, rec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/labels", "", "", body)
+			if err := h.AdminGetShippingLabels(c); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != 200 || rec.Header().Get("Content-Type") != "application/pdf" || rec.Body.Len() == 0 {
+				t.Fatalf("want PDF got %d %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+	unknown := uuid.NewString()
+	body, _ := json.Marshal(map[string]any{"order_ids": []string{id.String(), unknown}, "size": "100x150"})
+	c, rec := newShipRequestCtx(t, http.MethodPost, "/api/v1/admin/orders/labels", "", "", body)
+	if err := h.AdminGetShippingLabels(c); err != nil {
+		t.Fatal(err)
+	}
+	var response struct {
+		Code    string                      `json:"code"`
+		Details []service.LabelNotPrintable `json:"details"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 409 || response.Code != "labels_not_printable" || len(response.Details) != 1 || response.Details[0] != (service.LabelNotPrintable{OrderID: unknown, Reason: "not_found"}) {
+		t.Fatalf("unexpected conflict: %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminShippingLabelUnknownSize(t *testing.T) {
+	h := handler.New(service.NewForTest(nil))
+	c, rec := newShipRequestCtx(t, http.MethodGet, "/api/v1/admin/orders/"+uuid.NewString()+"/label?size=a4", "id", uuid.NewString(), nil)
+	if err := h.AdminGetShippingLabel(c); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != 400 {
+		t.Fatalf("want 400 got %d", rec.Code)
 	}
 }

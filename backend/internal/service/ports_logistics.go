@@ -8,6 +8,7 @@ import (
 )
 
 type ShippingQuoteRequest struct {
+	Couriers              []string
 	DestinationPostalCode string
 	WeightGrams           int
 	// ItemValue is the item's value in rupiah, used for Biteship's insurance
@@ -21,10 +22,6 @@ type CourierRate struct {
 	Service       string `json:"service"`
 	EstimatedDays int    `json:"estimated_days"`
 	Price         int64  `json:"price"`
-	// IsEstimate marks a rate that did not come from a carrier — currently the
-	// configured flat-rate fallback. The storefront must label these so a buyer
-	// is never shown an invented figure that looks like a real quote.
-	IsEstimate bool `json:"is_estimate"`
 	// CourierCode/ServiceCode are Biteship's codes (e.g. "jne"/"reg"), distinct
 	// from Courier/Service which are display names. POST /v1/orders requires
 	// the codes; a booking must use the code the buyer's quote was priced under.
@@ -48,6 +45,8 @@ type CreateShipmentRequest struct {
 	OriginContactPhone string
 	OriginAddress      string
 	OriginPostalCode   string
+	OriginLatitude     *float64
+	OriginLongitude    *float64
 
 	DestinationContactName  string
 	DestinationContactPhone string
@@ -124,7 +123,7 @@ func (n *NoopLogisticsClient) GetRates(ctx context.Context, req ShippingQuoteReq
 	// Returning fabricated JNE/TIKI quotes here meant that with no Biteship key
 	// configured the storefront billed buyers a made-up shipping cost through
 	// Midtrans, indistinguishable from a real quote. Failing is the honest
-	// answer; the flat-rate fallback in resolveShippingRates handles the rest.
+	// answer.
 	return nil, ErrShippingUnavailable
 }
 

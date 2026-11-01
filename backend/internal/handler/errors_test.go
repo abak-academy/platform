@@ -27,6 +27,10 @@ func TestMapServiceError(t *testing.T) {
 		wantDetail any
 		wantBody   func(t *testing.T, raw []byte)
 	}{
+		{name: "shipping required", err: service.ErrShippingRequired, wantStatus: 400, wantCode: "shipping_required"},
+		{name: "shipping route unserved", err: fmt.Errorf("raw provider body: %w", service.ErrShippingRouteUnserved), wantStatus: 422, wantCode: "shipping_route_unserved", wantBody: assertGenericShippingMessage},
+		{name: "shipping temporarily unavailable", err: fmt.Errorf("raw provider body: %w", service.ErrShippingTemporarilyUnavailable), wantStatus: 503, wantCode: "shipping_temporarily_unavailable", wantBody: assertGenericShippingMessage},
+		{name: "shipping unavailable", err: fmt.Errorf("raw provider body: %w", service.ErrShippingUnavailable), wantStatus: 503, wantCode: "shipping_unavailable", wantBody: assertGenericShippingMessage},
 		{name: "email taken", err: service.ErrEmailTaken, wantStatus: 409, wantCode: "email_taken"},
 		{name: "school NPSN taken", err: service.ErrSchoolNPSNTaken, wantStatus: 409, wantCode: "school_npsn_taken"},
 		{name: "invalid school NPSN", err: service.ErrInvalidSchoolNPSN, wantStatus: 400, wantCode: "invalid_request"},
@@ -137,6 +141,7 @@ func TestMapServiceError(t *testing.T) {
 			},
 		},
 		{name: "payment deadline too close", err: fmt.Errorf("retry: %w", service.ErrPaymentDeadlineTooClose), wantStatus: 409, wantCode: "payment_deadline_too_close"},
+		{name: "payment session unavailable", err: fmt.Errorf("retry: %w", service.ErrPaymentSessionUnavailable), wantStatus: 409, wantCode: "payment_session_unavailable"},
 		{name: "payment already expired", err: fmt.Errorf("retry: %w", service.ErrPaymentExpired), wantStatus: 409, wantCode: "payment_expired"},
 	}
 
@@ -250,5 +255,48 @@ func TestBadRequest(t *testing.T) {
 	}
 	if apiErr.Message != "something is wrong" {
 		t.Errorf("message: want %q, got %q", "something is wrong", apiErr.Message)
+	}
+}
+
+func assertGenericShippingMessage(t *testing.T, raw []byte) {
+	t.Helper()
+	var body APIError
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Message == "" || strings.Contains(body.Message, "raw provider body") {
+		t.Fatalf("unsafe shipping message: %q", body.Message)
+	}
+}
+
+func TestMapShippingLabelErrors(t *testing.T) {
+	details := []service.LabelNotPrintable{{OrderID: uuid.NewString(), Reason: "shipment_failed"}}
+	for _, tt := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{{"invalid", service.ErrInvalidLabelRequest, 400, "invalid_request"}, {"conflict", fmt.Errorf("wrapped: %w", &service.LabelsNotPrintableError{Details: details}), 409, "labels_not_printable"}} {
+		t.Run(tt.name, func(t *testing.T) {
+			e := echo.New()
+			rec := httptest.NewRecorder()
+			c := e.NewContext(httptest.NewRequest(http.MethodPost, "/admin/orders/labels", nil), rec)
+			if err := mapServiceError(c, tt.err); err != nil {
+				t.Fatal(err)
+			}
+			var body struct {
+				Code    string                      `json:"code"`
+				Details []service.LabelNotPrintable `json:"details"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if rec.Code != tt.status || body.Code != tt.code {
+				t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+			}
+			if tt.status == 409 && (len(body.Details) != 1 || body.Details[0] != details[0]) {
+				t.Fatalf("details=%v", body.Details)
+			}
+		})
 	}
 }

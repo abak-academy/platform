@@ -8,6 +8,10 @@ import { toast } from "sonner";
 import { useRegister } from "@/lib/hooks/auth";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
+import { adoptResendBudget } from "@/lib/otp-budget";
+import { readAffRefCookie } from "@/lib/aff-ref";
+import { storeManualReferral } from "@/lib/referral";
+import { ReferralCodeField } from "@/components/auth/ReferralCodeField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -33,6 +37,11 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = React.useState(false);
   const [showCf, setShowCf] = React.useState(false);
   const [errors, setErrors] = React.useState<Errors>({});
+  const [referral, setReferral] = React.useState("");
+
+  React.useEffect(() => {
+    setReferral(readAffRefCookie());
+  }, []);
 
   const pwStrength =
     password.length === 0
@@ -81,15 +90,25 @@ export default function RegisterPage() {
 
     try {
       const res = await register.mutateAsync({ name: name.trim(), email: email.trim(), password });
-      toast.success(t("register_success"));
       // Registration returns an OTP challenge — hand the pending token + email to
       // the OTP page (it reads ?id= and sessionStorage["abak-pending-token"]).
       if (res.otp_required && res.pending_token) {
         if (typeof window !== "undefined") {
           sessionStorage.setItem("abak-pending-token", res.pending_token);
+          // Delivery/budget flags for the OTP page's banners and countdown.
+          sessionStorage.setItem("abak-email-failed", res.email_failed ? "1" : "0");
+          sessionStorage.setItem("abak-otp-active", res.otp_active ? "1" : "0");
+          adoptResendBudget(Number(res.resend_after) || 60);
+          storeManualReferral(referral);
+        }
+        if (res.email_failed) {
+          toast.warning(t("otp_email_failed_banner"));
+        } else {
+          toast.success(t("register_success"));
         }
         router.push(`/otp?id=${encodeURIComponent(email.trim())}`);
       } else {
+        toast.success(t("register_success"));
         router.push("/login");
       }
     } catch (err) {
@@ -261,6 +280,8 @@ export default function RegisterPage() {
             <div className="mt-1 text-[11.5px] text-danger">{errors.confirm}</div>
           )}
         </div>
+
+        <ReferralCodeField value={referral} onChange={setReferral} />
 
         <Button
           type="submit"

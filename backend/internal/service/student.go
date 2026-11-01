@@ -100,7 +100,7 @@ func (s *Service) GetDashboard(ctx context.Context, studentID string) (*Dashboar
 
 		visitedLectures += done
 		totalLectures += total
-		if done >= total {
+		if total > 0 && done >= total {
 			completedCourses++
 		}
 

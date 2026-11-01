@@ -120,8 +120,8 @@ type twoServiceLogisticsClient struct{}
 
 func (twoServiceLogisticsClient) GetRates(ctx context.Context, req service.ShippingQuoteRequest) ([]service.CourierRate, error) {
 	return []service.CourierRate{
-		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000},
-		{Courier: "JNE", Service: "YES", EstimatedDays: 1, Price: 30000},
+		{Courier: "JNE", Service: "REG", EstimatedDays: 3, Price: 15000, CourierCode: "jne", ServiceCode: "reg"},
+		{Courier: "JNE", Service: "YES", EstimatedDays: 1, Price: 30000, CourierCode: "jne", ServiceCode: "yes"},
 	}, nil
 }
 
@@ -745,11 +745,11 @@ func TestCheckout(t *testing.T) {
 			map[string]any{"product_id": productID, "qty": 1}, token))
 
 		// No shipping quote/selection has been made — the real Service.Checkout must
-		// reject this via ErrShippingRequired (mapped to 400 invalid_request), not a shim.
+		// reject this via ErrShippingRequired (mapped to 400 shipping_required), not a shim.
 		checkoutResp := checkoutWithKey(t, env, orderID, token, fmt.Sprintf("ship-guard-%d", time.Now().UnixNano()))
 		checkoutBody := decodeBody(t, checkoutResp)
 		require.Equal(t, http.StatusBadRequest, checkoutResp.StatusCode)
-		assert.Equal(t, "invalid_request", checkoutBody["code"])
+		assert.Equal(t, "shipping_required", checkoutBody["code"])
 
 		var statusAfterReject string
 		require.NoError(t, env.pool.QueryRow(ctx,

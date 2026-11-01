@@ -81,8 +81,8 @@ func TestBiteshipClient_GetRates_Success(t *testing.T) {
 
 		// Verify couriers parameter
 		couriers := reqBody["couriers"]
-		if couriers == nil || couriers == "" {
-			t.Error("expected couriers parameter to be set")
+		if couriers != "jne,lion" {
+			t.Errorf("expected jne,lion, got %v", couriers)
 		}
 
 		// Return mock response
@@ -117,6 +117,7 @@ func TestBiteshipClient_GetRates_Success(t *testing.T) {
 	req := service.ShippingQuoteRequest{
 		DestinationPostalCode: destPostalCode,
 		WeightGrams:           weightGrams,
+		Couriers:              []string{"jne", "lion"},
 	}
 
 	rates, err := client.GetRates(context.Background(), req)
@@ -384,6 +385,61 @@ func TestBiteshipClient_GetRates_ItemValue(t *testing.T) {
 			}
 			if item["value"] != tt.expectedValue {
 				t.Errorf("expected items[0].value=%v, got %v", tt.expectedValue, item["value"])
+			}
+		})
+	}
+}
+
+func TestBiteshipRequestCouriers(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		couriers []string
+		want     string
+	}{
+		{"selected", []string{"jne", "lion"}, "jne,lion"}, {"empty", nil, ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got := (&BiteshipClient{}).buildBiteshipRequest("12345", service.ShippingQuoteRequest{Couriers: tt.couriers})
+			if got["couriers"] != tt.want {
+				t.Fatalf("couriers=%v want %q", got["couriers"], tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildBiteshipOrderRequest_OriginCoordinate(t *testing.T) {
+	latitude, longitude := -6.2088, 106.8456
+	tests := []struct {
+		name                string
+		latitude, longitude *float64
+		wantCoordinate      bool
+	}{
+		{"configured", &latitude, &longitude, true},
+		{"unset", nil, nil, false},
+		{"latitude only", &latitude, nil, false},
+		{"longitude only", nil, &longitude, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, err := json.Marshal(buildBiteshipOrderRequest(service.CreateShipmentRequest{
+				OriginLatitude: tt.latitude, OriginLongitude: tt.longitude,
+			}))
+			if err != nil {
+				t.Fatalf("marshal booking: %v", err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(body, &got); err != nil {
+				t.Fatalf("decode booking: %v", err)
+			}
+			coordinate, present := got["origin_coordinate"]
+			if present != tt.wantCoordinate {
+				t.Fatalf("origin_coordinate present = %v, want %v; body = %s", present, tt.wantCoordinate, body)
+			}
+			if tt.wantCoordinate {
+				values, ok := coordinate.(map[string]any)
+				if !ok || values["latitude"] != latitude || values["longitude"] != longitude {
+					t.Fatalf("origin_coordinate = %v, want latitude %v longitude %v", coordinate, latitude, longitude)
+				}
 			}
 		})
 	}

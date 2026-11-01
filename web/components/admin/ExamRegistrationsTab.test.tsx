@@ -1112,7 +1112,7 @@ describe("ExamRegistrationsTab — roster search and status counts", () => {
   });
 });
 
-describe("ExamRegistrationsTab — admin_exam read-only (FR-8/FR-9)", () => {
+describe("ExamRegistrationsTab — admin_exam grant and revoke (no bulk CSV)", () => {
   beforeEach(() => {
     authUser = { role: "admin_exam" };
     rosterData = { data: [] };
@@ -1145,30 +1145,64 @@ describe("ExamRegistrationsTab — admin_exam read-only (FR-8/FR-9)", () => {
     expect(screen.getByText("exam_roster_export_csv")).toBeInTheDocument();
   });
 
-  it("shows the manual-registration notice", () => {
+  it("does not show the manual-registration notice", () => {
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    expect(screen.getByText("exam_registrations_manual_notice")).toBeInTheDocument();
+    expect(screen.queryByText("exam_registrations_manual_notice")).not.toBeInTheDocument();
   });
 
-  it("shows none of the write controls — no action button, no dialog, no picker", () => {
+  it("offers grant and revoke, never the order flow", () => {
     render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
       wrapper: wrapperFactory(),
     });
 
-    expect(screen.queryByTestId("open-grant-modal")).not.toBeInTheDocument();
+    expect(screen.getByTestId("open-grant-modal")).toBeInTheDocument();
+    expect(screen.getByTestId("open-revoke-modal")).toBeInTheDocument();
     expect(screen.queryByTestId("open-order-modal")).not.toBeInTheDocument();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("participant-add")).not.toBeInTheDocument();
-    expect(screen.queryByText("exam_grant_grant")).not.toBeInTheDocument();
-    expect(screen.queryByText("bulk_exam_order_preview")).not.toBeInTheDocument();
   });
 
-  // Positive control: a permitted role at the same initial state, with a
-  // selection seeded through the picker, does render the write controls —
-  // proving the admin_exam absences above are role-gated, not just always-off.
+  it("grants through the mutation, not the order preview", async () => {
+    grantMutateSpy.mockClear();
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openGrantModal();
+    fireEvent.click(dialog.getByTestId("participant-add"));
+    fireEvent.click(await dialog.findByText("exam_grant_grant"));
+
+    expect(grantMutateSpy).toHaveBeenCalledWith(
+      { exam_id: "exam-1", student_ids: ["student-1", "student-2"] },
+      expect.any(Object),
+    );
+    expect(dialog.queryByText("bulk_exam_order_preview")).not.toBeInTheDocument();
+  });
+
+  it("grants from the manual picker only — no CSV mode", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openGrantModal();
+    expect(dialog.getByTestId("participant-add")).toBeInTheDocument();
+    expect(dialog.queryByTestId("grant-mode-toggle")).not.toBeInTheDocument();
+    expect(dialog.queryByTestId("grant-mode-csv")).not.toBeInTheDocument();
+  });
+
+  it("revokes from the manual list only — no CSV mode", () => {
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    const dialog = openRevokeModal();
+    expect(dialog.queryByTestId("revoke-mode-toggle")).not.toBeInTheDocument();
+    expect(dialog.queryByTestId("revoke-mode-csv")).not.toBeInTheDocument();
+  });
+
+  // Positive control: the order flow still belongs to admin_school, so the
+  // absences above are role-gated, not just always-off.
   it("shows the write controls for a permitted role once the modal is opened and participants are picked", () => {
     authUser = { role: "admin_school", school_id: "school-1" };
     rosterData = { data: [] };

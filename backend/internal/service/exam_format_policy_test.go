@@ -73,8 +73,6 @@ func TestExamFormatPolicy_navigationPolicyDefaultedOnCreate(t *testing.T) {
 	}
 }
 
-func intPtr(v int) *int { return &v }
-
 func v2Section(testID uuid.UUID, title string, durationMinutes *int, presentation string) model.ExamTestEntry {
 	entry := model.ExamTestEntry{}
 	entry.TestID = testID

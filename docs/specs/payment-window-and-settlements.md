@@ -3,7 +3,7 @@ title: Payment window and settlement after the deadline
 issue: https://github.com/abak-academy/platform/issues/196
 status: proposed
 created: 2026-09-30
-updated: 2026-09-30
+updated: 2026-10-11
 sources: ["backend/internal/service/store.go", "backend/internal/repository/order.go", "backend/internal/repository/order_lifecycle.go", "backend/internal/adapter/midtrans.go", "backend/internal/service/ports_payment.go", "backend/internal/worker/outbox.go", "backend/db/migrations/0068_bound_legacy_pending_orders.up.sql", "docs/wiki/domain/orders-and-payments.md"]
 ---
 
@@ -20,6 +20,7 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 ## Decisions
 
 - **One deadline, set by ABAK (Panca, 2026-09-30).** `orders.payment_expires_at` is written at checkout, in the transaction that moves the cart to `payment_pending`, before any gateway call. A gateway response or a retry never moves it.
+- **Window 20 minutes, session margin 2 minutes (Panca, 2026-10-11).** The client wants unpaid orders to expire in under 20 minutes, so `paymentWindow` is 20 minutes and the worker sweeps every minute. The margin was 5 minutes; with a 20-minute window that left a dead zone of about 6 minutes in which the order page still offered payment but retry was refused. It is now 2 minutes, which leaves about 3 minutes (minute 17 to 20) with the same symptom; that is accepted. The cost is that a payment completed in the last 2 minutes of the session has less time to be notified before the deadline; if the webhook lands after it, the settlement is flagged `payment_late` and refunded by hand. Webhook latency was not measured. Orders checked out before the change keep their 24-hour deadline.
 - **No grace.** A settlement after the deadline never fulfils the order and never moves it back out of `payment_expired`. `payment_expired` is final; a new attempt starts from a fresh cart.
 - **Flag, do not grant.** The `payment_late` flag is an operator signal. It gives no access. Whether the flag is used at all is still open, which is why this spec is `proposed`; this change implements it as a database row with a read-only operator query, and it grants nothing either way.
 - Refund stays manual: `PaymentClient` has no refund operation, so an operator refunds in the gateway dashboard using the reference the flag carries.
@@ -28,11 +29,11 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 
 **Window**
 
-- Checkout sets the deadline to 24 hours from checkout on the database clock. The deadline is judged on that same clock everywhere, so a retry, a webhook and the sweeper cannot disagree about whether an order is still payable.
-- The worker sets `payment_expired` on its next five-minute sweep after the deadline. Until it does, no path treats the order as payable: every path that could settle or attach a payment re-checks the deadline under the order's row lock.
+- Checkout sets the deadline to 20 minutes from checkout on the database clock (`paymentWindow`). Orders checked out before this window was shortened keep their 24-hour deadline and expire on it; nothing rewrites them. The deadline is judged on that same clock everywhere, so a retry, a webhook and the sweeper cannot disagree about whether an order is still payable.
+- The worker sets `payment_expired` on its next one-minute sweep after the deadline. Until it does, no path treats the order as payable: every path that could settle or attach a payment re-checks the deadline under the order's row lock.
 - Retry is allowed only for a `payment_pending` order inside its deadline. It never reopens an expired order and never moves the deadline; an expired or elapsed order answers `payment_expired` (409) without reaching the gateway. A retry that finds the order changed after the gateway call attaches nothing and offers no link.
 - Checkout attaches the gateway reference, and hands out the link, only while the order is still an unexpired `payment_pending` one; otherwise it answers `payment_expired` for an order that expired or whose deadline elapsed during the gateway call and `order_not_editable` for one that was paid or cancelled meanwhile. A checkout replay validates ownership and state before returning a cached reference, so it never hands out a payment reference for another student's order or for one that has since expired or been cancelled. A free-checkout replay is unchanged.
-- The gateway payment session is pinned to the order's own deadline: `expiry.start_time` is session creation and the duration is whole minutes to the session end, rounded down, so a link opened late cannot outlive the order. The session ends at least 5 minutes (`paymentSessionMargin`) before the order deadline, so a payment completed inside the session is notified before the deadline and not judged late. The expiry advertised to the client is the earlier of the session end and the order deadline, which is the session end. With under 6 minutes left (a session of under a minute), checkout and retry refuse with `payment_deadline_too_close` (409) — the order is still payable, so this is not `payment_expired`. This repository cannot prove the gateway enforces the session end. The too-close check compares the app clock against the database deadline: a host behind the database can pass it and is then refused by the database-clock guard when the reference is attached, and a host ahead refuses up to that skew early. Neither case hands out a link for an order that has expired.
+- The gateway payment session is pinned to the order's own deadline: `expiry.start_time` is session creation and the duration is whole minutes to the session end, rounded down, so a link opened late cannot outlive the order. The session ends at least 2 minutes (`paymentSessionMargin`) before the order deadline, so a payment completed inside the session is notified before the deadline and not judged late. The expiry advertised to the client is the earlier of the session end and the order deadline, which is the session end. With the 20-minute window the session lasts 17 whole minutes in practice (18 minus the checkout's own latency, rounded down). With under 3 minutes left (a session of under a minute), so from about minute 17, checkout and retry refuse with `payment_deadline_too_close` (409) — the order is still payable, so this is not `payment_expired`. This repository cannot prove the gateway enforces the session end. The too-close check compares the app clock against the database deadline: a host behind the database can pass it and is then refused by the database-clock guard when the reference is attached, and a host ahead refuses up to that skew early. Neither case hands out a link for an order that has expired.
 - An order that predates deadline-at-checkout and has none gets one once, at its first payment attachment.
 
 **Settlement at or after the deadline**
@@ -57,8 +58,8 @@ Outcome: every pending order has one bounded deadline set at checkout, the gatew
 ## Acceptance and proof
 
 1. Checkout gives every pending order a bounded deadline, including when the gateway call then fails, and the sweeper frees the stock.
-2. A retry never extends the deadline, is refused with under 6 minutes left and for an expired or elapsed order, and an order that expires during the gateway call gets no payment link.
-3. The gateway request ends 5 minutes before the order's deadline for checkout and for retry, and the advertised expiry never exceeds that.
+2. A retry never extends the deadline, is refused with under 3 minutes left and for an expired or elapsed order, and an order that expires during the gateway call gets no payment link.
+3. The gateway request ends 2 minutes before the order's deadline for checkout and for retry, and the advertised expiry never exceeds that.
 4. A settlement after the deadline, before the sweeper has run, expires the order once and fulfils nothing, including under concurrent webhook and sweeper.
 5. Settlement after the deadline: order stays `payment_expired`, no course/exam access is written, one `payment_late` flag is recorded with the reference. A settlement just before the deadline still fulfils.
 6. Duplicate notifications, and a reconcile after a webhook, are idempotent — one flag per order and payment.

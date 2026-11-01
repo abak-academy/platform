@@ -68,6 +68,22 @@ func StudentOnlyMiddleware() echo.MiddlewareFunc {
 	}
 }
 
+// AffiliatorOnlyMiddleware role-gates affiliate routes: super_admin's "*" must never satisfy them.
+func AffiliatorOnlyMiddleware() echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			claims, _ := c.Get(claimsKey).(*infra.Claims)
+			if claims == nil {
+				return c.JSON(http.StatusUnauthorized, map[string]string{"code": "unauthorized", "message": "missing or invalid token"})
+			}
+			if claims.Role != service.RoleAffiliator {
+				return c.JSON(http.StatusForbidden, map[string]string{"code": "forbidden", "message": "insufficient permissions"})
+			}
+			return next(c)
+		}
+	}
+}
+
 func LoginRateLimiter() echo.MiddlewareFunc {
 	return echomw.RateLimiterWithConfig(echomw.RateLimiterConfig{
 		Skipper: echomw.DefaultSkipper,

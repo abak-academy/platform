@@ -7,11 +7,14 @@ import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, use
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useCitiesByProvince, useDistrictsByCity, useProvinces } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
+import { ApiError } from "@/lib/api";
 import { formatRupiah } from "@/lib/format";
 import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoSheet } from "@/components/cart/PromoSheet";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
+import { ReferralCodeField } from "@/components/auth/ReferralCodeField";
+import { readAffRefCookie } from "@/lib/aff-ref";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
 import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/ShippingAddressSummary";
 import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
@@ -46,6 +49,14 @@ export default function CartPage() {
   });
   const [selectedRateKey, setSelectedRateKey] = useState<string | null>(null);
   const [promoError, setPromoError] = useState<string | undefined>(undefined);
+  const [referralCode, setReferralCode] = useState("");
+  const referralTouched = useRef(false);
+  const eligibleForReferral = cart?.affiliate_code_eligible === true;
+  useEffect(() => {
+    // BRD A-05: a click made after an earlier binding ended only becomes a cookie,
+    // and checkout is where an eligible student can still use it.
+    if (eligibleForReferral && !referralTouched.current) setReferralCode(readAffRefCookie());
+  }, [eligibleForReferral]);
   const [appliedPromoCode, setAppliedPromoCode] = useState<string | undefined>(undefined);
   // Once open, the form closes when the buyer closes it, never because it looks
   // full. Deriving this from "every field is non-empty" swapped the form out on
@@ -431,7 +442,11 @@ export default function CartPage() {
 
             {hasPhysical && shippingRates.isError && (
               <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-                {t("cart_shipping_unavailable" as any)}
+                {t(shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_route_unserved"
+                  ? "cart_shipping_route_unserved"
+                  : shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_temporarily_unavailable"
+                    ? "cart_shipping_temporarily_unavailable"
+                    : "cart_shipping_unavailable")}
               </div>
             )}
 
@@ -471,8 +486,21 @@ export default function CartPage() {
                 <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
               </div>
 
+              {cart?.affiliate_code_eligible && (
+                <div className="mt-4">
+                  <ReferralCodeField
+                    value={referralCode}
+                    onChange={(v) => {
+                      referralTouched.current = true;
+                      setReferralCode(v);
+                    }}
+                  />
+                </div>
+              )}
+
               <SnapCheckout
                 orderId={cart?.id}
+                affiliateCode={cart?.affiliate_code_eligible ? referralCode : undefined}
                 disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
               />
 

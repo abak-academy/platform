@@ -9,6 +9,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
 
 	"akademi-bimbel/internal/repository"
 )
@@ -33,6 +38,8 @@ var configKeyCatalog = map[string]configKeyDef{
 	"app_city_id":                    {group: "app", valueType: "string"},
 	"app_district_id":                {group: "app", valueType: "string"},
 	"app_kode_pos":                   {group: "app", valueType: "string"},
+	"app_latitude":                   {group: "app", valueType: "string"},
+	"app_longitude":                  {group: "app", valueType: "string"},
 	"exam_platform":                  {group: "app", valueType: "string"},
 	"app_help_url":                   {group: "app", valueType: "string"},
 	"app_social_handle":              {group: "app", valueType: "string"},
@@ -41,10 +48,24 @@ var configKeyCatalog = map[string]configKeyDef{
 	"midtrans_server_key":            {group: "payment", valueType: "string", secret: true},
 	"midtrans_client_key":            {group: "payment", valueType: "string", secret: true},
 	"midtrans_env":                   {group: "payment", valueType: "enum", enumValues: []string{"sandbox", "production"}},
-	"shipping_fallback_flat_rate":    {group: "shipping", valueType: "string"},
+	"biteship_services":              {group: "shipping", valueType: "string"},
 	"biteship_api_key":               {group: "shipping", valueType: "string", secret: true},
 	"biteship_webhook_secret":        {group: "shipping", valueType: "string", secret: true},
+	"affiliate_enabled":              {group: "app", valueType: "bool"},
 }
+
+// TODO: uncertain — service codes mapped from dashboard names via Biteship docs, reconcile with GET /v1/couriers before prod
+var biteshipServiceCatalog = map[string][]string{
+	"jne":      {"reg", "yes", "oke", "jtr"},
+	"sicepat":  {"reg", "best", "gokil"},
+	"anteraja": {"reg", "same_day"},
+	"tiki":     {"reg", "eko", "ons", "sds"},
+	"lion":     {"reg_pack", "big_pack"},
+}
+
+var biteshipCourierOrder = []string{"jne", "sicepat", "anteraja", "tiki", "lion"}
+
+const defaultBiteshipServices = "jne:reg,jne:yes,jne:oke"
 
 // encryptConfigValue encrypts plaintext with AES-256-GCM.
 // hexKey is a 64-char hex string (decoded to 32 bytes).
@@ -126,6 +147,28 @@ func validateConfigKeys(values map[string]string) error {
 		if !ok {
 			return fmt.Errorf("%w: %s", ErrUnknownConfigKey, key)
 		}
+		if key == "biteship_services" {
+			seen := make(map[string]bool)
+			for _, pair := range strings.Split(val, ",") {
+				courier, service, found := strings.Cut(pair, ":")
+				if !found || !slices.Contains(biteshipServiceCatalog[courier], service) || seen[pair] {
+					return fmt.Errorf("%w: invalid or duplicate courier service %q", ErrUnknownConfigKey, pair)
+				}
+				seen[pair] = true
+			}
+		}
+
+		if (key == "app_latitude" || key == "app_longitude") && val != "" {
+			limit := 90.0
+			if key == "app_longitude" {
+				limit = 180
+			}
+			coordinate, err := strconv.ParseFloat(val, 64)
+			if err != nil || math.IsNaN(coordinate) || coordinate < -limit || coordinate > limit {
+				return fmt.Errorf("%w: %q must be a number within [%g, %g]", ErrUnknownConfigKey, key, -limit, limit)
+			}
+		}
+
 		switch def.valueType {
 		case "bool":
 			if val != "true" && val != "false" {
@@ -143,6 +186,11 @@ func validateConfigKeys(values map[string]string) error {
 				return fmt.Errorf("%w: %q invalid value %q for enum", ErrUnknownConfigKey, key, val)
 			}
 		}
+	}
+	latitude, hasLatitude := values["app_latitude"]
+	longitude, hasLongitude := values["app_longitude"]
+	if hasLatitude && hasLongitude && (latitude == "") != (longitude == "") {
+		return fmt.Errorf("%w: app_latitude and app_longitude must be both empty or both set", ErrUnknownConfigKey)
 	}
 	return nil
 }
@@ -285,6 +333,12 @@ func (s *Service) UpdateSystemConfig(ctx context.Context, actorID string, values
 	for key, val := range processed {
 		def := configKeyCatalog[key]
 		if err := s.storeRepo.UpsertSystemConfig(ctx, key, val, def.secret); err != nil {
+			return nil, err
+		}
+	}
+
+	if values["affiliate_enabled"] == "true" && before["affiliate_enabled"] != "true" {
+		if err := s.storeRepo.UpsertSystemConfig(ctx, affiliateEnabledSinceKey, time.Now().UTC().Format(time.RFC3339), false); err != nil {
 			return nil, err
 		}
 	}

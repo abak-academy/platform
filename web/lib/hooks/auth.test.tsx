@@ -79,10 +79,12 @@ describe("useLogout", () => {
 describe("useLogin retry on 429 rate_limited", () => {
   const originalFetch = global.fetch;
 
-  function jsonResponse(status: number, body: unknown) {
+  function jsonResponse(status: number, body: unknown, headers?: Record<string, string>) {
     return {
       ok: status >= 200 && status < 300,
       status,
+      // parseError reads Retry-After off throttled responses.
+      headers: { get: (name: string) => headers?.[name] ?? null },
       text: async () => JSON.stringify(body),
       json: async () => body,
     } as Response;

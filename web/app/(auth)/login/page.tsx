@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { User, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 import { useLogin } from "@/lib/hooks/auth";
+import { useAffiliateProgramStatus } from "@/lib/hooks/affiliate";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { GoogleSignInButton, googleSignInAvailable } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { loginErrorMessage } from "@/lib/auth-error";
+import { adoptResendBudget } from "@/lib/otp-budget";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,6 +20,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { t } = useTranslation();
   const login = useLogin();
+  const affiliateStatus = useAffiliateProgramStatus();
   const [identifier, setIdentifier] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [showPw, setShowPw] = React.useState(false);
@@ -34,6 +37,10 @@ export default function LoginPage() {
         const pendingToken = err.body?.pending_token;
         if (typeof window !== "undefined" && typeof pendingToken === "string") {
           sessionStorage.setItem("abak-pending-token", pendingToken);
+          // Delivery/budget flags for the OTP page's banners and countdown.
+          sessionStorage.setItem("abak-email-failed", err.body?.email_failed ? "1" : "0");
+          sessionStorage.setItem("abak-otp-active", err.body?.otp_active ? "1" : "0");
+          adoptResendBudget(Number(err.body?.resend_after) || 60);
         }
         router.push(`/otp?id=${encodeURIComponent(identifier)}`);
         return;
@@ -150,6 +157,18 @@ export default function LoginPage() {
           {t("login_sign_up_link")}
         </button>
       </p>
+      {affiliateStatus.data?.enabled === true && (
+        <p className="mt-2 text-center text-[13px] text-ink-500">
+          {t("login_affiliate_prompt")}{" "}
+          <button
+            type="button"
+            onClick={() => router.push("/affiliate-register")}
+            className="font-bold text-success transition-colors hover:text-success/80"
+          >
+            {t("login_affiliate_link")}
+          </button>
+        </p>
+      )}
 
       {googleSignInAvailable && (
         <>

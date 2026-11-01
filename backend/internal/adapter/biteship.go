@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/repository"
@@ -119,7 +120,7 @@ func (c *BiteshipClient) buildBiteshipRequest(originPostalCode string, req servi
 	return map[string]interface{}{
 		"origin_postal_code":      originPostalCode,
 		"destination_postal_code": req.DestinationPostalCode,
-		"couriers":                "anteraja,jne,sicepat,tiki",
+		"couriers":                strings.Join(req.Couriers, ","),
 		"items": []map[string]interface{}{
 			{
 				"name":     "items",
@@ -416,6 +417,13 @@ func buildBiteshipOrderRequest(req service.CreateShipmentRequest) biteshipOrderR
 		Items:                   items,
 	}
 
+	if req.OriginLatitude != nil && req.OriginLongitude != nil {
+		out.OriginCoordinate = &biteshipCoordinate{
+			Latitude:  *req.OriginLatitude,
+			Longitude: *req.OriginLongitude,
+		}
+	}
+
 	// "scheduled" is only meaningful with both a date and a time; sending the
 	// type without them would have Biteship reject the booking, so an
 	// incomplete schedule falls back to an immediate pickup rather than
@@ -489,6 +497,8 @@ type biteshipOrderRequest struct {
 	OriginAddress      string `json:"origin_address"`
 	OriginPostalCode   string `json:"origin_postal_code"`
 
+	OriginCoordinate *biteshipCoordinate `json:"origin_coordinate,omitempty"`
+
 	DestinationContactName  string `json:"destination_contact_name"`
 	DestinationContactPhone string `json:"destination_contact_phone"`
 	DestinationAddress      string `json:"destination_address"`
@@ -501,6 +511,11 @@ type biteshipOrderRequest struct {
 	DeliveryTime   string `json:"delivery_time,omitempty"`
 
 	Items []biteshipOrderItem `json:"items"`
+}
+
+type biteshipCoordinate struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
 }
 
 type biteshipOrderItem struct {

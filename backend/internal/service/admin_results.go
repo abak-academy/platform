@@ -95,7 +95,7 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 	}
 
 	// School/admin_exam result detail remains bound to the exam's student-visible
-	// result config. The super-admin results workspace has its own
+	// result config. The results workspace has its own
 	// results-workspace:read-gated detail path below for operational answer review.
 	if exam.ResultConfig == "score_pembahasan" {
 		detail.Breakdown = topicBreakdown(tests, answers)
@@ -106,7 +106,7 @@ func (s *Service) GetSchoolResultDetail(ctx context.Context, sessionID uuid.UUID
 }
 
 // AdminGetResultsWorkspaceResultDetail returns operational answer detail for the
-// super-admin-only results workspace. Unlike GetSchoolResultDetail, this
+// results workspace (super_admin, admin_exam). Unlike GetSchoolResultDetail, this
 // intentionally includes breakdown/pembahasan independent of student-visible
 // result_config, but the route is gated by results-workspace:read.
 func (s *Service) AdminGetResultsWorkspaceResultDetail(ctx context.Context, examID, sessionID uuid.UUID) (model.AdminResultDetail, error) {

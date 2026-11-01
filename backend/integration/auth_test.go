@@ -93,11 +93,11 @@ func TestAuthFlow(t *testing.T) {
 
 		pendingToken := regBody["pending_token"].(string)
 
-		// Resolve userID and OTP code from Redis.
-		userID, err := env.rdb.Get(ctx, "pending:"+pendingToken).Result()
-		require.NoError(t, err)
-		code, err := env.rdb.Get(ctx, "otp:"+userID).Result()
-		require.NoError(t, err)
+		// With hashed storage the raw code only crossed the provider boundary.
+		// The env is package-scoped, so this test's code is the latest one.
+		codes := env.otpCode.Codes
+		require.NotEmpty(t, codes)
+		code := codes[len(codes)-1]
 		require.NotEmpty(t, code)
 
 		resp2 := env.doJSON(t, http.MethodPost, "/api/v1/auth/otp/verify", map[string]any{

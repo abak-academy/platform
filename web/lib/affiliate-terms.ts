@@ -1,0 +1,1 @@
+export const AFFILIATE_TERMS_VERSION = "2026-10";

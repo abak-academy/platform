@@ -42,10 +42,23 @@ func TestProductRelations_OrderGuard(t *testing.T) {
 	}
 }
 
+func TestProductRelations_AdminExamCanChange(t *testing.T) {
+	env := newTestEnv(t)
+	token := authToken(t, env, seedUser(t, env, "admin_exam", "active", false), "admin_exam")
+	for _, kind := range []string{"exam", "course"} {
+		t.Run(kind, func(t *testing.T) {
+			id, ids := relationProduct(t, env, kind)
+			resp, out := doJSONBody(t, env, http.MethodPut, "/api/v1/admin/products/"+id+"/relations", map[string]any{kind + "_ids": ids[2:]}, token)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+			assert.ElementsMatch(t, ids[2:], persistedRelations(t, env, id, kind))
+		})
+	}
+}
+
 func TestProductRelations_RolesAndValidation(t *testing.T) {
 	env := newTestEnv(t)
 	id, ids := relationProduct(t, env, "exam")
-	for _, role := range []string{"admin_exam", "admin_store", "admin_school", "student"} {
+	for _, role := range []string{"admin_store", "admin_school", "student"} {
 		t.Run(role, func(t *testing.T) {
 			token := authToken(t, env, seedUser(t, env, role, "active", false), role)
 			resp, out := doJSONBody(t, env, http.MethodPut, "/api/v1/admin/products/"+id+"/relations", map[string]any{"exam_ids": ids[2:]}, token)

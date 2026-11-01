@@ -12,9 +12,7 @@ export type OrderStatus =
   | "payment_expired"
   | "cancelled";
 
-// "failed" here is a *payment* failure (payment_expired) — a real
-// orders.status value, unlike the two queue values below.
-export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "failed" | "cancelled";
+export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" | "shipped" | "completed" | "payment_expired" | "cancelled";
 
 // AdminOrderQueue names a derived bucket that spans more than one
 // orders.status value (or a different column entirely), so it cannot live in
@@ -22,7 +20,8 @@ export type AdminOrderFilterStatus = "all" | "pending" | "paid" | "processing" |
 // - "ready_to_ship": status IN ('paid','processing') with a physical item.
 // - "shipment_failed": a courier failure — orders.shipment_status, not
 //   orders.status; a dead parcel can still read "shipped".
-export type AdminOrderQueue = "ready_to_ship" | "shipment_failed";
+// - "in_transit": status 'shipped' whose courier status is not a failure.
+export type AdminOrderQueue = "ready_to_ship" | "shipment_failed" | "in_transit";
 
 export interface School {
   id: string;
@@ -182,6 +181,8 @@ export interface Product {
   description?: string;
   price: number;
   stock?: number;
+  /** Absent/false means unlimited for exam products; physical types are always limited. */
+  stock_limited?: boolean;
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
@@ -200,7 +201,7 @@ export interface AdminCreateProductInput {
   name: string;
   description?: string;
   price: number;
-  stock?: number;
+  stock?: number | null;
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
@@ -214,7 +215,7 @@ export interface AdminUpdateProductInput {
   name?: string;
   description?: string;
   price?: number;
-  stock?: number;
+  stock?: number | null;
   status?: ProductStatus;
   weight_grams?: number;
   image_url?: string;
@@ -246,7 +247,6 @@ export interface CourierRate {
   service: string;
   estimated_days: number;
   price: number;
-  is_estimate?: boolean;
 }
 
 export interface OrderShipmentEvent {
@@ -262,6 +262,8 @@ export interface OrderShipmentEvent {
 export interface Order {
   id: string;
   student_id: string;
+  /** Only the cart mint response carries it; true when a checkout referral code could still bind this student. */
+  affiliate_code_eligible?: boolean;
   /** Resolved server-side (FR-33/FR-35); fallback text when the student row is missing. */
   student_name?: string;
   student_school?: string;
@@ -287,7 +289,7 @@ export interface Order {
   gateway_ref?: string;
   payment_method?: string;
   payment_proof_url?: string | null;
-  payment_expires_at?: string;
+  payment_expires_at?: string | null;
   paid_at?: string;
   invoice_url?: string;
   checked_out_at?: string;
@@ -401,6 +403,8 @@ export interface PromoCode {
   created_at?: string;
   /** FR-13: shown to authenticated students via GET /promo-codes/active when true. */
   is_public?: boolean;
+  /** Listed only on the affiliator dashboard; hidden from the student listing. */
+  affiliator_only?: boolean;
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -412,12 +416,14 @@ export interface AdminCreatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
   is_public?: boolean;
+  affiliator_only?: boolean;
 }
 
 export interface AdminUpdatePromoCodeInput {
   max_uses?: number;
   expires_at?: string;
   is_public?: boolean;
+  affiliator_only?: boolean;
 }
 
 // GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
@@ -468,13 +474,21 @@ export interface OrderBucketCounts {
   ready_to_ship: number;
   shipment_failed: number;
   in_transit: number;
+  shipped: number;
+  completed: number;
+  payment_expired: number;
+  cancelled: number;
   created_this_month: number;
   completed_this_month: number;
   total: number;
 }
 
+export type AdminOrderSort = "order_at" | "paid_at" | "item_qty";
+export type AdminOrderSortDirection = "asc" | "desc";
+
 export interface OrderSummary {
   buckets: OrderBucketCounts;
+  couriers: string[];
   top_products: TopProduct[];
 }
 
@@ -483,6 +497,11 @@ export interface AdminOrderQuery {
   // Mutually exclusive with status: a queue is its own filter dimension, not
   // another status value to combine with one.
   queue?: AdminOrderQueue;
+  type?: ProductType;
+  courier?: string;
+  sort?: AdminOrderSort;
+  dir?: AdminOrderSortDirection;
+  limit?: 20 | 50 | 100;
   q?: string;
   from?: string;
   to?: string;
@@ -1321,7 +1340,7 @@ export interface AdminResultDetail {
   pembahasan?: ResultPembahasanItem[];
 }
 
-// ── Admin Results workspace (Issue 124, super_admin only) ────────────────
+// ── Admin Results workspace (Issue 124, super_admin and admin_exam) ────────────────
 
 export interface ResultsWorkspaceSummary {
   total_registered: number;
@@ -1500,4 +1519,373 @@ export interface SchoolDashboard {
   orderable_exam_count: number;
   latest_bulk_order: SchoolDashboardBulkOrder | null;
   recent_results: SchoolDashboardResult[];
+}
+
+export type UnitSalesProductType = "book" | "merchandise" | "medal" | "course" | "exam";
+
+export interface UnitSalesFigures {
+  paid_orders: number;
+  refund_orders: number;
+  paid_units: number;
+  refund_units: number;
+  net_units: number;
+}
+
+export interface UnitSalesProduct extends UnitSalesFigures {
+  product_id: string;
+  name: string;
+}
+
+export interface UnitSalesType extends UnitSalesFigures {
+  type: UnitSalesProductType;
+  products: UnitSalesProduct[];
+}
+
+export interface UnitSalesResponse {
+  from: string | null;
+  to: string | null;
+  types: UnitSalesType[];
+}
+
+// Affiliate program (docs/specs/affiliate-program.md). Field names mirror the
+// Go handler/service JSON tags exactly; Go pointers without omitempty are
+// null, with omitempty are absent.
+
+export interface AffiliateValidation {
+  valid: boolean;
+  affiliator_name: string;
+  cookie_days?: number;
+}
+
+export interface AffiliateLevelProgress {
+  quarter: string;
+  net_revenue: number;
+  next_level?: string;
+  rise_threshold?: number;
+  hold_threshold?: number;
+}
+
+export interface AffiliateProfile {
+  code: string;
+  referral_link: string;
+  level: string;
+  status: string;
+  /** False while the admin has switched the affiliate program off: the portal is read-only. */
+  program_enabled: boolean;
+  rejection_reason?: string;
+  warn_quarters: number;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_holder: string | null;
+  terms_version: string;
+  terms_accepted_at: string;
+  level_progress: AffiliateLevelProgress | null;
+}
+
+export interface AffiliateBinding {
+  binding_id: string;
+  // First name + initials of the remaining words (BR-PRV-02) — no email, phone
+  // or address ever arrives on this payload.
+  name: string;
+  registered_at: string;
+  status: string;
+  source: string;
+  started_at: string;
+  expires_at: string | null;
+  total_spend: number;
+}
+
+export interface AffiliateBindingPage {
+  data: AffiliateBinding[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateCommission {
+  /** First name + initials (BR-PRV-02) for an affiliator; the full name when an admin reads it. */
+  student_name?: string;
+  product_name?: string;
+  id: string;
+  affiliator_id: string;
+  student_id: string;
+  order_id: string;
+  order_item_id: string;
+  product_type: string;
+  quantity?: number;
+  base_amount: number;
+  commission_type: AffiliateCommissionRuleType;
+  commission_value: number;
+  level_snapshot: string;
+  amount: number;
+  status: string;
+  wait_until: string | null;
+  paid_at: string | null;
+  received_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AffiliateCommissionPage {
+  data: AffiliateCommission[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateLedgerEntry {
+  /** Set for commission and refund entries; the note only reaches the web for adjustments. */
+  student_name?: string | null;
+  product_name?: string | null;
+  id: string;
+  affiliator_id: string;
+  entry_type: string;
+  amount: number;
+  commission_id: string | null;
+  payout_id: string | null;
+  adjustment_id: string | null;
+  note: string | null;
+  actor_id: string | null;
+  created_at: string;
+}
+
+export interface AffiliateLedgerPage {
+  data: AffiliateLedgerEntry[];
+  saldo: number;
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateStats {
+  registrations: number;
+  registrations_by_source: Record<string, number>;
+  total_students: number;
+  active_bindings: number;
+  new_students: number;
+  commission_earned: number;
+}
+
+export interface AffiliatePayout {
+  id: string;
+  affiliator_id: string;
+  amount: number;
+  status: string;
+  bank_name: string;
+  bank_account_number: string;
+  bank_account_holder: string;
+  proof_url: string | null;
+  reject_reason: string | null;
+  processed_by: string | null;
+  processed_at: string | null;
+  requested_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AffiliatePayoutPage {
+  data: AffiliatePayout[];
+  saldo: number;
+  min_payout: number;
+  payout_day_of_month?: number;
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateAdjustment {
+  id: string;
+  affiliator_id: string;
+  category: string;
+  amount: number;
+  reason: string;
+  approval_status: string | null;
+  approver_id: string | null;
+  approved_at: string | null;
+  created_by: string;
+  created_at: string;
+  applied: boolean;
+}
+
+export interface AffiliateAdjustmentPage {
+  data: AffiliateAdjustment[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+// Affiliate admin (super_admin) — mirrors the admin handler/service JSON.
+
+export interface AffiliateAdminRow {
+  id: string;
+  code: string;
+  status: string;
+  rejection_reason: string | null;
+  level: string;
+  warn_quarters: number;
+  terms_version: string;
+  bank_name: string | null;
+  bank_account_number: string | null;
+  bank_account_holder: string | null;
+  created_at: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface AffiliateAdminListPage {
+  data: AffiliateAdminRow[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface AffiliateAdminDetail {
+  affiliate: Omit<AffiliateAdminRow, "name" | "email" | "phone">;
+  name: string;
+  email: string | null;
+  bindings: { active: number; ended: number; data: AffiliateBinding[] };
+  commissions: { counts: Record<string, number>; total_amount: number };
+  saldo: number;
+}
+
+export interface AffiliateAdminPayout extends AffiliatePayout {
+  affiliator_name: string;
+  affiliator_code: string;
+}
+
+export interface AffiliateAdminPayoutPage {
+  data: AffiliateAdminPayout[];
+  total: number;
+  page?: number;
+  per_page?: number;
+}
+
+export interface AffiliateSettings {
+  id: number;
+  cookie_days: number;
+  binding_months: number;
+  min_extend_amount: number;
+  digital_wait_days: number;
+  physical_wait_days: number;
+  min_payout: number;
+  payout_day_of_month: number | null;
+  launch_date: string | null;
+  eval_day: number;
+  daily_registration_cap: number | null;
+  updated_at: string;
+}
+
+export type AffiliateCommissionRuleType = "percent" | "fixed";
+
+export interface AffiliateCommissionRule {
+  type: AffiliateCommissionRuleType;
+  value: number;
+}
+
+export interface AffiliateLevelSettings {
+  level: string;
+  commission_rule: Record<string, AffiliateCommissionRule> | null;
+  binding_months: number | null;
+  digital_wait_days: number | null;
+  physical_wait_days: number | null;
+  min_payout: number | null;
+  payout_day_of_month: number | null;
+  rise_threshold: number | null;
+  hold_threshold: number | null;
+}
+
+export interface AffiliateSettingsView {
+  settings: AffiliateSettings;
+  levels: AffiliateLevelSettings[];
+  program_enabled: boolean;
+}
+
+export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_at"> & {
+  levels: AffiliateLevelSettings[];
+};
+
+export interface AffiliateProductOverride {
+  product_id: string;
+  product_name?: string;
+  product_type?: string;
+  type: AffiliateCommissionRuleType;
+  value: number;
+  updated_at: string;
+}
+
+export interface AffiliateReportRow {
+  affiliator_id: string;
+  affiliator_code: string;
+  affiliator_name: string;
+  level: string;
+  students_new: number;
+  net_revenue: number;
+  commissions: Record<string, number>;
+}
+
+export interface AffiliateReportSummary {
+  data: AffiliateReportRow[];
+  totals: AffiliateReportRow;
+  total: number;
+  page?: number;
+  per_page?: number;
+}
+
+export interface AffiliateLiabilityReport {
+  by_status: Record<string, number>;
+  payout_liability: number;
+}
+
+export interface AffiliateJobResult {
+  scope: string;
+  [key: string]: unknown;
+}
+
+export interface AffiliateOverrideProduct {
+  id: string;
+  name: string;
+  type: string;
+  override_type: AffiliateCommissionRuleType | null;
+  override_value: number | null;
+}
+
+export interface AffiliateReportOrder extends AffiliateCommission {
+  affiliator_name: string;
+  affiliator_code: string;
+}
+
+export interface AffiliatePromo {
+  id: string;
+  code: string;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  min_order_amount: number | null;
+  max_discount_amount: number | null;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+}
+
+export interface AffiliateCreateInput {
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+}
+
+export interface AffiliateCreated {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  code: string;
+  temp_password: string;
+}
+
+export interface AffiliateBulkResult {
+  row: number;
+  email: string;
+  created?: AffiliateCreated;
+  error?: string;
 }

@@ -2,10 +2,13 @@ package handler_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"akademi-bimbel/internal/handler"
+	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
 )
 
@@ -131,5 +134,32 @@ func TestUpdateSystemConfig_UnchangedCardValue_KeepsCachedCards(t *testing.T) {
 	}
 	if cardKey == nil || *cardKey != "cards/same.pdf" {
 		t.Errorf("card_key: re-saving the same value must not invalidate, got %v", cardKey)
+	}
+}
+
+func TestAdminGetSystemConfig_StaleFlatRow(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	repo := repository.New(env.pool)
+	if err := repo.UpsertSystemConfig(context.Background(), "shipping_fallback_flat_rate", "50000", false); err != nil {
+		t.Fatal(err)
+	}
+	h := handler.New(env.svc)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/system/config", nil)
+	rec := httptest.NewRecorder()
+	if err := h.AdminGetSystemConfig(env.e.NewContext(req, rec)); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var config map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &config); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := config["shipping_fallback_flat_rate"]; ok {
+		t.Fatal("removed key returned")
+	}
+	if _, ok := config["biteship_services"]; !ok {
+		t.Fatal("active shipping config missing")
 	}
 }

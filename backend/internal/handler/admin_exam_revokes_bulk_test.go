@@ -35,8 +35,8 @@ func newExamRevokeRouter(t *testing.T, h *handler.Handler) *echo.Echo {
 	g := e.Group("/admin/exam-grants")
 	g.Use(handler.RBACMiddleware("exam-grants:write"))
 	g.POST("/revoke", h.AdminRevokeExamAccess)
-	g.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload)
-	g.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk)
+	g.POST("/revoke/bulk/presign", h.AdminPresignExamRevokeBulkUpload, handler.RBACMiddleware("exam-grants-bulk:write"))
+	g.POST("/revoke/bulk", h.AdminEnqueueExamRevokeBulk, handler.RBACMiddleware("exam-grants-bulk:write"))
 	return e
 }
 
@@ -119,9 +119,9 @@ func TestAdminRevokeExamAccess_MissingStudentIDs_400(t *testing.T) {
 	}
 }
 
-// TestAdminExamRevokeRoutes_NonSuperAdmin_403 is the super-admin-only guard:
-// only the role that grants exam access may revoke it.
-func TestAdminExamRevokeRoutes_NonSuperAdmin_403(t *testing.T) {
+// TestAdminExamRevokeRoutes_Forbidden is the guard for who may revoke:
+// admin_exam may revoke one at a time but never in bulk.
+func TestAdminExamRevokeRoutes_Forbidden(t *testing.T) {
 	schoolID := "22222222-2222-2222-2222-222222222222"
 	roles := map[string]*infra.Claims{
 		"admin_school": {Sub: "as1", Role: "admin_school", SchoolID: &schoolID},
@@ -130,15 +130,18 @@ func TestAdminExamRevokeRoutes_NonSuperAdmin_403(t *testing.T) {
 		"student":      {Sub: "st1", Role: "student"},
 	}
 	targets := []struct {
-		name, path, body string
+		name, path, body, allowedRole string
 	}{
-		{"revoke", "/admin/exam-grants/revoke", `{"exam_id":"` + testExamID + `","student_ids":["44444444-4444-4444-4444-444444444444"]}`},
-		{"presign", "/admin/exam-grants/revoke/bulk/presign?exam_id=" + testExamID + "&filename=revokes.csv", ""},
-		{"enqueue", "/admin/exam-grants/revoke/bulk", `{"exam_id":"` + testExamID + `","file_key":"exam-revoke-bulk/` + testExamID + `/x.csv"}`},
+		{"revoke", "/admin/exam-grants/revoke", `{"exam_id":"` + testExamID + `","student_ids":["44444444-4444-4444-4444-444444444444"]}`, "admin_exam"},
+		{"presign", "/admin/exam-grants/revoke/bulk/presign?exam_id=" + testExamID + "&filename=revokes.csv", "", ""},
+		{"enqueue", "/admin/exam-grants/revoke/bulk", `{"exam_id":"` + testExamID + `","file_key":"exam-revoke-bulk/` + testExamID + `/x.csv"}`, ""},
 	}
 
 	for role, claims := range roles {
 		for _, target := range targets {
+			if role == target.allowedRole {
+				continue
+			}
 			t.Run(role+"/"+target.name, func(t *testing.T) {
 				e := newExamRevokeRouter(t, newExamRevokePresignHandler(t))
 				e.Use(claimsInjector(claims))

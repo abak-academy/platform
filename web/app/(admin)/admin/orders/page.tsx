@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Receipt } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
+  useAdminOrder,
   useAdminOrders,
   useAdminOrderSummary,
   useConfirmOrder,
@@ -22,6 +23,7 @@ import { isShipmentFailure } from "@/lib/shipment-status";
 import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
 import { TrackingModal } from "@/components/admin/TrackingModal";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -31,9 +33,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ShippingLabelReviewDialog } from "@/components/admin/ShippingLabelReviewDialog";
 import { OrderDetailModal } from "@/components/admin/OrderDetailModal";
 import { OrderRow, type OrderRowMenuAction, type OrderRowPrimaryAction } from "@/components/admin/OrderRow";
-import { OrdersToolbar } from "@/components/admin/OrdersToolbar";
+import { OrdersToolbar, chipCount } from "@/components/admin/OrdersToolbar";
 import { ShipOrderModal } from "@/components/admin/ShipOrderModal";
 import { ConfirmOrderModal } from "@/components/admin/ConfirmOrderModal";
 import { RefundOrderModal } from "@/components/admin/RefundOrderModal";
@@ -42,14 +45,14 @@ import type { Order, OrderStatus, AdminOrderQuery, AdminOrderFilterStatus, Admin
 // Mirrors AdminOrderFilterStatus. An unknown ?status= falls back to "all"
 // rather than sending a value the API would reject.
 const ORDER_FILTER_STATUSES: AdminOrderFilterStatus[] = [
-  "all", "pending", "paid", "processing", "shipped", "failed", "cancelled",
+  "all", "pending", "paid", "processing", "shipped", "completed", "payment_expired", "cancelled",
 ];
 
 // Mirrors AdminOrderQueue. Also doubles as the backward-compat list: prod has
 // shipped `?status=ready_to_ship` / `?status=shipment_failed` links since
 // before the queue split, so a legacy ?status= carrying one of these is
 // treated as the equivalent ?queue= rather than breaking the bookmark.
-const ORDER_QUEUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed"];
+const ORDER_QUEUES: AdminOrderQueue[] = ["ready_to_ship", "shipment_failed", "in_transit"];
 
 function orderNumber(order: Order): string {
   return `#${order.id.slice(-8)}`;
@@ -105,6 +108,16 @@ function shipAllowed(order: Order): boolean {
 export default function OrdersPage() {
   const { t } = useTranslation();
   const [query, setQuery] = useState<AdminOrderQuery>({ status: "all" });
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [reviewMode, setReviewMode] = useState<"bulk" | "single">("bulk");
+  const detailFocus = useRef<HTMLElement | null>(null);
+  const [reviewOrders, setReviewOrders] = useState<Order[] | null>(null);
+  const [cursorStack, setCursorStack] = useState([""]);
+  function changeQuery(next: AdminOrderQuery) {
+    setSelectedIds([]);
+    setQuery(next);
+    setCursorStack([""]);
+  }
 
   // Read ?queue=/?status= once on mount so the store dashboard's queue cards
   // can deep link into their own queue. Deliberately an effect rather than a
@@ -113,6 +126,7 @@ export default function OrdersPage() {
   // from window.location during render would be a hydration mismatch.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setLinkedOrderId(params.get("order") ?? "");
     const rawQueue = params.get("queue");
     if (rawQueue && ORDER_QUEUES.includes(rawQueue as AdminOrderQueue)) {
       setQuery((q) => ({ ...q, status: "all", queue: rawQueue as AdminOrderQueue }));
@@ -140,10 +154,9 @@ export default function OrdersPage() {
     isLoading,
     isError,
     error,
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  } = useAdminOrders(query);
+    isFetching,
+    isPlaceholderData,
+  } = useAdminOrders(query, cursorStack[cursorStack.length - 1]);
   const { data: summary } = useAdminOrderSummary(query);
   const confirm = useConfirmOrder();
   const ship = useShipOrder();
@@ -156,6 +169,11 @@ export default function OrdersPage() {
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
   const tracking = useOrderTracking(trackingOrderId);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [linkedOrderId, setLinkedOrderId] = useState("");
+  const linkedOrder = useAdminOrder(linkedOrderId);
+  useEffect(() => {
+    if (linkedOrder.data) setDetailOrder(linkedOrder.data);
+  }, [linkedOrder.data]);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
   const [cancellingShipment, setCancellingShipment] = useState<Order | null>(null);
   const [cancelShipmentError, setCancelShipmentError] = useState<string | null>(null);
@@ -166,8 +184,11 @@ export default function OrdersPage() {
   const [refundError, setRefundError] = useState<string | null>(null);
   const [completingOrder, setCompletingOrder] = useState<Order | null>(null);
 
-  const orders = data?.pages.flatMap((p) => p.data) ?? [];
-  const total = summary?.buckets.total;
+  const orders = data?.data ?? [];
+  const selectedOrders = orders.filter((order) => selectedIds.includes(order.id));
+  const total = chipCount(query.queue ?? query.status, summary?.buckets);
+  const firstRow = orders.length ? (cursorStack.length - 1) * (query.limit ?? 20) + 1 : 0;
+  const lastRow = orders.length ? firstRow + orders.length - 1 : 0;
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
@@ -347,7 +368,15 @@ export default function OrdersPage() {
         description={t("admin_orders_page_description")}
       />
 
-      <OrdersToolbar value={query} onChange={setQuery} counts={summary?.buckets} />
+      <OrdersToolbar value={query} onChange={changeQuery} couriers={summary?.couriers} />
+
+      {selectedOrders.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" role="region" aria-label={t("labels_selected")}>
+          <span className="text-sm">{t("labels_selected")}: {selectedOrders.length}</span>
+          <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>{t("labels_clear")}</Button>
+          <Button size="sm" disabled={isFetching || isPlaceholderData} onClick={() => { setReviewMode("bulk"); setReviewOrders(selectedOrders); }}>{t("labels_print")}</Button>
+        </div>
+      )}
 
       {isLoading && (
         <div className="space-y-2">
@@ -369,6 +398,9 @@ export default function OrdersPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
+                  <th className="px-4 py-3.5">
+                    <input type="checkbox" className="size-4 accent-brand-700" aria-label={t("labels_select_all")} checked={orders.length > 0 && selectedOrders.length === orders.length} disabled={orders.length === 0 || isFetching || isPlaceholderData} ref={(el) => { if (el) el.indeterminate = selectedOrders.length > 0 && selectedOrders.length < orders.length; }} onChange={(e) => setSelectedIds(e.target.checked ? orders.map((order) => order.id) : [])} />
+                  </th>
                   <th className="px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("orders")}</th>
                   <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_buyer")}</th>
                   <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_product")}</th>
@@ -382,7 +414,8 @@ export default function OrdersPage() {
                   <OrderRow
                     key={order.id}
                     order={order}
-                    onOpen={() => setDetailOrder(order)}
+                    selection={{ checked: selectedIds.includes(order.id), disabled: isFetching || isPlaceholderData, onChange: () => setSelectedIds((ids) => ids.includes(order.id) ? ids.filter((id) => id !== order.id) : [...ids, order.id]) }}
+                    onOpen={() => { detailFocus.current = document.activeElement as HTMLElement; setDetailOrder(order); }}
                     onTrack={order.tracking_number ? () => setTrackingOrderId(order.id) : undefined}
                     primaryAction={primaryAction(order)}
                     menuActions={menuActions(order)}
@@ -390,7 +423,7 @@ export default function OrdersPage() {
                 ))}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                       {t("empty_orders")}
                     </td>
                   </tr>
@@ -399,28 +432,48 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          <div className="flex items-center justify-between gap-4 px-1">
-            <p className="text-xs tabular-nums text-ink-600">
-              {t("orders_showing")} {orders.length}
-              {total !== undefined && ` ${t("orders_of_total")} ${total}`}
-            </p>
-            {hasNextPage && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fetchNextPage()}
-                disabled={isFetchingNextPage}
-              >
-                {t("orders_load_more")}
-              </Button>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-ink-600">{t("orders_page_size")}</span>
+              <Select value={String(query.limit ?? 20)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
+                <SelectTrigger className="w-24" aria-label={t("orders_page_size")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-wrap items-center gap-4">
+              <p className="text-xs tabular-nums text-ink-600">
+                {t("orders_showing")} {firstRow}-{lastRow}
+                {total !== undefined && ` ${t("orders_of_total")} ${total}`}
+              </p>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" disabled={cursorStack.length === 1 || isFetching}
+                  onClick={() => { setSelectedIds([]); setCursorStack((stack) => stack.slice(0, -1)); }}>
+                  {t("pagination_prev")}
+                </Button>
+                <Button variant="outline" size="sm" disabled={!data?.next_cursor || isFetching || isPlaceholderData}
+                  onClick={() => { if (data?.next_cursor) { setSelectedIds([]); setCursorStack((stack) => [...stack, data.next_cursor]); } }}>
+                  {t("pagination_next")}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
+      {reviewOrders && <ShippingLabelReviewDialog orders={reviewOrders} mode={reviewMode} focusTarget={reviewMode === "single" ? detailFocus.current : undefined} onClose={() => setReviewOrders(null)} />}
+
       <OrderDetailModal
         order={detailOrder}
         onOpenChange={() => setDetailOrder(null)}
+        onPrint={detailOrder?.tracking_number ? () => {
+          setReviewMode("single");
+          setReviewOrders([detailOrder]);
+          setDetailOrder(null);
+        } : undefined}
         onShip={
           detailOrder && shipAllowed(detailOrder) && hasPhysicalItem(detailOrder)
             ? () => {
@@ -553,7 +606,7 @@ export default function OrdersPage() {
             setShipError(null);
           }}
           orderNumber={orderNumber(shippingOrder)}
-          onBook={(schedule) => handleShipBook(shippingOrder.id, schedule)}
+          onBook={() => handleShipBook(shippingOrder.id)}
           onSubmitManual={(trackingNumber) => handleShipManual(shippingOrder.id, trackingNumber)}
           isPending={ship.isPending || shipManual.isPending}
           error={shipError}

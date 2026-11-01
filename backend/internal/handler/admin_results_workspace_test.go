@@ -26,7 +26,6 @@ func TestAdminResultsWorkspace_DBBackedRoutesAndRBAC(t *testing.T) {
 		name  string
 		token string
 	}{
-		{"admin_exam forbidden", adminExamToken},
 		{"admin_school forbidden", adminSchoolToken},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -36,6 +35,13 @@ func TestAdminResultsWorkspace_DBBackedRoutesAndRBAC(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("admin_exam list 200 with every school", func(t *testing.T) {
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace?limit=1", adminExamToken)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
 
 	t.Run("super_admin list 200 from real DB", func(t *testing.T) {
 		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/results-workspace?limit=1", superToken)

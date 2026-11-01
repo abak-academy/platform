@@ -27,10 +27,13 @@ func (r *Repository) ExpirePaymentOrderTx(ctx context.Context, tx pgx.Tx, orderI
 
 	if _, err := tx.Exec(ctx,
 		`UPDATE product p SET stock = p.stock + i.qty, updated_at = now()
-		 FROM (SELECT product_id, sum(qty) AS qty FROM order_item
-		       WHERE order_id = $1 AND product_type IN ('book', 'merchandise', 'medal')
-		       GROUP BY product_id) i
-		 WHERE p.id = i.product_id`,
+		 FROM (SELECT oi.product_id, sum(oi.qty) AS qty FROM order_item oi
+		       WHERE oi.order_id = $1
+		         AND (oi.product_type IN ('book', 'merchandise', 'medal')
+		              OR (oi.product_type = 'exam' AND NOT EXISTS (
+		                  SELECT 1 FROM order_participant op WHERE op.order_id = oi.order_id)))
+		       GROUP BY oi.product_id) i
+		 WHERE p.id = i.product_id AND p.stock IS NOT NULL`,
 		orderID,
 	); err != nil {
 		return false, err

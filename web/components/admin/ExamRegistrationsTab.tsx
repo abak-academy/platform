@@ -37,6 +37,7 @@ import { putFileToPresignedURL } from "@/lib/hooks/admin-students-bulk";
 import { useJobStatus } from "@/lib/hooks/jobs";
 import { adminExamsKeys, exportExamRoster, useExamRegistrationCounts, useExamRoster } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { hasCapability } from "@/lib/hooks/use-capability";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamRosterEntry } from "@/lib/types";
 
@@ -280,15 +281,16 @@ function RosterSummaryCard({ testId, label, value }: { testId: string; label: st
   );
 }
 
-// admin_school orders (Midtrans-paid); super_admin grants directly (no order,
+// admin_school orders (Midtrans-paid); super_admin and admin_exam grant directly (no order,
 // no payment). Same participant pool, submit action branches by role.
 export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
   const schoolId = useAuthStore((s) => s.user?.school_id);
-  const isSuperAdmin = role === "super_admin";
-  const isAdminExam = role === "admin_exam";
+  const canGrant = hasCapability(role, "exam-grants:write");
+  const canBulkGrant = hasCapability(role, "exam-grants-bulk:write");
+  const canRegister = canGrant || hasCapability(role, "bulk-exam-orders:write");
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
@@ -544,7 +546,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
     }
   };
 
-  const modalTitle = isSuperAdmin
+  const modalTitle = canGrant
     ? t("exam_registrations_grant_modal_title")
     : t("bulk_exam_order_pick_participants");
 
@@ -555,18 +557,18 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
       <ExamRosterSection
         examId={examId}
         action={
-          !isAdminExam ? (
+          canRegister ? (
             <>
               <Button
                 variant="outline"
                 size="sm"
                 className="rounded-full"
-                data-testid={isSuperAdmin ? "open-grant-modal" : "open-order-modal"}
+                data-testid={canGrant ? "open-grant-modal" : "open-order-modal"}
                 onClick={() => setModalOpen(true)}
               >
-                {isSuperAdmin ? t("exam_grant_grant") : t("bulk_exam_order_pick_participants")}
+                {canGrant ? t("exam_grant_grant") : t("bulk_exam_order_pick_participants")}
               </Button>
-              {isSuperAdmin && (
+              {canGrant && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -582,13 +584,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
         }
       />
 
-      {isAdminExam && (
-        <div className="md-card-outlined p-5 text-sm text-ink-600">
-          {t("exam_registrations_manual_notice")}
-        </div>
-      )}
-
-      {!isAdminExam && (
+      {canRegister && (
         <Dialog open={modalOpen} onOpenChange={handleModalOpenChange}>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
@@ -650,7 +646,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
               </div>
             ) : (
               <>
-                {isSuperAdmin && (
+                {canBulkGrant && (
                   <div className="flex gap-2" data-testid="grant-mode-toggle">
                     <Button
                       type="button"
@@ -675,7 +671,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                   </div>
                 )}
 
-                {isSuperAdmin && grantMode === "csv" ? (
+                {canBulkGrant && grantMode === "csv" ? (
                   <div className="space-y-6">
                     <section>
                       <h3 className="text-sm font-semibold text-ink-900">
@@ -793,14 +789,14 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                   <div>
                     <ParticipantPicker
                       examId={examId}
-                      schoolId={isSuperAdmin ? undefined : schoolId}
+                      schoolId={canGrant ? undefined : schoolId}
                       selected={selectedStudentIds}
                       onChange={setSelectedStudentIds}
                     />
                   </div>
                 )}
 
-                {selectedStudentIds.length > 0 && isSuperAdmin && grantMode === "manual" && (
+                {selectedStudentIds.length > 0 && canGrant && grantMode === "manual" && (
                   <div className="space-y-4">
                     <Button size="lg" className="rounded-full" onClick={handleGrant} disabled={grantMutation.isPending}>
                       {grantMutation.isPending ? (
@@ -815,7 +811,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                   </div>
                 )}
 
-                {selectedStudentIds.length > 0 && !isSuperAdmin && (
+                {selectedStudentIds.length > 0 && !canGrant && (
                   <div className="space-y-4">
                     <Button size="lg" className="rounded-full" onClick={handlePreview} disabled={previewMutation.isPending}>
                       {previewMutation.isPending ? (
@@ -891,7 +887,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
         </Dialog>
       )}
 
-      {isSuperAdmin && (
+      {canGrant && (
         <Dialog open={revokeOpen} onOpenChange={handleRevokeModalOpenChange}>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
@@ -933,28 +929,30 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
               </div>
             ) : (
               <>
-                <div className="flex gap-2" data-testid="revoke-mode-toggle">
-                  <Button
-                    type="button"
-                    variant={revokeMode === "manual" ? "default" : "outline"}
-                    size="sm"
-                    className="rounded-full"
-                    data-testid="revoke-mode-manual"
-                    onClick={() => setRevokeMode("manual")}
-                  >
-                    {t("exam_grant_mode_manual")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={revokeMode === "csv" ? "default" : "outline"}
-                    size="sm"
-                    className="rounded-full"
-                    data-testid="revoke-mode-csv"
-                    onClick={() => setRevokeMode("csv")}
-                  >
-                    {t("exam_grant_mode_csv")}
-                  </Button>
-                </div>
+                {canBulkGrant && (
+                  <div className="flex gap-2" data-testid="revoke-mode-toggle">
+                    <Button
+                      type="button"
+                      variant={revokeMode === "manual" ? "default" : "outline"}
+                      size="sm"
+                      className="rounded-full"
+                      data-testid="revoke-mode-manual"
+                      onClick={() => setRevokeMode("manual")}
+                    >
+                      {t("exam_grant_mode_manual")}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={revokeMode === "csv" ? "default" : "outline"}
+                      size="sm"
+                      className="rounded-full"
+                      data-testid="revoke-mode-csv"
+                      onClick={() => setRevokeMode("csv")}
+                    >
+                      {t("exam_grant_mode_csv")}
+                    </Button>
+                  </div>
+                )}
 
                 {revokeMode === "csv" ? (
                   <div className="space-y-6">
@@ -1098,7 +1096,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
         </Dialog>
       )}
 
-      {isSuperAdmin && (
+      {canGrant && (
         <Dialog open={revokeConfirmOpen} onOpenChange={setRevokeConfirmOpen}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>

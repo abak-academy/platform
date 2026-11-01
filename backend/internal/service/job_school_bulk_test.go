@@ -84,7 +84,7 @@ func TestEnqueueSchoolBulkJobFromData_Integration(t *testing.T) {
 	ctx := context.Background()
 
 	schoolID := createTestSchool(t, svc)
-	reg, err := svc.RegisterStudent(ctx, schoolID, "School Bulk Creator", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, testActorID, schoolID, "School Bulk Creator", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}

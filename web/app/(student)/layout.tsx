@@ -67,6 +67,9 @@ export default function StudentLayout({
     if (role && ADMIN_ROLES.includes(role)) {
       router.replace("/admin");
     }
+    if (role === "affiliator") {
+      router.replace("/affiliate");
+    }
   }, [hydrated, token, meIsError, role, router]);
 
   // Google-only gate: incomplete Google students go to /complete-profile.
@@ -119,7 +122,7 @@ export default function StudentLayout({
   // Show loading while profile resolves (gate needs it) or during no-token/admin
   // checks. An unresolved role holds the shell back too — rendering it would put
   // an unidentified session inside the student UI.
-  if (!hydrated || !token || !role || ADMIN_ROLES.includes(role) || profilePending) {
+  if (!hydrated || !token || !role || ADMIN_ROLES.includes(role) || role === "affiliator" || profilePending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
         Memuat…

@@ -14,7 +14,7 @@ import (
 // ReissueStudentCredentials in a loop. When all is true, studentIDs is
 // ignored and every student in the school is targeted instead (paginated via
 // ListStudentsBySchool). Returns the per-row report as CSV bytes.
-func (s *Service) ReissueStudentCredentialsBulk(ctx context.Context, schoolID string, studentIDs []string, all bool) ([]byte, error) {
+func (s *Service) ReissueStudentCredentialsBulk(ctx context.Context, actorID, schoolID string, studentIDs []string, all bool) ([]byte, error) {
 	ids := studentIDs
 	if all {
 		var err error
@@ -38,7 +38,7 @@ func (s *Service) ReissueStudentCredentialsBulk(ctx context.Context, schoolID st
 			row.Name = student.Name
 		}
 
-		creds, err := s.ReissueStudentCredentials(ctx, schoolID, id)
+		creds, err := s.ReissueStudentCredentials(ctx, actorID, schoolID, id)
 		switch {
 		case err == nil:
 			row.Username = creds.Username

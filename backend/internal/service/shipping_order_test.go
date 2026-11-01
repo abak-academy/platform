@@ -17,6 +17,7 @@ import (
 // interface, so the order/status assertions below run against the actual
 // repository methods from Task 9).
 type fakeShipLogistics struct {
+	getRatesCalls    int
 	createOrderCalls int
 	getOrderCalls    int
 	lastCreateReq    CreateShipmentRequest
@@ -28,6 +29,7 @@ type fakeShipLogistics struct {
 var _ LogisticsClient = (*fakeShipLogistics)(nil)
 
 func (f *fakeShipLogistics) GetRates(ctx context.Context, req ShippingQuoteRequest) ([]CourierRate, error) {
+	f.getRatesCalls++
 	return nil, ErrShippingUnavailable
 }
 
@@ -325,5 +327,73 @@ func TestAdminShipOrderManual_StampsManualWithZeroClientCalls(t *testing.T) {
 	}
 	if fake.createOrderCalls != 0 || fake.getOrderCalls != 0 {
 		t.Errorf("want zero client calls, got create=%d get=%d", fake.createOrderCalls, fake.getOrderCalls)
+	}
+}
+
+func TestAdminShipOrder_DisabledCourierStillBooksStoredCodes(t *testing.T) {
+	fake := &fakeShipLogistics{createOrderFn: func(context.Context, CreateShipmentRequest) (Shipment, error) {
+		return Shipment{BiteshipOrderID: "disabled-booking", WaybillID: "WB-disabled", Status: "confirmed"}, nil
+	}}
+	svc, repo := newShipOrderTestService(t, fake)
+	ctx := context.Background()
+	if err := repo.UpsertSystemConfig(ctx, "biteship_services", "lion:reg_pack", false); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = repo.UpsertSystemConfig(ctx, "biteship_services", "", false) })
+	id := createShippableOrder(t, svc, repo, "paid", true)
+	if err := svc.AdminShipOrder(ctx, id.String(), "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if fake.createOrderCalls != 1 || fake.lastCreateReq.CourierCode != "jne" || fake.lastCreateReq.ServiceCode != "reg" || fake.getRatesCalls != 0 {
+		t.Fatalf("booking calls=%d quote calls=%d request=%+v", fake.createOrderCalls, fake.getRatesCalls, fake.lastCreateReq)
+	}
+	order, err := repo.GetOrderByID(ctx, id)
+	if err != nil || order.Status != "shipped" {
+		t.Fatalf("order=%+v error=%v", order, err)
+	}
+}
+
+func TestAdminShipOrder_OriginCoordinate(t *testing.T) {
+	tests := []struct {
+		name, latitude, longitude string
+		wantCoordinate            bool
+	}{
+		{"configured", "-6.2088", "106.8456", true},
+		{"unset", "", "", false},
+		{"latitude only", "-6.2088", "", false},
+		{"invalid longitude", "-6.2088", "bad", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeShipLogistics{createOrderFn: func(context.Context, CreateShipmentRequest) (Shipment, error) {
+				return Shipment{BiteshipOrderID: "biteship-coordinate", WaybillID: "WB-COORD", Status: "confirmed"}, nil
+			}}
+			svc, repo := newShipOrderTestService(t, fake)
+			ctx := context.Background()
+			t.Cleanup(func() {
+				for _, key := range []string{"app_latitude", "app_longitude"} {
+					if err := repo.UpsertSystemConfig(ctx, key, "", false); err != nil {
+						t.Errorf("clear %s: %v", key, err)
+					}
+				}
+			})
+			for key, value := range map[string]string{"app_latitude": tt.latitude, "app_longitude": tt.longitude} {
+				if err := repo.UpsertSystemConfig(ctx, key, value, false); err != nil {
+					t.Fatalf("seed %s: %v", key, err)
+				}
+			}
+			orderID := createShippableOrder(t, svc, repo, "paid", true)
+			if err := svc.AdminShipOrder(ctx, orderID.String(), "", ""); err != nil {
+				t.Fatalf("AdminShipOrder: %v", err)
+			}
+			req := fake.lastCreateReq
+			if tt.wantCoordinate {
+				if req.OriginLatitude == nil || req.OriginLongitude == nil || *req.OriginLatitude != -6.2088 || *req.OriginLongitude != 106.8456 {
+					t.Fatalf("sender coordinate = %v, %v, want -6.2088, 106.8456", req.OriginLatitude, req.OriginLongitude)
+				}
+			} else if req.OriginLatitude != nil || req.OriginLongitude != nil {
+				t.Fatalf("sender coordinate = %v, %v, want nil, nil", req.OriginLatitude, req.OriginLongitude)
+			}
+		})
 	}
 }

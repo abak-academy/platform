@@ -3,9 +3,11 @@ package service
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"akademi-bimbel/internal/repository"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // ---------------------------------------------------------------------------
@@ -637,7 +639,6 @@ func TestBuildConfigMap_NewKeysPresent(t *testing.T) {
 		"app_city_id",
 		"app_district_id",
 		"app_kode_pos",
-		"shipping_fallback_flat_rate",
 		"biteship_api_key",
 	}
 
@@ -663,22 +664,21 @@ func TestBuildConfigMap_BiteshipKeyMasked(t *testing.T) {
 	if result["biteship_api_key"] != "***" {
 		t.Errorf("biteship_api_key: want '***', got %q", result["biteship_api_key"])
 	}
-	if result["shipping_fallback_flat_rate"] != "50000" {
-		t.Errorf("shipping_fallback_flat_rate: want '50000', got %q", result["shipping_fallback_flat_rate"])
+	if _, ok := result["shipping_fallback_flat_rate"]; ok {
+		t.Error("removed flat rate key must not appear in config")
 	}
 }
 
 func TestUpdateSystemConfig_NewNonSecretKeys(t *testing.T) {
-	// Verify that non-secret origin/fallback keys round-trip through UpdateSystemConfig
+	// Verify that non-secret origin keys round-trip through UpdateSystemConfig
 	ctx := context.Background()
 	svc := newFakeSystemConfigService("a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2")
 
 	result, err := svc.UpdateSystemConfig(ctx, map[string]string{
-		"app_province_id":             "1",
-		"app_city_id":                 "2",
-		"app_district_id":             "3",
-		"app_kode_pos":                "12345",
-		"shipping_fallback_flat_rate": "50000",
+		"app_province_id": "1",
+		"app_city_id":     "2",
+		"app_district_id": "3",
+		"app_kode_pos":    "12345",
 	})
 	if err != nil {
 		t.Fatalf("UpdateSystemConfig: %v", err)
@@ -695,9 +695,6 @@ func TestUpdateSystemConfig_NewNonSecretKeys(t *testing.T) {
 	}
 	if result["app_kode_pos"] != "12345" {
 		t.Errorf("app_kode_pos: want '12345', got %q", result["app_kode_pos"])
-	}
-	if result["shipping_fallback_flat_rate"] != "50000" {
-		t.Errorf("shipping_fallback_flat_rate: want '50000', got %q", result["shipping_fallback_flat_rate"])
 	}
 }
 
@@ -873,5 +870,96 @@ func TestUpdateSystemConfig_WebhookSecretIsEncryptedAndMasked(t *testing.T) {
 	}
 	if decrypted != "test-webhook-secret" {
 		t.Errorf("decrypted: want 'test-webhook-secret', got %q", decrypted)
+	}
+}
+
+func TestSystemConfigBiteshipServicesValidation(t *testing.T) {
+	tests := []struct {
+		name, value string
+		wantErr     bool
+	}{
+		{"default services", "jne:reg,jne:yes,jne:oke", false},
+		{"lion", "lion:reg_pack", false},
+		{"catalog", "jne:jtr,sicepat:best,sicepat:gokil,anteraja:same_day,tiki:eko,tiki:sds,tiki:reg,tiki:ons,lion:big_pack", false},
+		{"tiki motor service", "tiki:t15", true}, {"tiki trucking", "tiki:trc", true},
+		{"empty", "", true}, {"unknown courier", "unknown:reg", true},
+		{"unknown service", "jne:unknown", true}, {"duplicate", "jne:reg,jne:reg", true},
+		{"empty entry", "jne:reg,", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfigKeys(map[string]string{"biteship_services": tt.value})
+			if tt.wantErr {
+				if !errors.Is(err, ErrUnknownConfigKey) {
+					t.Fatalf("want validation error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	if err := validateConfigKeys(map[string]string{"app_name": "Example"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := buildConfigMap([]repository.SystemConfigRow{{Key: "biteship_services", Value: "lion:reg_pack"}})
+	if cfg["biteship_services"] != "lion:reg_pack" {
+		t.Fatalf("non-secret config = %v", cfg)
+	}
+}
+
+func TestUpdateSystemConfig_RejectsFlatRate(t *testing.T) {
+	pool, err := pgxpool.New(context.Background(), "postgres://test:test@127.0.0.1:1/test?sslmode=disable")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool.Close()
+	svc := &Service{storeRepo: repository.New(pool)}
+	_, err = svc.UpdateSystemConfig(context.Background(), "", map[string]string{"shipping_fallback_flat_rate": "50000"})
+	if !errors.Is(err, ErrUnknownConfigKey) {
+		t.Fatalf("want unknown key, got %v", err)
+	}
+}
+
+func TestValidateConfigKeys_RejectsFlatRate(t *testing.T) {
+	if err := validateConfigKeys(map[string]string{"shipping_fallback_flat_rate": "50000"}); !errors.Is(err, ErrUnknownConfigKey) {
+		t.Fatalf("want unknown key, got %v", err)
+	}
+}
+
+func TestValidateConfigKeys_OriginCoordinate(t *testing.T) {
+	tests := []struct {
+		name    string
+		values  map[string]string
+		wantErr bool
+	}{
+		{"valid", map[string]string{"app_latitude": "-6.2088", "app_longitude": "106.8456"}, false},
+		{"empty", map[string]string{"app_latitude": "", "app_longitude": ""}, false},
+		{"latitude only submitted", map[string]string{"app_latitude": "-6.2088"}, false},
+		{"longitude only submitted", map[string]string{"app_longitude": "106.8456"}, false},
+		{"lower boundaries", map[string]string{"app_latitude": "-90", "app_longitude": "-180"}, false},
+		{"upper boundaries", map[string]string{"app_latitude": "90", "app_longitude": "180"}, false},
+		{"zero", map[string]string{"app_latitude": "0", "app_longitude": "0"}, false},
+		{"latitude not a number", map[string]string{"app_latitude": "bad", "app_longitude": "106.8456"}, true},
+		{"longitude not a number", map[string]string{"app_latitude": "-6.2088", "app_longitude": "bad"}, true},
+		{"latitude below range", map[string]string{"app_latitude": "-90.1", "app_longitude": "106.8456"}, true},
+		{"latitude above range", map[string]string{"app_latitude": "90.1", "app_longitude": "106.8456"}, true},
+		{"longitude below range", map[string]string{"app_latitude": "-6.2088", "app_longitude": "-180.1"}, true},
+		{"longitude above range", map[string]string{"app_latitude": "-6.2088", "app_longitude": "180.1"}, true},
+		{"latitude unset", map[string]string{"app_latitude": "", "app_longitude": "106.8456"}, true},
+		{"longitude unset", map[string]string{"app_latitude": "-6.2088", "app_longitude": ""}, true},
+		{"nan", map[string]string{"app_latitude": "NaN", "app_longitude": "106.8456"}, true},
+		{"infinity", map[string]string{"app_latitude": "-6.2088", "app_longitude": "+Inf"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateConfigKeys(tt.values)
+			if tt.wantErr {
+				if !errors.Is(err, ErrUnknownConfigKey) {
+					t.Fatalf("validateConfigKeys() = %v, want ErrUnknownConfigKey", err)
+				}
+			} else if err != nil {
+				t.Fatalf("validateConfigKeys() = %v, want nil", err)
+			}
+		})
 	}
 }

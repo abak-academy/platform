@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"time"
 
 	"akademi-bimbel/internal/repository"
 	"akademi-bimbel/internal/service"
@@ -25,10 +27,23 @@ func mapServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrInvalidCredentials):
 		status, apiErr = http.StatusUnauthorized, APIError{Code: "invalid_credentials", Message: err.Error()}
 	case errors.Is(err, service.ErrOTPRateLimit):
-		c.Response().Header().Set("Retry-After", "60")
+		retryAfter := 60 * time.Second
+		var rl *service.OTPRateLimitError
+		if errors.As(err, &rl) && rl.RetryAfter > 0 {
+			retryAfter = rl.RetryAfter
+		}
+		c.Response().Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
 		status, apiErr = http.StatusTooManyRequests, APIError{Code: "rate_limited", Message: err.Error()}
+	case errors.Is(err, service.ErrEmailDeliveryFailed):
+		var edErr *service.EmailDeliveryError
+		if errors.As(err, &edErr) && edErr.RetryAfter > 0 {
+			c.Response().Header().Set("Retry-After", strconv.Itoa(int(edErr.RetryAfter.Seconds())))
+		}
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "email_delivery_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrOTPExpired):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "otp_invalid", Message: err.Error()}
+	case errors.Is(err, service.ErrOTPAttemptsExceeded):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "otp_attempts_exceeded", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidOTP):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "otp_invalid", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPendingToken):
@@ -232,7 +247,7 @@ func mapServiceError(c echo.Context, err error) error {
 	case errors.Is(err, service.ErrInvalidGrantStudent):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_grant_student", Message: err.Error()}
 	case errors.Is(err, service.ErrShippingRequired):
-		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+		status, apiErr = http.StatusBadRequest, APIError{Code: "shipping_required", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCourierSelection):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):
@@ -241,6 +256,10 @@ func mapServiceError(c echo.Context, err error) error {
 		if errors.As(err, &bioErr) {
 			apiErr.Details = map[string]any{"missing_fields": bioErr.Missing}
 		}
+	case errors.Is(err, service.ErrShippingRouteUnserved):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "shipping_route_unserved", Message: "no carrier serves this shipping destination"}
+	case errors.Is(err, service.ErrShippingTemporarilyUnavailable):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_temporarily_unavailable", Message: "shipping quotes are temporarily unavailable"}
 	case errors.Is(err, service.ErrShippingUnavailable):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "shipping_unavailable", Message: "shipping is not available right now"}
 	case errors.Is(err, service.ErrProductRelationsLocked):
@@ -267,18 +286,66 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_shippable", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotRefundable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_refundable", Message: err.Error()}
+	case errors.Is(err, service.ErrPaymentSessionUnavailable):
+		status, apiErr = http.StatusConflict, APIError{Code: "payment_session_unavailable", Message: err.Error()}
 	case errors.Is(err, service.ErrPaymentExpired):
 		status, apiErr = http.StatusConflict, APIError{Code: "payment_expired", Message: err.Error()}
 	case errors.Is(err, service.ErrPaymentDeadlineTooClose):
 		status, apiErr = http.StatusConflict, APIError{Code: "payment_deadline_too_close", Message: err.Error()}
 	case errors.Is(err, service.ErrOrderNotPayable):
 		status, apiErr = http.StatusConflict, APIError{Code: "order_not_payable", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidLabelRequest):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrLabelsNotPrintable):
+		var conflict *service.LabelsNotPrintableError
+		apiErr = APIError{Code: "labels_not_printable", Message: err.Error()}
+		if errors.As(err, &conflict) {
+			apiErr.Details = conflict.Details
+		}
+		status = http.StatusConflict
 	case errors.Is(err, service.ErrNoTrackingNumber):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "no_tracking_number", Message: err.Error()}
 	case errors.Is(err, service.ErrMissingGatewayRef):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "missing_gateway_ref", Message: err.Error()}
 	case errors.Is(err, repository.ErrInvalidCursor):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_cursor", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateNotFound), errors.Is(err, service.ErrAffiliateProfileNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "affiliate_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateProgramOff):
+		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_program_off", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateSelfAdjustment):
+		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_self_adjustment", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateBankMissing):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_bank_missing", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatePayoutBelowMin):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_payout_below_min", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatePayoutInFlight):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_payout_in_flight", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateNotActive),
+		errors.Is(err, service.ErrAffiliateNotPending),
+		errors.Is(err, service.ErrAffiliatePayoutNotDecidable):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateInvalidDecision),
+		errors.Is(err, service.ErrAffiliateRejectReasonRequired),
+		errors.Is(err, service.ErrAffiliateInvalidStatus),
+		errors.Is(err, service.ErrAffiliateReasonRequired),
+		errors.Is(err, service.ErrAffiliateInvalidLevel),
+		errors.Is(err, service.ErrAffiliateAdjustmentInvalid),
+		errors.Is(err, service.ErrAffiliatePayoutAmountInvalid),
+		errors.Is(err, service.ErrAffiliatePayoutInvalid),
+		errors.Is(err, service.ErrAffiliateJobUnknownScope),
+		errors.Is(err, service.ErrAffiliateJobInvalidQuarter):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateInvalidTransition):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateRegistrationCap):
+		status, apiErr = http.StatusTooManyRequests, APIError{Code: "affiliate_registration_cap", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired), errors.Is(err, service.ErrAffiliateBulkTooLarge):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateCodeGenerationExhausted):
+		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "affiliate_code_unavailable", Message: err.Error()}
 	default:
 		slog.Error("unhandled service error", "method", c.Request().Method, "uri", c.Request().RequestURI, "err", err)
 		status, apiErr = http.StatusInternalServerError, APIError{Code: "internal_error", Message: "internal server error"}

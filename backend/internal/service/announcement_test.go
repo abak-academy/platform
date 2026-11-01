@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"akademi-bimbel/config"
 	"akademi-bimbel/internal/model"
 )
 
@@ -93,6 +94,19 @@ func (f *fakeAnnounceRepo) MarkAnnouncementSent(_ context.Context, id string, se
 	return nil
 }
 
+func (f *fakeAnnounceRepo) ScheduleAnnouncementNow(_ context.Context, id string, at time.Time) error {
+	a, ok := f.announcements[id]
+	if !ok {
+		return nil
+	}
+	a.Status = "scheduled"
+	a.ScheduledAt = &at
+	a.SentAt = nil
+	a.RecipientCount = nil
+	a.UpdatedAt = time.Now()
+	return nil
+}
+
 func (f *fakeAnnounceRepo) ClaimDueAnnouncements(_ context.Context, now time.Time, limit int) ([]model.Announcement, error) {
 	var due []model.Announcement
 	for _, a := range f.announcements {
@@ -116,6 +130,19 @@ func (f *fakeAnnounceRepo) ClaimDueAnnouncements(_ context.Context, now time.Tim
 // setEmails configures what ListActiveUserEmails returns for a recipient group.
 func (f *fakeAnnounceRepo) setEmails(recipients string, emails []string) {
 	f.emails[recipients] = emails
+}
+
+// seedSent inserts an already-sent announcement directly, bypassing
+// CreateAnnouncement (whose "sent" status now routes through the scheduler).
+func (f *fakeAnnounceRepo) seedSent(title string) (string, error) {
+	a := &model.Announcement{
+		Title: title, Message: "Message", Type: "announcement",
+		Recipients: "all", Status: "sent", CreatedBy: "admin-1",
+	}
+	if err := f.CreateAnnouncement(context.Background(), a); err != nil {
+		return "", err
+	}
+	return a.ID, nil
 }
 
 // fakeEmailProvider records sent emails and can fail on configured addresses.
@@ -224,7 +251,7 @@ func TestCreateAnnouncement_Scheduled_RejectsPastScheduledAt(t *testing.T) {
 	}
 }
 
-func TestCreateAnnouncement_SentNow(t *testing.T) {
+func TestCreateAnnouncement_SentNow_RoutesThroughScheduler(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeAnnounceRepo()
 	repo.setEmails("all", []string{"alice@test.com", "bob@test.com", "charlie@test.com"})
@@ -235,44 +262,20 @@ func TestCreateAnnouncement_SentNow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateAnnouncement(sent): %v", err)
 	}
-	if a.Status != "sent" {
-		t.Errorf("want status sent, got %s", a.Status)
+	if a.Status != "scheduled" {
+		t.Errorf("want status scheduled (queued for the paced worker loop), got %s", a.Status)
 	}
-	if a.SentAt == nil {
-		t.Error("want non-nil SentAt")
+	if a.ScheduledAt == nil {
+		t.Fatal("want non-nil ScheduledAt")
 	}
-	if a.RecipientCount == nil {
-		t.Fatal("want non-nil RecipientCount")
+	if a.ScheduledAt.After(time.Now()) {
+		t.Errorf("want scheduled_at ~now, got %v", a.ScheduledAt)
 	}
-	if *a.RecipientCount != 3 {
-		t.Errorf("want recipient_count 3, got %d", *a.RecipientCount)
+	if a.SentAt != nil {
+		t.Error("want nil SentAt — no email may leave the request path")
 	}
-	if len(email.sent) != 3 {
-		t.Errorf("want 3 emails sent, got %d", len(email.sent))
-	}
-}
-
-func TestCreateAnnouncement_SentNow_SendLoopContinuesOnFailure(t *testing.T) {
-	ctx := context.Background()
-	repo := newFakeAnnounceRepo()
-	repo.setEmails("all", []string{"alice@test.com", "bob@test.com", "charlie@test.com"})
-	email := &fakeEmailProvider{
-		fails: map[string]bool{"bob@test.com": true},
-	}
-	svc := newTestAnnounceService(t, repo, email)
-
-	a, err := svc.CreateAnnouncement(ctx, "admin-1", "Title", "Message", "announcement", "all", "sent", nil)
-	if err != nil {
-		t.Fatalf("CreateAnnouncement(sent): %v", err)
-	}
-	if a.Status != "sent" {
-		t.Errorf("want status sent, got %s", a.Status)
-	}
-	if a.RecipientCount == nil || *a.RecipientCount != 3 {
-		t.Errorf("want recipient_count 3, got %v", a.RecipientCount)
-	}
-	if len(email.sent) != 3 {
-		t.Errorf("want all 3 recipients attempted even on failure, got %d", len(email.sent))
+	if len(email.sent) != 0 {
+		t.Errorf("want 0 emails sent from the API request, got %d", len(email.sent))
 	}
 }
 
@@ -318,14 +321,14 @@ func TestUpdateAnnouncement_Sent_Rejected(t *testing.T) {
 	email := &fakeEmailProvider{}
 	svc := newTestAnnounceService(t, repo, email)
 
-	// Create a sent announcement
-	repo.setEmails("all", []string{"alice@test.com"})
-	a, err := svc.CreateAnnouncement(ctx, "admin-1", "Original", "Original", "announcement", "all", "sent", nil)
+	// Seed a sent announcement directly; CreateAnnouncement no longer produces
+	// one from the API (status "sent" routes through the scheduler).
+	id, err := repo.seedSent("Original")
 	if err != nil {
-		t.Fatalf("setup CreateAnnouncement: %v", err)
+		t.Fatalf("seed sent announcement: %v", err)
 	}
 
-	_, err = svc.UpdateAnnouncement(ctx, a.ID, "Updated", "Updated", "announcement", "all", nil)
+	_, err = svc.UpdateAnnouncement(ctx, id, "Updated", "Updated", "announcement", "all", nil)
 	if !errors.Is(err, ErrAnnouncementImmutable) {
 		t.Errorf("want ErrAnnouncementImmutable, got %v", err)
 	}
@@ -388,13 +391,12 @@ func TestDeleteAnnouncement_Sent_Rejected(t *testing.T) {
 	email := &fakeEmailProvider{}
 	svc := newTestAnnounceService(t, repo, email)
 
-	repo.setEmails("all", []string{"alice@test.com"})
-	a, err := svc.CreateAnnouncement(ctx, "admin-1", "Title", "Message", "announcement", "all", "sent", nil)
+	id, err := repo.seedSent("Title")
 	if err != nil {
-		t.Fatalf("setup CreateAnnouncement: %v", err)
+		t.Fatalf("seed sent announcement: %v", err)
 	}
 
-	err = svc.DeleteAnnouncement(ctx, a.ID)
+	err = svc.DeleteAnnouncement(ctx, id)
 	if !errors.Is(err, ErrAnnouncementImmutable) {
 		t.Errorf("want ErrAnnouncementImmutable, got %v", err)
 	}
@@ -464,73 +466,32 @@ func TestSendAnnouncementNow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SendAnnouncementNow: %v", err)
 	}
-	if result.Status != "sent" {
-		t.Errorf("want status sent, got %s", result.Status)
+	if result.Status != "scheduled" {
+		t.Errorf("want status scheduled (queued for the paced worker loop), got %s", result.Status)
 	}
-	if result.SentAt == nil {
-		t.Error("want non-nil SentAt")
+	if result.ScheduledAt == nil || result.ScheduledAt.After(time.Now()) {
+		t.Errorf("want scheduled_at ~now, got %v", result.ScheduledAt)
 	}
-	if result.RecipientCount == nil || *result.RecipientCount != 2 {
-		t.Errorf("want recipient_count 2, got %v", result.RecipientCount)
+	if result.SentAt != nil {
+		t.Error("want nil SentAt — dispatch belongs to the worker")
 	}
-	if len(email.sent) != 2 {
-		t.Errorf("want 2 emails sent, got %d", len(email.sent))
-	}
-}
-
-func TestSendAnnouncementNow_SendLoopContinuesOnFailure(t *testing.T) {
-	ctx := context.Background()
-	repo := newFakeAnnounceRepo()
-	repo.setEmails("all", []string{"alice@test.com", "bob-fail@test.com", "charlie@test.com"})
-	email := &fakeEmailProvider{
-		fails: map[string]bool{"bob-fail@test.com": true},
-	}
-	svc := newTestAnnounceService(t, repo, email)
-
-	a, err := svc.CreateAnnouncement(ctx, "admin-1", "Title", "Message", "announcement", "all", "draft", nil)
-	if err != nil {
-		t.Fatalf("setup CreateAnnouncement: %v", err)
-	}
-
-	result, err := svc.SendAnnouncementNow(ctx, a.ID)
-	if err != nil {
-		t.Fatalf("SendAnnouncementNow: %v", err)
-	}
-	if result.Status != "sent" {
-		t.Errorf("want status sent, got %s", result.Status)
-	}
-	if result.RecipientCount == nil || *result.RecipientCount != 3 {
-		t.Errorf("want recipient_count 3 (all attempted), got %d", *result.RecipientCount)
-	}
-	if len(email.sent) != 3 {
-		t.Errorf("want all 3 recipients attempted even on failure, got %d", len(email.sent))
-	}
-	// Verify bob-fail was attempted (should be in the sent list)
-	found := false
-	for _, r := range email.sent {
-		if r.to == "bob-fail@test.com" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Error("want bob-fail@test.com to have been attempted")
+	if len(email.sent) != 0 {
+		t.Errorf("want 0 emails sent from the API request, got %d", len(email.sent))
 	}
 }
 
 func TestSendAnnouncementNow_SentStatusRejected(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeAnnounceRepo()
-	repo.setEmails("all", []string{"alice@test.com"})
 	email := &fakeEmailProvider{}
 	svc := newTestAnnounceService(t, repo, email)
 
-	a, err := svc.CreateAnnouncement(ctx, "admin-1", "Title", "Message", "announcement", "all", "sent", nil)
+	id, err := repo.seedSent("Title")
 	if err != nil {
-		t.Fatalf("setup CreateAnnouncement: %v", err)
+		t.Fatalf("seed sent announcement: %v", err)
 	}
 
-	_, err = svc.SendAnnouncementNow(ctx, a.ID)
+	_, err = svc.SendAnnouncementNow(ctx, id)
 	if !errors.Is(err, ErrAnnouncementImmutable) {
 		t.Errorf("want ErrAnnouncementImmutable, got %v", err)
 	}
@@ -631,5 +592,39 @@ func TestDispatchDueAnnouncements_Empty(t *testing.T) {
 	}
 	if dispatched != 0 {
 		t.Errorf("want 0 dispatched, got %d", dispatched)
+	}
+}
+
+func TestDispatchDueAnnouncements_PacesEmails(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAnnounceRepo()
+	repo.setEmails("all", []string{"a@test.com", "b@test.com", "c@test.com"})
+	email := &fakeEmailProvider{}
+	svc := newTestAnnounceService(t, repo, email)
+	// 30 emails/minute → 2s spacing between consecutive sends.
+	svc.cfg = &config.Config{EmailSendPerMinute: 30}
+	var sleeps []time.Duration
+	svc.emailSleep = func(d time.Duration) { sleeps = append(sleeps, d) }
+
+	_ = repo.CreateAnnouncement(ctx, &model.Announcement{
+		Title: "Paced", Message: "Message", Type: "announcement",
+		Recipients: "all", Status: "scheduled", CreatedBy: "admin-1",
+		ScheduledAt: timePtr(time.Now().Add(-1 * time.Hour)),
+	})
+
+	if _, err := svc.DispatchDueAnnouncements(ctx, 10); err != nil {
+		t.Fatalf("DispatchDueAnnouncements: %v", err)
+	}
+	if len(email.sent) != 3 {
+		t.Fatalf("want 3 emails sent, got %d", len(email.sent))
+	}
+	// First send is immediate; the remaining two each wait one interval.
+	if len(sleeps) != 2 {
+		t.Fatalf("want 2 pacing sleeps (3 sends, first immediate), got %d", len(sleeps))
+	}
+	for i, d := range sleeps {
+		if d < 1900*time.Millisecond || d > 2*time.Second {
+			t.Errorf("sleep[%d] = %v, want ~2s", i, d)
+		}
 	}
 }

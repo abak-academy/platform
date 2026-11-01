@@ -1,27 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Store,
-  Receipt,
-  Package,
-  Clock,
-  PackageCheck,
-  AlertTriangle,
-  ShoppingBag,
-  CheckCircle2,
-  Tag,
-  Bell,
-} from "lucide-react";
+import { Store } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { DashboardHero } from "@/components/admin/DashboardHero";
-import { MonitorCard } from "@/components/admin/MonitorCard";
-import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
-import { StatCard } from "@/components/admin/StatCard";
-import { TopProductsTable } from "@/components/admin/TopProductsTable";
+import { UnitSalesBlock } from "@/components/admin/UnitSalesBlock";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminOrderSummary } from "@/lib/hooks/admin-orders";
 import { useAdminPromoCodes } from "@/lib/hooks/admin-promos";
@@ -67,6 +53,13 @@ function QueueCardLink({
   );
 }
 
+function CompactQueue({ label, value, error = false }: { label: string; value: number; error?: boolean }) {
+  return <div className="md-card-elevated !p-4">
+    <div className="flex justify-between text-label color-on-surface-variant"><span>{label}</span><span aria-hidden>↗</span></div>
+    <strong className="mt-2 block text-title-large tabular-nums" style={error ? { color: "var(--md-sys-color-error)" } : undefined}>{value}</strong>
+  </div>;
+}
+
 export default function StoreDashboardPage() {
   const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
@@ -78,6 +71,10 @@ export default function StoreDashboardPage() {
   const { data: promos = [] } = useAdminPromoCodes();
 
   const buckets = summary?.buckets;
+  const typeLabels: Record<string, string> = {
+    book: t("admin_unit_book"), merchandise: t("admin_unit_merchandise"), medal: t("admin_unit_medal"),
+    course: t("admin_unit_course"), exam: t("admin_unit_exam"),
+  };
 
   // admin_store holds no revenue:read capability (2026-08-04 split) — this page must never surface an aggregate figure.
   const now = Date.now();
@@ -92,13 +89,6 @@ export default function StoreDashboardPage() {
     (p) => p.expires_at != null && new Date(p.expires_at).getTime() <= weekAway,
   );
 
-  const quickActions: QuickAction[] = [
-    { icon: Package, label: t("store_action_manage_products"), href: "/admin/products" },
-    { icon: Receipt, label: t("store_action_view_orders"), href: "/admin/orders" },
-    { icon: Tag, label: t("store_action_new_promo"), href: "/admin/promos" },
-    { icon: Bell, label: t("store_action_announce"), href: "/admin/notifications" },
-  ];
-
   if (!canRead) return <NoAccess />;
 
   return (
@@ -108,7 +98,7 @@ export default function StoreDashboardPage() {
       {/* Work queue — the only band allowed to turn red, and only on real work. */}
       <section>
         <BandLabel>{t("store_needs_action")}</BandLabel>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {isLoading ? (
             <>
               <Skeleton className="h-28 w-full" />
@@ -117,93 +107,41 @@ export default function StoreDashboardPage() {
             </>
           ) : (
             <>
-              <QueueCardLink status="pending">
-                <StatCard
-                  label={t("store_stat_needs_confirm")}
-                  value={String(buckets?.needs_confirm ?? 0)}
-                  accent="primary"
-                  icon={Clock}
-                />
-              </QueueCardLink>
-              <QueueCardLink queue="ready_to_ship">
-                <StatCard
-                  label={t("store_stat_ready_to_ship")}
-                  value={String(buckets?.ready_to_ship ?? 0)}
-                  accent="tertiary"
-                  icon={PackageCheck}
-                />
-              </QueueCardLink>
-              <QueueCardLink queue="shipment_failed">
-                <StatCard
-                  label={t("store_stat_shipment_failed")}
-                  value={String(buckets?.shipment_failed ?? 0)}
-                  accent={(buckets?.shipment_failed ?? 0) > 0 ? "error" : "secondary"}
-                  icon={AlertTriangle}
-                />
-              </QueueCardLink>
+              <QueueCardLink status="pending"><CompactQueue label={t("store_stat_needs_confirm")} value={buckets?.needs_confirm ?? 0} /></QueueCardLink>
+              <QueueCardLink queue="ready_to_ship"><CompactQueue label={t("store_stat_ready_to_ship")} value={buckets?.ready_to_ship ?? 0} /></QueueCardLink>
+              <QueueCardLink queue="shipment_failed"><CompactQueue label={t("store_stat_shipment_failed")} value={buckets?.shipment_failed ?? 0} error={(buckets?.shipment_failed ?? 0) > 0} /></QueueCardLink>
             </>
           )}
         </div>
       </section>
 
-      <section>
-        <BandLabel>{t("store_volume_month")}</BandLabel>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          {isLoading ? (
-            <>
-              <Skeleton className="h-28 w-full" />
-              <Skeleton className="h-28 w-full" />
-            </>
-          ) : (
-            <>
-              <StatCard
-                label={t("store_stat_orders_this_month")}
-                value={String(buckets?.created_this_month ?? 0)}
-                accent="secondary"
-                icon={ShoppingBag}
-              />
-              <StatCard
-                label={t("store_stat_completed_this_month")}
-                value={String(buckets?.completed_this_month ?? 0)}
-                accent="secondary"
-                icon={CheckCircle2}
-              />
-            </>
-          )}
-        </div>
+      <section aria-label={t("store_volume_month")} style={{ color: "var(--md-sys-color-on-surface)" }} className="md-card-elevated flex flex-wrap items-center gap-x-6 gap-y-2 !py-3">
+        <h2 className="text-label uppercase" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("store_volume_month")}</h2>
+        {isLoading ? <Skeleton className="h-6 w-48" /> : <>
+          <p className="text-sm"><strong className="tabular-nums">{buckets?.created_this_month ?? 0}</strong> {t("store_stat_orders_this_month")}</p>
+          <p className="text-sm"><strong className="tabular-nums">{buckets?.completed_this_month ?? 0}</strong> {t("store_stat_completed_this_month")}</p>
+        </>}
       </section>
 
-      <section>
-        <BandLabel>{t("store_promos")}</BandLabel>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <MonitorCard
-            testId="store-promos-active"
-            href="/admin/promos"
-            label={t("store_promos_active")}
-            value={activePromos.length}
-            icon={Tag}
-          />
-          <MonitorCard
-            testId="store-promos-expiring"
-            href="/admin/promos"
-            label={t("store_promos_expiring")}
-            value={expiringPromos.length}
-            accent={expiringPromos.length > 0 ? "tertiary" : "secondary"}
-            icon={Clock}
-          />
-        </div>
-      </section>
+      <UnitSalesBlock />
 
-      <div className="md-card-outlined">
-        <h3 className="text-title-medium mb-4">{t("store_top_products")}</h3>
-        {isLoading ? (
-          <Skeleton className="h-40 w-full" />
-        ) : (
-          <TopProductsTable products={summary?.top_products ?? []} showRevenue={false} />
-        )}
+      <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
+        <section aria-labelledby="store-promos-title" className="md-card-elevated space-y-3">
+          <h2 id="store-promos-title" className="text-title-medium">{t("store_promos")}</h2>
+          <p className="flex justify-between border-t border-line pt-3"><span>{t("store_promos_active")}</span><strong data-testid="store-promos-active" className="tabular-nums">{activePromos.length}</strong></p>
+          <p className="flex justify-between border-t border-line pt-3"><span>{t("store_promos_expiring")}</span><strong data-testid="store-promos-expiring" className="tabular-nums">{expiringPromos.length}</strong></p>
+          <Link href="/admin/promos" className="inline-block text-label color-primary hover:underline focus-visible:outline">{t("store_view_promos")}</Link>
+        </section>
+        <section aria-labelledby="store-top-title" className="md-card-elevated">
+          <h2 id="store-top-title" className="text-title-medium mb-4">{t("store_top_products")}</h2>
+          {isLoading ? <Skeleton className="h-40 w-full" /> : !summary?.top_products.length ? <p className="py-6 text-center text-sm" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("store_top_empty")}</p> :
+            <ol>{summary.top_products.map((product, index) => <li key={product.product_id} className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 border-t border-line py-3">
+              <span className="text-label" style={{ color: "var(--md-sys-color-on-surface)" }}>{index + 1}</span>
+              <div><p className="text-sm font-medium">{product.name}</p><p className="text-label" style={{ color: "var(--md-sys-color-on-surface)" }}>{typeLabels[product.product_type] ?? product.product_type}</p></div>
+              <div className="text-right"><strong className="text-title-medium tabular-nums">{product.qty_sold}</strong><p className="text-label" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("admin_unit_net_units")}</p></div>
+            </li>)}</ol>}
+        </section>
       </div>
-
-      <QuickActionTiles title={t("admin_home_quick_actions")} actions={quickActions} />
     </div>
   );
 }

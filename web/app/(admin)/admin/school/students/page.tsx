@@ -60,6 +60,7 @@ import {
   useReissueStudentCredentials,
   useSetStudentPassword,
 } from "@/lib/hooks/admin-students";
+import { hasCapability } from "@/lib/hooks/use-capability";
 import { useSchoolById } from "@/lib/hooks/students";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 import { useAuthStore } from "@/stores/auth";
@@ -122,9 +123,9 @@ function initials(name: string) {
 export default function SchoolStudentsPage() {
   const { t, lang } = useTranslation();
 
-  // Role-gated school picker (super_admin only)
+  // School picker and global actions are for roles holding student-scope:all
   const currentRole = useAuthStore((s) => s.user?.role);
-  const isSuperAdmin = currentRole === "super_admin";
+  const canManageAllStudents = hasCapability(currentRole, "student-scope:all");
   const [selectedSchoolId, setSelectedSchoolId] = useState<string>("");
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<SchoolOption | null>(null);
 
@@ -166,7 +167,7 @@ export default function SchoolStudentsPage() {
     q: debouncedSearch || undefined,
     cursor: activeCursor,
     limit: 20,
-    ...(isSuperAdmin && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
+    ...(canManageAllStudents && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
   });
 
   // Accumulate pages as they arrive
@@ -254,7 +255,7 @@ export default function SchoolStudentsPage() {
   const adminOwnSchoolTypes = adminOwnSchool?.school_types ?? [];
   const registerSchoolObj = registerSelectedSchool?.id === registerSchoolId ? registerSelectedSchool : hydratedRegisterSchool;
   const superAdminSchoolTypes = registerSchoolObj?.school_types ?? [];
-  const schoolJenjangTypes = isSuperAdmin ? superAdminSchoolTypes : adminOwnSchoolTypes;
+  const schoolJenjangTypes = canManageAllStudents ? superAdminSchoolTypes : adminOwnSchoolTypes;
   // With no school chosen there are no school_types to constrain jenjang, but
   // jenjang is still required — fall back rather than leaving the field unusable.
   const jenjangOptions = schoolJenjangTypes.length ? schoolJenjangTypes : JENJANG_OPTIONS;
@@ -270,11 +271,11 @@ export default function SchoolStudentsPage() {
     try {
       const input = compactStudentRegistration({
         ...registerForm,
-        unlisted_school_name: isSuperAdmin && !registerSchoolId ? registerUnlistedSchoolName : undefined,
+        unlisted_school_name: canManageAllStudents && !registerSchoolId ? registerUnlistedSchoolName : undefined,
       });
       const result = await registerStudent.mutateAsync({
         input,
-        schoolId: isSuperAdmin && registerSchoolId ? registerSchoolId : undefined,
+        schoolId: canManageAllStudents && registerSchoolId ? registerSchoolId : undefined,
       });
       toast.success(t("students_register_success"));
       setRegisterResult(result);
@@ -322,7 +323,7 @@ export default function SchoolStudentsPage() {
       await changeStatus.mutateAsync({
         id: student.id,
         status: newStatus,
-        schoolId: isSuperAdmin ? selectedSchoolId : undefined,
+        schoolId: canManageAllStudents ? selectedSchoolId : undefined,
       });
       toast.success(success);
     } catch (err: unknown) {
@@ -337,7 +338,7 @@ export default function SchoolStudentsPage() {
     try {
       const result = await reissueCreds.mutateAsync({
         id: reissueTarget.id,
-        schoolId: isSuperAdmin ? selectedSchoolId : undefined,
+        schoolId: canManageAllStudents ? selectedSchoolId : undefined,
       });
       setReissueResult(result);
       toast.success(t("students_credential_reissued"));
@@ -474,7 +475,7 @@ export default function SchoolStudentsPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            {isSuperAdmin && (
+            {canManageAllStudents && (
               <DropdownMenuItem onClick={() => setSetPasswordTarget(s)}>
                 <Lock className="mr-2 size-4" />
                 {t("students_set_password")}
@@ -507,7 +508,7 @@ export default function SchoolStudentsPage() {
         ? t("sys_loading_data")
         : t("students_empty");
 
-  const rosterSchool = isSuperAdmin ? selectedSchoolFilter : adminOwnSchool;
+  const rosterSchool = canManageAllStudents ? selectedSchoolFilter : adminOwnSchool;
   const activeSchoolLabel = lang === "en" ? "Active school" : "Sekolah aktif";
   const filterPanelLabel = lang === "en" ? "Student filters" : "Filter siswa";
   const rosterLabel = lang === "en" ? "School roster" : "Daftar siswa";
@@ -518,7 +519,7 @@ export default function SchoolStudentsPage() {
     : lang === "en"
       ? "Students across all partner schools"
       : "Siswa dari seluruh sekolah mitra";
-  const rosterSchoolLocation = isSuperAdmin
+  const rosterSchoolLocation = canManageAllStudents
     ? [selectedSchoolFilter?.kota_name, selectedSchoolFilter?.provinsi_name]
         .filter(Boolean)
         .join(", ")
@@ -582,7 +583,7 @@ export default function SchoolStudentsPage() {
           <div className="mt-6 space-y-6">
             <div>
               <p className="mb-2 text-xs font-semibold text-ink-700">{t("select_school")}</p>
-              {isSuperAdmin ? (
+              {canManageAllStudents ? (
                 <SchoolPicker
                   id="student-school-filter"
                   value={selectedSchoolId}
@@ -723,7 +724,7 @@ export default function SchoolStudentsPage() {
         </section>
       </div>
 
-      <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} allowExplicitPassword={isSuperAdmin} />
+      <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} allowExplicitPassword={canManageAllStudents} />
 
       {/* Register dialog */}
       <Dialog open={registerOpen} onOpenChange={(open) => {
@@ -887,7 +888,7 @@ export default function SchoolStudentsPage() {
                     </SelectContent>
                   </Select>
                 </FormField>
-                {isSuperAdmin && (
+                {canManageAllStudents && (
                   <FormField label={t("students_password_optional")} hint={t("students_password_optional_hint")}>
                     <div className="relative">
                       <Input
@@ -920,7 +921,7 @@ export default function SchoolStudentsPage() {
                 label={t("students_register_section_academic")}
                 delay={60}
               >
-                {isSuperAdmin && (
+                {canManageAllStudents && (
                   <FormField label={t("school")} hint={t("students_school_optional_hint")}>
                     <SchoolPicker
                       id="register-school"

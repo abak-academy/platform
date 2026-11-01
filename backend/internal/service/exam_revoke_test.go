@@ -271,7 +271,7 @@ func TestRefundOrder_RevokesExamRegistrations(t *testing.T) {
 
 	var productID string
 	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO product (type, name, price, stock, status) VALUES ('exam', $1, 100000, 0, 'published') RETURNING id`,
+		`INSERT INTO product (type, name, price, stock, status) VALUES ('exam', $1, 100000, NULL, 'published') RETURNING id`,
 		"Refund Product "+uniqueSuffix(),
 	).Scan(&productID))
 	_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, examID)
@@ -309,7 +309,7 @@ func TestRefundOrder_SelfPurchase_RevokesBuyer(t *testing.T) {
 
 	var productID string
 	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO product (type, name, price, stock, status) VALUES ('exam', $1, 100000, 0, 'published') RETURNING id`,
+		`INSERT INTO product (type, name, price, stock, status) VALUES ('exam', $1, 100000, NULL, 'published') RETURNING id`,
 		"Self Refund Product "+uniqueSuffix(),
 	).Scan(&productID))
 	_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, examID)

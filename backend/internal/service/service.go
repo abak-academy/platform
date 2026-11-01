@@ -8,12 +8,15 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/redis/go-redis/v9"
 )
 
 type Service struct {
+	labelStore shippingLabelStore
+
 	repo          UserRepository
 	storeRepo     *repository.Repository
 	rdb           *redis.Client
@@ -39,6 +42,10 @@ type Service struct {
 	// reloadLogisticsFn is called by ReloadLogisticsClient to rebuild the
 	// logistics client from current config (DB or env). Injected by main.
 	reloadLogisticsFn func(ctx context.Context) LogisticsClient
+
+	// emailSleep is the announcement pacer's sleep, injectable so tests can
+	// record pacing delays without real waits. Nil means time.Sleep.
+	emailSleep func(time.Duration)
 }
 
 // NewForTest builds a Service with only a Redis client — sufficient for middleware tests.

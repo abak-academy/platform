@@ -271,7 +271,7 @@ func (s *Service) CreateProductWithExams(ctx context.Context, p model.Product, e
 }
 
 func (s *Service) UpdateProductRelations(ctx context.Context, id string, examIDs, courseIDs []string, role string) (model.Product, error) {
-	if role != RoleSuperAdmin {
+	if !HasCapability(role, "product-relations:write") {
 		return model.Product{}, ErrForbidden
 	}
 	tx, err := s.storeRepo.BeginTx(ctx)
@@ -477,20 +477,46 @@ func (s *Service) GetShippingRates(ctx context.Context, req ShippingQuoteRequest
 		return nil, err
 	}
 
-	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
-
-	var flatRate int64
+	enabledServices := defaultBiteshipServices
 	if cfg, cfgErr := s.GetSystemConfig(ctx); cfgErr == nil {
-		if raw := cfg["shipping_fallback_flat_rate"]; raw != "" {
-			if _, scanErr := fmt.Sscanf(raw, "%d", &flatRate); scanErr != nil {
-				flatRate = 0
-			}
+		if cfg["biteship_services"] != "" {
+			enabledServices = cfg["biteship_services"]
 		}
 	}
 
-	resolved, cause, err := resolveShippingRates(rates, clientErr, flatRate)
+	enabled := make(map[string]bool)
+	for _, pair := range strings.Split(enabledServices, ",") {
+		enabled[pair] = true
+	}
+	req.Couriers = nil
+	for _, courier := range biteshipCourierOrder {
+		for _, code := range biteshipServiceCatalog[courier] {
+			if enabled[courier+":"+code] {
+				req.Couriers = append(req.Couriers, courier)
+				break
+			}
+		}
+	}
+	rates, clientErr := s.logisticsClient().GetRates(ctx, req)
+	filtered := make([]CourierRate, 0, len(rates))
+	for _, rate := range rates {
+		if enabled[rate.CourierCode+":"+rate.ServiceCode] {
+			filtered = append(filtered, rate)
+		}
+	}
+	rates = filtered
+
+	resolved, cause, err := resolveShippingRates(rates, clientErr)
 	if cause != "" {
-		slog.Warn("shipping quote degraded to fallback", "cause", cause)
+		attrs := []any{"cause", cause}
+		if cause == "client_error" {
+			detail := []rune(clientErr.Error())
+			if len(detail) > 300 {
+				detail = detail[:300]
+			}
+			attrs = append(attrs, "err", string(detail))
+		}
+		slog.Warn("shipping quote degraded", attrs...)
 	}
 	return resolved, err
 }
@@ -538,7 +564,7 @@ func (s *Service) AddItem(ctx context.Context, studentID, orderID, productID str
 	if product == nil {
 		return ErrProductNotFound
 	}
-	if isPhysicalType(product.Type) && product.Stock == 0 {
+	if tracksStock(product.Type, product.StockLimited) && product.Stock == 0 {
 		return ErrOutOfStock
 	}
 	if err := ValidateItemQty(product.Type, qty); err != nil {
@@ -845,7 +871,7 @@ func (s *Service) buildCartPatch(ctx context.Context, order model.Order, patch C
 			for _, rate := range rates {
 				if strings.EqualFold(rate.Courier, patch.Courier) && strings.EqualFold(rate.Service, patch.Service) {
 					repoPatch.ShippingCost = float64(rate.Price)
-					repoPatch.IsEstimate = rate.IsEstimate
+					repoPatch.IsEstimate = false
 					repoPatch.CourierCode = &rate.CourierCode
 					repoPatch.CourierServiceCode = &rate.ServiceCode
 					matched = true
@@ -1011,10 +1037,10 @@ func truncateItemName(name string) string {
 }
 
 // paymentWindow is how long an order stays payable after checkout; the gateway link never outlives what is left of it.
-const paymentWindow = 24 * time.Hour
+const paymentWindow = 20 * time.Minute
 
 // paymentSessionMargin ends the gateway session before the order deadline so a payment made inside the session is notified before the deadline.
-const paymentSessionMargin = 5 * time.Minute
+const paymentSessionMargin = 2 * time.Minute
 
 type OrderPaidPayload struct {
 	OrderID string                 `json:"order_id"`
@@ -1046,7 +1072,7 @@ type MidtransNotification struct {
 // payment_pending order whose promo has already been counted — RetryPayment
 // is the documented recovery path for that order, and it does not re-count
 // the promo, so the redemption is not lost or duplicated on retry.
-func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
+func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affiliateCode string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1055,6 +1081,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	if err != nil {
 		return CheckoutResult{}, err
 	}
+	code := affiliateCodeString(&affiliateCode)
 
 	cacheKey := "idempotency:checkout:" + sID.String() + ":" + oID.String() + ":" + key
 	cached, err := s.rdb.Get(ctx, cacheKey).Result()
@@ -1109,7 +1136,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 	}
 
 	for _, item := range locked.Items {
-		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "") {
+		if isPhysicalType(item.ProductType) && (locked.ShippingCost <= 0 || locked.SelectedCourier == "" || locked.IsEstimate) {
 			return CheckoutResult{}, ErrShippingRequired
 		}
 	}
@@ -1170,11 +1197,22 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		return CheckoutResult{}, err
 	}
 
+	// The referral code rides on the order row until settlement, where the
+	// binding is born; the attribution decision itself is revalidated there.
+	if code != "" {
+		if err := s.storeRepo.SetOrderAffiliateCodeTx(ctx, tx, oID, code); err != nil {
+			return CheckoutResult{}, err
+		}
+	}
+
 	// Free / zero-total order: skip the payment gateway entirely. Mark it paid
 	// and emit OrderPaid in the SAME tx so fulfilment (exam registrations,
 	// course access, digital auto-complete) runs exactly as a real settlement.
 	if order.Total == 0 {
 		if err := s.storeRepo.SetOrderStatus(ctx, tx, oID, "paid", ""); err != nil {
+			return CheckoutResult{}, err
+		}
+		if err := s.paidOrderBindingTx(ctx, tx, order); err != nil {
 			return CheckoutResult{}, err
 		}
 		payload := OrderPaidPayload{OrderID: oID.String()}
@@ -1257,11 +1295,49 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key string) 
 		PaymentExpiresAt: earlier(paymentResp.ExpiresAt, deadline),
 	}
 
+	s.storePaymentSession(ctx, oID.String(), paymentSession{
+		GatewayRef: result.GatewayRef, SnapToken: result.SnapToken,
+		PaymentURL: result.PaymentURL, ExpiresAt: result.PaymentExpiresAt,
+	})
+
 	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
 	}
 
 	return result, nil
+}
+
+type paymentSession struct {
+	GatewayRef string    `json:"gateway_ref"`
+	SnapToken  string    `json:"snap_token"`
+	PaymentURL string    `json:"payment_url"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+func (s *Service) storePaymentSession(ctx context.Context, orderID string, session paymentSession) {
+	ttl := time.Until(session.ExpiresAt)
+	if ttl <= 0 {
+		return
+	}
+	data, err := json.Marshal(session)
+	if err == nil {
+		err = s.rdb.Set(ctx, "payment:session:"+orderID, data, ttl).Err()
+	}
+	if err != nil {
+		slog.Warn("store payment session failed", "order_id", orderID, "error", err)
+	}
+}
+
+func (s *Service) loadPaymentSession(ctx context.Context, orderID string) (paymentSession, bool) {
+	data, err := s.rdb.Get(ctx, "payment:session:"+orderID).Bytes()
+	if err != nil {
+		return paymentSession{}, false
+	}
+	var session paymentSession
+	if err := json.Unmarshal(data, &session); err != nil {
+		return paymentSession{}, false
+	}
+	return session, true
 }
 
 // The gateway call ran outside any transaction, so the order is re-locked and re-checked before the reference is attached.
@@ -1311,7 +1387,7 @@ func earlier(a, b time.Time) time.Time {
 	return a
 }
 
-// Expiry is final: only a payment_pending order inside its deadline gets a new payment. The lock is released across the gateway call, so the order is re-validated when the reference is written.
+// Expiry is final: only a payment_pending order inside its deadline is retried, and it gets back the session checkout stored; a new session is created only for an order with no gateway reference. The lock is released across the gateway call, so the order is re-validated when the reference is written.
 func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key string) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
@@ -1338,6 +1414,13 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 	if err := bindPaymentDeadline(&paymentReq, order.PaymentExpiresAt); err != nil {
 		return CheckoutResult{}, err
 	}
+	if session, ok := s.loadPaymentSession(ctx, oID.String()); ok {
+		return CheckoutResult{GatewayRef: session.GatewayRef, SnapToken: session.SnapToken,
+			PaymentURL: session.PaymentURL, PaymentExpiresAt: session.ExpiresAt}, nil
+	}
+	if order.GatewayRef != "" {
+		return CheckoutResult{}, ErrPaymentSessionUnavailable
+	}
 	paymentResp, err := s.payment.CreatePayment(ctx, paymentReq)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1354,6 +1437,11 @@ func (s *Service) RetryPayment(ctx context.Context, studentID, orderID, key stri
 		PaymentURL:       paymentResp.PaymentURL,
 		PaymentExpiresAt: earlier(paymentResp.ExpiresAt, deadline),
 	}
+
+	s.storePaymentSession(ctx, oID.String(), paymentSession{
+		GatewayRef: result.GatewayRef, SnapToken: result.SnapToken,
+		PaymentURL: result.PaymentURL, ExpiresAt: result.PaymentExpiresAt,
+	})
 
 	if err := s.rdb.Set(ctx, cacheKey, paymentResp.GatewayRef, 24*time.Hour).Err(); err != nil {
 		return CheckoutResult{}, err
@@ -1613,6 +1701,9 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 	if err := s.storeRepo.SetOrderStatus(ctx, tx, order.ID, "paid", ""); err != nil {
 		return err
 	}
+	if err := s.paidOrderBindingTx(ctx, tx, order); err != nil {
+		return err
+	}
 
 	payload := OrderPaidPayload{OrderID: order.ID.String()}
 	for _, item := range order.Items {
@@ -1629,6 +1720,51 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 	}
 
 	return s.storeRepo.InsertAuditLogMeta(ctx, tx, actorID, "order", order.ID.String(), action, meta)
+}
+
+// paidOrderBindingTx is the single affiliate hook every settlement path calls
+// inside its tx, before the OrderPaid outbox event is written: a buyer still
+// unbound gets the binding of the order's stored code (source checkout_code),
+// and an already-bound buyer gets the binding extended by this payment. Flag
+// off is a no-op, so settlements behave exactly as before the feature.
+func (s *Service) paidOrderBindingTx(ctx context.Context, tx pgx.Tx, order model.Order) error {
+	enabled, err := s.affiliateEnabledErr(ctx)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return nil
+	}
+	buyer, err := s.storeRepo.GetUserByID(ctx, order.StudentID.String())
+	if err != nil {
+		return fmt.Errorf("get order buyer: %w", err)
+	}
+	if buyer == nil || buyer.Role != RoleStudent {
+		return nil
+	}
+	created := false
+	code, err := s.storeRepo.GetOrderAffiliateCodeTx(ctx, tx, order.ID)
+	if err != nil {
+		return fmt.Errorf("get order affiliate code: %w", err)
+	}
+	if code != nil && *code != "" {
+		decision, err := s.ResolveBinding(ctx, buyer, code, nil)
+		if err != nil {
+			return fmt.Errorf("resolve checkout binding: %w", err)
+		}
+		if decision != nil {
+			decision.Source = affiliateSourceCheckoutCode
+			if err := s.CreateBinding(ctx, tx, buyer.ID, decision.AffiliatorID, decision.Source); err != nil {
+				return fmt.Errorf("create checkout binding: %w", err)
+			}
+			created = true
+		}
+	}
+	if created {
+		// The binding just born already covers three months from this payment.
+		return nil
+	}
+	return s.ExtendBinding(ctx, tx, buyer.ID, time.Now(), order.Subtotal-order.Discount)
 }
 
 func (s *Service) AdminConfirmOrder(ctx context.Context, actorID, orderID, key, paymentProofURL string) error {
@@ -1844,6 +1980,14 @@ func (s *Service) AdminRefundOrder(ctx context.Context, actorID, orderID, refund
 		return err
 	}
 
+	// Settle commissions in this same tx so a half-refunded commission state
+	// cannot outlive a failed refund.
+	// Settled whether or not the program is switched on: a refund must never
+	// leave a commission standing for money that went back to the buyer.
+	if err := s.settleAffiliateRefundTx(ctx, tx, id, actorID); err != nil {
+		return err
+	}
+
 	actor := &actorID
 	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, actor, "order", id.String(), "order.refund", map[string]any{
 		"manual":           true,
@@ -1970,15 +2114,21 @@ func (s *Service) AdminListPromoCodes(ctx context.Context) ([]model.PromoCode, e
 }
 
 func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (model.PromoCode, error) {
+	if p.AffiliatorOnly {
+		p.IsPublic = false
+	}
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic bool) error {
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic)
+	if affiliatorOnly {
+		isPublic = false
+	}
+	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic, affiliatorOnly)
 }
 
 // ListActivePublicPromos returns is_public promo codes that are still valid
@@ -2130,6 +2280,10 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 		}
 	}
 
+	if err := s.paidOrderBindingTx(ctx, tx, order); err != nil {
+		return err
+	}
+
 	outboxPayload := OrderPaidPayload{OrderID: orderID.String()}
 	for _, item := range order.Items {
 		outboxPayload.Items = append(outboxPayload.Items, OrderPaidPayloadItem{
@@ -2175,6 +2329,11 @@ func latePaymentReference(notif MidtransNotification, order model.Order) string 
 // (stock-guarded, ship-before-complete). Book, merchandise, and medal qualify.
 func isPhysicalType(t string) bool { return t == "book" || t == "merchandise" || t == "medal" }
 
+// tracksStock: physical inventory, or an exam with a quota (NULL stock is unlimited).
+func tracksStock(t string, limited bool) bool {
+	return isPhysicalType(t) || (t == "exam" && limited)
+}
+
 // checkTypeRBAC returns ErrForbidden if role is not allowed to manage productType.
 func checkTypeRBAC(role, productType string) error {
 	switch role {
@@ -2199,4 +2358,8 @@ func checkTypeRBAC(role, productType string) error {
 	default:
 		return ErrForbidden
 	}
+}
+
+func (s *Service) AdminOrderCouriers(ctx context.Context) ([]string, error) {
+	return s.storeRepo.ListOrderCouriers(ctx)
 }

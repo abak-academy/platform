@@ -1,30 +1,54 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import OrdersPage from "./page";
 import type { Order, OrderSummary, AdminOrderQuery } from "@/lib/types";
 
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+function openFilters() {
+  if (!screen.queryByRole("dialog", { name: "Filter pesanan" })) {
+    fireEvent.click(screen.getByRole("button", { name: /^Filter(?: \(|$)/ }));
+  }
+}
+
+async function selectOption(label: string, option: string) {
+  if (["Status", "Jenis produk", "Kurir"].includes(label)) openFilters();
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: label }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  await screen.findByRole("listbox");
+  fireEvent.click(screen.getByRole("option", { name: new RegExp(`^${option}`) }));
+}
+
+const mockDownloadLabels = vi.fn();
+const mockDownloadSingle = vi.fn();
+vi.mock("@/lib/hooks/shipping-label", () => ({
+  downloadShippingLabel: (...args: unknown[]) => mockDownloadSingle(...args),
+  downloadShippingLabels: (...args: unknown[]) => mockDownloadLabels(...args),
+}));
+
 const mockMutate = vi.fn();
 const mockMutateAsync = vi.fn();
-const mockFetchNextPage = vi.fn();
 
 interface OrdersResultPage {
   data: Order[];
   next_cursor: string;
 }
 
-function pages(orders: Order[]): { pages: OrdersResultPage[] } {
-  return { pages: [{ data: orders, next_cursor: "" }] };
+function pages(orders: Order[]): OrdersResultPage {
+  return { data: orders, next_cursor: "" };
 }
 
 let ordersState = {
-  data: pages([]) as { pages: OrdersResultPage[] } | undefined,
+  data: pages([]) as OrdersResultPage | undefined,
   isLoading: true,
   isError: false,
   error: null as Error | null,
-  hasNextPage: false,
-  isFetchingNextPage: false,
-  fetchNextPage: mockFetchNextPage,
+  isFetching: false,
+  isPlaceholderData: false,
 };
 
 let summaryState = { data: undefined as OrderSummary | undefined, isLoading: false };
@@ -40,13 +64,14 @@ let cancelShipmentState = { mutate: mockMutate, mutateAsync: mockMutateAsync, is
 
 // Spies rather than plain stubs so the legacy-?status= mapping test below can
 // assert on the query object the page actually built, not just what renders.
-const mockUseAdminOrders = vi.fn((_query?: AdminOrderQuery) => ordersState);
+const mockUseAdminOrders = vi.fn((_query?: AdminOrderQuery, _cursor?: string) => ordersState);
 const mockUseAdminOrderSummary = vi.fn((_query?: AdminOrderQuery) => summaryState);
+const mockUseAdminOrder = vi.fn((_id?: string): { data?: Order } => ({}));
 
 vi.mock("@/lib/hooks/admin-orders", () => ({
-  useAdminOrders: (query: AdminOrderQuery) => mockUseAdminOrders(query),
+  useAdminOrders: (query: AdminOrderQuery, cursor: string) => mockUseAdminOrders(query, cursor),
   useAdminOrderSummary: (query: AdminOrderQuery) => mockUseAdminOrderSummary(query),
-  useAdminOrder: () => ({}),
+  useAdminOrder: (id: string) => mockUseAdminOrder(id),
   useConfirmOrder: () => confirmState,
   useShipOrder: () => shipState,
   useShipOrderManual: () => shipManualState,
@@ -147,9 +172,8 @@ describe("OrdersPage", () => {
       isLoading: false,
       isError: false,
       error: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mockFetchNextPage,
+      isFetching: false,
+      isPlaceholderData: false,
     };
     summaryState = { data: undefined, isLoading: false };
     confirmState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
@@ -158,13 +182,80 @@ describe("OrdersPage", () => {
     completeState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     refundState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
     reconcileState = { mutate: mockMutate, mutateAsync: mockMutateAsync, isPending: false };
+    mockDownloadLabels.mockReset();
+    mockDownloadSingle.mockReset();
     mockMutate.mockReset();
     mockMutateAsync.mockReset();
-    mockFetchNextPage.mockReset();
-    mockUseAdminOrders.mockClear();
+    mockUseAdminOrders.mockReset();
+    mockUseAdminOrders.mockImplementation(() => ordersState);
     mockUseAdminOrderSummary.mockClear();
     (toast.success as ReturnType<typeof vi.fn>).mockReset();
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
+  });
+
+  it("selects visible rows and reviews only printable ids in row order", async () => {
+    render(<OrdersPage />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih semua pesanan di halaman ini" }));
+    expect(screen.getAllByRole("checkbox")).toHaveLength(sampleOrders.length + 1);
+    expect(screen.getAllByRole("checkbox").every((el) => (el as HTMLInputElement).checked)).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Cetak resi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Tinjau cetak resi" });
+    expect(within(dialog).getByText(/^Dipilih:/)).toHaveTextContent("Dipilih: 3");
+    expect(within(dialog).getByText(/^Siap:/)).toHaveTextContent("Siap: 1");
+    expect(within(dialog).getByText(/^Tidak ikut:/)).toHaveTextContent("Tidak ikut: 2");
+    expect(within(dialog).getAllByText(/Nomor resi belum tersedia/)).toHaveLength(2);
+    mockDownloadLabels.mockResolvedValueOnce(null);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unduh 1 resi PDF" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Tinjau cetak resi" })).not.toBeInTheDocument());
+    expect(mockDownloadLabels).toHaveBeenCalledWith(["o2"], "100x150");
+  });
+
+  it("closes order details before reviewing a single failed shipment and restores row focus", async () => {
+    const order = { ...sampleOrders[1], tracking_number: "TEST456", shipment_status: "returned" };
+    ordersState.data = pages([order]);
+    render(<OrdersPage />);
+    const trigger = screen.getByRole("button", { name: /#o2/ });
+    trigger.focus();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cetak Resi" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cetak resi pesanan" });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(within(dialog).getByText(/^Siap:/)).toHaveTextContent("Siap: 1");
+    fireEvent.click(within(dialog).getByRole("radio", { name: /80 mm/ }));
+    mockDownloadSingle.mockResolvedValueOnce(undefined);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Unduh 1 resi PDF" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mockDownloadSingle).toHaveBeenCalledWith(order.id, "roll80");
+    expect(mockDownloadLabels).not.toHaveBeenCalled();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("button", { name: "Cetak Resi" }));
+    const reopened = await screen.findByRole("dialog", { name: "Cetak resi pesanan" });
+    expect(within(reopened).getByRole("radio", { name: /100 × 150/ })).toBeChecked();
+  });
+
+  it("allows individual selection without opening the order and shows a mixed header", () => {
+    render(<OrdersPage />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih pesanan #o2" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const header = screen.getByRole("checkbox", { name: "Pilih semua pesanan di halaman ini" }) as HTMLInputElement;
+    expect(header.checked).toBe(false);
+    expect(header.indeterminate).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Hapus pilihan" }));
+    expect(screen.getAllByRole("checkbox").every((el) => !(el as HTMLInputElement).checked)).toBe(true);
+  });
+
+  it.each(["search", "filter", "sort", "size", "page"])("clears selection after %s changes", async (change) => {
+    ordersState.data = { ...pages(sampleOrders), next_cursor: "next" };
+    render(<OrdersPage />);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Pilih semua pesanan di halaman ini" }));
+    if (change === "search") fireEvent.change(screen.getByRole("searchbox", { name: "Cari no. pesanan atau nama pembeli" }), { target: { value: "query" } });
+    if (change === "filter") await selectOption("Status", "Siap kirim");
+    if (change === "sort") await selectOption("Urutkan pesanan", "Tanggal pesanan · terlama");
+    if (change === "size") await selectOption("Baris per halaman", "50");
+    if (change === "page") fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    await waitFor(() => expect(screen.getAllByRole("checkbox").every((el) => !(el as HTMLInputElement).checked)).toBe(true));
+    expect(screen.queryByRole("button", { name: "Cetak resi" })).not.toBeInTheDocument();
   });
 
   it("renders the orders table with order number, buyer, product, amount, payment and shipping", async () => {
@@ -180,7 +271,7 @@ describe("OrdersPage", () => {
     // Status column renders a badge per row. "Dikirim" is no longer also a
     // filter chip — the status filter is a select whose options are portalled
     // until opened — so this asserts the badge of a status the fixture has.
-    expect(screen.getAllByText("Menunggu Pembayaran").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Menunggu pembayaran").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Selesai").length).toBeGreaterThanOrEqual(1);
   });
 
@@ -452,7 +543,7 @@ describe("OrdersPage", () => {
 
     ordersState = {
       ...ordersState,
-      data: pages([{ ...ordersState.data!.pages[0].data[0], status: "shipped", tracking_number: "JNE-MERCH-1" }]),
+      data: pages([{ ...ordersState.data!.data[0], status: "shipped", tracking_number: "JNE-MERCH-1" }]),
     };
     rerender(<OrdersPage />);
 
@@ -567,9 +658,28 @@ describe("OrdersPage", () => {
     });
   });
 
+  it.each(["queue", "status"])("adopts ?%s=in_transit on mount", async (parameter) => {
+    window.history.replaceState({}, "", `/admin/orders?${parameter}=in_transit`);
+    render(<OrdersPage />);
+    openFilters();
+    await waitFor(() => expect(screen.getByTestId("orders-status-filter")).toHaveTextContent("Sedang dalam pengiriman"));
+    expect(mockUseAdminOrders.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ status: "all", queue: "in_transit" }));
+  });
+
+  it("opens the order detail named by ?order= so the affiliate report can link to it", async () => {
+    mockUseAdminOrder.mockImplementation((id) => (id === sampleOrders[1].id ? { data: sampleOrders[1] } : {}));
+    window.history.replaceState({}, "", `/admin/orders?order=${sampleOrders[1].id}`);
+    render(<OrdersPage />);
+    await waitFor(() => expect(mockUseAdminOrder).toHaveBeenCalledWith(sampleOrders[1].id));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    mockUseAdminOrder.mockImplementation(() => ({}));
+    window.history.replaceState({}, "", "/admin/orders");
+  });
+
   it("adopts ?queue= from the URL so the dashboard can deep link", async () => {
     window.history.replaceState({}, "", "/admin/orders?queue=shipment_failed");
     render(<OrdersPage />);
+    openFilters();
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
     );
@@ -587,6 +697,7 @@ describe("OrdersPage", () => {
   it("maps a legacy ?status=shipment_failed URL onto the shipment-failed queue, not status", async () => {
     window.history.replaceState({}, "", "/admin/orders?status=shipment_failed");
     render(<OrdersPage />);
+    openFilters();
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Pengiriman bermasalah/),
     );
@@ -634,6 +745,7 @@ describe("OrdersPage", () => {
   it("ignores an unknown ?status= rather than sending it to the API", async () => {
     window.history.replaceState({}, "", "/admin/orders?status=bogus");
     render(<OrdersPage />);
+    openFilters();
     await waitFor(() =>
       expect(screen.getByTestId("orders-status-filter")).toHaveTextContent(/Semua/),
     );
@@ -650,8 +762,7 @@ describe("OrdersPage", () => {
 
     await waitFor(() => expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument());
 
-    // The status filter is a select, not a row of chips: the chips wrapped to a
-    // second line and never lined up with the search and date controls.
+    openFilters();
     expect(screen.getByTestId("orders-status-filter")).toBeInTheDocument();
 
     expect(screen.getByText(/Buku Shipped/)).toBeInTheDocument();
@@ -747,11 +858,15 @@ describe("OrdersPage", () => {
           needs_confirm: 1,
           ready_to_ship: 1,
           shipment_failed: 0,
-          in_transit: 0,
+          in_transit: 0, shipped: 0,
+          completed: 0,
+          payment_expired: 0,
+          cancelled: 0,
           created_this_month: 3,
           completed_this_month: 1,
           total: 42,
         },
+        couriers: [],
         top_products: [],
       },
       isLoading: false,
@@ -760,25 +875,124 @@ describe("OrdersPage", () => {
     render(<OrdersPage />);
     await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
 
-    expect(screen.getByText("Menampilkan 3 dari 42")).toBeInTheDocument();
+    expect(screen.getByText("Menampilkan 1-3 dari 42")).toBeInTheDocument();
   });
 
-  it("asks for the next page when load more is clicked", async () => {
-    ordersState = { ...ordersState, hasNextPage: true };
-
+  it("Next then Prev restores page 1 and disables Next on the last page", async () => {
+    mockUseAdminOrders.mockImplementation((_query, cursor) => ({ ...ordersState,
+      data: cursor ? { data: [sampleOrders[1]], next_cursor: "" } : { data: [sampleOrders[0]], next_cursor: "cur-2" },
+    }));
     render(<OrdersPage />);
-    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
-
-    expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    await waitFor(() => expect(screen.getByText("Buku Shipped")).toBeInTheDocument());
+    expect(screen.queryByText("Buku A")).toBeNull();
+    expect(screen.getByRole("button", { name: "Berikutnya" })).toBeDisabled();
+    expect(screen.getByText("Menampilkan 21-21")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sebelumnya" }));
+    await waitFor(() => expect(screen.getByText("Buku A")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled();
+    expect(mockUseAdminOrders).toHaveBeenLastCalledWith({ status: "all" }, "");
   });
 
-  it("hides load more when there is no next page", async () => {
+  it.each(["status", "queue", "search", "dates", "from", "to", "limit50", "limit100", "limit20", "type", "courier", "paid_at", "item_qty", "order_at", "dir", "all_types", "all_couriers"])("changing %s resets the cursor stack", async (control) => {
+    ordersState.data = { data: sampleOrders, next_cursor: "cur-2" };
+    summaryState.data = {
+      buckets: { needs_confirm: 3, ready_to_ship: 3, shipment_failed: 0, in_transit: 0, shipped: 0,
+        completed: 0, payment_expired: 0, cancelled: 0, total: 42, created_this_month: 0, completed_this_month: 0 },
+      couriers: ["jne", "jnt"], top_products: [],
+    };
     render(<OrdersPage />);
-    await waitFor(() => expect(screen.getByText(/Buku A/)).toBeInTheDocument());
+    if (["status", "queue", "dates", "from", "to", "type", "courier", "all_types", "all_couriers"].includes(control)) openFilters();
+    if (control === "from" || control === "to") fireEvent.click(screen.getByTestId("orders-date-mode-range"));
+    if (control === "limit20") await selectOption("Baris per halaman", "50");
+    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal bayar · terbaru");
+    if (control === "all_types") await selectOption("Jenis produk", "Medali");
+    if (control === "all_couriers") await selectOption("Kurir", "JNE");
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeEnabled();
+    const before = mockUseAdminOrders.mock.calls.length;
+    if (control === "status") await selectOption("Status", "Menunggu pembayaran");
+    if (control === "queue") await selectOption("Status", "Siap kirim");
+    if (control === "search") fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Paging Buyer" } });
+    if (control === "dates") fireEvent.change(screen.getByLabelText("Tanggal", { selector: "input" }), { target: { value: "2026-08-02" } });
+    if (control === "from") fireEvent.change(screen.getByLabelText("Dari tanggal"), { target: { value: "2026-08-02" } });
+    if (control === "to") fireEvent.change(screen.getByLabelText("Sampai tanggal"), { target: { value: "2026-08-03" } });
+    if (control === "type") await selectOption("Jenis produk", "Medali");
+    if (control === "courier") await selectOption("Kurir", "JNE");
+    if (control === "paid_at") await selectOption("Urutkan pesanan", "Tanggal bayar · terbaru");
+    if (control === "item_qty") await selectOption("Urutkan pesanan", "Jumlah barang · terbanyak");
+    if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal pesanan · terbaru");
+    if (control === "dir") await selectOption("Urutkan pesanan", "Tanggal pesanan · terlama");
+    if (control === "all_types") await selectOption("Jenis produk", "Semua jenis");
+    if (control === "all_couriers") await selectOption("Kurir", "Semua kurir");
+    if (control.startsWith("limit")) await selectOption("Baris per halaman", control.slice(5));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
+    if (control === "status" || control === "queue") expect(screen.getByText("Menampilkan 1-3 dari 3")).toBeInTheDocument();
+    expect(mockUseAdminOrders.mock.calls.length).toBeGreaterThan(before);
+    expect(mockUseAdminOrders.mock.calls.slice(before).every(([, cursor]) => cursor === "")).toBe(true);
+  });
 
-    expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).toBeNull();
+  it.each(["status", "type", "date", "reset", "clear_search"])("changing %s through a chip or clear action resets to page 1", async (action) => {
+    ordersState.data = { data: sampleOrders, next_cursor: "cur-2" };
+    render(<OrdersPage />);
+    if (action === "status") await selectOption("Status", "Siap kirim");
+    if (action === "type" || action === "reset") await selectOption("Jenis produk", "Medali");
+    if (action === "date") {
+      openFilters();
+      fireEvent.change(screen.getByLabelText("Tanggal", { selector: "input" }), { target: { value: "2026-08-02" } });
+    }
+    if (action === "clear_search") {
+      vi.useFakeTimers();
+      fireEvent.change(screen.getByRole("searchbox"), { target: { value: "test" } });
+      act(() => vi.advanceTimersByTime(400));
+      vi.useRealTimers();
+    }
+    if (screen.queryByRole("dialog", { name: "Filter pesanan" })) {
+      fireEvent.click(screen.getByRole("button", { name: "Tampilkan pesanan" }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
+    expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeEnabled();
+    if (action === "reset") {
+      openFilters();
+      fireEvent.click(screen.getByRole("button", { name: "Reset filter" }));
+    } else if (action === "clear_search") {
+      fireEvent.click(screen.getByRole("button", { name: "Hapus pencarian" }));
+    } else {
+      const names = { status: "Hapus filter: Status: Siap kirim", type: "Hapus filter: Jenis produk: Medali", date: "Hapus filter: Tanggal: 2026-08-02" };
+      fireEvent.click(screen.getByRole("button", { name: names[action as keyof typeof names] }));
+    }
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
+    expect(mockUseAdminOrders.mock.calls.at(-1)?.[1]).toBe("");
+  });
+
+  it.each([20, 50, 100])("offers %i rows per page in the pagination footer", async (limit) => {
+    render(<OrdersPage />);
+    const footer = screen.getByRole("button", { name: "Sebelumnya" }).parentElement!.parentElement!.parentElement!;
+    expect(within(footer).getByRole("combobox", { name: "Baris per halaman" })).toBeInTheDocument();
+    if (limit === 20) await selectOption("Baris per halaman", "50");
+    await selectOption("Baris per halaman", String(limit));
+    await waitFor(() => expect(mockUseAdminOrders.mock.calls.at(-1)?.[0]?.limit).toBe(limit));
+    expect(screen.getByRole("combobox", { name: "Baris per halaman" })).toHaveTextContent(String(limit));
+  });
+
+  it("shows the shipped count as the total for the merged delivery option, not the in-transit one", async () => {
+    summaryState = {
+      isLoading: false,
+      data: {
+        buckets: { needs_confirm: 3, ready_to_ship: 3, shipment_failed: 2, in_transit: 5, shipped: 9,
+          completed: 0, payment_expired: 0, cancelled: 0, total: 42, created_this_month: 0, completed_this_month: 0 },
+        couriers: [], top_products: [],
+      },
+    };
+    render(<OrdersPage />);
+    await selectOption("Status", "Sedang dalam pengiriman");
+    await waitFor(() => expect(screen.getByText("Menampilkan 1-3 dari 9")).toBeInTheDocument());
+  });
+
+  it("disables Next when there is no next cursor", async () => {
+    render(<OrdersPage />);
+    expect(screen.getByRole("button", { name: "Berikutnya" })).toBeDisabled();
   });
 
   it("surfaces an API error as inline error text", async () => {
@@ -814,9 +1028,8 @@ describe("OrdersPage failed shipments", () => {
       isLoading: false,
       isError: false,
       error: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mockFetchNextPage,
+      isFetching: false,
+      isPlaceholderData: false,
     };
   });
 
@@ -839,6 +1052,7 @@ describe("OrdersPage failed shipments", () => {
     // The status filter is a select. Its options live in a Radix portal that
     // jsdom will not open without pointer-capture shims, so this asserts the
     // control is present; OrdersToolbar.test.tsx covers the option list.
+    openFilters();
     expect(await screen.findByTestId("orders-status-filter")).toBeTruthy();
   });
 });
@@ -863,9 +1077,8 @@ describe("OrdersPage shipment status", () => {
       isLoading: false,
       isError: false,
       error: null,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: mockFetchNextPage,
+      isFetching: false,
+      isPlaceholderData: false,
     };
     render(<OrdersPage />);
   }

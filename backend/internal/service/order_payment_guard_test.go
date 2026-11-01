@@ -45,6 +45,10 @@ func (p *lifecyclePayments) CreatePayment(ctx context.Context, req PaymentReques
 	p.lastExpiresIn.Store(int64(req.ExpiresIn))
 	p.lastExpiresAt.Store(req.ExpiresAt)
 	resp, err := p.countingPaymentClient.CreatePayment(ctx, req)
+	if err == nil {
+		resp.SnapToken = "token-" + req.OrderID
+		resp.PaymentURL = "https://payment.test/" + req.OrderID
+	}
 	if err == nil && p.expiresAfter > 0 {
 		resp.ExpiresAt = time.Now().Add(p.expiresAfter)
 	}
@@ -78,7 +82,7 @@ func pendingCourseOrder(t *testing.T, svc *Service, repo *repository.Repository,
 	course = seedCourseTarget(t, repo)
 	product = seedDigitalProduct(t, repo, "course", 50000, course)
 	orderID = cartOf(t, svc, student, product)
-	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 	return orderID, product, course
@@ -754,7 +758,7 @@ func TestLatePayment_FlaggedOrderTargetCanBeBoughtAgain(t *testing.T) {
 	}
 
 	fresh := cartOf(t, svc, student, product)
-	if _, err := svc.Checkout(ctx, student.String(), fresh.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(ctx, student.String(), fresh.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("checkout of the flagged order's target: %v", err)
 	}
 	if got := orderStatusOf(t, repo, fresh); got != "payment_pending" {
@@ -869,7 +873,7 @@ func mixedCart(t *testing.T, svc *Service, repo *repository.Repository, student 
 func pendingMixedOrder(t *testing.T, svc *Service, repo *repository.Repository, student uuid.UUID) (orderID, book uuid.UUID) {
 	t.Helper()
 	orderID, book = mixedCart(t, svc, repo, student)
-	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 	return orderID, book

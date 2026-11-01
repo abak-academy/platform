@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { useOrder, useRetryPayment } from "@/lib/hooks/orders";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import { payWithSnap } from "@/lib/snap";
 import { ApiError } from "@/lib/api";
 import { digitalConflictMessage } from "@/lib/digital-conflict";
 import type { Order, OrderItem, OrderStatus } from "@/lib/types";
@@ -31,6 +32,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { buildTimeline, type TimelineStep } from "./timeline";
+import { PaymentCountdown } from "./payment-countdown";
 
 const TYPE_ICON = {
   book: Book,
@@ -202,22 +204,54 @@ export default function OrderDetailPage({
   const { data: order, isLoading, isError, error, refetch } = useOrder(id);
   const retry = useRetryPayment();
   const [retrying, setRetrying] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+  const handleExpired = useCallback(() => setExpired(true), []);
+  const isPaymentPending = order?.status === "payment_pending";
+
+  useEffect(() => {
+    if (!expired || !isPaymentPending) return;
+    const id = setInterval(() => refetch(), 5000);
+    return () => clearInterval(id);
+  }, [expired, isPaymentPending, refetch]);
+
+  const busy = useRef(false);
+  const finish = () => {
+    busy.current = false;
+    setRetrying(false);
+  };
 
   const handleRetry = () => {
-    if (!order) return;
+    if (!order || busy.current || retry.isPending) return;
+    busy.current = true;
     setRetrying(true);
     retry.mutate(order.id, {
-      onSuccess: (res) => {
-        setRetrying(false);
-        if (res.payment_url) {
-          window.open(res.payment_url, "_blank");
-          toast.info("Selesaikan pembayaran di tab baru, lalu refresh halaman ini.");
-        } else {
+      onSuccess: async (res) => {
+        if (res.payment_url) setPaymentUrl(res.payment_url);
+        try {
+          const path = await payWithSnap({
+            snapToken: res.snap_token,
+            paymentUrl: res.payment_url,
+            onFinished: (event) => {
+              finish();
+              if (event === "error") {
+                toast.error(t("payment_failed"));
+                return;
+              }
+              refetch();
+              if (event === "success") toast.info(t("payment_received"));
+              if (event === "pending") toast.info(t("payment_pending"));
+            },
+          });
+          if (path !== "popup") finish();
+          if (path === "new-tab") toast.info(t("payment_new_tab"));
+        } catch {
+          finish();
           toast.error(t("order_snap_unavailable"));
         }
       },
       onError: (err) => {
-        setRetrying(false);
+        finish();
         const msg = digitalConflictMessage(err, t) ?? retryErrorMessage(err, t);
         toast.error(t("order_retry_failed_title"), { description: msg });
       },
@@ -239,7 +273,6 @@ export default function OrderDetailPage({
     );
   }
 
-  const isPaymentPending = order.status === "payment_pending";
   const timeline = buildTimeline(order, t);
 
   return (
@@ -274,17 +307,35 @@ export default function OrderDetailPage({
                 <p className="text-ink-600">
                   {t("order_payment_pending_desc").replace("{deadline}", order.payment_expires_at ? `${t("order_pay_before")}${formatDate(order.payment_expires_at)}` : "")}
                 </p>
+                {order.payment_expires_at && (
+                  <PaymentCountdown expiresAt={order.payment_expires_at} onExpired={handleExpired} />
+                )}
               </div>
             </div>
-            <Button onClick={handleRetry} disabled={retrying || retry.isPending} className="shrink-0">
-              {retrying || retry.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <CreditCard className="size-4" />
-              )}
-              {t("order_continue_payment")}
-            </Button>
+            {!expired && (
+              <Button onClick={handleRetry} disabled={retrying || retry.isPending} className="shrink-0">
+                {retrying || retry.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <CreditCard className="size-4" />
+                )}
+                {t("order_continue_payment")}
+              </Button>
+            )}
           </div>
+          {paymentUrl && !expired && (
+            <div className="mt-3 text-sm">
+              <p className="text-ink-600">{t("order_payment_link_hint")}</p>
+              <a
+                href={paymentUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-info underline underline-offset-2"
+              >
+                {t("order_payment_link")}
+              </a>
+            </div>
+          )}
         </Card>
       )}
 

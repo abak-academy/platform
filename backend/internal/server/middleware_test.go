@@ -301,3 +301,72 @@ func TestRBACMiddleware_ProductsExamWrite_AdminSchoolForbidden(t *testing.T) {
 		t.Errorf("want 403, got %d", rec.Code)
 	}
 }
+
+// runTokenRBAC runs the real JWT + RBAC middleware for one role and capability.
+func runTokenRBAC(t *testing.T, role, required string) *httptest.ResponseRecorder {
+	t.Helper()
+	signer, svc, mr := newTestDeps(t)
+
+	tokenStr, jti, err := signer.SignAccess("user1", role, nil, nil)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	mr.Set("session:access:"+jti, "user1")
+
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenStr)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	chain := JWTMiddleware(svc, signer)(RBACMiddleware(required)(func(c echo.Context) error {
+		return c.String(http.StatusOK, "ok")
+	}))
+	if err := chain(c); err != nil {
+		t.Fatalf("chain: %v", err)
+	}
+	return rec
+}
+
+func TestRBACMiddleware_StudentsGroup(t *testing.T) {
+	tests := []struct {
+		role string
+		want int
+	}{
+		{service.RoleStudent, http.StatusForbidden},
+		{service.RoleAdminExam, http.StatusOK},
+		{service.RoleAdminStore, http.StatusForbidden},
+		{service.RoleAdminSchool, http.StatusOK},
+		{service.RoleSuperAdmin, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			if rec := runTokenRBAC(t, tt.role, "students:*"); rec.Code != tt.want {
+				t.Errorf("students:* as %s: got %d, want %d", tt.role, rec.Code, tt.want)
+			}
+		})
+	}
+}
+
+// admin_school must keep failing the per-route password gate.
+func TestRBACMiddleware_StudentPasswordsWrite(t *testing.T) {
+	tests := []struct {
+		role string
+		want int
+	}{
+		{service.RoleStudent, http.StatusForbidden},
+		{service.RoleAdminExam, http.StatusOK},
+		{service.RoleAdminStore, http.StatusForbidden},
+		{service.RoleAdminSchool, http.StatusForbidden},
+		{service.RoleSuperAdmin, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			if rec := runTokenRBAC(t, tt.role, "student-passwords:write"); rec.Code != tt.want {
+				t.Errorf("student-passwords:write as %s: got %d, want %d", tt.role, rec.Code, tt.want)
+			}
+		})
+	}
+}

@@ -23,6 +23,7 @@ type Product struct {
 	Description    string            `json:"description"`
 	Price          int64             `json:"price"`
 	Stock          int               `json:"stock"`
+	StockLimited   bool              `json:"stock_limited"`
 	Status         string            `json:"status"`
 	WeightGrams    int               `json:"weight_grams"`
 	ImageURL       string            `json:"image_url"`

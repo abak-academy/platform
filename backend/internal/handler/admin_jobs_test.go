@@ -73,7 +73,7 @@ func seedJobOwner(t *testing.T, env *adminJobsTestEnv, nis string) string {
 	if err != nil {
 		t.Fatalf("CreateSchool: %v", err)
 	}
-	reg, err := env.svc.RegisterStudent(ctx, school.ID, "Job Owner "+nis, "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := env.svc.RegisterStudent(ctx, studentTestActor, school.ID, "Job Owner "+nis, "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}

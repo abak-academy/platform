@@ -513,7 +513,7 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateSchool: %v", err)
 		}
-		if _, err := svc.RegisterStudent(ctx, school.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		if _, err := svc.RegisterStudent(ctx, testActorID, school.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 		newCode := "us_" + uniqueSuffix()
@@ -538,7 +538,7 @@ func TestUpdateSchool_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CreateSchool B: %v", err)
 		}
-		if _, err := svc.RegisterStudent(ctx, schoolB.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		if _, err := svc.RegisterStudent(ctx, testActorID, schoolB.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 		_, err = svc.UpdateSchool(ctx, schoolB.ID, nil, nil, nil, nil, &codeA, nil, nil)
@@ -606,7 +606,7 @@ func TestAdminListSchools_Integration(t *testing.T) {
 		t.Fatalf("CreateSchool: %v", err)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := svc.RegisterStudent(ctx, school.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		if _, err := svc.RegisterStudent(ctx, testActorID, school.ID, "Stu Dent", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
 	}

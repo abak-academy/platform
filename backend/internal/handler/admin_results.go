@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
+	"akademi-bimbel/internal/service"
+
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
@@ -98,15 +100,14 @@ func (h *Handler) AdminExportResults(c echo.Context) error {
 
 	var csvBytes []byte
 	filename := "results.csv"
-	if claims.Role == "super_admin" {
-		if c.QueryParam("attempts") == "all" {
-			csvBytes, err = h.svc.ExportDetailedAllAttemptResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
-			filename = "results-detailed-all-attempts.csv"
-		} else {
-			csvBytes, err = h.svc.ExportDetailedResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
-			filename = "results-detailed.csv"
-		}
-	} else {
+	switch {
+	case c.QueryParam("attempts") == "all" && service.HasCapability(claims.Role, "results-workspace:read"):
+		csvBytes, err = h.svc.ExportDetailedAllAttemptResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+		filename = "results-detailed-all-attempts.csv"
+	case service.HasCapability(claims.Role, "results-answers:read"):
+		csvBytes, err = h.svc.ExportDetailedResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
+		filename = "results-detailed.csv"
+	default:
 		csvBytes, err = h.svc.ExportSchoolResultsCSV(c.Request().Context(), examID, schoolID, c.QueryParam("q"))
 	}
 	if err != nil {

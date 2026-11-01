@@ -1,6 +1,6 @@
 ---
 title: System Overview
-updated: 2026-09-25
+updated: 2026-10-11
 verified_against: e6cf227c
 ---
 
@@ -80,7 +80,7 @@ One process (`backend/cmd/worker/main.go`), one `Worker` (`backend/internal/work
 | Loop | Trigger | Does |
 |---|---|---|
 | Outbox poll | `WorkerPollInterval` ticker | `pollOutbox` → `handleOrderPaid`: fans a paid order out into `CourseSession` / `ExamRegistration` rows per item, and `handleCertificateNeeded` → renders via Gotenberg |
-| Stale-payment sweeper | 5 min ticker | `sweepStalePayments`: expires orders stuck in `payment_pending` |
+| Stale-payment sweeper | 1 min ticker | `sweepStalePayments`: expires orders stuck in `payment_pending` |
 | Announcement dispatch | 5 min ticker | `pollAnnouncements`: sends due scheduled announcements |
 | Generic job queue | `WorkerPollInterval` ticker | `pollJobs` claims one row from a shared `jobs` table and dispatches by `job.Type`: `student_bulk`, `school_bulk`, `exam_grant_bulk`, `exam_revoke_bulk` |
 | Active exam session refresh | goroutine, own loop | `pollActiveExamSessions` → `refreshActiveExamSessions` |

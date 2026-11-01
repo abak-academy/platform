@@ -192,7 +192,7 @@ func TestCheckout_ConcurrentPatchCartRace(t *testing.T) {
 			defer done.Done()
 			ready.Done()
 			<-start
-			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-race-key-"+p.orderID.String())
+			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-race-key-"+p.orderID.String(), "")
 			checkoutErrs[i] = cerr
 		}()
 	}
@@ -436,7 +436,7 @@ func TestCheckout_ConcurrentAddItemRace(t *testing.T) {
 			defer done.Done()
 			ready.Done()
 			<-start
-			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-add-race-key-"+p.orderID.String())
+			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-add-race-key-"+p.orderID.String(), "")
 			checkoutErrs[i] = cerr
 		}()
 	}
@@ -554,7 +554,7 @@ func TestCheckout_ConcurrentUpdateItemQtyRace(t *testing.T) {
 			defer done.Done()
 			ready.Done()
 			<-start
-			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-qty-race-key-"+p.orderID.String())
+			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-qty-race-key-"+p.orderID.String(), "")
 			checkoutErrs[i] = cerr
 		}()
 	}
@@ -688,7 +688,7 @@ func TestCheckout_ConcurrentRemoveItemRace(t *testing.T) {
 			defer done.Done()
 			ready.Done()
 			<-start
-			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-remove-race-key-"+p.orderID.String())
+			_, cerr := svc.Checkout(ctx, p.studentID, p.orderID.String(), "checkout-remove-race-key-"+p.orderID.String(), "")
 			checkoutErrs[i] = cerr
 		}()
 	}

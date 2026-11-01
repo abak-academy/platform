@@ -55,10 +55,10 @@ func TestCheckout_GivesThePendingOrderABoundedDeadline(t *testing.T) {
 	if deadline == nil {
 		t.Fatal("payment_expires_at is NULL after checkout")
 	}
-	if left := time.Until(*deadline); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
-		t.Errorf("time left = %v, want about 24h", left)
+	if left := time.Until(*deadline); left < 19*time.Minute || left > 21*time.Minute {
+		t.Errorf("time left = %v, want about 20m", left)
 	}
-	if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 24*time.Hour-paymentSessionMargin || asked < 23*time.Hour {
+	if asked := time.Duration(pay.lastExpiresIn.Load()); asked > 20*time.Minute-paymentSessionMargin || asked < 17*time.Minute {
 		t.Errorf("gateway asked to keep the link for %v, want no more than the order window less the %v margin", asked, paymentSessionMargin)
 	}
 }
@@ -70,7 +70,7 @@ func TestCheckout_GatewayFailureStillExpiresAndFreesStock(t *testing.T) {
 	orderID, book := mixedCart(t, svc, repo, student)
 	pay.failCreate.Store(true)
 
-	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey()); err == nil {
+	if _, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), ""); err == nil {
 		t.Fatal("Checkout with a failing gateway succeeded")
 	}
 	if deadlineOf(t, repo, orderID) == nil {
@@ -105,8 +105,8 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 		skew     time.Duration
 	}{
 		{"existing deadline is never extended, even by a gateway offering 72h", "2 hours", 2*time.Hour - paymentSessionMargin, true, 0},
-		{"deadline just outside the margin plus a minute still gets a session", "7 minutes", 7*time.Minute - paymentSessionMargin, true, 0},
-		{"order without a deadline gets one on the first retry and keeps it", "", 24*time.Hour - paymentSessionMargin, false, legacyClockSkew},
+		{"deadline a couple of minutes past the margin still gets a session", "4 minutes", 4*time.Minute - paymentSessionMargin, true, 0},
+		{"order without a deadline gets one on the first retry and keeps it", "", 20*time.Minute - paymentSessionMargin, false, legacyClockSkew},
 	}
 
 	for _, tt := range tests {
@@ -119,6 +119,7 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 			} else if _, err := repo.Pool().Exec(ctx, `UPDATE orders SET payment_expires_at = NULL, gateway_ref = NULL WHERE id = $1`, orderID); err != nil {
 				t.Fatalf("simulate a pre-deadline order: %v", err)
 			}
+			clearPaymentForRetry(t, svc, repo, orderID)
 			original := deadlineOf(t, repo, orderID)
 			pay.expiresAfter = 72 * time.Hour
 
@@ -132,8 +133,8 @@ func TestRetryPayment_KeepsTheOrdersDeadline(t *testing.T) {
 					t.Fatalf("retry #%d left the order without a deadline", i)
 				}
 				if original == nil {
-					if left := time.Until(*got); left < 23*time.Hour || left > 24*time.Hour+time.Minute {
-						t.Errorf("retry #%d: time left = %v, want about 24h", i, left)
+					if left := time.Until(*got); left < 19*time.Minute || left > 21*time.Minute {
+						t.Errorf("retry #%d: time left = %v, want about 20m", i, left)
 					}
 					original = got
 				}
@@ -170,7 +171,7 @@ func TestCheckout_OrderThatExpiresDuringTheGatewayCallGetsNoPaymentLink(t *testi
 		sweepOrder(t, repo, orderID)
 	}
 
-	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey())
+	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), "")
 
 	if !errors.Is(err, ErrPaymentExpired) {
 		t.Fatalf("err = %v, want ErrPaymentExpired", err)
@@ -197,7 +198,7 @@ func TestCheckout_AdvertisedExpiryNeverExceedsTheOrderDeadline(t *testing.T) {
 	course := seedCourseTarget(t, repo)
 	orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, course))
 
-	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey())
+	result, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), "")
 	if err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
@@ -228,7 +229,7 @@ func TestCheckout_CachedReplayNeverOffersAnExpiredOrAnotherStudentsOrder(t *test
 			student := newDigitalStudent(t, repo)
 			orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
 			key := checkoutKey()
-			first, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
+			first, err := svc.Checkout(ctx, student.String(), orderID.String(), key, "")
 			if err != nil {
 				t.Fatalf("Checkout: %v", err)
 			}
@@ -241,7 +242,7 @@ func TestCheckout_CachedReplayNeverOffersAnExpiredOrAnotherStudentsOrder(t *test
 			}
 			before := pay.creates.Load()
 
-			replay, err := svc.Checkout(ctx, caller.String(), orderID.String(), key)
+			replay, err := svc.Checkout(ctx, caller.String(), orderID.String(), key, "")
 
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("replay err = %v, want %v", err, tt.wantErr)
@@ -275,7 +276,7 @@ func TestCheckout_ReusedKeyNeverHandsOutAnotherOrdersReference(t *testing.T) {
 			studentA := newDigitalStudent(t, repo)
 			orderA := cartOf(t, svc, studentA, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
 			key := checkoutKey()
-			first, err := svc.Checkout(ctx, studentA.String(), orderA.String(), key)
+			first, err := svc.Checkout(ctx, studentA.String(), orderA.String(), key, "")
 			if err != nil {
 				t.Fatalf("Checkout A: %v", err)
 			}
@@ -285,7 +286,7 @@ func TestCheckout_ReusedKeyNeverHandsOutAnotherOrdersReference(t *testing.T) {
 			}
 			orderB, _, _ := pendingCourseOrder(t, svc, repo, studentB)
 
-			got, err := svc.Checkout(ctx, studentB.String(), orderB.String(), key)
+			got, err := svc.Checkout(ctx, studentB.String(), orderB.String(), key, "")
 
 			if got.GatewayRef != "" || got.GatewayRef == first.GatewayRef {
 				t.Errorf("order B was handed reference %q, which belongs to order A", got.GatewayRef)
@@ -306,7 +307,7 @@ func TestCheckout_FreeOrderReplayStillReturnsFreeWithoutGateway(t *testing.T) {
 	key := checkoutKey()
 
 	for i := 0; i < 2; i++ {
-		result, err := svc.Checkout(ctx, student.String(), orderID.String(), key)
+		result, err := svc.Checkout(ctx, student.String(), orderID.String(), key, "")
 		if err != nil || !result.Free {
 			t.Fatalf("free checkout #%d = %+v, %v; want Free", i, result, err)
 		}

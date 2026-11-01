@@ -25,7 +25,7 @@ func TestRegisterStudent_AllowsLegacySchoolWhenNPSNEnforcementDisabled(t *testin
 		t.Fatalf("CreateSchool: %v", err)
 	}
 
-	if _, err := svc.RegisterStudent(context.Background(), school.ID, "Legacy Student "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+	if _, err := svc.RegisterStudent(context.Background(), testActorID, school.ID, "Legacy Student "+uniqueSuffix(), "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 		t.Fatalf("RegisterStudent with enforcement disabled: %v", err)
 	}
 }
@@ -204,7 +204,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	t.Run("happy path: username format, temp password once, bcrypt hash persisted", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma", "smp"})
 		jenjang := "sma"
-		resp, err := svc.RegisterStudent(ctx, schoolID, "Budi Santoso", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		resp, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Budi Santoso", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
@@ -247,7 +247,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("name with invisible format chars is stripped", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-		resp, err := svc.RegisterStudent(ctx, schoolID, "\u2060Aghesa Qonita", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		resp, err := svc.RegisterStudent(ctx, testActorID, schoolID, "\u2060Aghesa Qonita", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent: %v", err)
 		}
@@ -277,10 +277,10 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	t.Run("duplicate email returns ErrEmailTaken", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		email := "dup-bulk-" + schoolID[:8] + "@example.com"
-		if _, err := svc.RegisterStudent(ctx, schoolID, "First Dup", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		if _, err := svc.RegisterStudent(ctx, testActorID, schoolID, "First Dup", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("first RegisterStudent: %v", err)
 		}
-		_, err := svc.RegisterStudent(ctx, schoolID, "Second Dup", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Second Dup", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrEmailTaken) {
 			t.Errorf("want ErrEmailTaken, got %v", err)
 		}
@@ -288,7 +288,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("missing name returns ErrMissingField", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-		_, err := svc.RegisterStudent(ctx, schoolID, "", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrMissingField) {
 			t.Errorf("want ErrMissingField, got %v", err)
 		}
@@ -296,14 +296,14 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("missing jenjang returns ErrMissingField", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-		_, err := svc.RegisterStudent(ctx, schoolID, "Some Name", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Some Name", "", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrMissingField) {
 			t.Errorf("want ErrMissingField, got %v", err)
 		}
 	})
 
 	t.Run("nonexistent school returns ErrSchoolNotFound", func(t *testing.T) {
-		_, err := svc.RegisterStudent(ctx, "00000000-0000-0000-0000-000000000000", "Some Name", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, "00000000-0000-0000-0000-000000000000", "Some Name", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolNotFound) {
 			t.Errorf("want ErrSchoolNotFound, got %v", err)
 		}
@@ -311,7 +311,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("jenjang not in school_types returns ErrInvalidJenjang", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"smp", "sd"})
-		_, err := svc.RegisterStudent(ctx, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidJenjang) {
 			t.Errorf("want ErrInvalidJenjang, got %v", err)
 		}
@@ -319,7 +319,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("jenjang matches school_types case-insensitively", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"SMA"})
-		_, err := svc.RegisterStudent(ctx, schoolID, "Budi Case", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Budi Case", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("want SMA vs sma to match, got %v", err)
 		}
@@ -330,7 +330,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		if _, err := svc.ChangeSchoolStatus(ctx, schoolID, "deactivated"); err != nil {
 			t.Fatalf("ChangeSchoolStatus: %v", err)
 		}
-		_, err := svc.RegisterStudent(ctx, schoolID, "Blocked Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Blocked Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrSchoolDeactivated) {
 			t.Errorf("want ErrSchoolDeactivated, got %v", err)
 		}
@@ -343,7 +343,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 			t.Fatalf("CreateSchool: %v", err)
 		}
 
-		_, err = svc.RegisterStudent(ctx, school.ID, "NPSN-less Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err = svc.RegisterStudent(ctx, testActorID, school.ID, "NPSN-less Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidSchoolNPSN) {
 			t.Errorf("want ErrInvalidSchoolNPSN, got %v", err)
 		}
@@ -353,7 +353,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		provinsiID := "prov-a"
 		// Only provinsiID is set, kotaID and kecamatanID are nil -> incomplete.
-		_, err := svc.RegisterStudent(ctx, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, &provinsiID, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Budi", "sma", nil, nil, nil, nil, nil, nil, &provinsiID, nil, nil, nil)
 		if !errors.Is(err, ErrIncompleteAddress) {
 			t.Errorf("want ErrIncompleteAddress, got %v", err)
 		}
@@ -361,7 +361,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 
 	t.Run("registration succeeds without address fields", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-		resp, err := svc.RegisterStudent(ctx, schoolID, "Ali", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		resp, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Ali", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent without address: %v", err)
 		}
@@ -381,7 +381,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	t.Run("gender 'male'/'female' from the frontend is normalized to 'm'/'f' before insert", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		male := "male"
-		resp, err := svc.RegisterStudent(ctx, schoolID, "Budi Gender", "sma", nil, nil, &male, nil, nil, nil, nil, nil, nil, nil)
+		resp, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Budi Gender", "sma", nil, nil, &male, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent with gender=male: %v", err)
 		}
@@ -394,7 +394,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		}
 
 		female := "female"
-		resp2, err := svc.RegisterStudent(ctx, schoolID, "Siti Gender", "sma", nil, nil, &female, nil, nil, nil, nil, nil, nil, nil)
+		resp2, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Siti Gender", "sma", nil, nil, &female, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("RegisterStudent with gender=female: %v", err)
 		}
@@ -410,7 +410,7 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	t.Run("unrecognized gender value returns ErrInvalidGender", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		bogus := "other"
-		_, err := svc.RegisterStudent(ctx, schoolID, "Bogus Gender", "sma", nil, nil, &bogus, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Bogus Gender", "sma", nil, nil, &bogus, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrInvalidGender) {
 			t.Errorf("want ErrInvalidGender, got %v", err)
 		}
@@ -420,14 +420,14 @@ func TestRegisterStudent_Integration(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		empty := ""
 		ws := "   "
-		first, err := svc.RegisterStudent(ctx, schoolID, "Blank Email One", "sma", &empty, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		first, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Blank Email One", "sma", &empty, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("first blank email: %v", err)
 		}
 		if first.Email != nil {
 			t.Errorf("first response email: want nil, got %v", *first.Email)
 		}
-		second, err := svc.RegisterStudent(ctx, schoolID, "Blank Email Two", "sma", &ws, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		second, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Blank Email Two", "sma", &ws, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if err != nil {
 			t.Fatalf("second whitespace email: %v", err)
 		}
@@ -453,10 +453,10 @@ func TestRegisterStudent_Integration(t *testing.T) {
 	t.Run("duplicate real email returns ErrEmailTaken", func(t *testing.T) {
 		schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 		email := "dup-" + uniqueSuffix() + "@example.com"
-		if _, err := svc.RegisterStudent(ctx, schoolID, "Dup Email One", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
+		if _, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Dup Email One", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatalf("first real email: %v", err)
 		}
-		_, err := svc.RegisterStudent(ctx, schoolID, "Dup Email Two", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		_, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Dup Email Two", "sma", &email, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 		if !errors.Is(err, ErrEmailTaken) {
 			t.Errorf("want ErrEmailTaken, got %v", err)
 		}
@@ -469,7 +469,7 @@ func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
 	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 
 	t.Run("weak explicit password is rejected", func(t *testing.T) {
-		_, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Weak Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "short")
+		_, err := svc.RegisterStudentWithPassword(ctx, testActorID, RoleSuperAdmin, schoolID, "Weak Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "short")
 		if !errors.Is(err, ErrWeakPassword) {
 			t.Errorf("want ErrWeakPassword, got %v", err)
 		}
@@ -477,7 +477,7 @@ func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
 
 	t.Run("valid explicit password is hashed and not returned", func(t *testing.T) {
 		password := "chosenPass123"
-		resp, err := svc.RegisterStudentWithPassword(ctx, RoleSuperAdmin, schoolID, "Explicit Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, password)
+		resp, err := svc.RegisterStudentWithPassword(ctx, testActorID, RoleSuperAdmin, schoolID, "Explicit Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, password)
 		if err != nil {
 			t.Fatalf("RegisterStudentWithPassword: %v", err)
 		}
@@ -497,7 +497,7 @@ func TestRegisterStudentExplicitPassword_Integration(t *testing.T) {
 	})
 
 	t.Run("non-super-admin explicit password is forbidden", func(t *testing.T) {
-		_, err := svc.RegisterStudentWithPassword(ctx, RoleAdminSchool, schoolID, "Forbidden Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "chosenPass123")
+		_, err := svc.RegisterStudentWithPassword(ctx, testActorID, RoleAdminSchool, schoolID, "Forbidden Explicit", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, "chosenPass123")
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("want ErrForbidden, got %v", err)
 		}
@@ -511,7 +511,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	schoolA := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
 	schoolB := seedSchoolWithJenjang(t, svc, repo, []string{"smp"})
 
-	reg, err := svc.RegisterStudent(ctx, schoolA, "Row Scoped Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	reg, err := svc.RegisterStudent(ctx, testActorID, schoolA, "Row Scoped Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -544,14 +544,14 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	})
 
 	t.Run("change status is row-scoped: wrong school returns ErrStudentNotFound", func(t *testing.T) {
-		err := svc.ChangeStudentStatus(ctx, schoolB, studentID, "deactivated")
+		err := svc.ChangeStudentStatus(ctx, testActorID, schoolB, studentID, "deactivated")
 		if !errors.Is(err, ErrStudentNotFound) {
 			t.Errorf("want ErrStudentNotFound for cross-school access, got %v", err)
 		}
 	})
 
 	t.Run("change status succeeds for the owning school", func(t *testing.T) {
-		if err := svc.ChangeStudentStatus(ctx, schoolA, studentID, "deactivated"); err != nil {
+		if err := svc.ChangeStudentStatus(ctx, testActorID, schoolA, studentID, "deactivated"); err != nil {
 			t.Fatalf("ChangeStudentStatus: %v", err)
 		}
 		rows, _, _, err := svc.ListStudents(ctx, schoolA, "", "", 20, "", nil, "")
@@ -568,13 +568,13 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 			t.Errorf("Status: want deactivated, got %s", status)
 		}
 		// restore to active for the reissue subtests below
-		if err := svc.ChangeStudentStatus(ctx, schoolA, studentID, "active"); err != nil {
+		if err := svc.ChangeStudentStatus(ctx, testActorID, schoolA, studentID, "active"); err != nil {
 			t.Fatalf("ChangeStudentStatus (restore): %v", err)
 		}
 	})
 
 	t.Run("credential reissue is row-scoped: wrong school returns ErrStudentNotFound", func(t *testing.T) {
-		_, err := svc.ReissueStudentCredentials(ctx, schoolB, studentID)
+		_, err := svc.ReissueStudentCredentials(ctx, testActorID, schoolB, studentID)
 		if !errors.Is(err, ErrStudentNotFound) {
 			t.Errorf("want ErrStudentNotFound for cross-school access, got %v", err)
 		}
@@ -599,7 +599,7 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 			t.Fatalf("index refresh session: %v", err)
 		}
 
-		creds, err := svc.ReissueStudentCredentials(ctx, schoolA, studentID)
+		creds, err := svc.ReissueStudentCredentials(ctx, testActorID, schoolA, studentID)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentials: %v", err)
 		}
@@ -632,13 +632,13 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 	})
 
 	t.Run("empty schoolID is id-only (super_admin)", func(t *testing.T) {
-		if err := svc.ChangeStudentStatus(ctx, "", studentID, "deactivated"); err != nil {
+		if err := svc.ChangeStudentStatus(ctx, testActorID, "", studentID, "deactivated"); err != nil {
 			t.Fatalf("ChangeStudentStatus empty school: %v", err)
 		}
-		if err := svc.ChangeStudentStatus(ctx, "", studentID, "active"); err != nil {
+		if err := svc.ChangeStudentStatus(ctx, testActorID, "", studentID, "active"); err != nil {
 			t.Fatalf("ChangeStudentStatus restore: %v", err)
 		}
-		creds, err := svc.ReissueStudentCredentials(ctx, "", studentID)
+		creds, err := svc.ReissueStudentCredentials(ctx, testActorID, "", studentID)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentials empty school: %v", err)
 		}
@@ -649,14 +649,14 @@ func TestListStudents_ChangeStatus_Reissue_Integration(t *testing.T) {
 
 	t.Run("empty schoolID reissues a student with no school", func(t *testing.T) {
 		noSchoolID := createTestStudentNoSchool(t, svc)
-		creds, err := svc.ReissueStudentCredentials(ctx, "", noSchoolID)
+		creds, err := svc.ReissueStudentCredentials(ctx, testActorID, "", noSchoolID)
 		if err != nil {
 			t.Fatalf("ReissueStudentCredentials no-school student: %v", err)
 		}
 		if creds.Username == "" || creds.TempPassword == "" {
 			t.Fatalf("want username and temp_password, got %+v", creds)
 		}
-		if err := svc.ChangeStudentStatus(ctx, "", noSchoolID, "deactivated"); err != nil {
+		if err := svc.ChangeStudentStatus(ctx, testActorID, "", noSchoolID, "deactivated"); err != nil {
 			t.Fatalf("ChangeStudentStatus no-school student: %v", err)
 		}
 	})
@@ -670,7 +670,7 @@ func TestSetStudentPassword_Integration(t *testing.T) {
 	active := createTestStudentWithSchool(t, svc, schoolID, "sma")
 	schoolless := createTestStudentNoSchool(t, svc)
 	deactivated := createTestStudentWithSchool(t, svc, schoolID, "sma")
-	if err := svc.ChangeStudentStatus(ctx, "", deactivated, "deactivated"); err != nil {
+	if err := svc.ChangeStudentStatus(ctx, testActorID, "", deactivated, "deactivated"); err != nil {
 		t.Fatalf("deactivate seed student: %v", err)
 	}
 	if svc.rdb == nil {
@@ -780,7 +780,7 @@ func TestChangePassword_ClearsPasswordTemporary_Integration(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	schoolID := seedSchoolWithJenjang(t, svc, repo, []string{"sma"})
-	resp, err := svc.RegisterStudent(ctx, schoolID, "Change PW Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	resp, err := svc.RegisterStudent(ctx, testActorID, schoolID, "Change PW Student", "sma", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}
@@ -1286,7 +1286,7 @@ func TestUpdateProfile_SelectedSchoolValidation(t *testing.T) {
 // backend so they have a real school_id in the profile, ready for UpdateProfile.
 func createTestStudentWithSchool(t *testing.T, svc *Service, schoolID, jenjang string) string {
 	t.Helper()
-	resp, err := svc.RegisterStudent(ctxBg, schoolID, "Test Student "+uniqueSuffix(), jenjang, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	resp, err := svc.RegisterStudent(ctxBg, testActorID, schoolID, "Test Student "+uniqueSuffix(), jenjang, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("RegisterStudent: %v", err)
 	}

@@ -1,4 +1,4 @@
-import { render as rtlRender, screen } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -215,5 +215,35 @@ describe("OrderDetailModal shipment status", () => {
     render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
 
     expect(screen.queryByTestId("order-shipment-failed-badge")).toBeNull();
+  });
+});
+
+it.each([
+  ["payment_pending", "book", null, "Menunggu pembayaran"],
+  ["paid", "book", null, "Siap kirim"],
+  ["processing", "merchandise", null, "Siap kirim"],
+  ["processing", "medal", null, "Siap kirim"],
+  ["paid", "course", null, "Dibayar"],
+  ["processing", "exam", null, "Diproses"],
+  ["shipped", "book", "courier_not_found", "Pengiriman bermasalah"],
+  ["shipped", "book", "returned", "Pengiriman bermasalah"],
+  ["shipped", "book", null, "Sedang dalam pengiriman"],
+  ["shipped", "book", "on_hold", "Sedang dalam pengiriman"],
+  ["completed", "course", null, "Selesai"],
+  ["payment_expired", "book", null, "Kedaluwarsa"],
+  ["cancelled", "book", null, "Dibatalkan"],
+] as const)("renders the operator badge for %s/%s/%s", (status, productType, shipmentStatus, label) => {
+  const order = { ...physicalOrder, status, shipment_status: shipmentStatus,
+    items: [{ ...physicalOrder.items[0], product_type: productType }] };
+  render(<OrderDetailModal order={order} onOpenChange={vi.fn()} />);
+  expect(screen.getByText(label, { selector: '[data-slot="badge"]' })).toBeInTheDocument();
+});
+
+describe("OrderDetailModal print review", () => {
+  it("hands a failed shipment to the caller's shared review without an inline picker", async () => {
+    const onPrint = vi.fn();
+    render(<OrderDetailModal order={{ ...physicalOrder, tracking_number: "TEST123", shipment_status: "returned" }} onOpenChange={vi.fn()} onPrint={onPrint} />);
+    await userEvent.click(screen.getByRole("button", { name: "Cetak Resi" }));
+    expect(onPrint).toHaveBeenCalledOnce();
   });
 });

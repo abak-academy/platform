@@ -384,7 +384,7 @@ func TestCheckoutBulkOrder_ReusesExistingCheckout_Integration(t *testing.T) {
 	}
 
 	t.Run("checkout returns snap token via existing Checkout", func(t *testing.T) {
-		result, err := svc.Checkout(ctx, adminID, order.ID.String(), "test-key-"+uniqueSuffix())
+		result, err := svc.Checkout(ctx, adminID, order.ID.String(), "test-key-"+uniqueSuffix(), "")
 		if err != nil {
 			t.Fatalf("Checkout: %v", err)
 		}
@@ -437,7 +437,7 @@ func createTestExamProductForBulk(t *testing.T, repo *repository.Repository, exa
 	var productID string
 	err := repo.Pool().QueryRow(ctx,
 		`INSERT INTO product (type, name, price, stock, status)
-		 VALUES ('exam', $1, $2, 0, 'published') RETURNING id`,
+		 VALUES ('exam', $1, $2, NULL, 'published') RETURNING id`,
 		"Bulk Exam Product "+uuid.New().String(), price,
 	).Scan(&productID)
 	if err != nil {
