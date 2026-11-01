@@ -4378,6 +4378,20 @@ describe("SessionPage", () => {
     }
   });
 
+  it("format 2 free navigation plays the audio of the section being viewed", async () => {
+    sessionState.data = {
+      ...sectionedSession, mode: "standard", format_version: 2, navigation_policy: "free", timer_mode: "overall", duration_minutes: 60, remaining_seconds: 3600,
+      tests: sectionedSession.tests.map((t, i) => ({ ...t, status: undefined, audio_url: i === 0 ? "https://example.com/listening.mp3" : null, audio_play_limit: i === 0 ? 2 : null })),
+    } as SessionState;
+    render(<SessionPage />);
+    await enterFullscreenSectioned();
+    expect(screen.getByTestId("section-audio-player")).toHaveAttribute("src", "https://example.com/listening.mp3");
+    fireEvent.click(screen.getByTestId("section-rail-item-1"));
+    expect(screen.queryByTestId("section-audio-player")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("section-rail-item-0"));
+    expect(screen.getByTestId("section-audio-player")).toHaveAttribute("src", "https://example.com/listening.mp3");
+  });
+
   it("keeps true/false answers independent when multiple questions share a page", async () => {
     sessionState.data = { ...sampleSession, format_version:2, navigation_policy:"free", tests:[{ ...sampleSession.tests[0], question_presentation:"all_on_page",
       questions:[1,2].map(n => ({id:`tf-q-${n}`,test_id:"test-1",format:"true_false",body:`Question ${n}`,sort_order:n,options:[],statements:[{index:1,body:`Statement ${n}`}]})) }] };

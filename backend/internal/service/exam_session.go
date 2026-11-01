@@ -264,6 +264,8 @@ func sessionTestsPayload(exam *model.Exam, sessionID uuid.UUID, tests []model.Te
 			grouped[i].QuestionPresentation = presentationOrDefault(td.QuestionPresentation)
 			grouped[i].SharedMaterialHTML = td.Test.SharedMaterialHTML
 			grouped[i].InstructionsHTML = td.Test.InstructionsHTML
+			grouped[i].AudioURL = td.Test.AudioURL
+			grouped[i].AudioPlayLimit = td.Test.AudioPlayLimit
 			for j, q := range td.Questions {
 				grouped[i].Questions[j].MaterialHTML = q.Question.MaterialHTML
 				grouped[i].Questions[j].ImageURL = q.Question.ImageURL

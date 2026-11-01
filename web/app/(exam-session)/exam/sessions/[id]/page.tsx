@@ -1209,6 +1209,7 @@ export default function SessionPage() {
     tests[0];
   const currentTestTitle = currentTest?.title ?? "";
   const allOnPage = composable && currentTest?.question_presentation === "all_on_page";
+  const audioTest = isSectioned ? activeTest : composable ? currentTest : null;
   const hasOwnMaterial = !!(currentQ?.material_html?.trim() || currentQ?.image_url || currentQ?.audio_url);
   const questionMaterial = composable && !allOnPage && hasOwnMaterial;
   const materialHTML = composable ? questionMaterial ? currentQ?.material_html : currentTest?.shared_material_html : null;
@@ -1348,10 +1349,10 @@ export default function SessionPage() {
             )}
 
             {/* Section audio player */}
-            {isSectioned && activeTest?.audio_url && (
+            {audioTest?.audio_url && (
               <SectionAudioPlayer
-                audioUrl={activeTest.audio_url}
-                playLimit={activeTest.audio_play_limit}
+                audioUrl={audioTest.audio_url}
+                playLimit={audioTest.audio_play_limit}
                 testId="section-audio-player"
               />
             )}

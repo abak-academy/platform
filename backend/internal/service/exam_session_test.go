@@ -322,6 +322,39 @@ func TestSessionTestsPayload_QuestionOrder(t *testing.T) {
 	}
 }
 
+func TestSessionTestsPayload_SectionAudio(t *testing.T) {
+	sessID := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	testID := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
+	audioURL := "https://example.com/listening.mp3"
+	detail := attemptTestDetail(testID, attemptQ1, attemptQ2)
+	detail.Test.AudioURL = &audioURL
+	detail.Test.AudioPlayLimit = intptr(2)
+
+	tests := []struct {
+		name          string
+		formatVersion int
+		navigation    string
+		wantAudio     bool
+	}{
+		{"composable free navigation delivers section audio", 2, "free", true},
+		{"composable sequential navigation delivers section audio", 2, "sequential", true},
+		{"legacy flat payload leaves section audio to the sectioned path", 1, "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exam := &model.Exam{FormatVersion: tt.formatVersion, NavigationPolicy: tt.navigation}
+			got := sessionTestsPayload(exam, sessID, []model.TestDetail{detail})[0]
+			if (got.AudioURL != nil) != tt.wantAudio {
+				t.Fatalf("audio_url present: want %v, got %v", tt.wantAudio, got.AudioURL)
+			}
+			if tt.wantAudio && (*got.AudioURL != audioURL || got.AudioPlayLimit == nil || *got.AudioPlayLimit != 2) {
+				t.Fatalf("audio: got url %v limit %v", *got.AudioURL, got.AudioPlayLimit)
+			}
+		})
+	}
+}
+
 func TestSessionTestsPayload_OrderBySession(t *testing.T) {
 	sessA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	sessB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
