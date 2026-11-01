@@ -295,6 +295,33 @@ func seedTestWithQuestion(t *testing.T, repo *repository.Repository) uuid.UUID {
 	return testID
 }
 
+func TestCreateExam_ComposableNavigationForPerSectionTimer(t *testing.T) {
+	svc, _ := newRealDBService(t)
+	ctx := context.Background()
+	for _, tc := range []struct {
+		name       string
+		navigation string
+		wantErr    error
+		wantStored string
+	}{
+		{"omitted navigation defaults to sequential", "", nil, "sequential"},
+		{"explicit sequential is kept", "sequential", nil, "sequential"},
+		{"explicit free is rejected", "free", ErrValidation, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			created, err := svc.CreateExam(ctx, model.Exam{ID: uuid.New(), Title: "Per section " + uniqueSuffix(), TimerMode: "per_test", NavigationPolicy: tc.navigation})
+			if tc.wantErr != nil {
+				require.ErrorIs(t, err, tc.wantErr)
+				return
+			}
+			require.NoError(t, err)
+			stored, err := svc.GetExam(ctx, created.ID)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantStored, stored.Exam.NavigationPolicy)
+		})
+	}
+}
+
 func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
@@ -324,6 +351,7 @@ func TestExamFormatPolicy_V2EditSafetyRejectsPolicyChangeWithSession(t *testing.
 				overlay.Randomize = !overlay.Randomize
 			case "timer":
 				overlay.TimerMode = "per_test"
+				overlay.NavigationPolicy = "sequential"
 			case "duration":
 				duration := 90
 				overlay.DurationMinutes = &duration

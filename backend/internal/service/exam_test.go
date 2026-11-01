@@ -830,6 +830,34 @@ func TestValidateExam_accepts_valid_per_test(t *testing.T) {
 	}
 }
 
+func TestValidateExam_ComposableTimerNavigation(t *testing.T) {
+	tests := []struct {
+		name          string
+		formatVersion int
+		navigation    string
+		timerMode     string
+		wantErr       bool
+	}{
+		{"composable free with per-section timer is rejected", 2, "free", "per_test", true},
+		{"composable sequential with per-section timer is accepted", 2, "sequential", "per_test", false},
+		{"composable free with overall timer is accepted", 2, "free", "overall", false},
+		{"legacy per_test without navigation policy is accepted", 1, "free", "per_test", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := model.Exam{Title: "Finals", FormatVersion: tt.formatVersion, NavigationPolicy: tt.navigation, TimerMode: tt.timerMode, DurationMinutes: intptr(60)}
+			err := validateExam(e)
+			if tt.wantErr != errors.Is(err, ErrValidation) {
+				t.Fatalf("want validation error %v, got %v", tt.wantErr, err)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), "timer_mode=per_test requires navigation_policy=sequential") {
+				t.Fatalf("unexpected message %q", err.Error())
+			}
+		})
+	}
+}
+
 func TestValidateExam_accepts_empty_timer_mode_legacy(t *testing.T) {
 	e := model.Exam{Title: "Legacy", TimerMode: ""}
 	if err := validateExam(e); err != nil {

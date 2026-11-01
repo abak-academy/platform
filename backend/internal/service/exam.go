@@ -858,6 +858,9 @@ func validateExam(e model.Exam) error {
 	if e.NavigationPolicy != "" && !validNavigationPolicies[e.NavigationPolicy] {
 		return fmt.Errorf("%w: navigation_policy must be free or sequential", ErrValidation)
 	}
+	if e.FormatVersion == 2 && e.TimerMode == "per_test" && e.NavigationPolicy != "sequential" {
+		return fmt.Errorf("%w: timer_mode=per_test requires navigation_policy=sequential", ErrValidation)
+	}
 	if err := validateCertificateDesign(e.CertificateDesign); err != nil {
 		return err
 	}
@@ -963,6 +966,9 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 	}
 	if m.Mode == "" {
 		m.Mode = "standard"
+	}
+	if m.TimerMode == "per_test" && m.NavigationPolicy == "" {
+		m.NavigationPolicy = "sequential"
 	}
 	if err := validateExam(m); err != nil {
 		return model.Exam{}, err
