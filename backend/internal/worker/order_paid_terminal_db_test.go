@@ -350,7 +350,7 @@ func TestOrderPaid_FulfilledTargetIsOwnedUntilRefundedThenCanBeRepurchased(t *te
 	if err := env.svc.AddItem(ctx, student.String(), cart.ID.String(), other.String(), 1); err != nil {
 		t.Fatalf("AddItem after refund: %v", err)
 	}
-	if _, err := env.svc.Checkout(ctx, student.String(), cart.ID.String(), "repurchase-"+uuid.NewString()); err != nil {
+	if _, err := env.svc.Checkout(ctx, student.String(), cart.ID.String(), "repurchase-"+uuid.NewString(), ""); err != nil {
 		t.Fatalf("Checkout after refund: %v", err)
 	}
 	if got := env.status(t, cart.ID); got != "payment_pending" {

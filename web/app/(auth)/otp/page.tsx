@@ -10,6 +10,7 @@ import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { clearManualReferral, readReferralFields } from "@/lib/referral";
 import { adoptResendBudget, clearResendBudget, readResendBudget } from "@/lib/otp-budget";
 
 function maskContact(contact: string): string {
@@ -85,11 +86,12 @@ function OtpForm() {
     try {
       const pending_token =
         typeof window !== "undefined" ? sessionStorage.getItem("abak-pending-token") ?? "" : "";
-      const data = await verify.mutateAsync({ identifier, code, pending_token });
+      const data = await verify.mutateAsync({ identifier, code, pending_token, ...readReferralFields() });
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("abak-pending-token");
         sessionStorage.removeItem("abak-email-failed");
         sessionStorage.removeItem("abak-otp-active");
+        clearManualReferral();
         clearResendBudget();
       }
       router.push(redirectForRole(data.user?.role));

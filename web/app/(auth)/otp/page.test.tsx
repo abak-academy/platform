@@ -126,4 +126,22 @@ describe("OtpPage", () => {
     expect(sessionStorage.getItem("abak-pending-token")).toBeNull();
     expect(sessionStorage.getItem("abak-email-failed")).toBeNull();
   });
+
+  it("sends the typed and cookie referral codes with the verify and forgets the typed one", async () => {
+    document.cookie = "aff_ref=BUDI10; path=/";
+    seedSession({ "abak-pending-token": "tok-abc", "abak-referral-code": "SARI22" });
+    verifyMock.mockResolvedValue({ user: { role: "student" } });
+    render(<OtpPage />);
+
+    fillCode("123456");
+    fireEvent.click(screen.getByRole("button", { name: /verifikasi/i }));
+
+    await waitFor(() => {
+      expect(verifyMock).toHaveBeenCalledWith(
+        expect.objectContaining({ referral_code: "SARI22", referral_code_cookie: "BUDI10" }),
+      );
+    });
+    expect(sessionStorage.getItem("abak-referral-code")).toBeNull();
+    document.cookie = "aff_ref=; path=/; max-age=0";
+  });
 });

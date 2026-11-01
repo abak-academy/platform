@@ -136,7 +136,7 @@ describe("PromoModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalledWith({ max_uses: 200, is_public: false });
+      expect(mockOnSubmit).toHaveBeenCalledWith({ max_uses: 200, is_public: false, affiliator_only: false });
     });
   });
 
@@ -192,7 +192,7 @@ describe("PromoModal", () => {
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
 
     await waitFor(() => {
-      expect(mockOnSubmit).toHaveBeenCalledWith({ is_public: false });
+      expect(mockOnSubmit).toHaveBeenCalledWith({ is_public: false, affiliator_only: false });
     });
   });
 

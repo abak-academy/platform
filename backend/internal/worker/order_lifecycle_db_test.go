@@ -200,7 +200,7 @@ func (e *lifecycleEnv) pendingOrder(t *testing.T, student uuid.UUID, products ..
 	if physical {
 		e.exec(t, `UPDATE orders SET shipping_cost = 18000, selected_courier = 'JNE' WHERE id = $1`, order.ID)
 	}
-	if _, err := e.svc.Checkout(ctx, student.String(), order.ID.String(), "life-"+uuid.NewString()); err != nil {
+	if _, err := e.svc.Checkout(ctx, student.String(), order.ID.String(), "life-"+uuid.NewString(), ""); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 	return order.ID

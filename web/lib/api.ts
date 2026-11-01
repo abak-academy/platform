@@ -150,3 +150,8 @@ export async function authFetch<T>(path: string, init?: RequestInit): Promise<T>
 export async function authFetchMultipart<T>(path: string, init?: RequestInit): Promise<T> {
   return doAuthFetch<T>(path, init, {});
 }
+
+export const affiliateApi = {
+  validateCode: (code: string) =>
+    apiFetch<{ valid: boolean; cookie_days?: number }>(`/affiliates/public/validate?code=${encodeURIComponent(code)}`),
+};

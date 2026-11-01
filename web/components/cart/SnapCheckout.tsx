@@ -16,12 +16,13 @@ export interface SnapCheckoutProps {
   orderId?: string;
   basePath?: string;
   disabled?: boolean;
+  affiliateCode?: string;
 }
 
-export function SnapCheckout({ orderId, basePath = "/orders", disabled }: SnapCheckoutProps) {
+export function SnapCheckout({ orderId, basePath = "/orders", disabled, affiliateCode }: SnapCheckoutProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const checkout = useCheckout(basePath);
+  const checkout = useCheckout(basePath, affiliateCode);
   const { t } = useTranslation();
   const [conflict, setConflict] = useState<string | null>(null);
 

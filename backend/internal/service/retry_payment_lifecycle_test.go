@@ -142,7 +142,7 @@ func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 func pendingOrderFor(t *testing.T, svc *Service, student uuid.UUID, products ...uuid.UUID) uuid.UUID {
 	t.Helper()
 	orderID := cartOf(t, svc, student, products...)
-	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 	return orderID
@@ -332,7 +332,7 @@ func TestRetryPayment_SessionStates(t *testing.T) {
 			name: "checkout stored the session, so retry hands it back without a gateway call",
 			prepare: func(t *testing.T, svc *Service, repo *repository.Repository, _ *lifecyclePayments, student uuid.UUID) (uuid.UUID, CheckoutResult) {
 				orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
-				first, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey())
+				first, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey(), "")
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -355,7 +355,7 @@ func TestRetryPayment_SessionStates(t *testing.T) {
 			prepare: func(t *testing.T, svc *Service, repo *repository.Repository, pay *lifecyclePayments, student uuid.UUID) (uuid.UUID, CheckoutResult) {
 				orderID := cartOf(t, svc, student, seedDigitalProduct(t, repo, "course", 50000, seedCourseTarget(t, repo)))
 				pay.failCreate.Store(true)
-				if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey()); err == nil {
+				if _, err := svc.Checkout(context.Background(), student.String(), orderID.String(), checkoutKey(), ""); err == nil {
 					t.Fatal("checkout should fail")
 				}
 				pay.failCreate.Store(false)

@@ -109,6 +109,16 @@ describe("StudentLayout", () => {
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin"));
   });
 
+  it("redirects an affiliator to the affiliate portal without rendering the student shell", async () => {
+    authStore = { token: "t", user: { role: "affiliator" } };
+    roleState = { role: "affiliator", hydrated: true, meIsError: false };
+
+    const { queryByTestId } = render(<StudentLayout>protected</StudentLayout>);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/affiliate"));
+    expect(queryByTestId("shell")).not.toBeInTheDocument();
+  });
+
   // The reported bug: a persisted session held a valid super_admin token but no
   // user, so the store's role was undefined and the admin redirect never fired.
   // The role now comes from /auth/me, so the redirect happens anyway.

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useGoogleLogin } from "@/lib/hooks/auth";
 import { isProfileComplete } from "@/lib/profile";
 import { redirectForRole } from "@/lib/auth-redirect";
+import { readReferralFields } from "@/lib/referral";
 import { useRouter } from "next/navigation";
 
 declare global {
@@ -67,7 +68,7 @@ export function GoogleSignInButton({ text }: Props) {
   // Initialize + render after script is loaded and container is mounted.
   const handleCredential = useCallback(
     (response: { credential: string }) => {
-      googleLogin.mutate({ id_token: response.credential }, {
+      googleLogin.mutate({ id_token: response.credential, ...readReferralFields() }, {
         onSuccess: (data) => {
           if (!data.user) return;
           // Route: incomplete Google user → /complete-profile, else role home.

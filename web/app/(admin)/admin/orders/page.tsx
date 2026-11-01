@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Receipt } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
+  useAdminOrder,
   useAdminOrders,
   useAdminOrderSummary,
   useConfirmOrder,
@@ -125,6 +126,7 @@ export default function OrdersPage() {
   // from window.location during render would be a hydration mismatch.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    setLinkedOrderId(params.get("order") ?? "");
     const rawQueue = params.get("queue");
     if (rawQueue && ORDER_QUEUES.includes(rawQueue as AdminOrderQueue)) {
       setQuery((q) => ({ ...q, status: "all", queue: rawQueue as AdminOrderQueue }));
@@ -167,6 +169,11 @@ export default function OrdersPage() {
   const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
   const tracking = useOrderTracking(trackingOrderId);
   const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [linkedOrderId, setLinkedOrderId] = useState("");
+  const linkedOrder = useAdminOrder(linkedOrderId);
+  useEffect(() => {
+    if (linkedOrder.data) setDetailOrder(linkedOrder.data);
+  }, [linkedOrder.data]);
   const [shippingOrder, setShippingOrder] = useState<Order | null>(null);
   const [cancellingShipment, setCancellingShipment] = useState<Order | null>(null);
   const [cancelShipmentError, setCancelShipmentError] = useState<string | null>(null);

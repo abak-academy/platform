@@ -46,6 +46,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
   const [maxUses, setMaxUses] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
   const [isPublic, setIsPublic] = useState(false);
+  const [affiliatorOnly, setAffiliatorOnly] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -63,6 +64,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setMaxUses(promo.max_uses != null ? String(promo.max_uses) : "");
       setExpiresAt(dateInputValue(promo.expires_at));
       setIsPublic(Boolean(promo.is_public));
+      setAffiliatorOnly(Boolean(promo.affiliator_only));
     } else {
       setCode("");
       setDiscountType("percent");
@@ -91,7 +93,8 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       const input: AdminUpdatePromoCodeInput = {
         ...(maxUses !== "" ? { max_uses: Number(maxUses) } : {}),
         ...(expiresAt ? { expires_at: expiryIso(expiresAt) } : {}),
-        is_public: isPublic,
+        is_public: isPublic && !affiliatorOnly,
+        affiliator_only: affiliatorOnly,
       };
       onSubmit(input);
       return;
@@ -102,7 +105,8 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       ...(maxUses !== "" ? { max_uses: Number(maxUses) } : {}),
       ...(minOrderAmount !== "" ? { min_order_amount: Number(minOrderAmount) } : {}),
       ...(expiresAt ? { expires_at: expiryIso(expiresAt) } : {}),
-      is_public: isPublic,
+      is_public: isPublic && !affiliatorOnly,
+      affiliator_only: affiliatorOnly,
     };
 
     if (discountType === "percent") {
@@ -234,9 +238,19 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                 type="checkbox"
                 checked={isPublic}
                 onChange={(e) => setIsPublic(e.target.checked)}
-                disabled={isPending}
+                disabled={isPending || affiliatorOnly}
               />
               Tampilkan di checkout
+            </label>
+            <label htmlFor="promo-affiliator-only" className="flex items-center gap-2 text-sm text-ink-900">
+              <input
+                id="promo-affiliator-only"
+                type="checkbox"
+                checked={affiliatorOnly}
+                onChange={(e) => setAffiliatorOnly(e.target.checked)}
+                disabled={isPending}
+              />
+              Khusus affiliator (tidak tampil ke siswa)
             </label>
           </div>
 

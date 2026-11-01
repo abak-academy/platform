@@ -1502,4 +1502,70 @@ describe("CartPage with Shipping", () => {
       expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
     });
   });
+
+  describe("referral code field", () => {
+    const cartWith = (extra: Partial<Order>) => ({
+      data: {
+        id: "o1",
+        student_id: "s1",
+        status: "cart",
+        subtotal: 100000,
+        discount: 0,
+        shipping_cost: 0,
+        total: 100000,
+        items: [digitalItem],
+        ...extra,
+      } as Order,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+
+    it("is hidden when the server says no code could bind this student", async () => {
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: false }));
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByLabelText("register_referral_label")).not.toBeInTheDocument();
+    });
+
+    it("is hidden when the server does not report eligibility at all", async () => {
+      mockUseCart.mockReturnValue(cartWith({}));
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByLabelText("register_referral_label")).not.toBeInTheDocument();
+    });
+
+    it("starts from the referral cookie when the student is eligible", async () => {
+      document.cookie = "aff_ref=BUDI10; path=/";
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: true }));
+
+      renderWithQueryClient(<CartPage />);
+
+      expect(await screen.findByLabelText("register_referral_label")).toHaveValue("BUDI10");
+      document.cookie = "aff_ref=; path=/; max-age=0";
+    });
+
+    it("does not read the cookie for an ineligible student", async () => {
+      document.cookie = "aff_ref=BUDI10; path=/";
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: false }));
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByLabelText("register_referral_label")).not.toBeInTheDocument();
+      document.cookie = "aff_ref=; path=/; max-age=0";
+    });
+
+    it("is shown when the student is eligible", async () => {
+      mockUseCart.mockReturnValue(cartWith({ affiliate_code_eligible: true }));
+
+      renderWithQueryClient(<CartPage />);
+
+      expect(await screen.findByLabelText("register_referral_label")).toBeInTheDocument();
+    });
+  });
 });

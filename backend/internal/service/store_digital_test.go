@@ -291,7 +291,7 @@ func TestDigitalPurchase_CheckoutByTargetOwnership(t *testing.T) {
 				t.Fatalf("AddItem: %v", err)
 			}
 
-			_, err = svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey())
+			_, err = svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey(), "")
 			if blocked {
 				conflictErr := wantConflict(t, err, tt.wantConflict)
 				if len(conflictErr.Conflicts) != 1 || conflictErr.Conflicts[0].TargetID != setup.target || conflictErr.Conflicts[0].ProductID != setup.product {
@@ -328,7 +328,7 @@ func TestDigitalPurchase_RevokingAnExamRegistrationUnblocksTheRefusedOrder(t *te
 	wantConflict(t, svc.AddItem(ctx, student.String(), cart.ID.String(), product.String(), 1), model.DigitalConflictOwned)
 	forceLine(t, repo, cart.ID, product, "exam", 50000)
 
-	_, err = svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey())
+	_, err = svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey(), "")
 	conflictErr := wantConflict(t, err, model.DigitalConflictOwned)
 	if len(conflictErr.Conflicts) != 1 || conflictErr.Conflicts[0].TargetID != exam || conflictErr.Conflicts[0].ProductID != product {
 		t.Errorf("conflicts = %+v, want only target %v of product %v", conflictErr.Conflicts, exam, product)
@@ -345,7 +345,7 @@ func TestDigitalPurchase_RevokingAnExamRegistrationUnblocksTheRefusedOrder(t *te
 
 	revokeExamRegistration(t, repo, student, exam)
 
-	if _, err := svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(ctx, student.String(), cart.ID.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("Checkout after revoke: %v", err)
 	}
 	if got := orderStatusOf(t, repo, cart.ID); got != "payment_pending" {
@@ -370,7 +370,7 @@ func TestDigitalPurchase_TargetRepeatedAcrossLinesIsRefused(t *testing.T) {
 	cart := cartOf(t, svc, student, single)
 	wantConflict(t, svc.AddItem(ctx, student.String(), cart.String(), bundle.String(), 1), model.DigitalConflictDuplicateInCart)
 	forceLine(t, repo, cart, bundle, "course", 90000)
-	_, err := svc.Checkout(ctx, student.String(), cart.String(), checkoutKey())
+	_, err := svc.Checkout(ctx, student.String(), cart.String(), checkoutKey(), "")
 	wantConflict(t, err, model.DigitalConflictDuplicateInCart)
 
 	if got := orderStatusOf(t, repo, cart); got != "cart" {
@@ -431,7 +431,7 @@ func TestDigitalPurchase_ConflictInMixedCartRollsBackStockAndPayment(t *testing.
 				t.Fatalf("set shipping: %v", err)
 			}
 
-			_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
+			_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey(), "")
 			wantConflict(t, err, tt.reason)
 
 			var stock int
@@ -470,7 +470,7 @@ func TestDigitalPurchase_PaidFreeOrderBlocksAnotherSKUBeforeAndAfterFulfilment(t
 			free := seedDigitalProduct(t, repo, "course", 0, course)
 			otherFree := seedDigitalProduct(t, repo, "course", 0, course)
 
-			result, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, free).String(), checkoutKey())
+			result, err := svc.Checkout(ctx, student.String(), cartOf(t, svc, student, free).String(), checkoutKey(), "")
 			if err != nil || !result.Free {
 				t.Fatalf("free Checkout = %+v, %v; want Free", result, err)
 			}
@@ -488,7 +488,7 @@ func TestDigitalPurchase_PaidFreeOrderBlocksAnotherSKUBeforeAndAfterFulfilment(t
 				t.Fatalf("MintCart: %v", err)
 			}
 			forceLine(t, repo, order.ID, otherFree, "course", 0)
-			_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey())
+			_, err = svc.Checkout(ctx, student.String(), order.ID.String(), checkoutKey(), "")
 			wantConflict(t, err, tt.wantConflict)
 
 			if got := orderStatusOf(t, repo, order.ID); got != "cart" {
@@ -506,11 +506,11 @@ func TestDigitalPurchase_OtherStudentsAreUnaffected(t *testing.T) {
 	product := seedDigitalProduct(t, repo, "course", 50000, course)
 
 	firstOrder := cartOf(t, svc, first, product)
-	if _, err := svc.Checkout(ctx, first.String(), firstOrder.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(ctx, first.String(), firstOrder.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("first student Checkout: %v", err)
 	}
 	secondOrder := cartOf(t, svc, second, product)
-	if _, err := svc.Checkout(ctx, second.String(), secondOrder.String(), checkoutKey()); err != nil {
+	if _, err := svc.Checkout(ctx, second.String(), secondOrder.String(), checkoutKey(), ""); err != nil {
 		t.Fatalf("second student Checkout: %v", err)
 	}
 
@@ -534,7 +534,7 @@ func TestDigitalPurchase_ProductWithNoLinkedTargetsIsNotCharged(t *testing.T) {
 			unlinked := seedDigitalProduct(t, repo, productType, 50000)
 
 			orderID := cartOf(t, svc, student, unlinked)
-			_, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey())
+			_, err := svc.Checkout(ctx, student.String(), orderID.String(), checkoutKey(), "")
 			if !errors.Is(err, ErrDigitalProductNoTargets) {
 				t.Fatalf("Checkout err = %v, want ErrDigitalProductNoTargets", err)
 			}
