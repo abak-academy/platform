@@ -824,6 +824,9 @@ export interface Exam {
   // post-submit image/promo block (FR-38/FR-39) — no templating, one of each.
   end_screen_image_url?: string | null;
   end_screen_promo_text?: string | null;
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 export interface ExamListItem extends Exam {
@@ -877,6 +880,9 @@ export interface CreateExamPayload {
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
   card_notes?: string[];
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 export interface UpdateExamPayload {
@@ -899,6 +905,9 @@ export interface UpdateExamPayload {
   end_screen_image_url?: string | null;
   end_screen_promo_text?: string | null;
   card_notes?: string[];
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 // ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
@@ -1191,6 +1200,9 @@ export interface RegistrationExam {
   question_count: number;
   sections_duration_minutes: number | null;
   sections: ExamPreviewSection[];
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 export interface RegistrationDetail {

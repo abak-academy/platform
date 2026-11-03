@@ -671,4 +671,65 @@ describe("ExamModal", () => {
       expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/sudah memiliki sesi/i));
     });
   });
+
+  describe("whatsapp group link", () => {
+    const WA = "https://chat.whatsapp.com/AbCdEf123";
+    const submit = () => fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    it("is pre-filled from the exam on edit", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, whatsapp_group_url: WA }} />);
+      expect(screen.getByLabelText(/link grup whatsapp kompetisi/i)).toHaveValue(WA);
+    });
+
+    it("sends the trimmed link on update and stays editable while policy is locked", async () => {
+      mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, format_version: 2, whatsapp_group_url: null }} policyLocked />);
+      const input = screen.getByLabelText(/link grup whatsapp kompetisi/i);
+      expect(input).toBeEnabled();
+      fireEvent.input(input, { target: { value: `  ${WA}  ` } });
+      submit();
+      await waitFor(() => expect(mockUpdateExam).toHaveBeenCalledWith(expect.objectContaining({ whatsapp_group_url: WA })));
+    });
+
+    it("sends null when the field is blank", async () => {
+      mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, whatsapp_group_url: WA }} />);
+      fireEvent.input(screen.getByLabelText(/link grup whatsapp kompetisi/i), { target: { value: "   " } });
+      submit();
+      await waitFor(() => expect(mockUpdateExam).toHaveBeenCalledWith(expect.objectContaining({ whatsapp_group_url: null })));
+    });
+
+    it("omits the key when the opened exam never carried the field, so an older backend value is not wiped", async () => {
+      mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+      render(<ExamModal open={true} onClose={vi.fn()} exam={sampleExam} />);
+      submit();
+      await waitFor(() => expect(mockUpdateExam).toHaveBeenCalled());
+      expect(mockUpdateExam.mock.calls[0][0]).not.toHaveProperty("whatsapp_group_url");
+    });
+
+    it("sends the link on create and null when left empty", async () => {
+      mockCreateExam.mockResolvedValue({ id: "new-exam" });
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+      fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Baru" } });
+      fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+      submit();
+      await waitFor(() => expect(mockCreateExam).toHaveBeenCalledWith(expect.objectContaining({ whatsapp_group_url: null })));
+    });
+
+    it.each([
+      ["http scheme", "http://chat.whatsapp.com/AbC"],
+      ["another host", "https://example.com/AbC"],
+      ["lookalike host", "https://chat.whatsapp.com.evil.com/AbC"],
+      ["no invite code", "https://chat.whatsapp.com/"],
+      ["explicit port", "https://chat.whatsapp.com:443/AbC"],
+      ["opaque scheme", "https:chat.whatsapp.com/AbC"],
+      ["userinfo", "https://x@chat.whatsapp.com/AbC"],
+      ["not a url", "bukan link"],
+    ])("blocks submit for %s", async (_name, value) => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={sampleExam} />);
+      fireEvent.input(screen.getByLabelText(/link grup whatsapp kompetisi/i), { target: { value } });
+      expect(await screen.findByRole("alert")).toHaveTextContent(/chat\.whatsapp\.com/i);
+      expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+    });
+  });
 });

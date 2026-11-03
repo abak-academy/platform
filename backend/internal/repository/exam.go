@@ -1208,6 +1208,7 @@ func scanExam(row interface{ Scan(dest ...any) error }, e *model.Exam) error {
 		&e.ExamNumber, &e.CertificateEnabled, &e.CertificateTemplateHTML,
 		&e.EndScreenImageURL, &e.EndScreenPromoText,
 		&e.CardEnabled, &cardNotes, &e.FormatVersion, &e.NavigationPolicy,
+		&e.WhatsAppGroupURL, &e.AdditionalRulesNote, &e.AdditionalRulesURL,
 	)
 	if err != nil {
 		return err
@@ -1230,6 +1231,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.ExamNumber, &item.CertificateEnabled, &item.CertificateTemplateHTML,
 		&item.EndScreenImageURL, &item.EndScreenPromoText,
 		&item.CardEnabled, &cardNotes, &item.FormatVersion, &item.NavigationPolicy,
+		&item.WhatsAppGroupURL, &item.AdditionalRulesNote, &item.AdditionalRulesURL,
 		&item.HasPublishedProduct, &item.RegistrationCount,
 		&item.SectionCount, &item.QuestionCount, &item.SectionsDurationMinutes,
 	)
@@ -1253,18 +1255,20 @@ func (r *Repository) CreateExam(ctx context.Context, e *model.Exam) error {
 			cdn_bundle, bundle_url, bundle_generated_at, check_in_window_minutes, grace_window_minutes,
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, mode, format_version, navigation_policy,
-			certificate_design, certificate_design_updated_at, card_notes)
+			certificate_design, certificate_design_updated_at, card_notes,
+			whatsapp_group_url, additional_rules_note, additional_rules_url)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18,
 			COALESCE(NULLIF($19, ''), 'standard'),
 			COALESCE(NULLIF($20, 0), 1),
 			COALESCE(NULLIF($21, ''), 'free'),
-			$22, $23, $24)
+			$22, $23, $24, $25, $26, $27)
 		RETURNING id, created_at, mode, exam_number, format_version, navigation_policy`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt, e.CheckInWindowMinutes, e.GraceWindowMinutes,
 		e.MaxAttempts, e.TimerMode, e.DurationMinutes, e.Randomize, e.ResultConfig, e.ResultReleaseAt,
 		e.Status, e.Mode, e.FormatVersion, e.NavigationPolicy,
 		e.CertificateDesign, e.CertificateDesignUpdatedAt, encodeCardNotes(e.CardNotes),
+		e.WhatsAppGroupURL, e.AdditionalRulesNote, e.AdditionalRulesURL,
 	).Scan(&e.ID, &e.CreatedAt, &e.Mode, &e.ExamNumber, &e.FormatVersion, &e.NavigationPolicy)
 }
 
@@ -1276,7 +1280,8 @@ func (r *Repository) GetExamByID(ctx context.Context, id uuid.UUID) (*model.Exam
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
 			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled, certificate_template_html,
-			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes, format_version, navigation_policy
+			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes, format_version, navigation_policy,
+			whatsapp_group_url, additional_rules_note, additional_rules_url
 		FROM exam
 		WHERE id = $1`,
 		id,
@@ -1299,7 +1304,8 @@ func (r *Repository) GetExamsByProductID(ctx context.Context, productID uuid.UUI
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
 			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
-		e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes, e.format_version, e.navigation_policy
+		e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes, e.format_version, e.navigation_policy,
+		e.whatsapp_group_url, e.additional_rules_note, e.additional_rules_url
 		FROM exam e
 		JOIN product_exam pe ON pe.exam_id = e.id
 		WHERE pe.product_id = $1
@@ -1354,6 +1360,7 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
 		e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes,
 		e.format_version, e.navigation_policy,
+		e.whatsapp_group_url, e.additional_rules_note, e.additional_rules_url,
 		EXISTS (
 			SELECT 1 FROM product_exam pe
 			JOIN product p ON p.id = pe.product_id
@@ -1473,7 +1480,8 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 			e.max_attempts, e.timer_mode, e.duration_minutes, e.randomize, e.result_config, e.result_release_at,
 			e.status, e.created_at, e.mode,
 			e.certificate_design, e.certificate_design_updated_at, e.exam_number, e.certificate_enabled, e.certificate_template_html,
-			e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes, e.format_version, e.navigation_policy
+			e.end_screen_image_url, e.end_screen_promo_text, e.card_enabled, e.card_notes, e.format_version, e.navigation_policy,
+			e.whatsapp_group_url, e.additional_rules_note, e.additional_rules_url
 		FROM exam e
 		WHERE e.id = $1`,
 		id,
@@ -1583,8 +1591,9 @@ func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) erro
 			certificate_design = $20, certificate_design_updated_at = $21,
 			end_screen_image_url = $22, end_screen_promo_text = $23,
 			certificate_template_html = $24, card_notes = $25,
-			navigation_policy = COALESCE(NULLIF($26, ''), navigation_policy)
-		WHERE id = $27`,
+			navigation_policy = COALESCE(NULLIF($26, ''), navigation_policy),
+			whatsapp_group_url = $27, additional_rules_note = $28, additional_rules_url = $29
+		WHERE id = $30`,
 		e.Title, e.IsFree, e.ScheduledAt, e.ScheduledEndAt, e.RequiresCheckin, e.AllowLeaderboard,
 		e.CDNBundle, e.BundleURL, e.BundleGeneratedAt,
 		e.CheckInWindowMinutes, e.GraceWindowMinutes, e.MaxAttempts,
@@ -1592,7 +1601,8 @@ func updateExam(ctx context.Context, q execer, id uuid.UUID, e *model.Exam) erro
 		e.ResultConfig, e.ResultReleaseAt, e.Status, e.Mode,
 		e.CertificateDesign, e.CertificateDesignUpdatedAt,
 		e.EndScreenImageURL, e.EndScreenPromoText,
-		e.CertificateTemplateHTML, encodeCardNotes(e.CardNotes), e.NavigationPolicy, id,
+		e.CertificateTemplateHTML, encodeCardNotes(e.CardNotes), e.NavigationPolicy,
+		e.WhatsAppGroupURL, e.AdditionalRulesNote, e.AdditionalRulesURL, id,
 	)
 	if err != nil {
 		return err
@@ -1915,7 +1925,8 @@ func (r *Repository) GetExamPreview(ctx context.Context, examID uuid.UUID) (*mod
 			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
 			e.card_enabled, e.card_notes,
 			e.max_attempts, e.format_version, e.mode, e.navigation_policy,
-			agg.section_count, agg.question_count, agg.sections_duration
+			agg.section_count, agg.question_count, agg.sections_duration,
+			e.whatsapp_group_url, e.additional_rules_note, e.additional_rules_url
 		FROM exam e
 		`+examSectionAggregateJoin+`
 		WHERE e.id = $1`,
@@ -1926,6 +1937,7 @@ func (r *Repository) GetExamPreview(ctx context.Context, examID uuid.UUID) (*mod
 		&exam.CardEnabled, &cardNotesRaw,
 		&exam.MaxAttempts, &exam.RawRules.FormatVersion, &exam.RawRules.Mode, &exam.RawRules.NavigationPolicy,
 		&exam.SectionCount, &exam.QuestionCount, &exam.SectionsDurationMinutes,
+		&exam.WhatsAppGroupURL, &exam.AdditionalRulesNote, &exam.AdditionalRulesURL,
 	)
 	if err != nil {
 		if isNotFound(err) {

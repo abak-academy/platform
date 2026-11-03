@@ -90,7 +90,8 @@ func (r *Repository) GetExamByIDTx(ctx context.Context, tx pgx.Tx, id uuid.UUID)
 			max_attempts, timer_mode, duration_minutes, randomize, result_config, result_release_at,
 			status, created_at, mode,
 			certificate_design, certificate_design_updated_at, exam_number, certificate_enabled, certificate_template_html,
-			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes, format_version, navigation_policy
+			end_screen_image_url, end_screen_promo_text, card_enabled, card_notes, format_version, navigation_policy,
+			whatsapp_group_url, additional_rules_note, additional_rules_url
 		FROM exam
 		WHERE id = $1`,
 		id,

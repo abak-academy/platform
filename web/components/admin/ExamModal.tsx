@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ImageUploadInput } from "@/components/admin/ImageUploadInput";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isWhatsAppGroupUrl } from "@/lib/exam-event-info";
 import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
@@ -105,6 +106,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
   const [endScreenImageUrl, setEndScreenImageUrl] = useState("");
   const [endScreenPromoText, setEndScreenPromoText] = useState("");
   const [cardNotes, setCardNotes] = useState<string[]>([]);
+  const [whatsappUrl, setWhatsappUrl] = useState("");
 
   const initializedFor = useRef<string | null>(null);
 
@@ -145,6 +147,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
       setEndScreenImageUrl(exam.end_screen_image_url ?? "");
       setEndScreenPromoText(exam.end_screen_promo_text ?? "");
       setCardNotes(exam.card_notes ?? []);
+      setWhatsappUrl(exam.whatsapp_group_url ?? "");
     } else {
       setTitle("");
       setScheduledAt("");
@@ -167,6 +170,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
       setEndScreenImageUrl("");
       setEndScreenPromoText("");
       setCardNotes([]);
+      setWhatsappUrl("");
     }
   }, [open, exam]);
 
@@ -179,15 +183,17 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
     if (!startIso || !endIso) return false;
     return new Date(endIso) <= new Date(startIso);
   }, [scheduledAt, scheduledEndAt]);
+  const whatsappInvalid = whatsappUrl.trim() !== "" && !isWhatsAppGroupUrl(whatsappUrl.trim());
   const canSubmit = useMemo(
     () =>
       title.trim() !== "" &&
       (!durationRequired || (duration !== "" && Number(duration) > 0)) &&
       !(composable && timerMode === "per_test" && navigation !== "sequential") &&
       !endBeforeStart &&
+      !whatsappInvalid &&
       !(allowMultipleAttempts && !unlimitedAttempts && !isAtLeastTwo(attemptsCount)) &&
       !isPending,
-    [title, duration, durationRequired, endBeforeStart, isPending, composable, timerMode, navigation, allowMultipleAttempts, unlimitedAttempts, attemptsCount],
+    [title, duration, durationRequired, endBeforeStart, whatsappInvalid, isPending, composable, timerMode, navigation, allowMultipleAttempts, unlimitedAttempts, attemptsCount],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -220,6 +226,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
           end_screen_image_url: endScreenImageUrl.trim() || null,
           end_screen_promo_text: endScreenPromoText.trim() || null,
           card_notes: cardNotes.map((n) => n.trim()).filter(Boolean),
+          ...(exam && "whatsapp_group_url" in exam ? { whatsapp_group_url: whatsappUrl.trim() || null } : {}),
         };
         const saved = await update.mutateAsync(payload);
         onSaved?.(saved);
@@ -228,6 +235,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
           ...base,
           duration_minutes:
             timerMode === "overall" && duration !== "" ? Number(duration) : null,
+          whatsapp_group_url: whatsappUrl.trim() || null,
         };
         const result = await create.mutateAsync(payload);
         onSaved?.(result as ExamListItem);
@@ -302,6 +310,24 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                   ? t("exam_packages_modal_end_before_start")
                   : t("exam_packages_modal_scheduled_end_hint")}
               </p>
+              <div className="grid gap-2">
+                <Label htmlFor="exam-whatsapp-url">{t("exam_event_whatsapp_label")}</Label>
+                <Input
+                  id="exam-whatsapp-url"
+                  type="url"
+                  value={whatsappUrl}
+                  onChange={(e) => setWhatsappUrl(e.target.value)}
+                  placeholder={t("exam_event_whatsapp_placeholder")}
+                  disabled={isPending}
+                  aria-invalid={whatsappInvalid}
+                  className={whatsappInvalid ? "border-danger focus-visible:ring-danger/30" : undefined}
+                />
+                {whatsappInvalid ? (
+                  <p role="alert" className="text-xs text-danger">{t("exam_event_whatsapp_invalid")}</p>
+                ) : (
+                  <p className="text-xs text-ink-400">{t("exam_event_whatsapp_hint")}</p>
+                )}
+              </div>
             </div>
 
             <div className="grid gap-3">
