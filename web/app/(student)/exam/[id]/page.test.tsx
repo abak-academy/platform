@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 
 import ExamDetailPage from "./page";
 import { ApiError } from "@/lib/api";
@@ -420,6 +420,23 @@ describe("ExamDetailPage — start gate (FR28)", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("shows the continue gate for an in_progress check-in exam and resumes on click", async () => {
+    startSessionMutate.mockResolvedValue({ session_id: "sess-live" });
+    registrationState = {
+      ...registrationState,
+      data: { ...sampleWithCheckin, status: "in_progress", checked_in_at: "2026-07-15T08:45:00Z" },
+    };
+    render(<ExamDetailPage />);
+
+    expect(screen.queryByRole("button", { name: "Mulai Ujian" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Lanjutkan ujian" }));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith("/exam/sessions/sess-live");
+    expect(startSessionMutate).toHaveBeenCalledWith("reg-1");
   });
 
   it("shows enabled 'Mulai Ujian' button when checked_in and now >= scheduled_at", () => {

@@ -49,7 +49,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 		t.Fatalf("insert exam_registration: %v", err)
 	}
 
-	first, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	first, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if err != nil {
 		t.Fatalf("first StartSession: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 		t.Error("expected non-nil session_id on first start")
 	}
 
-	resumed, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	resumed, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if err != nil {
 		t.Fatalf("resume StartSession: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 		t.Fatalf("SubmitSession: %v", err)
 	}
 
-	second, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	second, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if err != nil {
 		t.Fatalf("second StartSession: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestStartSession_RealDB_MaxAttempts(t *testing.T) {
 		t.Fatalf("SubmitSession second: %v", err)
 	}
 
-	_, err = svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	_, err = svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if !errors.Is(err, ErrAlreadyAttempted) {
 		t.Errorf("third StartSession: want ErrAlreadyAttempted, got %v", err)
 	}
@@ -117,14 +117,14 @@ func TestStartSession_RealDB_NilMaxAttemptsUnlimited(t *testing.T) {
 		t.Fatalf("insert exam_registration: %v", err)
 	}
 
-	first, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	first, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if err != nil {
 		t.Fatalf("first StartSession: %v", err)
 	}
 	if _, err := svc.SubmitSession(ctx, studentID.String(), first.SessionID.String()); err != nil {
 		t.Fatalf("SubmitSession: %v", err)
 	}
-	second, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	second, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if err != nil {
 		t.Fatalf("second StartSession: want unlimited retake, got %v", err)
 	}

@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  useCheckIn,
+  useStartSession,
   useSaveAnswers,
   useReconnectSession,
   useSubmitSession,
@@ -260,5 +262,75 @@ describe("useSaveAnswers onSuccess and the mounted session query (issue #94)", (
     await waitFor(() => {
       expect(mockAuthFetch.mock.calls.some(isGetCall)).toBe(true);
     });
+  });
+});
+
+const DEVICE_ID = "11111111-1111-4111-8111-111111111111";
+
+describe("exam device header", () => {
+  beforeEach(() => {
+    mockAuthFetch.mockReset();
+    mockAuthFetch.mockResolvedValue({});
+    localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  function sentDeviceHeader() {
+    const init = mockAuthFetch.mock.calls[0][1] as { headers?: Record<string, string> };
+    return init?.headers?.["X-Exam-Device"];
+  }
+
+  it("sends the stored device id on check-in", async () => {
+    localStorage.setItem("exam-device-id", DEVICE_ID);
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useCheckIn(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate({ token: "ABC" });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBe(DEVICE_ID);
+  });
+
+  it("sends the stored device id on start session", async () => {
+    localStorage.setItem("exam-device-id", DEVICE_ID);
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useStartSession(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate("reg-1");
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBe(DEVICE_ID);
+  });
+
+  it("sends the stored device id on session reconnect", async () => {
+    localStorage.setItem("exam-device-id", DEVICE_ID);
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useReconnectSession("session-1"), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBe(DEVICE_ID);
+  });
+
+  it("omits the header and still sends requests when storage throws", async () => {
+    vi.spyOn(Object.getPrototypeOf(localStorage), "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useStartSession(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate("reg-1");
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBeUndefined();
   });
 });
