@@ -24,6 +24,7 @@ import {
   useSubmitSession,
   useLogViolation,
   useAdvanceSection,
+  useRegistration,
 } from "@/lib/hooks/exam";
 import { useTranslation, DICT } from "@/lib/i18n";
 type I18nKey = keyof typeof DICT.id;
@@ -134,6 +135,7 @@ export default function SessionPage() {
     error,
     refetch,
   } = useReconnectSession(sessionId);
+  const { data: registration } = useRegistration(session?.registration_id);
   const saveAnswers = useSaveAnswers(sessionId);
   const saveAnswersMutateAsync = saveAnswers.mutateAsync;
   const submitSession = useSubmitSession(sessionId);
@@ -1219,12 +1221,19 @@ export default function SessionPage() {
   // to avoid duplicating the first section's title (which appears as the section label below).
   // In standard mode, show the title of the test that owns the current question
   // (not tests[0]), so a multi-test paper does not keep the first test's name.
-  const examTitle = composable ? currentTestTitle : isSectioned
+  const examTitle = composable ? registration?.exam.title ?? currentTestTitle : isSectioned
     ? session?.mode === "utbk"
       ? t("exam_packages_modal_mode_utbk")
       : t("exam_packages_modal_mode_ielts")
     : currentTestTitle;
-  const examSubtitle = isSectioned ? activeTest?.title : currentTest?.subject;
+  const sectionProgress =
+    composable && registration && currentTest && tests.length > 0
+      ? `${t("session_section_progress")
+          .replace("{n}", String(tests.indexOf(currentTest) + 1))
+          .replace("{total}", String(tests.length))} · ${currentTestTitle}`
+      : null;
+  const examSubtitle = sectionProgress ?? (isSectioned ? activeTest?.title : currentTest?.subject);
+  const unansweredCount = questionsToShow.length - sectionAnsweredCount;
 
   return (
     // Dynamic viewport height keeps the exam shell clear of mobile browser chrome.
@@ -1249,7 +1258,7 @@ export default function SessionPage() {
               {examTitle}
             </div>
             {examSubtitle && (
-              <div className="truncate text-xs text-ink-500">
+              <div data-testid="exam-section-progress" className="truncate text-xs text-ink-500">
                 {examSubtitle}
               </div>
             )}
@@ -1284,14 +1293,20 @@ export default function SessionPage() {
           </div>
           {hasTimer && (
             <div
-              className={`ml-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-base font-mono font-bold lg:px-3 lg:text-lg ${
+              data-testid="exam-timer"
+              className={`ml-auto inline-flex items-center gap-2 rounded-lg px-2.5 py-1 lg:px-3 ${
                 timerExpired
                   ? "bg-danger-bg text-danger"
                   : "bg-brand-50 text-brand-700"
               }`}
             >
               <Clock className="size-4" />
-              {formatTime(remaining)}
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] font-medium">
+                  {usesSectionTimer ? t("session_timer_scope_section") : t("session_timer_scope_exam")}
+                </span>
+                <span className="font-mono text-base font-bold lg:text-lg">{formatTime(remaining)}</span>
+              </div>
             </div>
           )}
         </div>
@@ -1572,6 +1587,10 @@ export default function SessionPage() {
                 swatchClassName="scale-75 rounded-full border border-warn bg-warn"
                 label={t("session_legend_flagged")}
               />
+              <LegendItem
+                swatchClassName="border border-line bg-surface ring-2 ring-brand-600 ring-offset-1 ring-offset-surface"
+                label={t("session_legend_current")}
+              />
             </div>
           </div>
         </div>
@@ -1593,10 +1612,9 @@ export default function SessionPage() {
         <DialogContent className="max-w-sm rounded-2xl p-5 sm:max-w-md">
           <DialogHeader className="gap-2 text-center">
             <DialogTitle>{t("submit_confirm")}</DialogTitle>
-            <DialogDescription>
-              {answeredCount}/{questionsToShow.length} {t("session_question").toLowerCase()}
-            </DialogDescription>
+            <DialogDescription>{t("session_submit_final")}</DialogDescription>
           </DialogHeader>
+          <UnansweredNotice count={unansweredCount} />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
               variant="destructive"
@@ -1620,12 +1638,10 @@ export default function SessionPage() {
           <DialogHeader className="gap-2 text-center">
             <DialogTitle>{t("session_advance_confirm_title")}</DialogTitle>
             <DialogDescription>
-              {sectionAnsweredCount}/{questionsToShow.length}{" "}
-              {t("session_question").toLowerCase()}.{" "}
-              {composable && <>{questionsToShow.length - sectionAnsweredCount} {t("format_unanswered")}. </>}
-              {t("session_advance_confirm_desc")}
+              {t("session_advance_locks").replace("{title}", activeTest?.title ?? "")}
             </DialogDescription>
           </DialogHeader>
+          <UnansweredNotice count={unansweredCount} />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
               variant="destructive"
@@ -1702,6 +1718,20 @@ export default function SessionPage() {
           </Card>
         </div>
       )}
+    </div>
+  );
+}
+
+function UnansweredNotice({ count }: { count: number }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className={`rounded-lg px-3 py-2 text-sm ${count > 0 ? "bg-warn-bg text-warn" : "bg-success-bg text-success"}`}
+    >
+      <div className="font-semibold">
+        {count > 0 ? t("session_confirm_unanswered").replace("{n}", String(count)) : t("session_confirm_all_answered")}
+      </div>
+      {count > 0 && <div className="mt-0.5 text-ink-700">{t("session_confirm_unanswered_hint")}</div>}
     </div>
   );
 }

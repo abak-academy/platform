@@ -54,8 +54,11 @@ const logViolationMutate = vi.fn();
 const advanceSectionMutate = vi.fn();
 const advanceSectionMutateAsync = vi.fn();
 
+let registrationTitle: string | null = null;
+
 vi.mock("@/lib/hooks/exam", () => ({
   useReconnectSession: () => sessionState,
+  useRegistration: () => ({ data: registrationTitle ? { exam: { title: registrationTitle } } : undefined }),
   useSaveAnswers: () => ({
     mutate: saveAnswersMutate,
     mutateAsync: saveAnswersMutateAsync,
@@ -409,6 +412,7 @@ describe("SessionPage", () => {
     advanceSectionMutate.mockReset();
     advanceSectionMutateAsync.mockReset();
     routerReplace.mockReset();
+    registrationTitle = null;
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     localStorage.clear();
   });
@@ -1546,7 +1550,7 @@ describe("SessionPage", () => {
         screen.getByRole("button", { name: /lanjut ke section berikutnya/i }),
       );
       expect(
-        screen.getByText(/lanjut ke section berikutnya\?/i),
+        screen.getByText(/selesaikan section ini\?/i),
       ).toBeInTheDocument();
       expect(
         within(screen.getByRole("dialog")).getByText(/\d\/2 soal/i),
@@ -4453,4 +4457,86 @@ describe("SessionPage", () => {
     expect(screen.getAllByRole("radio")[0]).toBeChecked();
   });
 
+  describe("student runtime parity", () => {
+    const sequential = (timer: "overall" | "per_test") => ({
+      ...sectionedSession, mode: "standard", format_version: 2, navigation_policy: "sequential" as const,
+      timer_mode: timer, duration_minutes: 60, remaining_seconds: 3600,
+    });
+
+    it.each([
+      ["per_test", "Sisa waktu section"],
+      ["overall", "Sisa waktu ujian"],
+    ] as const)("labels the %s timer with its scope", async (timer, label) => {
+      sessionState.data = sequential(timer);
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      expect(within(screen.getByTestId("exam-timer")).getByText(label)).toBeInTheDocument();
+    });
+
+    it("labels a free-navigation overall timer as the exam timer", async () => {
+      sessionState.data = { ...sectionedSession, mode: "standard", format_version: 2, navigation_policy: "free", timer_mode: "overall", duration_minutes: 60, remaining_seconds: 3600 };
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      expect(within(screen.getByTestId("exam-timer")).getByText("Sisa waktu ujian")).toBeInTheDocument();
+    });
+
+    it("shows the exam title with section progress in the header", async () => {
+      registrationTitle = "Tryout TKA Paket A";
+      sessionState.data = sequential("per_test");
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      expect(screen.getByTestId("exam-title")).toHaveTextContent("Tryout TKA Paket A");
+      expect(screen.getByTestId("exam-section-progress")).toHaveTextContent("Section 1 dari 2");
+      expect(screen.getByTestId("exam-section-progress")).toHaveTextContent("TPS");
+    });
+
+    it("falls back to the section title while the exam title is not loaded", async () => {
+      sessionState.data = sequential("per_test");
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      expect(screen.getByTestId("exam-title")).toHaveTextContent("TPS");
+    });
+
+    it("lists answered, flagged and current in the navigator legend", async () => {
+      sessionState.data = sequential("per_test");
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      const rail = screen.getByTestId("exam-nav-rail");
+      expect(rail).toHaveTextContent("Terjawab");
+      expect(rail).toHaveTextContent("Ditandai");
+      expect(rail).toHaveTextContent("Soal saat ini");
+    });
+
+    it("names the unanswered count and that the section locks before advancing", async () => {
+      sessionState.data = sequential("per_test");
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      fireEvent.click(screen.getAllByRole("radio")[0]);
+      fireEvent.click(screen.getByTestId("session-nav-1"));
+      fireEvent.click(await screen.findByRole("button", { name: "Lanjut ke section berikutnya" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("1 soal belum dijawab");
+      expect(dialog).toHaveTextContent("Section TPS akan dikunci");
+    });
+
+    it("says all questions are answered when none are left", async () => {
+      sessionState.data = { ...sequential("per_test"), answers: [{ question_id: "q-sec1-mcq", answer: "A" }, { question_id: "q-sec1-essay", answer: "x" }] };
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      fireEvent.click(screen.getByTestId("session-nav-1"));
+      fireEvent.click(await screen.findByRole("button", { name: "Lanjut ke section berikutnya" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("Semua soal sudah dijawab");
+    });
+
+    it("names the unanswered count and that answers become final before submitting", async () => {
+      sessionState.data = { ...sectionedSession, mode: "standard", format_version: 2, navigation_policy: "free", timer_mode: "overall", duration_minutes: 60, remaining_seconds: 3600 };
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      fireEvent.click(screen.getAllByRole("radio")[0]);
+      fireEvent.click(within(screen.getByTestId("exam-top-bar")).getByRole("button", { name: "Kumpulkan" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(dialog).toHaveTextContent("2 soal belum dijawab");
+      expect(dialog).toHaveTextContent("Setelah dikumpulkan, jawaban tidak dapat diubah");
+    });
+  });
 });
