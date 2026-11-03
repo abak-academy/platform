@@ -875,7 +875,7 @@ export default function ExamPackageDetailPage() {
                               </div>
                               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-500">
                                 <span>
-                                  {t("exam_admin_section_material")}
+                                  {t(entry?.test.has_shared_material ? "exam_admin_section_material" : "exam_admin_section_no_material")}
                                   {materialCount > 0 && ` · ${t("exam_admin_section_material_per_question").replace("{n}", String(materialCount))}`}
                                 </span>
                                 <Link href={`/admin/exam/tests/${testId}`} className="font-medium text-brand-700 hover:underline">

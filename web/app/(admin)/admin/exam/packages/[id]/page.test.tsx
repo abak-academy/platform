@@ -1724,14 +1724,16 @@ describe("ExamPackageDetailPage — prototype parity", () => {
       expect(screen.getAllByText("90 menit untuk seluruh section")).toHaveLength(2);
     });
 
-    it("names shared material and the per-question material count in the card footer", () => {
-      open(composable({ tests: [entry(1, { material_question_positions: [2, 4, 5] }), entry(2)] }));
+    it("names shared material only when the Test has it, plus the per-question material count", () => {
+      const withShared = (n: number, positions: number[] = []) =>
+        entry(n, { material_question_positions: positions, test: { ...entry(n).test, has_shared_material: true } });
+      open(composable({ tests: [withShared(1, [2, 4, 5]), entry(2), entry(3, { material_question_positions: [1] })] }));
       openTests();
-      const first = screen.getByRole("link", { name: "Section 1" }).closest("li")!;
-      const second = screen.getByRole("link", { name: "Section 2" }).closest("li")!;
-      expect(first).toHaveTextContent("Materi bersama · 3 materi per soal");
-      expect(second).toHaveTextContent("Materi bersama");
-      expect(second).not.toHaveTextContent("materi per soal");
+      const card = (name: string) => screen.getByRole("link", { name }).closest("li")!;
+      expect(card("Section 1")).toHaveTextContent("Materi bersama · 3 materi per soal");
+      expect(card("Section 2")).toHaveTextContent("Tanpa materi bersama");
+      expect(card("Section 2")).not.toHaveTextContent("materi per soal");
+      expect(card("Section 3")).toHaveTextContent("Tanpa materi bersama · 1 materi per soal");
     });
 
     it("reorders with up/down and saves the new order, keeping each presentation", async () => {

@@ -198,6 +198,32 @@ func TestGetExamDetail_HasSessions(t *testing.T) {
 	}
 }
 
+func TestGetExamDetail_HasSharedMaterial(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	examID := seedAdminReadExam(t, pool, "SM "+uuid.NewString())
+	withMaterial := attachAdminReadTest(t, pool, examID, 0, 10, nil, 1)
+	blankMaterial := attachAdminReadTest(t, pool, examID, 1, 10, nil, 1)
+	attachAdminReadTest(t, pool, examID, 2, 10, nil, 1)
+	_, err := pool.Exec(ctx, `UPDATE test SET shared_material_html = '<p>SHARED-SECRET</p>' WHERE id = $1`, withMaterial)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx, `UPDATE test SET shared_material_html = E' \n\t ' WHERE id = $1`, blankMaterial)
+	require.NoError(t, err)
+
+	detail, err := repo.GetExamDetail(ctx, examID)
+	require.NoError(t, err)
+	require.Len(t, detail.Tests, 3)
+	require.True(t, detail.Tests[0].Test.HasSharedMaterial)
+	require.False(t, detail.Tests[1].Test.HasSharedMaterial)
+	require.False(t, detail.Tests[2].Test.HasSharedMaterial)
+
+	raw, err := json.Marshal(detail)
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "SHARED-SECRET")
+}
+
 func TestGetExamDetail_MaterialQuestionPositions(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)

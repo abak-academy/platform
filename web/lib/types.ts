@@ -851,6 +851,7 @@ export interface ExamTestEntry {
     topic?: string | null;
     duration_minutes?: number | null;
     question_count: number;
+    has_shared_material?: boolean;
   };
   material_question_positions?: number[];
 }
