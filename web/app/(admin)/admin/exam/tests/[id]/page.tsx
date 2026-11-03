@@ -513,7 +513,7 @@ export default function TestDetailPage() {
                     title={t("tests_arrangement_title")}
                     description={t("tests_arrangement_desc")}
                     actions={
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Button type="button" variant="outline" onClick={() => setCreating(true)} disabled={creating}>
                           <Plus className="mr-1 size-4" />
                           {t("tests_new_question")}

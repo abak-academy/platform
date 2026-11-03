@@ -252,7 +252,7 @@ export default function TestsPage() {
 
       {!isError && tests.length > 0 && (
         <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[44rem] text-sm">
             <thead className="bg-muted">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">{t("tests_col_test")}</th>
