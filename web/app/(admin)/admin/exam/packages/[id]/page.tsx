@@ -794,7 +794,7 @@ export default function ExamPackageDetailPage() {
                           <div className="flex items-start gap-3">
                             <NumberChip n={idx + 1} />
                             <div className="min-w-0 flex-1">
-                              <h3 className="truncate text-sm font-semibold">
+                              <h3 className="text-sm font-semibold [overflow-wrap:anywhere]">
                                 <Link href={`/admin/exam/tests/${testId}`} className="hover:underline">{title}</Link>
                               </h3>
                               {meta && (
@@ -1221,7 +1221,7 @@ function AdminCard({
   children?: React.ReactNode;
 }) {
   return (
-    <section aria-labelledby={id} className="md-card-outlined min-w-0">
+    <section aria-labelledby={id} className="min-w-0 rounded-[20px] border border-line bg-surface text-foreground">
       <div className="flex flex-wrap items-start justify-between gap-3 px-6 py-5">
         <div className="min-w-0">
           <h2 id={id} className="text-title-medium font-semibold">{title}</h2>
