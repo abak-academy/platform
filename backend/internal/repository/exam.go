@@ -1231,6 +1231,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.EndScreenImageURL, &item.EndScreenPromoText,
 		&item.CardEnabled, &cardNotes, &item.FormatVersion, &item.NavigationPolicy,
 		&item.HasPublishedProduct, &item.RegistrationCount,
+		&item.SectionCount, &item.QuestionCount, &item.SectionsDurationMinutes,
 	)
 	if err != nil {
 		return err
@@ -1364,7 +1365,18 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 			SELECT COUNT(*) FROM exam_registration r
 			JOIN users u ON u.id = r.student_id
 			WHERE r.exam_id = e.id AND r.status <> 'revoked' AND ($1::uuid IS NULL OR u.school_id = $1)
-		) AS registration_count
+		) AS registration_count,
+		(SELECT COUNT(*) FROM exam_test et WHERE et.exam_id = e.id) AS section_count,
+		(
+			SELECT COUNT(*) FROM exam_test et
+			JOIN test_question tq ON tq.test_id = et.test_id
+			WHERE et.exam_id = e.id
+		) AS question_count,
+		(
+			SELECT SUM(t.duration_minutes)::int FROM exam_test et
+			JOIN test t ON t.id = et.test_id
+			WHERE et.exam_id = e.id
+		) AS sections_duration_minutes
 	FROM exam e
 	WHERE 1=1`
 	// registration_count's placeholder is rendered in the SELECT list, before
@@ -1476,7 +1488,20 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 	rows, err := r.pool.Query(ctx,
 		`SELECT et.id, et.exam_id, et.test_id, et.sort_order, et.question_presentation,
 			t.id, t.title, t.subject, t.topic, t.duration_minutes, t.section_type,
-			COALESCE(q.cnt, 0)
+			COALESCE(q.cnt, 0),
+			ARRAY(
+				SELECT m.pos FROM (
+					SELECT ROW_NUMBER() OVER (ORDER BY tq.sort_order) AS pos,
+						qq.material_html, qq.image_url, qq.audio_url
+					FROM test_question tq
+					JOIN question qq ON qq.id = tq.question_id
+					WHERE tq.test_id = t.id
+				) m
+				WHERE COALESCE(m.material_html, '') ~ '\S'
+				   OR COALESCE(m.image_url, '') <> ''
+				   OR COALESCE(m.audio_url, '') <> ''
+				ORDER BY m.pos
+			)::int[]
 		FROM exam_test et
 		JOIN test t ON t.id = et.test_id
 		LEFT JOIN (
@@ -1499,7 +1524,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		if err := rows.Scan(
 			&entry.ID, &entry.ExamID, &entry.TestID, &entry.SortOrder, &entry.QuestionPresentation,
 			&entry.Test.ID, &entry.Test.Title, &entry.Test.Subject, &topic, &entry.Test.DurationMinutes,
-			&sectionType, &entry.Test.QuestionCount,
+			&sectionType, &entry.Test.QuestionCount, &entry.MaterialQuestionPositions,
 		); err != nil {
 			return nil, err
 		}
@@ -1514,6 +1539,12 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		tests = []model.ExamTestEntry{}
 	}
 	detail.Tests = tests
+
+	hasSessions, err := r.ExamHasAnySession(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	detail.HasSessions = hasSessions
 
 	return detail, nil
 }

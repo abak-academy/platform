@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
 import {
   ArrowLeft,
   Calendar,
   ListChecks,
-  Pencil,
   Plus,
   Search,
   Trash2,
@@ -22,7 +22,6 @@ import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -42,6 +41,7 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { hasCapability } from "@/lib/hooks/use-capability";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
@@ -100,11 +100,6 @@ function formatScheduled(iso?: string | null): string {
   return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function formatMode(mode?: string | null): string {
-  if (!mode || mode === "standard") return "Standard";
-  return mode.toUpperCase();
-}
-
 export default function ExamPackageDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
@@ -121,6 +116,7 @@ export default function ExamPackageDetailPage() {
   const [confirmDisableCertificate, setConfirmDisableCertificate] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
+  const policyLocked = data?.format_version === 2 && data.has_sessions === true;
   const replaceTests = useReplaceExamTests(id);
   const setCertificateEnabled = useSetCertificateEnabled(id);
   const setCardEnabled = useSetCardEnabled(id);
@@ -261,6 +257,11 @@ export default function ExamPackageDetailPage() {
       toast.success(t("changes_saved"));
       refetch();
     } catch (e) {
+      if (e instanceof ApiError && e.code === "exam_has_sessions") {
+        toast.error(t("exam_admin_has_sessions_error"));
+        refetch();
+        return;
+      }
       toast.error(errorMessage(e, t("error_generic")));
     }
   }
@@ -334,6 +335,16 @@ export default function ExamPackageDetailPage() {
   }
 
   const title = data?.title ?? t("exam_packages_page_title");
+  const materialConflicts = (data?.format_version === 2 ? attachedIds : []).flatMap((testId, idx) => {
+    const entry = data?.tests.find((e) => e.test_id === testId);
+    return entry?.material_question_positions?.length && presentations[testId] === "all_on_page"
+      ? [
+          t("exam_admin_material_conflict")
+            .replace("{section}", `#${idx + 1} · ${entry.test.title}`)
+            .replace("{positions}", entry.material_question_positions.join(", ")),
+        ]
+      : [];
+  });
 
   const gradingColumns: DataTableColumn<GradingSessionItem>[] = [
     { key: "student", header: t("grading_col_student"), className: "font-medium", cell: (session) => session.student_name },
@@ -377,27 +388,25 @@ export default function ExamPackageDetailPage() {
         icon={Calendar}
         title={title}
         description={
-          data ? `${data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : formatMode(data.mode)} · ${formatScheduled(data.scheduled_at)}` : undefined
+          data ? `${data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : examModeLabel(data.mode, t)} · ${data.timer_mode === "per_test" ? t("format_timer_section") : data.duration_minutes != null ? `${data.duration_minutes} ${t("minutes")}` : t("format_timer_overall")} · ${formatScheduled(data.scheduled_at)}` : undefined
         }
         actions={
-          data ? (
+          data && (canPreviewStudent || !isSchoolScoped) ? (
             <>
               {canPreviewStudent && (
-                <Button asChild variant="outline" size="sm">
+                <Button asChild variant="outline" className="rounded-full">
                   <Link href={`/admin/exam/packages/${id}/preview`}>{t("admin_exam_preview_student")}</Link>
                 </Button>
               )}
-              <Badge variant={data.status === "published" ? "default" : "secondary"}>
-                {data.status ?? "draft"}
-              </Badge>
+              {!isSchoolScoped && (
+                <Button className="rounded-full" onClick={() => setEditOpen(true)}>
+                  {t("exam_admin_settings")}
+                </Button>
+              )}
             </>
           ) : undefined
         }
       />
-
-      {data && data.status !== "published" && (
-        <p className="text-sm text-ink-500">{t("admin_exam_detail_draft_notice")}</p>
-      )}
 
       {isLoading && (
         <div className="space-y-2">
@@ -434,40 +443,16 @@ export default function ExamPackageDetailPage() {
 
           {tab === "overview" && (
             <div className="md-card-outlined space-y-4 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-title-large font-semibold">
-                  {t("admin_exam_detail_tab_overview")}
-                </h2>
-                {!isSchoolScoped && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full"
-                    onClick={() => setEditOpen(true)}
-                  >
-                    <Pencil className="mr-1 size-4" />
-                    {t("admin_exam_detail_edit")}
-                  </Button>
-                )}
-              </div>
+              <h2 className="text-title-large font-semibold">
+                {t("admin_exam_detail_tab_overview")}
+              </h2>
               <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-                <OverviewRow label="Title" value={data.title} />
                 <OverviewRow
                   label="Scheduled"
                   value={
                     data.scheduled_end_at
                       ? `${formatScheduled(data.scheduled_at)} – ${formatScheduled(data.scheduled_end_at)}`
                       : formatScheduled(data.scheduled_at)
-                  }
-                />
-                <OverviewRow label={data.format_version === 2 ? t("format_navigation") : "Mode"} value={data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : formatMode(data.mode)} />
-                <OverviewRow label="Timer mode" value={data.timer_mode ?? "—"} />
-                <OverviewRow
-                  label="Duration"
-                  value={
-                    data.duration_minutes != null
-                      ? `${data.duration_minutes} ${t("minutes")}`
-                      : "—"
                   }
                 />
                 <OverviewRow
@@ -482,6 +467,26 @@ export default function ExamPackageDetailPage() {
                       : t("status_label_inactive")
                   }
                 />
+                {data.requires_checkin && (
+                  <>
+                    <OverviewRow
+                      label={t("exam_packages_overview_check_in_window")}
+                      value={
+                        data.check_in_window_minutes != null
+                          ? `${data.check_in_window_minutes} ${t("minutes")}`
+                          : "—"
+                      }
+                    />
+                    <OverviewRow
+                      label={t("exam_packages_overview_grace_window")}
+                      value={
+                        data.grace_window_minutes != null
+                          ? `${data.grace_window_minutes} ${t("minutes")}`
+                          : "—"
+                      }
+                    />
+                  </>
+                )}
                 <OverviewRow
                   label="Leaderboard"
                   value={
@@ -491,37 +496,15 @@ export default function ExamPackageDetailPage() {
                   }
                 />
                 <OverviewRow
-                  label="Randomize"
-                  value={
-                    data.randomize
-                      ? t("status_label_active")
-                      : t("status_label_inactive")
-                  }
-                />
-                <OverviewRow
                   label={t("exam_packages_overview_result_config")}
                   value={data.result_config ?? "—"}
                 />
-                <OverviewRow
-                  label={t("exam_packages_overview_result_release_at")}
-                  value={formatScheduled(data.result_release_at)}
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_check_in_window")}
-                  value={
-                    data.check_in_window_minutes != null
-                      ? `${data.check_in_window_minutes} ${t("minutes")}`
-                      : "—"
-                  }
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_grace_window")}
-                  value={
-                    data.grace_window_minutes != null
-                      ? `${data.grace_window_minutes} ${t("minutes")}`
-                      : "—"
-                  }
-                />
+                {data.result_config !== "hidden" && (
+                  <OverviewRow
+                    label={t("exam_packages_overview_result_release_at")}
+                    value={formatScheduled(data.result_release_at)}
+                  />
+                )}
                 <OverviewRow
                   label={t("exam_packages_overview_max_attempts")}
                   value={
@@ -536,7 +519,6 @@ export default function ExamPackageDetailPage() {
                   label={t("exam_packages_overview_certificate_template")}
                   value={data.certificate_template ?? "—"}
                 />
-                <OverviewRow label="Status" value={data.status ?? "—"} />
               </dl>
 
               {!isSchoolScoped && (
@@ -707,8 +689,8 @@ export default function ExamPackageDetailPage() {
                             )}
                           </div>
                           {data.format_version === 2 && (
-                            <select aria-label={`${t("format_presentation")} ${meta?.title ?? testId}`} className="max-w-44 rounded-md border border-line bg-surface p-2 text-sm" value={presentations[testId] ?? "one_per_page"}
-                              onChange={e => setPresentations(prev => ({ ...prev, [testId]: e.target.value as "one_per_page" | "all_on_page" }))} disabled={replaceTests.isPending}>
+                            <select aria-label={`${t("format_presentation")} ${meta?.title ?? testId}`} className="min-w-56 max-w-full rounded-md border border-line bg-surface p-2 text-sm" value={presentations[testId] ?? "one_per_page"}
+                              onChange={e => setPresentations(prev => ({ ...prev, [testId]: e.target.value as "one_per_page" | "all_on_page" }))} disabled={replaceTests.isPending || policyLocked}>
                               <option value="one_per_page">{t("format_one_per_page")}</option>
                               <option value="all_on_page">{t("format_all_on_page")}</option>
                             </select>
@@ -719,6 +701,7 @@ export default function ExamPackageDetailPage() {
                             variant="ghost"
                             className="rounded-full"
                             onClick={() => handleRemoveTest(testId)}
+                            disabled={policyLocked}
                             aria-label={t("admin_exam_detail_tests_remove")}
                           >
                             <Trash2 className="size-3" />
@@ -763,7 +746,10 @@ export default function ExamPackageDetailPage() {
                     </ul>
                   </div>
                 )}
-                {data.format_version === 2 && attachedIds.some(id => presentations[id] === "all_on_page") && <p className="mt-4 text-sm text-ink-500">{t("format_material_warning")}</p>}
+                {policyLocked && <p className="mt-4 text-sm text-ink-600">{t("exam_admin_policy_locked")}</p>}
+                {materialConflicts.map((message) => (
+                  <p key={message} role="alert" className="mt-4 text-sm text-danger">{message}</p>
+                ))}
                 {data.format_version === 2 && (
                   <p className="mt-4 text-sm text-ink-600">{t("format_effective_behavior")}: {t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free")} · {t(data.timer_mode === "per_test" ? "format_timer_section" : "format_timer_overall")} · {attachedIds.length} {t("format_sections")}</p>
                 )}
@@ -772,7 +758,7 @@ export default function ExamPackageDetailPage() {
                     type="button"
                     className="rounded-full"
                     onClick={handleSaveTests}
-                    disabled={replaceTests.isPending}
+                    disabled={replaceTests.isPending || policyLocked}
                   >
                     {replaceTests.isPending
                       ? t("saving")
@@ -824,6 +810,7 @@ export default function ExamPackageDetailPage() {
                           variant="outline"
                           className="rounded-full"
                           onClick={() => handleAddTest(test.id)}
+                          disabled={policyLocked}
                           aria-label={t("admin_exam_detail_tests_add")}
                         >
                           <Plus className="size-3" />
@@ -1053,6 +1040,8 @@ export default function ExamPackageDetailPage() {
       <ExamModal
         open={editOpen}
         exam={data ?? null}
+        policyLocked={policyLocked}
+        onSessionsConflict={() => refetch()}
         onClose={() => setEditOpen(false)}
         onSaved={() => {
           setEditOpen(false);
