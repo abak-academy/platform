@@ -61,6 +61,7 @@ export function ExamAddTestDialog({
             value={search}
             onChange={(e) => onSearch(e.target.value)}
             placeholder={t("search")}
+            aria-label={t("search")}
             className="pl-9"
           />
         </div>

@@ -66,6 +66,7 @@ Owner decisions (2026-11-03, not reopened):
 ## Technical contract
 
 - Backend (PR 2 only): `exam_count int` on Test detail JSON (`json:"exam_count"`), computed by a COUNT over `exam_test` in the repository read; list gets it only if added to the existing list query without N+1. Service/handler shape unchanged otherwise. Go test for 0 / N.
+- Backend (PR 1, added during build 2026-11-03): additive read-only `test.has_shared_material` on admin exam detail entries (same non-blank rule as `material_question_positions`, no material HTML), so the section footer only says "Materi bersama" when the Test has it.
 - No other API, DB, or payload change. Reorder uses the existing replace-tests endpoint.
 - New i18n keys in `web/lib/i18n.ts` (id + en) for all new copy; no hardcoded strings.
 - Prefer composing existing `components/ui/*`; add a shared component only when used by ≥2 of the touched pages.

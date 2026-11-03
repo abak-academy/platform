@@ -50,7 +50,6 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { hasCapability } from "@/lib/hooks/use-capability";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { examModeLabel } from "@/lib/exam-mode";
 import { isHttpUrl } from "@/lib/exam-event-info";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
@@ -139,8 +138,7 @@ export default function ExamPackageDetailPage() {
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
   const { data: registrationCounts } = useExamRegistrationCounts(id);
-  const registeredCount =
-    data?.registration_count ?? (registrationCounts ? registrationCounts.total - registrationCounts.revoked : undefined);
+  const registeredCount = registrationCounts ? registrationCounts.total - registrationCounts.revoked : undefined;
   const policyLocked = data?.format_version === 2 && data.has_sessions === true;
   const replaceTests = useReplaceExamTests(id);
   const setCertificateEnabled = useSetCertificateEnabled(id);
@@ -170,6 +168,7 @@ export default function ExamPackageDetailPage() {
   const testQ = useDebouncedValue(testSearch).trim();
   const [testCursor, setTestCursor] = useState<string | undefined>(undefined);
   const [testEntries, setTestEntries] = useState<Test[]>([]);
+  const [addedTests, setAddedTests] = useState<Record<string, Test>>({});
 
   const {
     data: availableResp,
@@ -238,6 +237,8 @@ export default function ExamPackageDetailPage() {
   }, [essaysResp]);
 
   function handleAddTest(testId: string) {
+    const added = testEntries.find((test) => test.id === testId);
+    if (added) setAddedTests((prev) => ({ ...prev, [testId]: added }));
     setAttachedIds((prev) => [...prev, testId]);
   }
 
@@ -377,7 +378,7 @@ export default function ExamPackageDetailPage() {
   });
 
   const sectionMeta = (testId: string) =>
-    data?.tests.find((e) => e.test_id === testId)?.test ?? testEntries.find((test) => test.id === testId);
+    data?.tests.find((e) => e.test_id === testId)?.test ?? addedTests[testId] ?? testEntries.find((test) => test.id === testId);
   const sectionMetas = attachedIds.map(sectionMeta);
   const totalQuestions = sectionMetas.reduce((sum, meta) => sum + (meta?.question_count ?? 0), 0);
   const totalMinutes = sectionMetas.reduce((sum, meta) => sum + (meta?.duration_minutes ?? 0), 0);
@@ -833,7 +834,7 @@ export default function ExamPackageDetailPage() {
                                 className="rounded-full"
                                 onClick={() => handleRemoveTest(testId)}
                                 disabled={policyLocked}
-                                aria-label={t("admin_exam_detail_tests_remove")}
+                                aria-label={`${t("admin_exam_detail_tests_remove")} ${title}`}
                               >
                                 <Trash2 className="size-3" />
                               </Button>
@@ -875,7 +876,7 @@ export default function ExamPackageDetailPage() {
                               </div>
                               <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-500">
                                 <span>
-                                  {t(entry?.test.has_shared_material ? "exam_admin_section_material" : "exam_admin_section_no_material")}
+                                  {entry && t(entry.test.has_shared_material ? "exam_admin_section_material" : "exam_admin_section_no_material")}
                                   {materialCount > 0 && ` · ${t("exam_admin_section_material_per_question").replace("{n}", String(materialCount))}`}
                                 </span>
                                 <Link href={`/admin/exam/tests/${testId}`} className="font-medium text-brand-700 hover:underline">

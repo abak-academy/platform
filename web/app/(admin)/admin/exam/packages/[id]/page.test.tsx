@@ -155,7 +155,7 @@ let leaderboardState: {
   isFetching: false,
 };
 
-let registrationCountsState: { data: { total: number; revoked: number } | undefined } = { data: undefined };
+let registrationCountsState: { data: { total: number; revoked: number } | undefined; isError?: boolean } = { data: undefined };
 
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExam: () => examState,
@@ -1382,7 +1382,7 @@ describe("composable exam — material conflicts and policy lock", () => {
 
     expect(await screen.findByText(/^#2 · Reading Section: soal 2, 4/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole("button", { name: /^hapus$/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /^hapus /i })[0]);
 
     expect(await screen.findByText(/^#1 · Reading Section: soal 2, 4/)).toBeInTheDocument();
     expect(screen.queryByText(/^#2 · Reading Section/)).not.toBeInTheDocument();
@@ -1408,7 +1408,7 @@ describe("composable exam — material conflicts and policy lock", () => {
 
     expect(await screen.findByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Tampilan soal Reading Section")).toBeDisabled();
-    expect(screen.getAllByRole("button", { name: /^hapus$/i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getAllByRole("button", { name: /^hapus /i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     expect(screen.getAllByRole("button", { name: /^tambah test$/i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
     expect(screen.getByRole("button", { name: /^simpan susunan$/i })).toBeDisabled();
   });
@@ -1419,7 +1419,7 @@ describe("composable exam — material conflicts and policy lock", () => {
     await screen.findByLabelText("Tampilan soal Reading Section");
     expect(screen.queryByText(/terkunci karena ujian ini sudah memiliki sesi/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText("Tampilan soal Reading Section")).toBeEnabled();
-    expect(screen.getAllByRole("button", { name: /^hapus$/i })[0]).toBeEnabled();
+    expect(screen.getAllByRole("button", { name: /^hapus /i })[0]).toBeEnabled();
     expect(screen.getAllByRole("button", { name: /^tambah test$/i })[0]).toBeEnabled();
     expect(screen.getByRole("button", { name: /^simpan susunan$/i })).toBeEnabled();
   });
@@ -1536,7 +1536,6 @@ describe("ExamPackageDetailPage — prototype parity", () => {
     timer_mode: "per_test",
     duration_minutes: null,
     has_sessions: false,
-    registration_count: 12,
     tests: [entry(1), entry(2)],
     ...over,
   });
@@ -1555,19 +1554,26 @@ describe("ExamPackageDetailPage — prototype parity", () => {
   describe("header", () => {
     it("counts participants from the registration counts, excluding revoked, with 'belum ada sesi'", () => {
       registrationCountsState = { data: { total: 14, revoked: 2 } };
-      open(composable({ registration_count: undefined }));
+      open(composable());
       expect(screen.getByText("12 peserta terdaftar · belum ada sesi")).toBeInTheDocument();
       expect(screen.queryByText(/Berurutan · Timer per section/)).not.toBeInTheDocument();
     });
 
-    it("prefers registration_count when the payload carries it, and says 'sudah ada sesi' once sessions exist", () => {
-      registrationCountsState = { data: { total: 99, revoked: 0 } };
-      open(composable({ has_sessions: true, registration_count: 7 }));
+    it("says 'sudah ada sesi' once sessions exist", () => {
+      registrationCountsState = { data: { total: 7, revoked: 0 } };
+      open(composable({ has_sessions: true }));
       expect(screen.getByText("7 peserta terdaftar · sudah ada sesi")).toBeInTheDocument();
     });
 
+    it("drops the participant count when the counts request fails", () => {
+      registrationCountsState = { data: undefined, isError: true };
+      open(composable());
+      expect(screen.getByText("belum ada sesi")).toBeInTheDocument();
+      expect(screen.queryByText(/peserta terdaftar/)).not.toBeInTheDocument();
+    });
+
     it("never prints a made-up zero while the participant count is unknown", () => {
-      open(composable({ registration_count: undefined }));
+      open(composable());
       expect(screen.getByText("belum ada sesi")).toBeInTheDocument();
       expect(screen.queryByText(/peserta terdaftar/)).not.toBeInTheDocument();
     });
@@ -1780,6 +1786,9 @@ describe("ExamPackageDetailPage — prototype parity", () => {
       await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
       expect(screen.getByRole("link", { name: "Tes Aljabar" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Tes & section (3)" })).toBeInTheDocument();
+      const added = screen.getByRole("link", { name: "Tes Aljabar" }).closest("li")!;
+      expect(added).not.toHaveTextContent(/materi bersama/i);
+      expect(screen.getByRole("button", { name: "Hapus Tes Aljabar" })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: /^simpan susunan$/i }));
       await waitFor(() =>
@@ -1850,7 +1859,7 @@ describe("ExamPackageDetailPage — prototype parity", () => {
       for (const name of ["Naikkan Section 2", "Turunkan Section 1"]) {
         expect(screen.getByRole("button", { name })).toBeDisabled();
       }
-      expect(screen.getAllByRole("button", { name: /^hapus$/i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+      expect(screen.getAllByRole("button", { name: /^hapus /i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
       expect(screen.getByLabelText("Tampilan soal Section 1")).toBeDisabled();
       expect(screen.getByRole("button", { name: /^simpan susunan$/i })).toBeDisabled();
       expect(screen.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeInTheDocument();
