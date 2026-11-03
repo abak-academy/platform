@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Clock, Eye, Lock, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, ClipboardList, Clock, Eye, Lock, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,16 +25,17 @@ interface ExamBriefingProps {
   backHref: string;
   backLabel: string;
   preview?: boolean;
-  afterInfo?: ReactNode;
+  status?: "ready" | "upcoming";
+  afterHowTo?: ReactNode;
   checkIn?: ReactNode;
   gate: BriefingGate | null;
 }
 
-export function ExamBriefing({ exam, backHref, backLabel, preview = false, afterInfo, checkIn, gate }: ExamBriefingProps) {
+export function ExamBriefing({ exam, backHref, backLabel, preview = false, status = "ready", afterHowTo, checkIn, gate }: ExamBriefingProps) {
   const { t, lang } = useTranslation();
   const [understood, setUnderstood] = useState(false);
 
-  const access = accessWindow(exam.scheduled_at, exam.scheduled_end_at, lang);
+  const access = accessWindow(exam.scheduled_at, exam.scheduled_end_at, lang, { weekday: true });
   const minutes = workingMinutes(exam);
   const perTest = exam.timer_mode === "per_test";
   const sequential = exam.navigation_policy === "sequential";
@@ -43,7 +44,13 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
       ? t("examdetail_attempts_unlimited")
       : t("examdetail_attempts_max").replace("{n}", String(Math.max(1, exam.max_attempts)));
 
+  const minutesUnit = t(perTest ? "examdetail_minutes_total" : "examdetail_minutes").replace("{n}", "").trim();
   const resume = gate?.kind === "resume";
+  const [statusLabel, statusClass] = resume
+    ? [t("st_inprogress"), "bg-brand-50 text-brand-700"]
+    : status === "upcoming"
+      ? [t("examcard_upcoming_badge"), "border-line bg-surface-2 text-ink-700"]
+      : [t("examcard_status_ready"), "bg-success-bg text-success"];
   const startDisabled = preview || !gate || gate.disabled || gate.pending || (!resume && !understood);
 
   return (
@@ -69,24 +76,32 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
       </header>
 
       <Card className="space-y-4 p-5">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">{t("competition_detail_exam_info")}</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="font-serif text-xl font-semibold text-ink-900">{t("competition_detail_exam_info")}</h2>
+          <Badge className={`rounded-full border-transparent ${statusClass}`}>{statusLabel}</Badge>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <section className="min-w-0 rounded-lg border border-line p-4">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-              <CalendarDays className="size-4 shrink-0 text-ink-500" />
+          <section className="flex min-w-0 flex-col rounded-xl border border-line p-4">
+            <h3 className="flex items-center gap-3 text-sm font-semibold text-ink-900">
+              <IconChip>
+                <CalendarDays className="size-5" />
+              </IconChip>
               {t("examdetail_access_title")}
             </h3>
-            <div className="mt-2 text-sm font-medium text-ink-900">
+            <div className="mt-4 flex-1 text-ink-900">
               {access ? (
                 access.to && access.sameDay ? (
-                  <div className="flex flex-wrap justify-between gap-x-3">
-                    <span>{access.from.date}</span>
-                    <span>
-                      {access.from.time} – {access.to.time} WIB
-                    </span>
-                  </div>
-                ) : (
                   <>
+                    <div className="text-base font-semibold">{access.from.date}</div>
+                    <div data-testid="access-hours" className="mt-1 flex items-baseline gap-2 text-2xl font-bold">
+                      <span>{access.from.time}</span>
+                      <span className="font-normal text-ink-500" aria-hidden="true">–</span>
+                      <span>{access.to.time}</span>
+                      <span className="text-xs font-medium text-ink-500">WIB</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-base font-semibold">
                     <div>
                       {access.from.date}, {access.from.time} WIB
                     </div>
@@ -95,31 +110,41 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
                         {access.to.date}, {access.to.time} WIB
                       </div>
                     )}
-                  </>
+                  </div>
                 )
               ) : (
                 "—"
               )}
             </div>
-            <p className="mt-1 text-xs text-ink-500">{t("examdetail_access_caption")}</p>
+            <p className="mt-4 text-xs text-ink-500">{t("examdetail_access_caption")}</p>
           </section>
 
-          <section className="min-w-0 rounded-lg border border-line p-4">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-ink-900">
-              <Clock className="size-4 shrink-0 text-ink-500" />
+          <section data-testid="duration-panel" className="flex min-w-0 flex-col rounded-xl border border-line p-4">
+            <h3 className="flex items-center gap-3 text-sm font-semibold text-ink-900">
+              <IconChip>
+                <Clock className="size-5" />
+              </IconChip>
               {t("examdetail_time_title")}
             </h3>
-            <div className="mt-2 text-sm font-medium text-ink-900">
-              {minutes != null
-                ? t(perTest ? "examdetail_minutes_total" : "examdetail_minutes").replace("{n}", String(minutes))
-                : "—"}
+            <div className="mt-4 flex-1">
+              {minutes != null ? (
+                <div className="flex items-baseline gap-2 text-ink-900">
+                  <span className="text-3xl leading-none font-bold">{minutes}</span>
+                  <span className="text-sm font-medium">{minutesUnit}</span>
+                </div>
+              ) : (
+                "—"
+              )}
+              <div className="mt-1 text-sm font-medium text-brand-600">
+                {perTest ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+              </div>
             </div>
-            <p className="mt-1 text-xs text-ink-500">
-              {perTest ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+            <p className="mt-4 text-xs text-ink-500">
+              {perTest ? t("examdetail_time_caption_per_test") : t("examdetail_time_caption_overall")}
             </p>
           </section>
         </div>
-        <p className="flex items-start gap-2 text-xs text-ink-500">
+        <p className="flex items-start gap-2 border-t border-line pt-4 text-xs text-ink-500">
           <Lock className="mt-0.5 size-3.5 shrink-0" />
           {t("examdetail_access_note")}
         </p>
@@ -148,30 +173,6 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
         </Card>
       )}
 
-      {afterInfo}
-
-      {exam.requires_checkin && (
-        <Card className="mt-4 border-warning/30 bg-warning-bg p-5">
-          <h3 className="font-serif text-base font-semibold text-ink-900">
-            {t("competition_detail_checkin_heading")}
-          </h3>
-          <p className="mt-2 text-sm text-ink-700">
-            {t("competition_detail_checkin_body").replace("{N}", String(exam.check_in_window_minutes ?? 15))}
-          </p>
-        </Card>
-      )}
-
-      {preview && exam.requires_checkin ? (
-        <Card className="mt-4 p-5">
-          <h3 className="font-serif text-base font-semibold text-ink-900">{t("exam_checkin_title")}</h3>
-          <Button type="button" className="mt-3" disabled>
-            {t("examdetail_preview_checkin")}
-          </Button>
-        </Card>
-      ) : (
-        checkIn
-      )}
-
       <Card className="mt-4 space-y-4 p-5">
         <h2 className="font-serif text-lg font-semibold text-ink-900">{t("examdetail_howto_title")}</h2>
         <div className="flex items-start gap-3 text-sm">
@@ -191,8 +192,26 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
         </div>
         <div className="flex items-start gap-3 text-sm">
           <Clock className="mt-0.5 size-4 shrink-0 text-ink-500" />
-          <div className="text-ink-500">
-            {perTest ? t("examdetail_time_caption_per_test") : t("examdetail_time_caption_overall")}
+          <div className="min-w-0">
+            <div className="font-semibold text-ink-900">
+              {perTest ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+            </div>
+            <div className="text-ink-500">
+              {t(perTest ? "examdetail_timer_rule_per_test" : "examdetail_timer_rule_overall")
+                .replace("{n}", String(minutes ?? "—"))
+                .replace("{s}", String(exam.section_count))}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-start gap-3 text-sm">
+          <ClipboardList className="mt-0.5 size-4 shrink-0 text-ink-500" />
+          <div className="min-w-0">
+            <div className="font-semibold text-ink-900">
+              {t("examdetail_questions_item")
+                .replace("{q}", String(exam.question_count))
+                .replace("{s}", String(exam.section_count))}
+            </div>
+            <div className="text-ink-500">{t("examdetail_questions_hint")}</div>
           </div>
         </div>
         {(exam.additional_rules_note || (exam.additional_rules_url && isHttpUrl(exam.additional_rules_url))) && (
@@ -254,6 +273,30 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
         </div>
       </Card>
 
+      {afterHowTo}
+
+      {exam.requires_checkin && (
+        <Card className="mt-4 border-warning/30 bg-warning-bg p-5">
+          <h3 className="font-serif text-base font-semibold text-ink-900">
+            {t("competition_detail_checkin_heading")}
+          </h3>
+          <p className="mt-2 text-sm text-ink-700">
+            {t("competition_detail_checkin_body").replace("{N}", String(exam.check_in_window_minutes ?? 15))}
+          </p>
+        </Card>
+      )}
+
+      {preview && exam.requires_checkin ? (
+        <Card className="mt-4 p-5">
+          <h3 className="font-serif text-base font-semibold text-ink-900">{t("exam_checkin_title")}</h3>
+          <Button type="button" className="mt-3" disabled>
+            {t("examdetail_preview_checkin")}
+          </Button>
+        </Card>
+      ) : (
+        checkIn
+      )}
+
       {(preview || gate) && (
         <Card className="mt-4 p-5">
           <h2 className="font-serif text-lg font-semibold text-ink-900">
@@ -292,4 +335,8 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
       )}
     </div>
   );
+}
+
+function IconChip({ children }: { children: ReactNode }) {
+  return <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">{children}</span>;
 }

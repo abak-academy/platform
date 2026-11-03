@@ -106,6 +106,10 @@ export default function ExamDetailPage() {
     windowOpen !== null && scheduledAt !== null && now < windowOpen;
   const isAfterWindow = windowEnd !== null && now >= windowEnd;
 
+  const notYetOpen = reg?.exam.requires_checkin
+    ? isBeforeWindow
+    : Boolean(reg?.exam.scheduled_end_at && scheduledAt && now < scheduledAt);
+
   const showCheckInForm =
     reg?.exam.requires_checkin && reg?.status === "registered";
   const showStartGate =
@@ -175,7 +179,7 @@ export default function ExamDetailPage() {
 
   const exam = reg.exam;
 
-  const afterInfo = (
+  const afterHowTo = (
     <Card className="mt-4 space-y-4 p-5">
       <dl className="text-sm">
         <dt className="text-xs uppercase tracking-wide text-ink-500">
@@ -249,7 +253,8 @@ export default function ExamDetailPage() {
       exam={exam}
       backHref="/exam"
       backLabel={t("competition_detail_back")}
-      afterInfo={afterInfo}
+      status={notYetOpen ? "upcoming" : "ready"}
+      afterHowTo={afterHowTo}
       checkIn={checkIn}
       gate={
         showStartGate
