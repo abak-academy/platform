@@ -41,6 +41,7 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { hasCapability } from "@/lib/hooks/use-capability";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
@@ -97,11 +98,6 @@ function formatScheduled(iso?: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
-}
-
-function formatMode(mode?: string | null): string {
-  if (!mode || mode === "standard") return "Standard";
-  return mode.toUpperCase();
 }
 
 export default function ExamPackageDetailPage() {
@@ -338,15 +334,16 @@ export default function ExamPackageDetailPage() {
   }
 
   const title = data?.title ?? t("exam_packages_page_title");
-  const materialConflicts = (data?.format_version === 2 ? data.tests : []).flatMap((entry, idx) =>
-    presentations[entry.test_id] === "all_on_page" && entry.material_question_positions?.length
+  const materialConflicts = (data?.format_version === 2 ? attachedIds : []).flatMap((testId, idx) => {
+    const entry = data?.tests.find((e) => e.test_id === testId);
+    return entry?.material_question_positions?.length && presentations[testId] === "all_on_page"
       ? [
           t("exam_admin_material_conflict")
             .replace("{section}", `#${idx + 1} · ${entry.test.title}`)
             .replace("{positions}", entry.material_question_positions.join(", ")),
         ]
-      : []
-  );
+      : [];
+  });
 
   const gradingColumns: DataTableColumn<GradingSessionItem>[] = [
     { key: "student", header: t("grading_col_student"), className: "font-medium", cell: (session) => session.student_name },
@@ -390,7 +387,7 @@ export default function ExamPackageDetailPage() {
         icon={Calendar}
         title={title}
         description={
-          data ? `${data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : formatMode(data.mode)} · ${data.timer_mode === "per_test" ? t("format_timer_section") : data.duration_minutes != null ? `${data.duration_minutes} ${t("minutes")}` : t("format_timer_overall")} · ${formatScheduled(data.scheduled_at)}` : undefined
+          data ? `${data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : examModeLabel(data.mode, t)} · ${data.timer_mode === "per_test" ? t("format_timer_section") : data.duration_minutes != null ? `${data.duration_minutes} ${t("minutes")}` : t("format_timer_overall")} · ${formatScheduled(data.scheduled_at)}` : undefined
         }
         actions={
           data && !isSchoolScoped ? (

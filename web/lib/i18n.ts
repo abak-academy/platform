@@ -1912,7 +1912,6 @@ export const DICT = {
     exam_packages_modal_result_release_at: "Hasil Dibuka Pada",
     exam_packages_modal_check_in_window: "Jendela Check-in (menit)",
     exam_packages_modal_grace_window: "Jendela Toleransi (menit)",
-    exam_packages_modal_max_attempts: "Maks. Percobaan",
     exam_packages_overview_no_retake: "Tidak bisa ulangi (1)",
     exam_packages_modal_section_card: "Kartu Peserta",
     exam_packages_modal_card_notes_hint:
@@ -4274,7 +4273,6 @@ export const DICT = {
     exam_packages_modal_result_release_at: "Result Release At",
     exam_packages_modal_check_in_window: "Check-in Window (minutes)",
     exam_packages_modal_grace_window: "Grace Window (minutes)",
-    exam_packages_modal_max_attempts: "Max Attempts",
     exam_packages_overview_no_retake: "Cannot retake (1)",
     exam_packages_modal_section_card: "Participant Card",
     exam_packages_modal_card_notes_hint:

@@ -633,6 +633,31 @@ describe("ExamModal", () => {
       );
     });
 
+    it("keeps unsaved non-policy edits but resets policy fields when the exam is refetched after a 409", async () => {
+      const { ApiError } = await import("@/lib/api");
+      mockUpdateExam.mockRejectedValue(new ApiError("exam_has_sessions", "exam already has sessions", 409));
+      const { rerender } = render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+
+      fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Judul Belum Disimpan" } });
+      fireEvent.click(screen.getByLabelText("Berurutan"));
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+      await waitFor(() => expect(mockUpdateExam).toHaveBeenCalled());
+
+      rerender(
+        <ExamModal
+          open={true}
+          onClose={vi.fn()}
+          exam={{ ...composableExam, navigation_policy: "free", duration_minutes: 45, randomize: false }}
+          policyLocked
+        />,
+      );
+
+      expect(screen.getByLabelText(/judul/i)).toHaveValue("Judul Belum Disimpan");
+      expect(screen.getByLabelText("Bebas")).toBeChecked();
+      expect(screen.getByLabelText(/durasi/i)).toHaveValue(45);
+      expect(screen.getByLabelText("Acak Soal")).not.toBeChecked();
+    });
+
     it("localizes a 409 exam_has_sessions error and reports the conflict", async () => {
       const { ApiError } = await import("@/lib/api");
       const { toast } = await import("sonner");

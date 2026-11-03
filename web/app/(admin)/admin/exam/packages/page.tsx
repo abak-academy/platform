@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
@@ -22,11 +23,6 @@ function formatScheduled(iso?: string | null): string {
     dateStyle: "medium",
     timeStyle: "short",
   });
-}
-
-function formatMode(mode?: string | null): string {
-  if (!mode || mode === "standard") return "Standard";
-  return mode.toUpperCase();
 }
 
 export default function ExamPackagesPage() {
@@ -174,7 +170,7 @@ export default function ExamPackagesPage() {
                             </div>
                           </>
                         ) : (
-                          formatMode(exam.mode)
+                          examModeLabel(exam.mode, t)
                         )}
                       </td>
                       <td className="px-4 py-3">

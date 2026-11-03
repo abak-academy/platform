@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -106,8 +106,22 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
   const [endScreenPromoText, setEndScreenPromoText] = useState("");
   const [cardNotes, setCardNotes] = useState<string[]>([]);
 
+  const initializedFor = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initializedFor.current = null;
+      return;
+    }
+    const key = exam?.id ?? "new";
+    if (exam && initializedFor.current === key) {
+      setTimerMode((exam.timer_mode as TimerMode) ?? "overall");
+      setDuration(exam.duration_minutes != null ? String(exam.duration_minutes) : "");
+      setRandomize(Boolean(exam.randomize));
+      setNavigation(exam.navigation_policy ?? "free");
+      return;
+    }
+    initializedFor.current = key;
     if (exam) {
       setTitle(exam.title ?? "");
       setScheduledAt(scheduledAtInputValue(exam.scheduled_at));

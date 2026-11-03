@@ -1332,6 +1332,25 @@ describe("composable exam — material conflicts and policy lock", () => {
     expect(container.textContent).not.toContain(sectionId);
   });
 
+  it("numbers the conflict by the section order the admin sees after removing an earlier section", async () => {
+    const otherId = "9a8b7c6d-1111-4222-8333-444455556666";
+    const base = composable();
+    const data = composable({
+      tests: [
+        { id: "entry-0", exam_id: "exam-1", test_id: otherId, sort_order: 0, question_presentation: "one_per_page", test: { id: otherId, title: "Section Awal", subject: "English", duration_minutes: 10, question_count: 3 } },
+        { ...base.tests[0], sort_order: 1 },
+      ],
+    });
+    open(data);
+
+    expect(await screen.findByText(/^#2 · Reading Section: soal 2, 4/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^hapus$/i })[0]);
+
+    expect(await screen.findByText(/^#1 · Reading Section: soal 2, 4/)).toBeInTheDocument();
+    expect(screen.queryByText(/^#2 · Reading Section/)).not.toBeInTheDocument();
+  });
+
   it("shows no conflict for one_per_page sections or sections without material", async () => {
     open(composable({}, "one_per_page"));
     await screen.findByLabelText("Tampilan soal Reading Section");

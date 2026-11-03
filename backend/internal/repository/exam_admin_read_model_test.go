@@ -19,7 +19,13 @@ func seedAdminReadExam(t *testing.T, pool *pgxpool.Pool, title string) uuid.UUID
 	return id
 }
 
-func attachAdminReadTest(t *testing.T, pool *pgxpool.Pool, examID uuid.UUID, sortOrder, duration int, materialByPosition map[int]string, questions int) uuid.UUID {
+type adminReadMaterial struct {
+	html, image, audio *string
+}
+
+func ptr(s string) *string { return &s }
+
+func attachAdminReadTest(t *testing.T, pool *pgxpool.Pool, examID uuid.UUID, sortOrder, duration int, materialByPosition map[int]adminReadMaterial, questions int) uuid.UUID {
 	t.Helper()
 	ctx := context.Background()
 	var testID uuid.UUID
@@ -30,14 +36,11 @@ func attachAdminReadTest(t *testing.T, pool *pgxpool.Pool, examID uuid.UUID, sor
 		`INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, $3)`, examID, testID, sortOrder)
 	require.NoError(t, err)
 	for pos := 1; pos <= questions; pos++ {
-		var material *string
-		if m, ok := materialByPosition[pos]; ok {
-			material = &m
-		}
+		m := materialByPosition[pos]
 		var qID uuid.UUID
 		require.NoError(t, pool.QueryRow(ctx,
-			`INSERT INTO question (format, body, point_correct, point_wrong, material_html)
-			 VALUES ('mcq', 'body', 1, 0, $1) RETURNING id`, material).Scan(&qID))
+			`INSERT INTO question (format, body, point_correct, point_wrong, material_html, image_url, audio_url)
+			 VALUES ('mcq', 'body', 1, 0, $1, $2, $3) RETURNING id`, m.html, m.image, m.audio).Scan(&qID))
 		_, err := pool.Exec(ctx,
 			`INSERT INTO test_question (test_id, question_id, sort_order) VALUES ($1, $2, $3)`, testID, qID, pos*10)
 		require.NoError(t, err)
@@ -80,6 +83,16 @@ func TestListExams_CompositionCounts(t *testing.T) {
 	require.Equal(t, 5, got.QuestionCount)
 	require.NotNil(t, got.SectionsDurationMinutes)
 	require.Equal(t, 75, *got.SectionsDurationMinutes)
+
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"section_count":2`)
+	require.Contains(t, string(raw), `"question_count":5`)
+	require.Contains(t, string(raw), `"sections_duration_minutes":75`)
+
+	rawEmpty, err := json.Marshal(findListedExam(t, items, empty))
+	require.NoError(t, err)
+	require.Contains(t, string(rawEmpty), `"sections_duration_minutes":null`)
 }
 
 func TestListExams_RegistrationCountIgnoresRevokedAndStaysSchoolScoped(t *testing.T) {
@@ -173,7 +186,7 @@ func TestGetExamDetail_HasSessions(t *testing.T) {
 					require.NoError(t, err)
 				case "submitted":
 					_, err := pool.Exec(ctx,
-						`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, submitted_at) VALUES ($1, $2, $3, now(), now())`,
+						`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, submitted_at, status) VALUES ($1, $2, $3, now(), now(), 'submitted')`,
 						regID, studentID, examID)
 					require.NoError(t, err)
 				}
@@ -192,18 +205,25 @@ func TestGetExamDetail_MaterialQuestionPositions(t *testing.T) {
 
 	examID := seedAdminReadExam(t, pool, "MP "+uuid.NewString())
 	secret := "<p>SECRET-MATERIAL-" + uuid.NewString() + "</p>"
-	attachAdminReadTest(t, pool, examID, 0, 10, map[int]string{2: secret, 4: secret}, 4)
+	attachAdminReadTest(t, pool, examID, 0, 10, map[int]adminReadMaterial{
+		2: {html: &secret},
+		3: {html: ptr(" \n\t ")},
+		4: {html: &secret},
+		5: {image: ptr("https://img.test/a.png")},
+		6: {audio: ptr("https://aud.test/a.mp3")},
+		7: {image: ptr("")},
+	}, 7)
 	attachAdminReadTest(t, pool, examID, 1, 10, nil, 2)
 
 	detail, err := repo.GetExamDetail(ctx, examID)
 	require.NoError(t, err)
 	require.Len(t, detail.Tests, 2)
-	require.Equal(t, []int{2, 4}, detail.Tests[0].MaterialQuestionPositions)
+	require.Equal(t, []int{2, 4, 5, 6}, detail.Tests[0].MaterialQuestionPositions)
 	require.Equal(t, []int{}, detail.Tests[1].MaterialQuestionPositions)
 
 	raw, err := json.Marshal(detail)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), "SECRET-MATERIAL")
-	require.Contains(t, string(raw), `"material_question_positions":[2,4]`)
+	require.Contains(t, string(raw), `"material_question_positions":[2,4,5,6]`)
 	require.Contains(t, string(raw), `"has_sessions":false`)
 }

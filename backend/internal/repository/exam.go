@@ -1497,7 +1497,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 					JOIN question qq ON qq.id = tq.question_id
 					WHERE tq.test_id = t.id
 				) m
-				WHERE COALESCE(BTRIM(m.material_html), '') <> ''
+				WHERE COALESCE(m.material_html, '') ~ '\S'
 				   OR COALESCE(m.image_url, '') <> ''
 				   OR COALESCE(m.audio_url, '') <> ''
 				ORDER BY m.pos
