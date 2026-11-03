@@ -107,7 +107,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByText("Jendela Check-in")).toBeVisible();
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
 
-    await page.getByRole("button", { name: "Tes & section", exact: true }).click();
+    await page.getByRole("button", { name: /^Tes & section \(\d+\)$/ }).click();
     const select = page.getByRole("combobox", { name: "Tampilan soal Literasi Membaca" });
     await expect(select).toBeDisabled();
     await expect(page.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeVisible();

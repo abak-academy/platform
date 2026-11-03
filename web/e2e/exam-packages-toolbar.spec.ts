@@ -77,7 +77,7 @@ for (const viewport of VIEWPORTS) {
 
     // Two "Cari…" inputs exist: the admin shell's global search is type="search"
     // (role searchbox); the page's own filter is a plain textbox.
-    const search = page.getByRole("textbox", { name: "Cari…" });
+    const search = page.getByRole("textbox", { name: "Cari ujian…" });
     await expect(page.locator('select[data-slot="select"]')).toHaveCount(0);
     await expect(search).toBeVisible();
     expect(await search.evaluate((el) => el.clientWidth)).toBeGreaterThan(0);

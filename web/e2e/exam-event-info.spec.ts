@@ -116,7 +116,7 @@ for (const width of VIEWPORTS) {
     expect((await card.boundingBox())!.width).toBeGreaterThan(200);
     await expectNoHorizontalOverflow(page);
 
-    await page.getByRole("button", { name: "Tes & section", exact: true }).click();
+    await page.getByRole("button", { name: /^Tes & section \(\d+\)$/ }).click();
     const rules = page.getByRole("region", { name: "Aturan pengerjaan" });
     await expect(rules).toBeVisible();
     expect((await rules.boundingBox())!.width).toBeGreaterThan(200);

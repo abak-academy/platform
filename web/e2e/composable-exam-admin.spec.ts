@@ -28,13 +28,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     });
     await page.setViewportSize(viewport);
     await page.goto("/admin/exam/packages/composable");
-    await page.getByRole("button", { name: "Tes & section", exact: true }).click();
+    await page.getByRole("button", { name: /^Tes & section \(\d+\)$/ }).click();
     const selector = page.getByRole("combobox", { name: "Tampilan soal Reading section" });
     await selector.selectOption("all_on_page");
-    await page.getByRole("button", { name: "Simpan", exact: true }).click();
+    await page.getByRole("button", { name: "Simpan susunan", exact: true }).click();
     await expect.poll(() => attachmentPayload).toEqual([{ test_id: "reading", question_presentation: "all_on_page" }]);
     await page.reload();
-    await page.getByRole("button", { name: "Tes & section", exact: true }).click();
+    await page.getByRole("button", { name: /^Tes & section \(\d+\)$/ }).click();
     await expect(selector).toHaveValue("all_on_page");
     const overflow = await page.evaluate(() => Array.from(document.querySelectorAll("main *")).filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, class: el.className, right: el.getBoundingClientRect().right })).slice(0, 8));
     expect(overflow).toEqual([]);
