@@ -417,6 +417,20 @@ describe("admin-tests hooks", () => {
     expect(spy).toHaveBeenCalledWith({ queryKey: adminTestsKeys.questions("t1") });
   });
 
+  it("useDetachQuestion_refetches_attached_set_when_the_server_rejects", async () => {
+    mockAuthFetch.mockRejectedValueOnce(new Error("question is not attached"));
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useDetachQuestion("t1"), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync("q1")).rejects.toThrow();
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminTestsKeys.questions("t1") });
+  });
+
   it("useReorderTestQuestions_refetches_attached_set_when_the_order_is_stale", async () => {
     mockAuthFetch.mockRejectedValueOnce(new Error("order must contain every attached question"));
 

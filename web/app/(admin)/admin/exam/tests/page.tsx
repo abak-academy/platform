@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ClipboardList, Pencil, Search, Trash2 } from "lucide-react";
@@ -245,7 +246,20 @@ export default function TestsPage() {
                   }}
                   className="cursor-pointer border-t align-top transition-colors hover:bg-muted/40"
                 >
-                  <td className="max-w-[18rem] px-4 py-3 font-medium [overflow-wrap:anywhere]">{test.title}</td>
+                  <td className="max-w-[18rem] px-4 py-3 font-medium [overflow-wrap:anywhere]">
+                    <Link
+                      href={`/admin/exam/tests/${test.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                        e.preventDefault();
+                        router.push(`/admin/exam/tests/${test.id}`);
+                      }}
+                      className="hover:underline"
+                    >
+                      {test.title}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">
                     <div>{test.subject}</div>
                     <div className="text-xs text-ink-500">{test.topic}</div>

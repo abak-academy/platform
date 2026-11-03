@@ -128,6 +128,7 @@ function QuestionRow({
   question,
   index,
   total,
+  reordering,
   onReorder,
   onPreview,
   onDetach,
@@ -135,6 +136,7 @@ function QuestionRow({
   question: QuestionWithOptions;
   index: number;
   total: number;
+  reordering: boolean;
   onReorder: (questionId: string, direction: "up" | "down") => void;
   onPreview: (index: number) => void;
   onDetach: (questionId: string) => void;
@@ -154,7 +156,7 @@ function QuestionRow({
         <button
           type="button"
           onClick={() => onReorder(q.id, "up")}
-          disabled={isFirst}
+          disabled={isFirst || reordering}
           aria-label={t("tests_reorder_up")}
           className="hover:text-ink-900 disabled:opacity-30"
         >
@@ -164,7 +166,7 @@ function QuestionRow({
         <button
           type="button"
           onClick={() => onReorder(q.id, "down")}
-          disabled={isLast}
+          disabled={isLast || reordering}
           aria-label={t("tests_reorder_down")}
           className="hover:text-ink-900 disabled:opacity-30"
         >
@@ -487,6 +489,7 @@ export default function TestDetailPage() {
                       question={q}
                       index={idx}
                       total={questions.length}
+                      reordering={reorder.isPending}
                       onReorder={handleReorder}
                       onPreview={openPreview}
                       onDetach={setDetachTarget}

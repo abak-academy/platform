@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import TestsPage from "./page";
@@ -82,6 +82,11 @@ const sampleTests: Test[] = [
 ];
 
 describe("TestsPage", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     testsState = {
       data: { data: sampleTests },
@@ -260,7 +265,6 @@ describe("TestsPage", () => {
       expect(toast.success).toHaveBeenCalledWith("Tes dihapus");
     });
 
-    vi.unstubAllGlobals();
   });
 
   it("fetches with no filters when every control is at its default (FR-16)", async () => {
@@ -296,7 +300,6 @@ describe("TestsPage", () => {
       expect.objectContaining({ q: "aljabar" })
     );
 
-    vi.useRealTimers();
   });
 
   it("re-scopes the topic dropdown to the selected subject and clears a stale topic (FR-13)", async () => {
@@ -424,5 +427,16 @@ describe("TestsPage", () => {
     expect(mockUseAdminTests).toHaveBeenLastCalledWith(
       expect.objectContaining({ subject: "Fisika", cursor: undefined }),
     );
+  });
+
+  it("exposes each row as a real link to the detail page, named by the test title", () => {
+    render(<TestsPage />);
+
+    const link = screen.getByRole("link", { name: "Tryout UTBK Saintek" });
+    expect(link).toHaveAttribute("href", "/admin/exam/tests/t1");
+
+    fireEvent.click(link);
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/admin/exam/tests/t1");
   });
 });

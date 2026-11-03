@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
@@ -142,6 +142,10 @@ const sampleQuestions: QuestionWithOptions[] = [
 ];
 
 describe("TestDetailPage", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "test-1" });
     testDetailState = {
@@ -290,6 +294,16 @@ describe("TestDetailPage", () => {
     expect(detach).toHaveAttribute("title");
   });
 
+  it("disables the reorder arrows while a reorder is pending", async () => {
+    reorderState = { mutateAsync: mockMutateAsync, isPending: true };
+    renderWithClient(<TestDetailPage />);
+
+    const row = (await screen.findByText("Apa ibu kota Indonesia?")).closest("[data-question-row]") as HTMLElement;
+    expect(within(row).getByRole("button", { name: /turun/i })).toBeDisabled();
+    const second = screen.getByText("Sebutkan 1+1").closest("[data-question-row]") as HTMLElement;
+    expect(within(second).getByRole("button", { name: /naik/i })).toBeDisabled();
+  });
+
   it("shows the server error when reorder is rejected as stale", async () => {
     mockMutateAsync.mockRejectedValueOnce(new Error("urutan tidak sesuai"));
     renderWithClient(<TestDetailPage />);
@@ -422,7 +436,6 @@ describe("TestDetailPage", () => {
     confirmFn.mockReturnValue(true);
     fireEvent.click(screen.getByTestId("tests-back-link"));
     expect(push).toHaveBeenCalledWith("/admin/exam/tests");
-    vi.unstubAllGlobals();
   });
 
   it("warns on reload or tab close only while the draft is dirty", async () => {

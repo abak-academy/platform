@@ -198,6 +198,9 @@ export function useDetachQuestion(testId: string) {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
     },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+    },
   });
 }
 

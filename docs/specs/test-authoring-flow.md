@@ -93,7 +93,7 @@ Keputusan yang ditetapkan untuk build (2026-11-03):
 
 - **Scope:** halaman Tes, question picker, dan pratinjau Tes. Aturan tambahan Exam dan WhatsApp (termasuk kartu status WhatsApp) pindah ke PR (c).
 - **Pratinjau Tes:** read-only untuk role yang sudah memiliki akses Tes (`tests:*`); tidak membuat sesi/attempt/registrasi; memakai renderer aman existing dan semua format jawaban.
-- **Meninggalkan halaman dengan draft:** bila draft metadata/materi/instruksi/audio belum disimpan, navigasi dalam aplikasi meminta konfirmasi "buang perubahan?" dan `beforeunload` memperingatkan saat tab ditutup/reload. Mutasi soal (attach/reorder/detach) tidak termasuk draft karena langsung tersimpan.
+- **Meninggalkan halaman dengan draft:** bila draft metadata/materi/instruksi/audio belum disimpan, navigasi dalam aplikasi meminta konfirmasi "buang perubahan?" dan `beforeunload` memperingatkan saat tab ditutup/reload. Mutasi soal (attach/reorder/detach) tidak termasuk draft karena langsung tersimpan. Browser Back/Forward adalah batasan yang diketahui: tidak dicegat (App Router tidak dapat memblokir navigasi).
 - **Usage count:** indikator "dipakai di N ujian" dihilangkan sampai ada kontrak data nyata.
 
 Knowledge reflection: none untuk system truth.

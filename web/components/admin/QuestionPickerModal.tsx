@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Check, Search } from "lucide-react";
 import {
@@ -37,8 +37,6 @@ const DIFFICULTY_LABEL: Record<string, string> = {
   hard: "diff_hard",
 };
 
-const CLAMP_THRESHOLD = 140;
-
 // Was ["mcq","multi_answer","short","fill_blank","essay"] — stale twice over:
 // it still offered the two retired formats and never offered multi_blank or
 // true_false at all, so the picker couldn't filter by the formats that
@@ -68,6 +66,38 @@ function SelectionBox({ selected }: { selected: boolean }) {
   );
 }
 
+function ClampedText({
+  text,
+  expanded,
+  onOverflow,
+}: {
+  text: string;
+  expanded: boolean;
+  onOverflow: (overflowing: boolean) => void;
+}) {
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || expanded) return;
+    const measure = () => onOverflow(el.scrollHeight > el.clientHeight);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text, expanded, onOverflow]);
+
+  return (
+    <p
+      ref={ref}
+      className={`min-w-0 text-sm text-ink-900 [overflow-wrap:anywhere] ${expanded ? "" : "line-clamp-3"}`}
+    >
+      {text}
+    </p>
+  );
+}
+
 export function QuestionPickerModal({
   open,
   onOpenChange,
@@ -84,6 +114,7 @@ export function QuestionPickerModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isAttaching, setIsAttaching] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [overflowing, setOverflowing] = useState<Set<string>>(new Set());
 
   const filters = useMemo(
     () => ({
@@ -112,6 +143,16 @@ export function QuestionPickerModal({
       setExpanded(new Set());
     }
   }, [open]);
+
+  function markOverflow(id: string, value: boolean) {
+    setOverflowing((prev) => {
+      if (prev.has(id) === value) return prev;
+      const next = new Set(prev);
+      if (value) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
 
   function toggleExpanded(id: string) {
     setExpanded((prev) => {
@@ -238,13 +279,11 @@ export function QuestionPickerModal({
                   >
                     <SelectionBox selected={isSelected} />
                     <div className="min-w-0 flex-1">
-                      <p
-                        className={`min-w-0 text-sm text-ink-900 [overflow-wrap:anywhere] ${
-                          isExpanded ? "" : "line-clamp-3"
-                        }`}
-                      >
-                        {body}
-                      </p>
+                      <ClampedText
+                        text={body}
+                        expanded={isExpanded}
+                        onOverflow={(value) => markOverflow(row.question.id, value)}
+                      />
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                         <span className="max-w-[140px] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
                           {row.question.id}
@@ -271,7 +310,7 @@ export function QuestionPickerModal({
                       </span>
                     )}
                   </button>
-                  {body.length > CLAMP_THRESHOLD && (
+                  {(isExpanded || overflowing.has(row.question.id)) && (
                     <button
                       type="button"
                       onClick={() => toggleExpanded(row.question.id)}

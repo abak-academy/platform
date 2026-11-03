@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionPickerModal } from "./QuestionPickerModal";
@@ -63,6 +63,11 @@ function renderWithClient(ui: React.ReactNode) {
 }
 
 describe("QuestionPickerModal", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     bankState = {
       data: { data: bankQuestions, next_cursor: "" },
@@ -117,8 +122,6 @@ describe("QuestionPickerModal", () => {
     });
 
     expect(bankFilterCalls.at(-1)?.search).toBe("bold");
-
-    vi.useRealTimers();
   });
 
   function bankItem(id: string, body: string): BankQuestionListItem {
@@ -131,7 +134,13 @@ describe("QuestionPickerModal", () => {
 
   const longBody = "x".repeat(200);
 
+  function mockOverflow(overflowing: boolean) {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(overflowing ? 100 : 40);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(60);
+  }
+
   it("clamps long bodies to three lines and expands inside the row without selecting it", () => {
+    mockOverflow(true);
     bankState = { ...bankState, data: { data: [bankItem("long1", longBody)], next_cursor: "" } };
     renderWithClient(
       <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
@@ -149,7 +158,9 @@ describe("QuestionPickerModal", () => {
     expect(screen.getByText(longBody).className).toContain("line-clamp-3");
   });
 
-  it("offers no expand toggle for short bodies", () => {
+  it("offers no expand toggle when the body fits in three lines, however many characters", () => {
+    mockOverflow(false);
+    bankState = { ...bankState, data: { data: [bankItem("long2", longBody)], next_cursor: "" } };
     renderWithClient(
       <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
     );
@@ -174,13 +185,10 @@ describe("QuestionPickerModal", () => {
     const [formatSelect, topicSelect] = screen.getAllByRole("combobox");
     fireEvent.change(formatSelect, { target: { value: "essay" } });
     fireEvent.change(topicSelect, { target: { value: "topic-9" } });
-    vi.useFakeTimers();
     fireEvent.change(screen.getByPlaceholderText("tests_picker_search"), { target: { value: "segitiga" } });
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    vi.useRealTimers();
-    expect(bankFilterCalls.at(-1)).toMatchObject({ search: "segitiga", topic_id: "topic-9", format: "essay" });
+    await vi.waitFor(() =>
+      expect(bankFilterCalls.at(-1)).toMatchObject({ search: "segitiga", topic_id: "topic-9", format: "essay" }),
+    );
 
     bankState = { ...bankState, data: { data: [bankItem("other", "Soal lain")], next_cursor: "" } };
     rerender(ui);
