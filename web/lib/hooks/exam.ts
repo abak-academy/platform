@@ -55,6 +55,11 @@ export function useRegistration(id: string | undefined) {
   });
 }
 
+function examDeviceHeaders(): Record<string, string> {
+  const id = getExamDeviceId();
+  return id ? { "X-Exam-Device": id } : {};
+}
+
 // ── Session hooks (FR26) ─────────────────────────────────────────────────
 
 export function useCheckIn() {
@@ -65,7 +70,7 @@ export function useCheckIn() {
         `/exam/checkin`,
         {
           method: "POST",
-          headers: { "X-Exam-Device": getExamDeviceId() },
+          headers: examDeviceHeaders(),
           body: JSON.stringify({ token }),
         },
       ),
@@ -81,7 +86,7 @@ export function useStartSession() {
     mutationFn: (registrationId: string) =>
       authFetch<SessionStartPayload>("/exam/sessions", {
         method: "POST",
-        headers: { "X-Exam-Device": getExamDeviceId() },
+        headers: examDeviceHeaders(),
         body: JSON.stringify({ registration_id: registrationId }),
       }),
   });
@@ -93,7 +98,7 @@ export function useReconnectSession(sessionId: string | undefined) {
     queryFn: () =>
       authFetch<SessionState>(
         `/exam/sessions/${encodeURIComponent(sessionId!)}`,
-        { headers: { "X-Exam-Device": getExamDeviceId() } },
+        { headers: examDeviceHeaders() },
       ),
     enabled: Boolean(sessionId),
   });

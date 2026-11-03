@@ -178,6 +178,42 @@ func TestCheckIn_RealDB_StoresDeviceIDWithFallbackToFingerprint(t *testing.T) {
 	}
 }
 
+func TestStartSession_RealDB_OldClientWithoutDeviceIDKeepsFingerprintKey(t *testing.T) {
+	f := seedResumeFixture(t, true)
+	old := DeviceProof{LegacyFP: "fp"}
+	f.checkIn(t, old)
+	first, err := f.start(old)
+	if err != nil {
+		t.Fatalf("first start: %v", err)
+	}
+
+	resumed, err := f.start(old)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if resumed.SessionID != first.SessionID {
+		t.Errorf("resume: want session %s, got %s", first.SessionID, resumed.SessionID)
+	}
+	if got, _ := realDBRedis.Get(f.deviceKey()); got != "fp" {
+		t.Fatalf("key after old-client resume: want %q, got %q", "fp", got)
+	}
+}
+
+func TestStartSession_RealDB_ResumeRejectsRevokedRegistration(t *testing.T) {
+	f := seedResumeFixture(t, false)
+	if _, err := f.start(DeviceProof{}); err != nil {
+		t.Fatalf("first start: %v", err)
+	}
+	if _, err := f.repo.Pool().Exec(context.Background(),
+		`UPDATE exam_registration SET status = 'revoked', revoked_at = now() WHERE id = $1`, f.regID); err != nil {
+		t.Fatalf("revoke registration: %v", err)
+	}
+
+	if _, err := f.start(DeviceProof{}); !errors.Is(err, ErrRegistrationRevoked) {
+		t.Fatalf("resume after revoke: want ErrRegistrationRevoked, got %v", err)
+	}
+}
+
 func TestStartSession_RealDB_LegacyFingerprintKeyMigratesToDeviceID(t *testing.T) {
 	f := seedResumeFixture(t, true)
 	f.checkIn(t, DeviceProof{LegacyFP: "legacy-fp"})
@@ -254,6 +290,25 @@ func TestReconnectSession_RealDB_DeviceCheck(t *testing.T) {
 				t.Fatalf("reconnect: want err %v, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestReconnectSession_RealDB_SubmittedSessionSkipsDeviceCheck(t *testing.T) {
+	f := seedResumeFixture(t, true)
+	original := DeviceProof{ID: uuid.NewString(), LegacyFP: "fp"}
+	f.checkIn(t, original)
+	sess, err := f.start(original)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if _, err := f.repo.Pool().Exec(context.Background(),
+		`UPDATE exam_session SET status = 'submitted', submitted_at = now() WHERE id = $1`, sess.SessionID); err != nil {
+		t.Fatalf("mark submitted: %v", err)
+	}
+
+	other := DeviceProof{ID: uuid.NewString(), LegacyFP: "other-fp"}
+	if _, err := f.svc.ReconnectSession(context.Background(), f.studentID.String(), sess.SessionID.String(), other); err != nil {
+		t.Fatalf("reconnect submitted from other device: %v", err)
 	}
 }
 

@@ -54,6 +54,12 @@ Outcome: sesi yang sudah berjalan dapat dilanjutkan dari perangkat (browser) yan
 
 Pemeriksaan perangkat pada setiap autosave/advance/submit; auto-submit saat jendela tutup; perubahan interval worker expiry; penegakan batas putar audio; perubahan aturan check-in untuk sesi baru.
 
+## Rollout
+
+Sebelum mengalihkan traffic, perpanjang kunci perangkat yang ada menjadi 24 jam (`SCAN` pada `exam:device:*`, lalu `EXPIRE <key> 86400`), dan deploy di luar jendela aktif ujian yang mewajibkan check-in. Alasan: kunci yang ditulis kode lama kedaluwarsa setelah durasi ujian dihitung dari check-in, sedangkan reconnect kini menegakkan perangkat untuk sesi check-in `in_progress`. Klien dengan bundle lama tanpa header memakai fallback IP+UA sampai halaman dimuat ulang.
+
 ## Residual risk
 
 ID perangkat di localStorage dapat disalin manual ke perangkat lain (setara dengan JWT yang juga di localStorage). Menghapus data browser di tengah ujian check-in membuat resume ditolak; pemulihan memerlukan bantuan admin (alur pemulihan perangkat di luar scope).
+
+Selama masa transisi (kunci lama, maksimal 24 jam), perangkat kedua milik siswa yang sama dengan IP+UA identik dapat mengklaim kunci format lama dan mengunci perangkat pertama; cakupannya tetap terbatas pada registrasi siswa itu sendiri.

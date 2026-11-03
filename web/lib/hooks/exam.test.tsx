@@ -265,6 +265,8 @@ describe("useSaveAnswers onSuccess and the mounted session query (issue #94)", (
   });
 });
 
+const DEVICE_ID = "11111111-1111-4111-8111-111111111111";
+
 describe("exam device header", () => {
   beforeEach(() => {
     mockAuthFetch.mockReset();
@@ -278,7 +280,7 @@ describe("exam device header", () => {
   }
 
   it("sends the stored device id on check-in", async () => {
-    localStorage.setItem("exam-device-id", "device-1");
+    localStorage.setItem("exam-device-id", DEVICE_ID);
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(() => useCheckIn(), { wrapper });
 
@@ -287,11 +289,11 @@ describe("exam device header", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(sentDeviceHeader()).toBe("device-1");
+    expect(sentDeviceHeader()).toBe(DEVICE_ID);
   });
 
   it("sends the stored device id on start session", async () => {
-    localStorage.setItem("exam-device-id", "device-1");
+    localStorage.setItem("exam-device-id", DEVICE_ID);
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(() => useStartSession(), { wrapper });
 
@@ -300,16 +302,32 @@ describe("exam device header", () => {
     });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(sentDeviceHeader()).toBe("device-1");
+    expect(sentDeviceHeader()).toBe(DEVICE_ID);
   });
 
   it("sends the stored device id on session reconnect", async () => {
-    localStorage.setItem("exam-device-id", "device-1");
+    localStorage.setItem("exam-device-id", DEVICE_ID);
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(() => useReconnectSession("session-1"), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    expect(sentDeviceHeader()).toBe("device-1");
+    expect(sentDeviceHeader()).toBe(DEVICE_ID);
+  });
+
+  it("omits the header and still sends requests when storage throws", async () => {
+    vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useStartSession(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate("reg-1");
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBeUndefined();
+    vi.restoreAllMocks();
   });
 });

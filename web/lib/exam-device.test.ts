@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 
 import { getExamDeviceId } from "./exam-device";
 
@@ -6,6 +6,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 describe("getExamDeviceId", () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
   });
 
@@ -21,8 +22,26 @@ describe("getExamDeviceId", () => {
   });
 
   it("reuses an id already in storage", () => {
+    const stored = "11111111-1111-4111-8111-111111111111";
+    localStorage.setItem("exam-device-id", stored);
+
+    expect(getExamDeviceId()).toBe(stored);
+  });
+
+  it("replaces a stored value that is not a uuid", () => {
     localStorage.setItem("exam-device-id", "stored-id");
 
-    expect(getExamDeviceId()).toBe("stored-id");
+    const id = getExamDeviceId();
+
+    expect(id).toMatch(UUID_RE);
+    expect(localStorage.getItem("exam-device-id")).toBe(id);
+  });
+
+  it("returns null when storage throws", () => {
+    vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+      throw new Error("denied");
+    });
+
+    expect(getExamDeviceId()).toBeNull();
   });
 });
