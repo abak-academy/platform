@@ -222,7 +222,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
   return (
     <Card className="gap-0 p-5">
       <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em] text-ink-500 uppercase">
+        <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em] whitespace-nowrap text-ink-500 uppercase">
           <ClipboardList className="size-4 text-brand-600" />
           {t("examcard_kicker")}
         </span>

@@ -58,7 +58,7 @@ let registrationTitle: string | null = null;
 
 vi.mock("@/lib/hooks/exam", () => ({
   useReconnectSession: () => sessionState,
-  useRegistration: () => ({ data: registrationTitle ? { exam: { title: registrationTitle } } : undefined }),
+  useRegistrations: () => ({ data: registrationTitle ? [{ session_id: "session-1", exam_title: registrationTitle }] : undefined }),
   useSaveAnswers: () => ({
     mutate: saveAnswersMutate,
     mutateAsync: saveAnswersMutateAsync,

@@ -24,7 +24,7 @@ import {
   useSubmitSession,
   useLogViolation,
   useAdvanceSection,
-  useRegistration,
+  useRegistrations,
 } from "@/lib/hooks/exam";
 import { useTranslation, DICT } from "@/lib/i18n";
 type I18nKey = keyof typeof DICT.id;
@@ -135,7 +135,8 @@ export default function SessionPage() {
     error,
     refetch,
   } = useReconnectSession(sessionId);
-  const { data: registration } = useRegistration(session?.registration_id);
+  const { data: registrations } = useRegistrations();
+  const examListTitle = registrations?.find((r) => r.session_id === sessionId)?.exam_title;
   const saveAnswers = useSaveAnswers(sessionId);
   const saveAnswersMutateAsync = saveAnswers.mutateAsync;
   const submitSession = useSubmitSession(sessionId);
@@ -1221,13 +1222,13 @@ export default function SessionPage() {
   // to avoid duplicating the first section's title (which appears as the section label below).
   // In standard mode, show the title of the test that owns the current question
   // (not tests[0]), so a multi-test paper does not keep the first test's name.
-  const examTitle = composable ? registration?.exam.title ?? currentTestTitle : isSectioned
+  const examTitle = composable ? examListTitle ?? currentTestTitle : isSectioned
     ? session?.mode === "utbk"
       ? t("exam_packages_modal_mode_utbk")
       : t("exam_packages_modal_mode_ielts")
     : currentTestTitle;
   const sectionProgress =
-    composable && registration && currentTest && tests.length > 0
+    composable && examListTitle && currentTest && tests.length > 0
       ? `${t("session_section_progress")
           .replace("{n}", String(tests.indexOf(currentTest) + 1))
           .replace("{total}", String(tests.length))} · ${currentTestTitle}`
