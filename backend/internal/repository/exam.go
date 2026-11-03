@@ -71,7 +71,7 @@ func scanTestWithCount(row interface{ Scan(dest ...any) error }, t *model.Test) 
 	var audioPlayLimit *int
 	err := row.Scan(
 		&t.ID, &t.Title, &t.Subject, &t.Topic, &t.DurationMinutes,
-		&audioURL, &audioPlayLimit, &t.SectionType, &t.SharedMaterialHTML, &t.InstructionsHTML, &t.QuestionCount, &t.CreatedAt,
+		&audioURL, &audioPlayLimit, &t.SectionType, &t.SharedMaterialHTML, &t.InstructionsHTML, &t.QuestionCount, &t.ExamCount, &t.CreatedAt,
 	)
 	if err != nil {
 		return err
@@ -235,6 +235,12 @@ func (r *Repository) GetTestDetail(ctx context.Context, id uuid.UUID) (*model.Te
 		return nil, err
 	}
 
+	if err := r.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM exam_test WHERE test_id = $1`, id,
+	).Scan(&test.ExamCount); err != nil {
+		return nil, err
+	}
+
 	questions, err := r.ListQuestions(ctx, id)
 	if err != nil {
 		return nil, err
@@ -254,11 +260,14 @@ func (r *Repository) ListTests(ctx context.Context, filter TestFilter) ([]model.
 	// LEFT JOIN with a grouped count keeps tests without questions counted as 0.
 	// Count through test_question since post-0025 attachment lives on the join.
 	query := `SELECT t.id, t.title, t.subject, t.topic, t.duration_minutes,
-		t.audio_url, t.audio_play_limit, t.section_type, t.shared_material_html, t.instructions_html, COALESCE(q.cnt, 0), t.created_at
+		t.audio_url, t.audio_play_limit, t.section_type, t.shared_material_html, t.instructions_html, COALESCE(q.cnt, 0), COALESCE(e.cnt, 0), t.created_at
 	FROM test t
 	LEFT JOIN (
 		SELECT test_id, COUNT(*) AS cnt FROM test_question GROUP BY test_id
 	) q ON q.test_id = t.id
+	LEFT JOIN (
+		SELECT test_id, COUNT(*) AS cnt FROM exam_test GROUP BY test_id
+	) e ON e.test_id = t.id
 	WHERE 1=1`
 	where, args, argIdx := testFilterSQL(filter, 1)
 	query += where

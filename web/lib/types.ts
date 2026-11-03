@@ -635,6 +635,7 @@ export interface Test {
   audio_play_limit?: number | null;
   section_type?: string | null;
   question_count?: number;
+  exam_count?: number;
   created_at?: string;
 }
 

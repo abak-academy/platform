@@ -4,12 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ClipboardList, Pencil, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Pencil, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TestModal } from "@/components/admin/TestModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   useAdminTests,
@@ -32,6 +31,7 @@ export default function TestsPage() {
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const q = useDebouncedValue(search).trim();
 
   const allTopics = useTopics();
@@ -50,6 +50,8 @@ export default function TestsPage() {
   useEffect(() => {
     if (topic && !topicOptions.some((opt) => opt.name === topic)) setTopic("");
   }, [topic, topicsForSubject.data]);
+
+  const activeFilters = (subject ? 1 : 0) + (topic ? 1 : 0);
 
   const filterKey = `${subject}\u0000${topic}\u0000${q}`;
   const [page, setPage] = useState<{ key: string; cursor?: string }>({ key: filterKey });
@@ -151,29 +153,58 @@ export default function TestsPage() {
         actions={<Button onClick={openCreate}>{t("tests_new")}</Button>}
       />
 
-      <div
-        data-testid="exam-tests-toolbar"
-        className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
-      >
-        <select
-          data-slot="select"
-          data-testid="tests-subject-filter"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+      <div data-testid="exam-tests-toolbar" className="flex flex-wrap items-center gap-3">
+        <div className="relative min-w-0 flex-1 basis-full sm:basis-0">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+          <Input
+            data-testid="tests-search-input"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("tests_search_placeholder")}
+            aria-label={t("tests_search_placeholder")}
+            className="h-10 pl-9"
+          />
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          aria-expanded={filtersOpen}
+          aria-controls={filtersOpen ? "tests-filter-panel" : undefined}
+          onClick={() => setFiltersOpen((open) => !open)}
         >
-          <option value="">{t("tab_all")}</option>
-          {subjectOptions.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+          <SlidersHorizontal className="mr-1 size-4" />
+          {t("tests_filter")}
+          {activeFilters > 0 && ` (${activeFilters})`}
+        </Button>
+        <span data-testid="tests-count" className="text-sm text-ink-500" aria-live="polite">
+          {t("tests_count").replace("{n}", String(testsResp?.total ?? tests.length))}
+        </span>
+      </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+      {filtersOpen && (
+        <div
+          id="tests-filter-panel"
+          className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center"
+        >
+          <select
+            data-slot="select"
+            data-testid="tests-subject-filter"
+            aria-label={t("tests_field_subject")}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          >
+            <option value="">{t("tab_all")}</option>
+            {subjectOptions.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
           <select
             data-slot="select"
             data-testid="tests-topic-filter"
+            aria-label={t("tests_field_topic")}
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
             disabled={topicsForSubject.isLoading}
@@ -186,19 +217,21 @@ export default function TestsPage() {
               </option>
             ))}
           </select>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-            <Input
-              data-testid="tests-search-input"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("search")}
-              className="pl-9"
-            />
-          </div>
+          {activeFilters > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setSubject("");
+                setTopic("");
+              }}
+            >
+              {t("tests_filter_reset")}
+            </Button>
+          )}
         </div>
-      </div>
+      )}
 
       {isLoading && tests.length === 0 && (
         <div className="space-y-2">
@@ -219,7 +252,7 @@ export default function TestsPage() {
 
       {!isError && tests.length > 0 && (
         <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[44rem] text-sm">
             <thead className="bg-muted">
               <tr>
                 <th className="px-4 py-3 text-left font-medium">{t("tests_col_test")}</th>
@@ -264,15 +297,19 @@ export default function TestsPage() {
                     <div>{test.subject}</div>
                     <div className="text-xs text-ink-500">{test.topic}</div>
                   </td>
-                  <td className="px-4 py-3 tabular-nums">{test.question_count ?? 0}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{test.duration_minutes} min</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                    {t("tests_questions_n").replace("{n}", String(test.question_count ?? 0))}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {t("tests_minutes_n").replace("{n}", String(test.duration_minutes))}
+                  </td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {test.shared_material_html?.trim() && (
-                        <Badge variant="secondary">{t("tests_content_material")}</Badge>
-                      )}
-                      {test.audio_url && <Badge variant="secondary">{t("tests_content_audio")}</Badge>}
+                    <div>
+                      {test.shared_material_html?.trim()
+                        ? t("tests_content_material")
+                        : t("tests_content_no_material")}
                     </div>
+                    {test.audio_url && <div className="text-xs text-ink-500">{t("tests_content_audio")}</div>}
                   </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-1">
@@ -312,6 +349,8 @@ export default function TestsPage() {
           {t("tests_empty")}
         </div>
       )}
+
+      <p className="text-xs text-ink-500">{t("tests_list_footnote")}</p>
 
       {!isLoading && !isError && tests.length > 0 && (
         <div className="flex items-center justify-between gap-3">

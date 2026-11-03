@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Abak Academy — Prototype alur exam</title>
+  <link rel="stylesheet" href="style.css?rev=5">
+  <link rel="stylesheet" href="tests.css?rev=8">
+</head>
+<body>
+  <div class="prototype-bar">
+    <span><strong>PROTOTYPE</strong><span class="prototype-label"> · Alur exam · data contoh</span></span>
+    <nav aria-label="Tampilan prototype"><button data-go="admin" class="selected">Admin</button><button data-go="student">Siswa</button></nav>
+    <label class="scenario" id="admin-scenario-label">Skenario <select id="scenario"><option value="draft">Belum ada sesi</option><option value="locked">Sudah ada sesi</option></select></label>
+    <label class="scenario" id="student-scenario-label" hidden>Kondisi ujian <select id="student-scenario"><option value="ready">Akses terbuka</option><option value="upcoming">Belum dibuka</option></select></label>
+    <button id="reset" class="text-button">Reset</button>
+  </div>
+  <div id="app"></div>
+  <dialog id="modal" aria-labelledby="modal-title"><div id="modal-content"></div></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="tests.js?rev=5"></script>
+  <script src="app.js?rev=8"></script>
+</body>
+</html>

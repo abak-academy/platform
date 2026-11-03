@@ -227,3 +227,30 @@ func TestGetExamDetail_MaterialQuestionPositions(t *testing.T) {
 	require.Contains(t, string(raw), `"material_question_positions":[2,4,5,6]`)
 	require.Contains(t, string(raw), `"has_sessions":false`)
 }
+
+func TestTestReads_ExamCount(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	unused := attachAdminReadTest(t, pool, seedAdminReadExam(t, pool, "EC "+uuid.NewString()), 0, 30, nil, 1)
+	_, err := pool.Exec(ctx, `DELETE FROM exam_test WHERE test_id = $1`, unused)
+	require.NoError(t, err)
+
+	shared := attachAdminReadTest(t, pool, seedAdminReadExam(t, pool, "EC "+uuid.NewString()), 0, 30, nil, 1)
+	_, err = pool.Exec(ctx, `INSERT INTO exam_test (exam_id, test_id, sort_order) VALUES ($1, $2, 0)`,
+		seedAdminReadExam(t, pool, "EC "+uuid.NewString()), shared)
+	require.NoError(t, err)
+
+	for id, want := range map[uuid.UUID]int{unused: 0, shared: 2} {
+		detail, err := repo.GetTestDetail(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, want, detail.Test.ExamCount)
+
+		list, _, err := repo.ListTests(ctx, TestFilter{Q: detail.Test.Title, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+		require.Equal(t, id, list[0].ID)
+		require.Equal(t, want, list[0].ExamCount)
+	}
+}
