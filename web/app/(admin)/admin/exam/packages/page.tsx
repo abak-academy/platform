@@ -2,23 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Calendar, Search } from "lucide-react";
+import { Calendar, Search } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
 
-const STATUS_OPTIONS = ["", "draft", "published"] as const;
-
-// Selling an exam (price/status/publish) is managed on the attached Product(s)
-// via /admin/products — mirrors Course, which shows no status/price columns here.
 function formatScheduled(iso?: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -36,15 +32,13 @@ export default function ExamPackagesPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<ExamListItem | null>(null);
 
-  const [status, setStatus] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const q = useDebouncedValue(searchInput).trim();
   const [cursor, setCursor] = useState<string | undefined>();
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [items, setItems] = useState<ExamListItem[]>([]);
 
-  // A debounced search commit must restart pagination at page 1 — same as the
-  // status select does inline below.
+  // A debounced search commit must restart pagination at page 1.
   useEffect(() => {
     setItems([]);
     setCursor(undefined);
@@ -52,8 +46,8 @@ export default function ExamPackagesPage() {
   }, [q]);
 
   const filters = useMemo(
-    () => ({ cursor, limit: 20, q: q || undefined, status: status || undefined }),
-    [cursor, q, status]
+    () => ({ cursor, limit: 20, q: q || undefined }),
+    [cursor, q]
   );
 
   const { data, isLoading, isFetching, isError, error } = useExams(filters);
@@ -66,7 +60,7 @@ export default function ExamPackagesPage() {
       return [...previous, ...data.data.filter((exam) => !ids.has(exam.id))];
     });
     setNextCursor(data.next_cursor);
-  }, [cursor, data, q, status]);
+  }, [cursor, data, q]);
 
   return (
     <div className="space-y-6 fade-in">
@@ -83,34 +77,14 @@ export default function ExamPackagesPage() {
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <select
-          data-slot="select"
-          value={status}
-          onChange={(e) => {
-            setItems([]);
-            setCursor(undefined);
-            setNextCursor(undefined);
-            setStatus(e.target.value);
-          }}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-        >
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s}>
-              {s === "" ? t("tab_all") : s}
-            </option>
-          ))}
-        </select>
-
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-          <Input
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("search")}
-            className="pl-9"
-          />
-        </div>
+      <div className="relative w-full sm:w-64">
+        <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+        <Input
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder={t("search")}
+          className="pl-9"
+        />
       </div>
 
       {isLoading && (
@@ -133,58 +107,105 @@ export default function ExamPackagesPage() {
             {t("exam_packages_empty")}
           </div>
         ) : (
-          <div className="md-card-outlined divide-y">
-            {items.map((exam) => (
-              <div
-                key={exam.id}
-                data-testid="package-row"
-                role="button"
-                tabIndex={0}
-                onClick={() => router.push(`/admin/exam/packages/${exam.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/admin/exam/packages/${exam.id}`);
-                  }
-                }}
-                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-ink-900 truncate">{exam.title}</span>
-                    {exam.is_free && (
-                      <Badge variant="secondary">{t("exam_packages_modal_is_free")}</Badge>
-                    )}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-500">
-                    <span>
-                      {formatScheduled(exam.scheduled_at)}
-                      {exam.scheduled_end_at && ` – ${formatScheduled(exam.scheduled_end_at)}`}
-                    </span>
-                    {exam.timer_mode && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span>{exam.timer_mode}</span>
-                      </>
-                    )}
-                    <span aria-hidden="true">·</span>
-                    {/* ?? not || — a registration_count of 0 must still render */}
-                    <span>
-                      {t("exam_packages_registered_count").replace(
-                        "{n}",
-                        String(exam.registration_count ?? 0)
-                      )}
-                    </span>
-                    <Badge variant={exam.status === "published" ? "default" : "secondary"}>
-                      {exam.status ?? "draft"}
-                    </Badge>
-                  </div>
-                </div>
-                <ChevronRight className="size-4 shrink-0 text-ink-400" />
-              </div>
-            ))}
+          <div className="overflow-x-auto md-card-outlined">
+            <table className="w-full text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_exam")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_composition")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_delivery")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_time")}</th>
+                  <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_access")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((exam) => {
+                  const composable = exam.format_version === 2;
+                  const workingMinutes =
+                    exam.timer_mode === "per_test" ? exam.sections_duration_minutes : exam.duration_minutes;
+                  const open = () => router.push(`/admin/exam/packages/${exam.id}`);
+                  return (
+                    <tr
+                      key={exam.id}
+                      data-testid="package-row"
+                      tabIndex={0}
+                      onClick={open}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          open();
+                        }
+                      }}
+                      className="cursor-pointer border-t align-top transition-colors hover:bg-muted/40"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{exam.title}</div>
+                        {/* ?? not || — a registration_count of 0 must still render */}
+                        <div className="text-xs text-ink-500">
+                          {t("exam_packages_registered_count").replace(
+                            "{n}",
+                            String(exam.registration_count ?? 0)
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {composable
+                          ? t("exam_admin_composition")
+                              .replace("{sections}", String(exam.section_count ?? 0))
+                              .replace("{questions}", String(exam.question_count ?? 0))
+                          : t("exam_admin_legacy_format")}
+                      </td>
+                      <td className="px-4 py-3">
+                        {composable ? (
+                          <>
+                            <div>
+                              {t(
+                                exam.navigation_policy === "sequential"
+                                  ? "format_navigation_sequential"
+                                  : "format_navigation_free"
+                              )}
+                            </div>
+                            <div className="text-xs text-ink-500">
+                              {t("exam_admin_presentation_per_section")}
+                            </div>
+                          </>
+                        ) : (
+                          examModeLabel(exam.mode, t)
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {workingMinutes == null ? (
+                          "—"
+                        ) : (
+                          <>
+                            <div>
+                              {t(
+                                exam.timer_mode === "per_test"
+                                  ? "exam_admin_time_sections_total"
+                                  : "exam_admin_time_overall"
+                              ).replace("{n}", String(workingMinutes))}
+                            </div>
+                            <div className="text-xs text-ink-500">
+                              {t(exam.timer_mode === "per_test" ? "format_timer_section" : "format_timer_overall")}
+                            </div>
+                          </>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {formatScheduled(exam.scheduled_at)}
+                        {exam.scheduled_end_at && ` – ${formatScheduled(exam.scheduled_end_at)}`}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )
+      )}
+
+      {!isLoading && !isError && (
+        <p className="text-xs text-ink-500">{t("exam_admin_products_footnote")}</p>
       )}
 
       {nextCursor && !isError && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,8 @@ interface ExamModalProps {
   onClose: () => void;
   exam?: ExamListItem | null;
   onSaved?: (exam: ExamListItem) => void;
+  policyLocked?: boolean;
+  onSessionsConflict?: () => void;
 }
 
 type TimerMode = "overall" | "per_test";
@@ -53,6 +55,11 @@ function nonNegativeInt(value: string): number | null {
   return Math.max(0, n);
 }
 
+function isAtLeastTwo(value: string): boolean {
+  const n = value === "" ? NaN : Number(value);
+  return Number.isInteger(n) && n >= 2;
+}
+
 function inputValueFromNumber(n: number | null | undefined): string {
   return n != null ? String(n) : "";
 }
@@ -70,7 +77,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
+export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, onSessionsConflict }: ExamModalProps) {
   const { t } = useTranslation();
   const isEdit = Boolean(exam);
   const composable = !exam || exam.format_version === 2;
@@ -92,13 +99,29 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
   const [resultReleaseAt, setResultReleaseAt] = useState("");
   const [checkInWindow, setCheckInWindow] = useState("");
   const [graceWindow, setGraceWindow] = useState("");
-  const [maxAttempts, setMaxAttempts] = useState("");
+  const [allowMultipleAttempts, setAllowMultipleAttempts] = useState(false);
+  const [attemptsCount, setAttemptsCount] = useState("2");
+  const [unlimitedAttempts, setUnlimitedAttempts] = useState(false);
   const [endScreenImageUrl, setEndScreenImageUrl] = useState("");
   const [endScreenPromoText, setEndScreenPromoText] = useState("");
   const [cardNotes, setCardNotes] = useState<string[]>([]);
 
+  const initializedFor = useRef<string | null>(null);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      initializedFor.current = null;
+      return;
+    }
+    const key = exam?.id ?? "new";
+    if (exam && initializedFor.current === key) {
+      setTimerMode((exam.timer_mode as TimerMode) ?? "overall");
+      setDuration(exam.duration_minutes != null ? String(exam.duration_minutes) : "");
+      setRandomize(Boolean(exam.randomize));
+      setNavigation(exam.navigation_policy ?? "free");
+      return;
+    }
+    initializedFor.current = key;
     if (exam) {
       setTitle(exam.title ?? "");
       setScheduledAt(scheduledAtInputValue(exam.scheduled_at));
@@ -115,7 +138,10 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setResultReleaseAt(scheduledAtInputValue(exam.result_release_at));
       setCheckInWindow(inputValueFromNumber(exam.check_in_window_minutes));
       setGraceWindow(inputValueFromNumber(exam.grace_window_minutes));
-      setMaxAttempts(inputValueFromNumber(exam.max_attempts));
+      const attempts = exam.max_attempts;
+      setAllowMultipleAttempts(attempts == null || attempts >= 2);
+      setUnlimitedAttempts(attempts == null);
+      setAttemptsCount(attempts != null && attempts >= 2 ? String(attempts) : "2");
       setEndScreenImageUrl(exam.end_screen_image_url ?? "");
       setEndScreenPromoText(exam.end_screen_promo_text ?? "");
       setCardNotes(exam.card_notes ?? []);
@@ -135,7 +161,9 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       setResultReleaseAt("");
       setCheckInWindow("");
       setGraceWindow("");
-      setMaxAttempts("");
+      setAllowMultipleAttempts(false);
+      setUnlimitedAttempts(false);
+      setAttemptsCount("2");
       setEndScreenImageUrl("");
       setEndScreenPromoText("");
       setCardNotes([]);
@@ -157,8 +185,9 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       (!durationRequired || (duration !== "" && Number(duration) > 0)) &&
       !(composable && timerMode === "per_test" && navigation !== "sequential") &&
       !endBeforeStart &&
+      !(allowMultipleAttempts && !unlimitedAttempts && !isAtLeastTwo(attemptsCount)) &&
       !isPending,
-    [title, duration, durationRequired, endBeforeStart, isPending, composable, timerMode, navigation],
+    [title, duration, durationRequired, endBeforeStart, isPending, composable, timerMode, navigation, allowMultipleAttempts, unlimitedAttempts, attemptsCount],
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -179,7 +208,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       result_release_at: scheduledAtIso(resultReleaseAt),
       check_in_window_minutes: nonNegativeInt(checkInWindow),
       grace_window_minutes: nonNegativeInt(graceWindow),
-      max_attempts: nonNegativeInt(maxAttempts),
+      max_attempts: !allowMultipleAttempts ? 1 : unlimitedAttempts ? null : Number(attemptsCount),
     };
 
     try {
@@ -205,6 +234,11 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
       }
       onClose();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "exam_has_sessions") {
+        toast.error(t("exam_admin_has_sessions_error"));
+        onSessionsConflict?.();
+        return;
+      }
       toast.error(err instanceof ApiError ? err.message : t("error_generic"));
     }
   }
@@ -272,13 +306,14 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
 
             <div className="grid gap-3">
               <SectionHeading>{t("exam_packages_modal_section_format")}</SectionHeading>
+              {policyLocked && <p className="text-xs text-ink-500">{t("exam_admin_policy_locked")}</p>}
               {composable ? (
                 <div className="grid gap-2">
                   <Label>{t("format_navigation")}</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {(["free", "sequential"] as const).map(value => (
                       <label key={value} className={`${RADIO_CARD_BASE} ${navigation === value ? RADIO_CARD_ON : RADIO_CARD_OFF}`}>
-                        <input type="radio" name="navigation_policy" checked={navigation === value} onChange={() => setNavigation(value)} disabled={isPending} />
+                        <input type="radio" name="navigation_policy" checked={navigation === value} onChange={() => setNavigation(value)} disabled={isPending || policyLocked} />
                         <span>{t(value === "free" ? "format_navigation_free" : "format_navigation_sequential")}</span>
                       </label>
                     ))}
@@ -338,7 +373,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                           value={value}
                           checked={timerMode === value}
                           onChange={() => { setTimerMode(value); if (composable && value === "per_test") setNavigation("sequential"); }}
-                          disabled={isPending}
+                          disabled={isPending || policyLocked}
                         />
                         <span>{label}</span>
                       </label>
@@ -357,7 +392,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                       value={duration}
                       onChange={(e) => setDuration(e.target.value)}
                       placeholder="60"
-                      disabled={isPending}
+                      disabled={isPending || policyLocked}
                     />
                   </div>
                 )}
@@ -369,12 +404,12 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
               <div className="grid grid-cols-2 gap-2">
                 {(
                   [
-                    [isFree, setIsFree, t("exam_packages_modal_is_free")],
-                    [requiresCheckin, setRequiresCheckin, t("exam_packages_modal_requires_checkin")],
-                    [allowLeaderboard, setAllowLeaderboard, t("exam_packages_modal_allow_leaderboard")],
-                    [randomize, setRandomize, t("exam_packages_modal_randomize")],
+                    [isFree, setIsFree, t("exam_packages_modal_is_free"), false],
+                    [requiresCheckin, setRequiresCheckin, t("exam_packages_modal_requires_checkin"), false],
+                    [allowLeaderboard, setAllowLeaderboard, t("exam_packages_modal_allow_leaderboard"), false],
+                    [randomize, setRandomize, t("exam_packages_modal_randomize"), true],
                   ] as const
-                ).map(([checked, setChecked, label]) => (
+                ).map(([checked, setChecked, label, isPolicy]) => (
                   <label
                     key={label}
                     className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
@@ -385,7 +420,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                       type="checkbox"
                       checked={checked}
                       onChange={(e) => setChecked(e.target.checked)}
-                      disabled={isPending}
+                      disabled={isPending || (policyLocked && isPolicy)}
                     />
                     <span>{label}</span>
                   </label>
@@ -451,7 +486,7 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="exam-check-in-window">{t("exam_packages_modal_check_in_window")}</Label>
                   <Input
@@ -474,20 +509,51 @@ export function ExamModal({ open, onClose, exam, onSaved }: ExamModalProps) {
                     disabled={isPending}
                   />
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-max-attempts">{t("exam_packages_modal_max_attempts")}</Label>
-                  <Input
-                    id="exam-max-attempts"
-                    type="number"
-                    min={0}
-                    value={maxAttempts}
-                    onChange={(e) => setMaxAttempts(e.target.value)}
+              </div>
+
+              <div className="grid gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={allowMultipleAttempts}
+                    onChange={(e) => setAllowMultipleAttempts(e.target.checked)}
                     disabled={isPending}
                   />
-                  <p className="text-xs text-ink-500">
-                    {t("exam_packages_modal_max_attempts_hint")}
-                  </p>
-                </div>
+                  <span>{t("exam_admin_attempts_multiple")}</span>
+                </label>
+                {!allowMultipleAttempts && (
+                  <p className="text-xs text-ink-500">{t("exam_admin_attempts_single_hint")}</p>
+                )}
+                {allowMultipleAttempts && (
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {!unlimitedAttempts && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="exam-max-attempts">{t("exam_admin_attempts_count")}</Label>
+                        <Input
+                          id="exam-max-attempts"
+                          type="number"
+                          min={2}
+                          step={1}
+                          value={attemptsCount}
+                          onChange={(e) => setAttemptsCount(e.target.value)}
+                          disabled={isPending}
+                        />
+                        {!isAtLeastTwo(attemptsCount) && (
+                          <p role="alert" className="text-xs text-danger">{t("exam_admin_attempts_required")}</p>
+                        )}
+                      </div>
+                    )}
+                    <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={unlimitedAttempts}
+                        onChange={(e) => setUnlimitedAttempts(e.target.checked)}
+                        disabled={isPending}
+                      />
+                      <span>{t("exam_admin_attempts_unlimited")}</span>
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
 
