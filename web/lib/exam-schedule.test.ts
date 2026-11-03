@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { accessWindow, workingMinutes } from "./exam-schedule";
+import { accessWindow, countdownParts, workingMinutes } from "./exam-schedule";
 
 describe("accessWindow", () => {
   it("reports a same-day window in Asia/Jakarta, not UTC", () => {
@@ -23,6 +23,42 @@ describe("accessWindow", () => {
     expect(accessWindow("2026-07-15T02:00:00Z", null, "en")?.to).toBeNull();
     expect(accessWindow(null, null, "id")).toBeNull();
     expect(accessWindow("not-a-date", null, "id")).toBeNull();
+  });
+});
+
+describe("accessWindow weekday", () => {
+  it("prefixes the full weekday when asked, in Asia/Jakarta", () => {
+    const w = accessWindow("2026-11-07T01:00:00Z", "2026-11-07T03:00:00Z", "id", { weekday: true });
+    expect(w?.from.date).toBe("Sabtu, 7 Nov 2026");
+    expect(w?.from.time).toMatch(/^08[.:]00$/);
+    expect(w?.to?.time).toMatch(/^10[.:]00$/);
+    expect(accessWindow("2026-11-07T01:00:00Z", null, "id")?.from.date).toBe("7 Nov 2026");
+  });
+
+  it("localizes the weekday in English", () => {
+    expect(accessWindow("2026-11-07T01:00:00Z", null, "en", { weekday: true })?.from.date).toContain("Saturday");
+  });
+});
+
+describe("countdownParts", () => {
+  const MIN = 60_000;
+  it("reports whole days when a day or more remains", () => {
+    expect(countdownParts(5 * 24 * 60 * MIN + 3 * 60 * MIN)).toEqual({ unit: "day", n: 5 });
+  });
+
+  it("switches to hours below one day", () => {
+    expect(countdownParts(23 * 60 * MIN + 59 * MIN)).toEqual({ unit: "hour", n: 23 });
+    expect(countdownParts(2 * 60 * MIN)).toEqual({ unit: "hour", n: 2 });
+  });
+
+  it("switches to minutes below one hour and never shows 0", () => {
+    expect(countdownParts(45 * MIN)).toEqual({ unit: "minute", n: 45 });
+    expect(countdownParts(10_000)).toEqual({ unit: "minute", n: 1 });
+  });
+
+  it("is null once the moment has passed", () => {
+    expect(countdownParts(0)).toBeNull();
+    expect(countdownParts(-5 * MIN)).toBeNull();
   });
 });
 

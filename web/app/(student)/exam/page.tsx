@@ -7,38 +7,22 @@ import {
   AlertCircle,
   ArrowRight,
   CalendarDays,
-  Clock,
+  ClipboardList,
   Download,
   Lock,
   Play,
   Trophy,
-  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useRegistrations, useStartSession } from "@/lib/hooks/exam";
-import { accessWindow, workingMinutes } from "@/lib/exam-schedule";
-import { useTranslation } from "@/lib/i18n";
+import { accessWindow, countdownParts, workingMinutes } from "@/lib/exam-schedule";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RegistrationListItem } from "@/lib/types";
-
-// "6 hari 7 jam" / "45 menit" style countdown, matching the mockup's PkgCard.
-function formatCountdown(ms: number, lang: "id" | "en"): string {
-  if (ms <= 0) return lang === "id" ? "Segera" : "Any moment";
-  const totalMinutes = Math.floor(ms / 60_000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-  const dayLabel = lang === "id" ? "hari" : "d";
-  const hourLabel = lang === "id" ? "jam" : "h";
-  const minLabel = lang === "id" ? "menit" : "m";
-  if (days > 0) return `${days} ${dayLabel} ${hours} ${hourLabel}`;
-  if (hours > 0) return `${hours} ${hourLabel} ${minutes} ${minLabel}`;
-  return `${minutes} ${minLabel}`;
-}
 
 type CardState =
   | { kind: "start" }
@@ -177,10 +161,13 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
   const startSessionMutation = useStartSession();
 
   const state = computeCardState(reg, now);
-  const ready = state.kind === "start" || state.kind === "checkin";
   const minutes = workingMinutes(reg);
   const sequential = reg.navigation_policy === "sequential";
   const access = accessWindow(reg.scheduled_at, reg.scheduled_end_at, lang);
+  const attempts =
+    reg.max_attempts == null
+      ? t("examdetail_attempts_unlimited")
+      : t("examdetail_attempts_max").replace("{n}", String(Math.max(1, reg.max_attempts)));
 
   const handleStart = async () => {
     try {
@@ -195,65 +182,100 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     router.push(`/exam/${reg.id}/card`);
   };
 
+  const detailHref = `/exam/${reg.id}`;
+  const resuming = state.kind === "in_progress" && reg.status === "in_progress";
+  const detailIsPrimary =
+    state.kind === "start" ||
+    state.kind === "checkin" ||
+    state.kind === "locked" ||
+    state.kind === "expired" ||
+    (state.kind === "in_progress" && !resuming);
+
+  let footerTitle = attempts;
+  let footerHint: string | null = null;
+  if (state.kind === "start" || state.kind === "checkin") footerHint = t("examcard_hint_ready");
+  else if (state.kind === "locked") {
+    footerTitle = formatOpensIn(state.opensAt.getTime() - now, t);
+    footerHint = attempts;
+  } else if (state.kind === "in_progress") {
+    footerTitle = t("examcard_progress_title");
+    footerHint = t("examcard_progress_hint");
+  } else if (state.kind === "submitted") {
+    footerTitle = t("examcard_done_title");
+    footerHint = t("examcard_done_hint");
+  } else if (state.kind === "expired") {
+    footerTitle = t("st_expired");
+    footerHint = attempts;
+  }
+
+  const detailLabel =
+    state.kind === "start" || state.kind === "checkin" ? (
+      <>
+        {t("examcard_rules_cta")} <ArrowRight className="size-3.5" />
+      </>
+    ) : (
+      <>
+        {t("examcard_detail_cta")} <ArrowRight className="size-3.5" />
+      </>
+    );
+
   return (
-    <Card className="gap-0 p-[18px]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-          <Trophy className="size-5" />
-        </div>
-        {reg.is_free ? (
-          <Badge className="rounded-full">{t("free")}</Badge>
-        ) : (
-          <StateBadge state={state} />
-        )}
+    <Card className="gap-0 p-5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em] text-ink-500 uppercase">
+          <ClipboardList className="size-4 text-brand-600" />
+          {t("examcard_kicker")}
+        </span>
+        <StateBadge state={state} />
       </div>
 
-      <h3 className="mt-3 text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink-900">
+      <h3 className="mt-3 text-lg leading-snug font-semibold [overflow-wrap:anywhere] text-ink-900">
         {reg.exam_title}
       </h3>
 
-      <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
-        <div className="min-w-0">
+      <dl className="mt-4 grid grid-cols-[1.5fr_1fr_1fr] border-y border-line py-3 text-xs">
+        <div className="min-w-0 pr-3">
           <dt className="text-ink-500">
             {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
           </dt>
-          <dd className="mt-0.5 font-semibold text-ink-900">
+          <dd className="mt-1 text-ink-900">
             {minutes != null ? (
               <>
-                <span className="text-base">{minutes}</span> {t("minutes")}
+                <span className="text-3xl leading-none font-bold">{minutes}</span>{" "}
+                <span className="text-sm">{t("minutes")}</span>
               </>
             ) : (
               "—"
             )}
           </dd>
-          <dd className="text-[11px] text-ink-500">
+          <dd className="mt-1.5 text-ink-500">
             {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
           </dd>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 border-l border-line px-3">
           <dt className="text-ink-500">{t("examcard_sections")}</dt>
-          <dd className="mt-0.5 text-base font-semibold text-ink-900">{reg.section_count}</dd>
+          <dd className="mt-1 text-3xl leading-none font-bold text-ink-900">{reg.section_count}</dd>
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 border-l border-line pl-3">
           <dt className="text-ink-500">{t("examcard_questions")}</dt>
-          <dd className="mt-0.5 text-base font-semibold text-ink-900">{reg.question_count}</dd>
+          <dd className="mt-1 text-3xl leading-none font-bold text-ink-900">{reg.question_count}</dd>
         </div>
       </dl>
 
       {access && (
-        <div className="mt-3 flex items-start gap-2 text-xs text-ink-700">
-          <CalendarDays className="mt-0.5 size-3.5 shrink-0 text-ink-500" />
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-xs">
+          <CalendarDays className="size-8 shrink-0 text-brand-600" strokeWidth={1.5} />
           <div className="min-w-0 flex-1">
             <div className="text-ink-500">{t("examcard_access")}</div>
             {access.to && access.sameDay ? (
-              <div className="mt-0.5 flex flex-wrap justify-between gap-x-3 font-medium">
+              <div className="mt-0.5 flex flex-wrap justify-between gap-x-3 text-sm font-semibold text-ink-900">
                 <span>{access.from.date}</span>
-                <span>
-                  {access.from.time} – {access.to.time} WIB
+                <span className="font-medium">
+                  {access.from.time}–{access.to.time} WIB
                 </span>
               </div>
             ) : (
-              <div className="mt-0.5 font-medium">
+              <div className="mt-0.5 text-sm font-semibold text-ink-900">
                 <div>
                   {access.from.date}, {access.from.time} WIB
                 </div>
@@ -268,14 +290,14 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         </div>
       )}
 
-      <div className="mt-3 flex items-start gap-2 rounded-md bg-surface-2 px-3 py-2 text-xs">
+      <div className="mt-3 flex items-start gap-3 text-xs">
         {sequential ? (
-          <Lock className="mt-0.5 size-3.5 shrink-0 text-ink-500" />
+          <Lock className="mt-0.5 size-4 shrink-0 text-ink-500" />
         ) : (
-          <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-ink-500" />
+          <ArrowRight className="mt-0.5 size-4 shrink-0 text-ink-500" />
         )}
         <div className="min-w-0">
-          <div className="font-semibold text-ink-900">
+          <div className="text-sm font-semibold text-ink-900">
             {sequential ? t("examcard_nav_sequential") : t("examcard_nav_free")}
           </div>
           <div className="text-ink-500">
@@ -284,107 +306,94 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         </div>
       </div>
 
-      <div className="mt-3.5 border-t border-line pt-3.5">
-        {ready && (
-          <div className="mb-2 text-xs text-ink-500">
-            {t("attempts").replace("{n}", String(reg.attempts_used))}
+      <div className="mt-4 border-t border-line pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
+          <div className="min-w-0 flex-1 basis-32 text-xs">
+            <div className="text-sm font-semibold text-ink-900">{footerTitle}</div>
+            {footerHint && <div className="mt-0.5 text-ink-500">{footerHint}</div>}
           </div>
-        )}
-
-        {state.kind === "in_progress" && reg.status === "in_progress" && (
-          <Button
-            size="sm"
-            className="w-full rounded-full"
-            onClick={handleStart}
-            disabled={startSessionMutation.isPending}
-          >
-            <Play className="mr-1 size-3.5" />
-            {startSessionMutation.isPending ? t("sys_loading") : t("continue_exam")}
-          </Button>
-        )}
-
-        {state.kind === "locked" && (
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1 text-xs font-semibold text-info">
-                <Clock className="size-3" />
-                {t("examcard_opens_in").replace("{time}", formatCountdown(state.opensAt.getTime() - now, lang))}
-              </div>
-            </div>
+          {resuming ? (
             <Button
               size="sm"
-              variant="outline"
               className="shrink-0 rounded-full"
-              onClick={handleDownload}
+              onClick={handleStart}
+              disabled={startSessionMutation.isPending}
             >
-              <Download className="mr-1 size-3.5" />
-              {t("download_card")}
+              <Play className="size-3.5" />
+              {startSessionMutation.isPending ? t("sys_loading") : t("continue_exam")}
             </Button>
-          </div>
-        )}
+          ) : state.kind === "submitted" ? (
+            <Button asChild size="sm" className="shrink-0 rounded-full">
+              <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
+            </Button>
+          ) : (
+            <Button asChild size="sm" className="shrink-0 rounded-full">
+              <Link href={detailHref}>{detailLabel}</Link>
+            </Button>
+          )}
+        </div>
 
-        {state.kind === "submitted" && (
-          <div className="flex items-center gap-2">
-            {state.hasAttemptsLeft && (
+        {/* FR-45: the card must stay reachable regardless of state, so a detail link
+            is always rendered, as the primary CTA or as a secondary action. */}
+        {(!detailIsPrimary || state.kind === "locked") && (
+          <div className="mt-2.5 flex flex-wrap justify-end gap-2">
+            {state.kind === "locked" && (
+              <Button size="sm" variant="outline" className="rounded-full" onClick={handleDownload}>
+                <Download className="size-3.5" />
+                {t("download_card")}
+              </Button>
+            )}
+            {state.kind === "submitted" && state.hasAttemptsLeft && (
               <Button
                 size="sm"
                 variant="outline"
-                className="shrink-0 rounded-full"
+                className="rounded-full"
                 onClick={handleStart}
                 disabled={startSessionMutation.isPending}
               >
                 {startSessionMutation.isPending ? t("sys_loading") : t("retake_exam")}
               </Button>
             )}
-            <Button asChild size="sm" className="flex-1 rounded-full">
-              <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
-            </Button>
+            {!detailIsPrimary && (
+              <Button asChild size="sm" variant="outline" className="rounded-full">
+                <Link href={detailHref}>{t("competition_view_detail")}</Link>
+              </Button>
+            )}
           </div>
         )}
-
-        {state.kind === "expired" && (
-          <div className="flex items-center gap-1.5 text-xs text-ink-500">
-            <XCircle className="size-3.5 text-danger" />
-            {t("st_expired")}
-          </div>
-        )}
-
-        {/* FR-45: the card must stay reachable regardless of state, so this link
-            is unconditional rather than duplicated into each branch above. */}
-        <Button
-          asChild
-          size="sm"
-          variant={ready ? "default" : "outline"}
-          className={`w-full rounded-full ${ready ? "" : "mt-2"}`}
-        >
-          <Link href={`/exam/${reg.id}`}>
-            {ready ? t("examcard_rules_cta") : t("competition_view_detail")}
-          </Link>
-        </Button>
       </div>
     </Card>
   );
 }
 
+function formatOpensIn(ms: number, t: (key: I18nKey) => string): string {
+  const parts = countdownParts(ms);
+  if (!parts) return t("examcard_opens_soon");
+  return t("examcard_opens_in").replace("{time}", t(`examcard_countdown_${parts.unit}`).replace("{n}", String(parts.n)));
+}
+
+const BADGE_TONE = {
+  success: "border-transparent bg-success-bg text-success",
+  brand: "border-transparent bg-brand-50 text-brand-700",
+  neutral: "border-line bg-surface-2 text-ink-700",
+  warn: "border-transparent bg-warn-bg text-warn",
+} as const;
+
 function StateBadge({ state }: { state: CardState }) {
   const { t } = useTranslation();
-  const labelKey =
+  const [labelKey, tone]: [I18nKey, keyof typeof BADGE_TONE] =
     state.kind === "locked"
-      ? "examcard_upcoming_badge"
+      ? ["examcard_upcoming_badge", "neutral"]
       : state.kind === "checkin"
-        ? "st_checkin"
+        ? ["st_checkin", "brand"]
         : state.kind === "in_progress"
-          ? "st_inprogress"
+          ? ["st_inprogress", "brand"]
           : state.kind === "expired"
-            ? "st_expired"
+            ? ["st_expired", "warn"]
             : state.kind === "submitted"
-              ? "st_submitted"
-              : "st_checkedin";
-  return (
-    <Badge variant="outline" className="rounded-full">
-      {t(labelKey)}
-    </Badge>
-  );
+              ? ["examcard_status_done", "success"]
+              : ["examcard_status_ready", "success"];
+  return <Badge className={`rounded-full ${BADGE_TONE[tone]}`}>{t(labelKey)}</Badge>;
 }
 
 function EmptyExam() {
