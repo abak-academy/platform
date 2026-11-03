@@ -215,7 +215,7 @@ describe("ExamPage", () => {
     const card = (await screen.findByText("Tryout Belum Buka")).closest("[data-slot='card']") as HTMLElement;
     expect(within(card).getByText("Belum dibuka")).toBeInTheDocument();
     expect(within(card).getByText(/Dibuka dalam 2 jam/)).toBeInTheDocument();
-    expect(within(card).getByRole("link", { name: "Lihat Detail" })).toHaveAttribute("href", "/exam/reg-up");
+    expect(within(card).getByRole("link", { name: "Lihat detail" })).toHaveAttribute("href", "/exam/reg-up");
     expect(within(card).queryByRole("link", { name: /Lihat aturan ujian/i })).not.toBeInTheDocument();
   });
 
@@ -357,6 +357,10 @@ describe("ExamPage", () => {
     expect(screen.queryByText(/exam\/sessions\/null/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Lanjutkan ujian" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Lihat Detail/i })).toHaveAttribute("href", "/exam/reg-7");
+    const card = screen.getByText("Tryout Tanpa Sesi").closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Selesai")).toBeInTheDocument();
+    expect(within(card).getByText("Ujian telah selesai")).toBeInTheDocument();
+    expect(within(card).queryByText("Sesi sedang berlangsung")).not.toBeInTheDocument();
   });
 
   it("offers a retake alongside the result link when attempts remain (FR20)", async () => {
@@ -608,5 +612,112 @@ describe("ExamPage", () => {
     });
     screen.getByRole("button", { name: "Coba lagi" }).click();
     expect(refetch).toHaveBeenCalled();
+  });
+});
+
+describe("ExamPage card parity", () => {
+  const cardOf = async (title: string) =>
+    (await screen.findByText(title)).closest("[data-slot='card']") as HTMLElement;
+  const primaries = (card: HTMLElement) =>
+    Array.from(card.querySelectorAll("[data-slot='button'][data-variant='default']"));
+  const show = (reg: RegistrationListItem) => {
+    registrationsState = { data: [reg], isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    render(<ExamPage />);
+  };
+  const base: RegistrationListItem = { ...paidNoSchedule, id: "reg-p", exam_title: "Paket Parity", requires_checkin: false };
+
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+    pushMock.mockClear();
+  });
+
+  it("labels every card with the Paket ujian kicker", async () => {
+    show(base);
+    expect(within(await cardOf("Paket Parity")).getByText("Paket ujian")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["ready", { ...base }, "Siap dikerjakan"],
+    ["checked in", { ...base, status: "checked_in" }, "Siap dikerjakan"],
+    ["in progress", { ...base, status: "in_progress" }, "Sedang berjalan"],
+    ["done", { ...base, status: "submitted", session_id: "s-1" }, "Selesai"],
+    [
+      "upcoming",
+      { ...base, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      "Belum dibuka",
+    ],
+  ])("maps the %s state to its status badge", async (_n, reg, label) => {
+    show(reg as RegistrationListItem);
+    expect(within(await cardOf("Paket Parity")).getByText(label)).toBeInTheDocument();
+  });
+
+  it("is not open for a checked-in student before scheduled_at", async () => {
+    show({ ...base, requires_checkin: true, status: "checked_in", scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Belum dibuka")).toBeInTheDocument();
+  });
+
+  it("keeps the check-in badge when check-in is open", async () => {
+    show({ ...base, requires_checkin: true });
+    expect(within(await cardOf("Paket Parity")).getByText("Check-in dibuka")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["ready", { ...base }, /Lihat aturan ujian/],
+    ["in progress", { ...base, status: "in_progress" }, /Lanjutkan ujian/],
+    ["done", { ...base, status: "submitted", session_id: "s-1", max_attempts: 3 }, /Lihat hasil/],
+    [
+      "upcoming",
+      { ...base, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      /^Lihat detail\s*$/,
+    ],
+    ["expired", { ...base, scheduled_at: "2020-01-01T00:00:00Z", scheduled_end_at: "2020-01-01T02:00:00Z" }, /^Lihat detail\s*$/],
+  ])("has exactly one primary CTA in the %s state", async (_n, reg, name) => {
+    show(reg as RegistrationListItem);
+    const card = await cardOf("Paket Parity");
+    const primary = primaries(card);
+    expect(primary).toHaveLength(1);
+    expect(primary[0].textContent).toMatch(name);
+  });
+
+  it("demotes the retake and detail actions to secondary next to the result CTA", async () => {
+    show({ ...base, status: "submitted", session_id: "s-1", max_attempts: 3 });
+    const card = await cardOf("Paket Parity");
+    expect(within(card).getByRole("button", { name: "Ulangi ujian" })).toHaveAttribute("data-variant", "outline");
+    expect(within(card).getByRole("link", { name: "Lihat Detail" })).toHaveAttribute("data-variant", "outline");
+  });
+
+  it("shows the access date on the left and hours on the right in WIB", async () => {
+    show({ ...base, scheduled_at: "2026-11-07T01:00:00Z", scheduled_end_at: "2026-11-07T03:00:00Z" });
+    const card = await cardOf("Paket Parity");
+    expect(within(card).getByText("7 Nov 2026")).toBeInTheDocument();
+    expect(within(card).getByText(/08[.:]00.10[.:]00 WIB/)).toBeInTheDocument();
+  });
+
+  it("states the attempt limit and the timer hint in the footer of a ready card", async () => {
+    show({ ...base, max_attempts: 1 });
+    const card = await cardOf("Paket Parity");
+    expect(within(card).getByText("Maksimal 1 percobaan")).toBeInTheDocument();
+    expect(within(card).getByText("Timer dimulai setelah konfirmasi.")).toBeInTheDocument();
+  });
+
+  it("counts down in days, then hours, then minutes before access opens", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 5 * 86_400_000 + 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 6 * 86_400_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Dibuka dalam 5 hari 1 jam")).toBeInTheDocument();
+  });
+
+  it("shows the two largest units, e.g. hours and minutes", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 2 * 3_600_000 + 40 * 60_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText(/^Dibuka dalam 2 jam (39|40) menit$/)).toBeInTheDocument();
+  });
+
+  it("uses singular English units for a count of one", async () => {
+    uiStore = { lang: "en" };
+    show({ ...base, scheduled_at: new Date(Date.now() + 86_400_000 + 3_600_000 + 30_000).toISOString(), scheduled_end_at: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Opens in 1 day 1 hour")).toBeInTheDocument();
+  });
+
+  it("counts down in minutes when under an hour", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 40 * 60_000).toISOString(), scheduled_end_at: new Date(Date.now() + 3 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText(/^Dibuka dalam (39|40) menit$/)).toBeInTheDocument();
   });
 });

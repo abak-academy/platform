@@ -11,6 +11,7 @@ import {
   useStartSession,
 } from "@/lib/hooks/exam";
 import { ApiError } from "@/lib/api";
+import { computeCardState } from "@/lib/exam-card-state";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -174,8 +175,30 @@ export default function ExamDetailPage() {
   }
 
   const exam = reg.exam;
+  const cardState = computeCardState(
+    {
+      status: reg.status,
+      max_attempts: exam.max_attempts,
+      attempts_used: reg.attempts_used,
+      requires_checkin: exam.requires_checkin,
+      scheduled_at: exam.scheduled_at,
+      scheduled_end_at: exam.scheduled_end_at,
+      check_in_window_minutes: exam.check_in_window_minutes,
+    },
+    now.getTime(),
+  );
+  const briefingStatus =
+    cardState.kind === "start"
+      ? "ready"
+      : cardState.kind === "locked"
+        ? "upcoming"
+        : cardState.kind === "submitted"
+          ? "done"
+          : cardState.kind === "in_progress"
+            ? "ready"
+            : cardState.kind;
 
-  const afterInfo = (
+  const afterHowTo = (
     <Card className="mt-4 space-y-4 p-5">
       <dl className="text-sm">
         <dt className="text-xs uppercase tracking-wide text-ink-500">
@@ -249,7 +272,8 @@ export default function ExamDetailPage() {
       exam={exam}
       backHref="/exam"
       backLabel={t("competition_detail_back")}
-      afterInfo={afterInfo}
+      status={briefingStatus}
+      afterHowTo={afterHowTo}
       checkIn={checkIn}
       gate={
         showStartGate

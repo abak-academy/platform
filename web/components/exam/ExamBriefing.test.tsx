@@ -1,6 +1,7 @@
+import type { ComponentProps } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { ExamBriefing } from "./ExamBriefing";
+import { render, screen, fireEvent, within } from "@testing-library/react";
+import { ExamBriefing, type BriefingGate } from "./ExamBriefing";
 import type { RegistrationExam } from "@/lib/types";
 
 let uiStore = { lang: "id" as "id" | "en" };
@@ -32,9 +33,20 @@ const exam: RegistrationExam = {
 
 const gate = { kind: "start" as const, disabled: false, pending: false, onStart: vi.fn() };
 
-function renderBriefing(over: Partial<RegistrationExam> = {}, props: { preview?: boolean } = {}) {
+function renderBriefing(
+  over: Partial<RegistrationExam> = {},
+  props: { preview?: boolean; status?: ComponentProps<typeof ExamBriefing>["status"]; gate?: BriefingGate; afterHowTo?: React.ReactNode } = {},
+) {
   return render(
-    <ExamBriefing exam={{ ...exam, ...over }} backHref="/exam" backLabel="Kembali" gate={props.preview ? null : gate} preview={props.preview} />,
+    <ExamBriefing
+      exam={{ ...exam, ...over }}
+      backHref="/exam"
+      backLabel="Kembali"
+      gate={props.preview ? null : (props.gate ?? gate)}
+      preview={props.preview}
+      status={props.status}
+      afterHowTo={props.afterHowTo}
+    />,
   );
 }
 
@@ -47,9 +59,9 @@ describe("ExamBriefing whatsapp invitation", () => {
     gate.onStart.mockReset();
   });
 
-  it("sits after Informasi Ujian and before Cara mengerjakan", () => {
+  it("sits after Informasi ujian and before Cara mengerjakan", () => {
     renderBriefing({ whatsapp_group_url: WA });
-    const info = screen.getByRole("heading", { name: "Informasi Ujian" });
+    const info = screen.getByRole("heading", { name: "Informasi ujian" });
     const community = screen.getByRole("heading", { name: "Grup WhatsApp kompetisi" });
     const howto = screen.getByRole("heading", { name: "Cara mengerjakan" });
     expect(info.compareDocumentPosition(community) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -160,5 +172,92 @@ describe("ExamBriefing stored-value hardening", () => {
     renderBriefing({ additional_rules_note: "Catatan", additional_rules_url: "javascript:alert(1)" });
     expect(screen.getByText("Catatan")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /baca aturan lengkap/i })).not.toBeInTheDocument();
+  });
+});
+
+describe("ExamBriefing information card", () => {
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+  });
+  const schedule = { scheduled_at: "2026-11-07T01:00:00Z", scheduled_end_at: "2026-11-07T03:00:00Z" };
+
+  it.each([
+    ["ready", { status: "ready" as const }, "Siap dikerjakan"],
+    ["upcoming", { status: "upcoming" as const }, "Belum dibuka"],
+    ["check-in", { status: "checkin" as const }, "Check-in dibuka"],
+    ["expired", { status: "expired" as const }, "Kadaluarsa"],
+    ["done", { status: "done" as const }, "Selesai"],
+    ["resume", { gate: { ...gate, kind: "resume" as const } }, "Sedang berjalan"],
+  ])("shows the %s status badge in the card header", (_n, props, label) => {
+    renderBriefing(schedule, props);
+    const card = screen.getByRole("heading", { name: "Informasi ujian" }).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText(label)).toBeInTheDocument();
+  });
+
+  it("shows no status badge in preview mode", () => {
+    renderBriefing(schedule, { preview: true });
+    const card = screen.getByRole("heading", { name: "Informasi ujian" }).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("shows the full weekday date and large hours with WIB for a same-day window", () => {
+    renderBriefing(schedule);
+    expect(screen.getByText("Sabtu, 7 Nov 2026")).toBeInTheDocument();
+    const hours = screen.getByTestId("access-hours");
+    expect(hours.textContent).toMatch(/08[.:]00\s*–\s*10[.:]00\s*WIB/);
+  });
+
+  it("splits a cross-day window into two dated lines", () => {
+    renderBriefing({ scheduled_at: "2026-11-07T01:00:00Z", scheduled_end_at: "2026-11-08T03:00:00Z" });
+    expect(screen.getByText(/Sabtu, 7 Nov 2026, 08[.:]00 WIB/)).toBeInTheDocument();
+    expect(screen.getByText(/Minggu, 8 Nov 2026, 10[.:]00 WIB/)).toBeInTheDocument();
+  });
+
+  it("shows total minutes and the per-section timer scope", () => {
+    renderBriefing({ timer_mode: "per_test", sections_duration_minutes: 35 });
+    const panel = screen.getByTestId("duration-panel");
+    expect(within(panel).getByText("35")).toBeInTheDocument();
+    expect(within(panel).getByText(/menit total/)).toBeInTheDocument();
+    expect(within(panel).getByText("Timer per section")).toBeInTheDocument();
+  });
+
+  it("shows plain minutes and the single-timer scope for an overall timer", () => {
+    renderBriefing({ timer_mode: "overall", duration_minutes: 90 });
+    const panel = screen.getByTestId("duration-panel");
+    expect(within(panel).getByText("90")).toBeInTheDocument();
+    expect(within(panel).queryByText(/total/)).not.toBeInTheDocument();
+    expect(within(panel).getByText("Satu timer ujian")).toBeInTheDocument();
+  });
+});
+
+describe("ExamBriefing how-to card", () => {
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+  });
+  const howto = () => screen.getByRole("heading", { name: "Cara mengerjakan" }).closest("[data-slot='card']") as HTMLElement;
+
+  it("states the total and the carry-over rule for per-section timers", () => {
+    renderBriefing({ timer_mode: "per_test", sections_duration_minutes: 35, section_count: 2 });
+    expect(within(howto()).getByText(/Total 35 menit untuk 2 section/)).toBeInTheDocument();
+    expect(within(howto()).getByText(/tidak dibawa ke section berikutnya/)).toBeInTheDocument();
+  });
+
+  it("states the single timer rule for an overall timer", () => {
+    renderBriefing({ timer_mode: "overall", duration_minutes: 90 });
+    expect(within(howto()).getByText(/90 menit sejak kamu mulai/)).toBeInTheDocument();
+    expect(within(howto()).queryByText(/tidak dibawa/)).not.toBeInTheDocument();
+  });
+
+  it("summarises the question and section counts", () => {
+    renderBriefing({ question_count: 6, section_count: 2 });
+    expect(within(howto()).getByText("6 soal · 2 section")).toBeInTheDocument();
+  });
+
+  it("places the token and check-in cards after the how-to card", () => {
+    renderBriefing({ requires_checkin: true }, { afterHowTo: <div>Kartu token</div> });
+    const h = screen.getByRole("heading", { name: "Cara mengerjakan" });
+    expect(h.compareDocumentPosition(screen.getByText("Kartu token")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const checkin = screen.getByRole("heading", { name: /check-in/i });
+    expect(h.compareDocumentPosition(checkin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });

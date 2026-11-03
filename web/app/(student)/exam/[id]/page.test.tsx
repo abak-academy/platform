@@ -612,7 +612,7 @@ describe("ExamDetailPage — briefing", () => {
     expect(screen.getByText("Jadwal akses")).toBeInTheDocument();
     expect(screen.getByText(/hanya membatasi mulai sesi baru/i)).toBeInTheDocument();
     expect(screen.getByText("Waktu pengerjaan")).toBeInTheDocument();
-    expect(screen.getByText("100 menit total")).toBeInTheDocument();
+    expect(screen.getByTestId("duration-panel")).toHaveTextContent("100menit total");
     expect(screen.getAllByText("Timer per section").length).toBeGreaterThan(0);
     expect(screen.getByText("Section berurutan")).toBeInTheDocument();
 
@@ -639,10 +639,81 @@ describe("ExamDetailPage — briefing", () => {
     };
     render(<ExamDetailPage />);
 
-    expect(screen.getByText("120 menit")).toBeInTheDocument();
-    expect(screen.getByText("Satu timer ujian")).toBeInTheDocument();
+    expect(screen.getByTestId("duration-panel")).toHaveTextContent("120menit");
+    expect(screen.getAllByText("Satu timer ujian").length).toBeGreaterThan(0);
     expect(screen.getByText("Bebas pindah section")).toBeInTheDocument();
     expect(screen.getAllByText("Timer bersama").length).toBe(2);
     expect(screen.getByText("Percobaan tanpa batas")).toBeInTheDocument();
+  });
+});
+
+describe("ExamDetailPage — access status badge", () => {
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const show = (data: RegistrationDetail, at: string) => {
+    registrationState = { data, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    vi.setSystemTime(at);
+    render(<ExamDetailPage />);
+  };
+  const withExam = (over: Partial<RegistrationDetail["exam"]>, status = "registered"): RegistrationDetail => ({
+    ...sampleNoCheckin,
+    status,
+    exam: { ...sampleNoCheckin.exam, ...over },
+  });
+
+  it("is not open before the check-in window of a check-in exam", () => {
+    show(sampleWithCheckin, "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("says check-in is open once the check-in window is open, like the list card", () => {
+    show(sampleWithCheckin, "2026-07-15T08:45:00Z");
+    expect(screen.getByText("Check-in dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is expired after scheduled_end_at when the student never started", () => {
+    show(withExam({ scheduled_at: "2026-07-15T09:00:00Z", scheduled_end_at: "2026-07-15T11:00:00Z" }), "2026-07-15T12:00:00Z");
+    expect(screen.getByText("Kadaluarsa")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is expired once check-in has closed", () => {
+    show(sampleWithCheckin, "2026-07-15T09:30:00Z");
+    expect(screen.getByText("Kadaluarsa")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is done when submitted with no attempts left", () => {
+    show({ ...withExam({ max_attempts: 1 }, "submitted"), attempts_used: 1 }, "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Selesai")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is not open for a checked-in student before scheduled_at", () => {
+    show({ ...sampleWithCheckin, status: "checked_in" }, "2026-07-15T08:55:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is not open before scheduled_at when a scheduled_end_at makes it an access window", () => {
+    show(withExam({ scheduled_end_at: "2026-07-15T12:00:00Z" }), "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+  });
+
+  it("is ready before scheduled_at when there is no end, matching the list card", () => {
+    show(withExam({ scheduled_end_at: null }), "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Siap dikerjakan")).toBeInTheDocument();
+  });
+
+  it("shows in progress when a session is running", () => {
+    show(withExam({}, "in_progress"), "2026-07-15T09:30:00Z");
+    expect(screen.getByText("Sedang berjalan")).toBeInTheDocument();
   });
 });
