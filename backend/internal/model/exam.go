@@ -316,6 +316,10 @@ type ExamListItem struct {
 	Exam                `json:",inline"`
 	HasPublishedProduct bool `json:"has_published_product"`
 	RegistrationCount   int  `json:"registration_count"`
+	SectionCount        int  `json:"section_count"`
+	QuestionCount       int  `json:"question_count"`
+	// SectionsDurationMinutes is nil only when no Test is attached.
+	SectionsDurationMinutes *int `json:"sections_duration_minutes"`
 }
 
 // ExamTestEntry is the read shape for an exam_test row plus the inline Test metadata
@@ -332,13 +336,17 @@ type ExamTestEntry struct {
 		SectionType     *string   `json:"section_type,omitempty"`
 		QuestionCount   int       `json:"question_count"`
 	} `json:"test"`
+	// MaterialQuestionPositions are 1-based positions (by test_question.sort_order) of
+	// questions carrying their own material; positions only, never the material itself.
+	MaterialQuestionPositions []int `json:"material_question_positions"`
 }
 
 // ExamDetail is the read shape returned by GET /admin/exams/:id — full Exam config
 // plus an ordered list of attached tests. Price/status live on the attached Product(s).
 type ExamDetail struct {
-	Exam  `json:",inline"`
-	Tests []ExamTestEntry `json:"tests"`
+	Exam        `json:",inline"`
+	Tests       []ExamTestEntry `json:"tests"`
+	HasSessions bool            `json:"has_sessions"`
 }
 
 // RegistrationListItem is the read shape returned by GET /api/v1/exam/registrations:

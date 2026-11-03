@@ -3,6 +3,8 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { ExamModal } from "./ExamModal";
 import type { ExamListItem } from "@/lib/types";
 
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
 const mockCreateExam = vi.fn();
 const mockUpdateExam = vi.fn();
 
@@ -195,9 +197,8 @@ describe("ExamModal", () => {
     expect(
       (screen.getByLabelText(/jendela toleransi/i) as HTMLInputElement).value,
     ).toBe("5");
-    expect(
-      (screen.getByLabelText(/maks\. percobaan/i) as HTMLInputElement).value,
-    ).toBe("2");
+    expect(screen.getByLabelText("Izinkan lebih dari satu percobaan")).toBeChecked();
+    expect(screen.getByLabelText("Jumlah percobaan")).toHaveValue(2);
   });
 
   it("submitted update payload includes extended package fields", async () => {
@@ -223,7 +224,7 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/jendela toleransi/i), {
       target: { value: "10" },
     });
-    fireEvent.input(screen.getByLabelText(/maks\. percobaan/i), {
+    fireEvent.input(screen.getByLabelText("Jumlah percobaan"), {
       target: { value: "3" },
     });
 
@@ -242,16 +243,14 @@ describe("ExamModal", () => {
     });
   });
 
-  it("number window and attempts inputs reject negatives via min attribute", () => {
+  it("number window inputs reject negatives via min attribute", () => {
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
 
     expect(screen.getByLabelText(/jendela check-in/i)).toHaveAttribute("min", "0");
     expect(screen.getByLabelText(/jendela toleransi/i)).toHaveAttribute("min", "0");
-    expect(screen.getByLabelText(/maks\. percobaan/i)).toHaveAttribute("min", "0");
-    expect(screen.getByText(/kosongkan untuk tidak terbatas/i)).toBeInTheDocument();
   });
 
-  it("omits empty window and attempts from create payload", async () => {
+  it("omits empty windows from create payload and defaults attempts to 1", async () => {
     mockCreateExam.mockResolvedValue({ id: "exam-1" });
 
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
@@ -268,7 +267,7 @@ describe("ExamModal", () => {
         expect.objectContaining({
           check_in_window_minutes: null,
           grace_window_minutes: null,
-          max_attempts: null,
+          max_attempts: 1,
         }),
       );
     });
@@ -502,5 +501,149 @@ describe("ExamModal", () => {
 
     expect(screen.getByLabelText("Poin 5")).toBeInTheDocument();
     expect(addButton).toBeDisabled();
+  });
+
+  describe("attempts", () => {
+    async function submitCreate() {
+      fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Paket Percobaan" } });
+      fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    }
+
+    it("create defaults to a single attempt with the multi-attempt box off", async () => {
+      mockCreateExam.mockResolvedValue({ id: "n" });
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+
+      expect(screen.getByLabelText("Izinkan lebih dari satu percobaan")).not.toBeChecked();
+      expect(screen.queryByLabelText("Jumlah percobaan")).not.toBeInTheDocument();
+      await submitCreate();
+
+      await waitFor(() => expect(mockCreateExam).toHaveBeenCalledWith(expect.objectContaining({ max_attempts: 1 })));
+    });
+
+    it("checking the box defaults the count to 2 and sends it", async () => {
+      mockCreateExam.mockResolvedValue({ id: "n" });
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+
+      fireEvent.click(screen.getByLabelText("Izinkan lebih dari satu percobaan"));
+      expect(screen.getByLabelText("Jumlah percobaan")).toHaveValue(2);
+      await submitCreate();
+
+      await waitFor(() => expect(mockCreateExam).toHaveBeenCalledWith(expect.objectContaining({ max_attempts: 2 })));
+    });
+
+    it("Tanpa batas hides the count input and sends null", async () => {
+      mockCreateExam.mockResolvedValue({ id: "n" });
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+
+      fireEvent.click(screen.getByLabelText("Izinkan lebih dari satu percobaan"));
+      fireEvent.click(screen.getByLabelText("Tanpa batas"));
+      expect(screen.queryByLabelText("Jumlah percobaan")).not.toBeInTheDocument();
+      await submitCreate();
+
+      await waitFor(() => expect(mockCreateExam).toHaveBeenCalledWith(expect.objectContaining({ max_attempts: null })));
+    });
+
+    it.each(["", "1"])("disables submit when the count is %j and Tanpa batas is off", (value) => {
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+      fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Paket" } });
+      fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+      fireEvent.click(screen.getByLabelText("Izinkan lebih dari satu percobaan"));
+      fireEvent.input(screen.getByLabelText("Jumlah percobaan"), { target: { value } });
+
+      expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+    });
+
+    it.each([
+      [0, false, false, null],
+      [1, false, false, null],
+      [null, true, true, null],
+      [5, true, false, 5],
+    ])("edit with max_attempts=%j maps to multiple=%j unlimited=%j", (maxAttempts, multiple, unlimited, count) => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, max_attempts: maxAttempts }} />);
+
+      const box = screen.getByLabelText("Izinkan lebih dari satu percobaan");
+      if (multiple) expect(box).toBeChecked();
+      else expect(box).not.toBeChecked();
+      if (multiple) {
+        if (unlimited) expect(screen.getByLabelText("Tanpa batas")).toBeChecked();
+        else expect(screen.getByLabelText("Jumlah percobaan")).toHaveValue(count);
+      }
+    });
+
+    it("opening and closing an existing exam without saving never calls the update", async () => {
+      const onClose = vi.fn();
+      render(<ExamModal open={true} onClose={onClose} exam={{ ...sampleExam, max_attempts: 0 }} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^batal$/i }));
+
+      expect(onClose).toHaveBeenCalled();
+      expect(mockUpdateExam).not.toHaveBeenCalled();
+    });
+
+    it("saving an exam that was unlimited keeps null", async () => {
+      mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, max_attempts: null }} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(mockUpdateExam).toHaveBeenCalledWith(expect.objectContaining({ max_attempts: null })));
+    });
+  });
+
+  describe("policy lock", () => {
+    const composableExam: ExamListItem = { ...sampleExam, format_version: 2, navigation_policy: "free", randomize: true };
+
+    it("disables navigation, timer, duration and randomize with an explanation, leaving other fields editable", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} policyLocked />);
+
+      expect(screen.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeInTheDocument();
+      expect(screen.getByLabelText("Bebas")).toBeDisabled();
+      expect(screen.getByLabelText("Berurutan")).toBeDisabled();
+      expect(screen.getByLabelText("Keseluruhan")).toBeDisabled();
+      expect(screen.getByLabelText("Per Tes")).toBeDisabled();
+      expect(screen.getByLabelText(/durasi/i)).toBeDisabled();
+      expect(screen.getByLabelText("Acak Soal")).toBeDisabled();
+
+      expect(screen.getByLabelText(/judul/i)).toBeEnabled();
+      expect(screen.getByLabelText("Gratis")).toBeEnabled();
+      expect(screen.getByLabelText(/jendela check-in/i)).toBeEnabled();
+      expect(screen.getByLabelText("Izinkan lebih dari satu percobaan")).toBeEnabled();
+    });
+
+    it("leaves the policy controls enabled when not locked", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+
+      expect(screen.queryByText(/terkunci karena ujian ini sudah memiliki sesi/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Bebas")).toBeEnabled();
+      expect(screen.getByLabelText(/durasi/i)).toBeEnabled();
+      expect(screen.getByLabelText("Acak Soal")).toBeEnabled();
+    });
+
+    it("sends the hidden check-in and release fields untouched on save", async () => {
+      mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...composableExam, requires_checkin: false }} policyLocked />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() =>
+        expect(mockUpdateExam).toHaveBeenCalledWith(
+          expect.objectContaining({ check_in_window_minutes: 15, grace_window_minutes: 5, result_release_at: "2026-07-02T10:00:00.000Z" }),
+        ),
+      );
+    });
+
+    it("localizes a 409 exam_has_sessions error and reports the conflict", async () => {
+      const { ApiError } = await import("@/lib/api");
+      const { toast } = await import("sonner");
+      const onSessionsConflict = vi.fn();
+      mockUpdateExam.mockRejectedValue(new ApiError("exam_has_sessions", "exam already has sessions", 409));
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} onSessionsConflict={onSessionsConflict} />);
+
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(onSessionsConflict).toHaveBeenCalled());
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/sudah memiliki sesi/i));
+    });
   });
 });

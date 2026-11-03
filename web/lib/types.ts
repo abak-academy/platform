@@ -829,6 +829,9 @@ export interface ExamListItem extends Exam {
   has_published_product?: boolean;
   // optional: ExamDetail extends this, and the detail endpoint never sends it
   registration_count?: number;
+  section_count?: number;
+  question_count?: number;
+  sections_duration_minutes?: number | null;
 }
 
 export interface ExamTestEntry {
@@ -845,10 +848,12 @@ export interface ExamTestEntry {
     duration_minutes?: number | null;
     question_count: number;
   };
+  material_question_positions?: number[];
 }
 
 export interface ExamDetail extends ExamListItem {
   tests: ExamTestEntry[];
+  has_sessions?: boolean;
 }
 
 export type ExamResultConfig = "hidden" | "score_only" | "score_pembahasan";

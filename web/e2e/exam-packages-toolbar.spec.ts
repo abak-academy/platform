@@ -23,11 +23,16 @@ const PACKAGE_ROWS = [
     requires_checkin: true,
     allow_leaderboard: true,
     randomize: false,
+    format_version: 2,
+    navigation_policy: "free",
     timer_mode: "overall",
     duration_minutes: 120,
     grace_window_minutes: 5,
     status: "published",
     registration_count: 0,
+    section_count: 2,
+    question_count: 40,
+    sections_duration_minutes: 90,
   },
 ];
 
@@ -56,7 +61,7 @@ async function pageDoesNotScrollSideways(page: Page): Promise<boolean> {
 }
 
 for (const viewport of VIEWPORTS) {
-  test(`exam/packages toolbar and card fit without page overflow — ${viewport.width}x${viewport.height}`, async ({
+  test(`exam/packages toolbar and table fit without page overflow — ${viewport.width}x${viewport.height}`, async ({
     page,
     context,
   }) => {
@@ -70,13 +75,11 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/admin/exam/packages");
     await expect(page.getByText(PACKAGE_ROWS[0].title)).toBeVisible();
 
-    const select = page.locator('select[data-slot="select"]');
     // Two "Cari…" inputs exist: the admin shell's global search is type="search"
     // (role searchbox); the page's own filter is a plain textbox.
     const search = page.getByRole("textbox", { name: "Cari…" });
-    await expect(select).toBeVisible();
+    await expect(page.locator('select[data-slot="select"]')).toHaveCount(0);
     await expect(search).toBeVisible();
-    expect(await select.evaluate((el) => el.clientWidth)).toBeGreaterThan(0);
     expect(await search.evaluate((el) => el.clientWidth)).toBeGreaterThan(0);
 
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
@@ -86,8 +89,8 @@ for (const viewport of VIEWPORTS) {
     const request = await requestPromise;
     expect(request.url()).toContain("q=");
 
-    const card = page.locator('[data-testid="package-row"]').first();
-    expect(await card.evaluate((el) => el.clientWidth)).toBeGreaterThan(200);
+    const row = page.locator('[data-testid="package-row"]').first();
+    expect(await row.evaluate((el) => el.clientWidth)).toBeGreaterThan(200);
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
   });
 }

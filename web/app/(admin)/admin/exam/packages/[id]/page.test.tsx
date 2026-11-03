@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, waitFor, within, fireEvent } from "@testing-library/react";
 import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
+import { useUIStore } from "@/stores/ui";
 import ExamPackageDetailPage from "./page";
 import type {
   ExamDetail,
@@ -76,6 +79,7 @@ beforeEach(() => {
 });
 
 const mockReplaceTests = vi.fn();
+const mockUpdateExam = vi.fn();
 const mockGradeEssay = vi.fn();
 const mockSetCertificateEnabled = vi.fn().mockResolvedValue({});
 const mockSetCardEnabled = vi.fn().mockResolvedValue({});
@@ -154,7 +158,7 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   useExam: () => examState,
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
-  useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateExam: () => ({ mutateAsync: mockUpdateExam, isPending: false }),
   useSetCertificateEnabled: () => ({ mutateAsync: mockSetCertificateEnabled, isPending: false }),
   useSetCardEnabled: () => ({ mutateAsync: mockSetCardEnabled, isPending: false }),
   useGradingSessions: (...args: unknown[]) => {
@@ -281,10 +285,9 @@ describe("ExamPackageDetailPage — overview tab", () => {
     render(<ExamPackageDetailPage />);
 
     await waitFor(() => {
-      expect(screen.getByText("UTBK")).toBeInTheDocument();
+      expect(screen.getByText("score_pembahasan")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("score_pembahasan")).toBeInTheDocument();
     expect(screen.getByText("15 menit")).toBeInTheDocument();
     expect(screen.getByText("5 menit")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
@@ -311,42 +314,102 @@ describe("ExamPackageDetailPage — overview tab", () => {
     });
   });
 
-  it("FR-44: shows the draft explanation when the exam status is draft", async () => {
+  it("shows no draft notice and no status badge or status row", async () => {
     examState.data = { ...sampleExamWithExtendedFields, status: "draft" };
 
     render(<ExamPackageDetailPage />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i),
-      ).toBeInTheDocument();
+    await screen.findByText("score_pembahasan");
+    expect(screen.queryByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("draft")).not.toBeInTheDocument();
+    expect(screen.queryByText("published")).not.toBeInTheDocument();
+  });
+
+  it("offers one Pengaturan header action that opens the modal, with no separate Edit entry", async () => {
+    render(<ExamPackageDetailPage />);
+
+    const settings = await screen.findAllByRole("button", { name: /^pengaturan$/i });
+    expect(settings).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+
+    fireEvent.click(settings[0]);
+
+    expect(await screen.findByText("Edit Ujian")).toBeInTheDocument();
+  });
+
+  it("hides Pengaturan for admin_school", async () => {
+    mockRole = "admin_school";
+    render(<ExamPackageDetailPage />);
+
+    await screen.findByText("score_pembahasan");
+    expect(screen.queryByRole("button", { name: /^pengaturan$/i })).not.toBeInTheDocument();
+  });
+
+  it("does not repeat the title or policy rows in the summary", async () => {
+    examState.data = { ...sampleExamWithExtendedFields, randomize: true };
+
+    render(<ExamPackageDetailPage />);
+
+    await screen.findByText("score_pembahasan");
+    expect(screen.getAllByText("UTS Matematika")).toHaveLength(1);
+    for (const label of ["Title", "Timer mode", "Duration", "Randomize", "Status", "Mode"]) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+  });
+
+  it("shows check-in window and grace only when check-in is required", async () => {
+    const { unmount } = render(<ExamPackageDetailPage />);
+    await screen.findByText("score_pembahasan");
+    expect(screen.queryByText("Jendela Check-in")).toBeInTheDocument();
+    expect(screen.queryByText("Jendela Toleransi")).toBeInTheDocument();
+    unmount();
+
+    examState.data = { ...sampleExamWithExtendedFields, requires_checkin: false };
+    render(<ExamPackageDetailPage />);
+    await screen.findByText("score_pembahasan");
+    expect(screen.queryByText("Jendela Check-in")).not.toBeInTheDocument();
+    expect(screen.queryByText("Jendela Toleransi")).not.toBeInTheDocument();
+  });
+
+  it("shows result release only when results are not hidden", async () => {
+    const { unmount } = render(<ExamPackageDetailPage />);
+    await screen.findByText("score_pembahasan");
+    expect(screen.getByText("Hasil Dibuka")).toBeInTheDocument();
+    unmount();
+
+    examState.data = { ...sampleExamWithExtendedFields, result_config: "hidden" };
+    render(<ExamPackageDetailPage />);
+    await screen.findByText("hidden");
+    expect(screen.queryByText("Hasil Dibuka")).not.toBeInTheDocument();
+  });
+
+  it("still submits the hidden check-in and release fields when settings are saved", async () => {
+    mockUpdateExam.mockReset();
+    mockUpdateExam.mockResolvedValue({});
+    examState.data = {
+      ...sampleExamWithExtendedFields,
+      requires_checkin: false,
+      result_config: "hidden",
+      result_release_at: "2026-07-02T10:00:00Z",
+    };
+
+    render(<ExamPackageDetailPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /^pengaturan$/i }));
+    await screen.findByText("Edit Ujian");
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => expect(mockUpdateExam).toHaveBeenCalled());
+    expect(mockUpdateExam.mock.calls[0][0]).toMatchObject({
+      check_in_window_minutes: 15,
+      grace_window_minutes: 5,
+      result_release_at: "2026-07-02T10:00:00.000Z",
     });
   });
 
-  it("FR-44: does not show the draft explanation when the exam status is published", async () => {
+  it("names the tests tab 'Tes & section'", async () => {
     render(<ExamPackageDetailPage />);
 
-    await waitFor(() => {
-      expect(screen.getByText("UTBK")).toBeInTheDocument();
-    });
-
-    expect(
-      screen.queryByText(/tidak terlihat oleh siswa dan dapat diubah bebas/i),
-    ).not.toBeInTheDocument();
-  });
-
-  it("opens the edit modal when the overview edit button is clicked", async () => {
-    render(<ExamPackageDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: /^edit$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Edit Ujian")).toBeInTheDocument();
-    });
+    expect(await screen.findByRole("button", { name: /^tes & section$/i })).toBeInTheDocument();
   });
 });
 
@@ -694,7 +757,7 @@ describe("ExamPackageDetailPage — preset buttons in tests tab", () => {
   });
 
   function openTestsTab() {
-    fireEvent.click(screen.getByRole("button", { name: /^tes$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^tes & section$/i }));
   }
 
   it("shows IELTS preset button when exam mode is ielts", async () => {
@@ -823,7 +886,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
 
     expect(screen.getByRole("button", { name: /^ringkasan$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^pendaftaran$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^tes$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^tes & section$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^sertifikat$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^penilaian$/i })).not.toBeInTheDocument();
@@ -834,7 +897,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByTestId("exam-results-tab")).toHaveTextContent("exam-1");
   });
 
-  it("super_admin sees unified Results instead of separate Results/Leaderboard and still sees Edit", async () => {
+  it("super_admin sees unified Results instead of separate Results/Leaderboard and still sees Pengaturan", async () => {
     mockRole = "super_admin";
     render(<ExamPackageDetailPage />);
 
@@ -842,11 +905,11 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /^tes$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^tes & section$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^sertifikat$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^pengaturan$/i })).toBeInTheDocument();
   });
 
   it("renders the CertificateDesignTab on the Sertifikat tab", async () => {
@@ -1132,7 +1195,7 @@ describe("ExamPackageDetailPage — Tes Tersedia picker", () => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^tes$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^tes & section$/i }));
   }
 
   it("shows the search input, shown/total summary, and load-more when a next_cursor exists", async () => {
@@ -1165,7 +1228,7 @@ describe("ExamPackageDetailPage — Tes Tersedia picker", () => {
     vi.useFakeTimers();
     try {
       render(<ExamPackageDetailPage />);
-      fireEvent.click(screen.getByRole("button", { name: /^tes$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^tes & section$/i }));
       fireEvent.change(screen.getByPlaceholderText("Cari…"), {
         target: { value: "  optik  " },
       });
@@ -1221,9 +1284,118 @@ describe("composable section presentation", () => {
     mockReplaceTests.mockResolvedValue(undefined);
     examState = {data:{...sampleExam,format_version:2,navigation_policy:"sequential",tests:[{id:"entry",exam_id:"exam-1",test_id:"section-1",sort_order:0,question_presentation:presentation,test:{id:"section-1",title:"Reading Section",subject:"English",duration_minutes:30,question_count:2}}]},isLoading:false,isError:false,error:null,refetch:vi.fn()};
     render(<ExamPackageDetailPage />);
-    fireEvent.click(screen.getByRole("button",{name:/^tes$/i}));
+    fireEvent.click(screen.getByRole("button",{name:/^tes & section$/i}));
     expect(await screen.findByLabelText("Tampilan soal Reading Section")).toHaveValue(presentation);
     fireEvent.click(screen.getByRole("button",{name:/^simpan$/i}));
     await waitFor(() => expect(mockReplaceTests).toHaveBeenCalledWith([{test_id:"section-1",question_presentation:presentation}]));
+  });
+});
+
+describe("composable exam — material conflicts and policy lock", () => {
+  const sectionId = "5f1d1c2e-3b4a-4c6d-8e9f-0a1b2c3d4e5f";
+  const composable = (over: Partial<ExamDetail> = {}, presentation: "one_per_page" | "all_on_page" = "all_on_page"): ExamDetail => ({
+    ...sampleExam,
+    format_version: 2,
+    navigation_policy: "sequential",
+    has_sessions: false,
+    tests: [
+      {
+        id: "entry-1",
+        exam_id: "exam-1",
+        test_id: sectionId,
+        sort_order: 0,
+        question_presentation: presentation,
+        material_question_positions: [2, 4],
+        test: { id: sectionId, title: "Reading Section", subject: "English", duration_minutes: 30, question_count: 5 },
+      },
+    ],
+    ...over,
+  });
+
+  function open(data: ExamDetail) {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    mockReplaceTests.mockReset();
+    mockReplaceTests.mockResolvedValue(undefined);
+    examState = { data, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    adminTestsState = { data: { data: sampleAvailableTests }, isLoading: false, isFetching: false };
+    useUIStore.setState({ lang: "id" });
+    const view = render(<ExamPackageDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: /^tes & section$/i }));
+    return view;
+  }
+
+  it("names the section and question positions of an all_on_page conflict, never an id", async () => {
+    const { container } = open(composable());
+
+    const message = await screen.findByText(/soal 2, 4 punya materi sendiri/i);
+    expect(message).toHaveTextContent("#1 · Reading Section");
+    expect(container.textContent).not.toContain(sectionId);
+  });
+
+  it("shows no conflict for one_per_page sections or sections without material", async () => {
+    open(composable({}, "one_per_page"));
+    await screen.findByLabelText("Tampilan soal Reading Section");
+    expect(screen.queryByText(/punya materi sendiri/i)).not.toBeInTheDocument();
+  });
+
+  it("clears the conflict as soon as the section is switched to one question per page", async () => {
+    open(composable());
+    await screen.findByText(/punya materi sendiri/i);
+
+    fireEvent.change(screen.getByLabelText("Tampilan soal Reading Section"), { target: { value: "one_per_page" } });
+
+    expect(screen.queryByText(/punya materi sendiri/i)).not.toBeInTheDocument();
+  });
+
+  it("locks section controls with an explanation once the exam has sessions", async () => {
+    open(composable({ has_sessions: true }));
+
+    expect(await screen.findByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Tampilan soal Reading Section")).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: /^hapus$/i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getAllByRole("button", { name: /^tambah$/i }).every((b) => (b as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+  });
+
+  it("keeps section controls enabled without sessions", async () => {
+    open(composable());
+
+    await screen.findByLabelText("Tampilan soal Reading Section");
+    expect(screen.queryByText(/terkunci karena ujian ini sudah memiliki sesi/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Tampilan soal Reading Section")).toBeEnabled();
+    expect(screen.getAllByRole("button", { name: /^hapus$/i })[0]).toBeEnabled();
+    expect(screen.getAllByRole("button", { name: /^tambah$/i })[0]).toBeEnabled();
+    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeEnabled();
+  });
+
+  it("locks policy controls in the settings modal but leaves other fields editable", async () => {
+    open(composable({ has_sessions: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^pengaturan$/i }));
+
+    await screen.findByText("Edit Ujian");
+    expect(screen.getByLabelText("Berurutan")).toBeDisabled();
+    expect(screen.getByLabelText(/durasi/i)).toBeDisabled();
+    expect(screen.getByLabelText(/judul/i)).toBeEnabled();
+  });
+
+  it("shows a localized message and refetches when the server rejects with 409 exam_has_sessions", async () => {
+    const data = composable();
+    open(data);
+    vi.mocked(toast.error).mockClear();
+    mockReplaceTests.mockRejectedValue(new ApiError("exam_has_sessions", "exam already has sessions", 409));
+
+    fireEvent.change(await screen.findByLabelText("Tampilan soal Reading Section"), { target: { value: "one_per_page" } });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/sudah memiliki sesi/i)));
+    expect(examState.refetch).toHaveBeenCalled();
+
+    act(() => useUIStore.setState({ lang: "en" }));
+    vi.mocked(toast.error).mockClear();
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/already has sessions/i)));
+    expect(toast.error).not.toHaveBeenCalledWith("exam already has sessions");
+    act(() => useUIStore.setState({ lang: "id" }));
   });
 });
