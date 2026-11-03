@@ -1156,6 +1156,40 @@ export interface RegistrationListItem {
   duration_minutes: number | null;
   session_id: string | null;
   max_attempts: number | null;
+  navigation_policy: "free" | "sequential";
+  timer_mode: "overall" | "per_test";
+  section_count: number;
+  question_count: number;
+  sections_duration_minutes: number | null;
+}
+
+export interface ExamPreviewSection {
+  test_id: string;
+  title: string;
+  duration_minutes: number;
+  question_count: number;
+  question_presentation: "one_per_page" | "all_on_page";
+}
+
+export interface RegistrationExam {
+  id: string;
+  title: string;
+  scheduled_at: string | null;
+  scheduled_end_at: string | null;
+  requires_checkin: boolean;
+  check_in_window_minutes: number | null;
+  timer_mode: "overall" | "per_test";
+  navigation_policy: "free" | "sequential";
+  max_attempts: number | null;
+  duration_minutes: number | null;
+  result_config: string;
+  exam_number?: number | null;
+  card_enabled: boolean;
+  card_notes: string[];
+  section_count: number;
+  question_count: number;
+  sections_duration_minutes: number | null;
+  sections: ExamPreviewSection[];
 }
 
 export interface RegistrationDetail {
@@ -1180,19 +1214,7 @@ export interface RegistrationDetail {
     help_url: string;
     social_handle: string;
   };
-  exam: {
-    id: string;
-    title: string;
-    scheduled_at: string | null;
-    scheduled_end_at: string | null;
-    requires_checkin: boolean;
-    check_in_window_minutes: number | null;
-    timer_mode: string;
-    duration_minutes: number | null;
-    result_config: string;
-    card_enabled: boolean;
-    card_notes: string[];
-  };
+  exam: RegistrationExam;
 }
 
 // ── Result & grading types (Slice 5) ─────────────────────────────────────

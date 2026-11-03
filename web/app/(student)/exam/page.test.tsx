@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 import ExamPage from "./page";
 import type { RegistrationListItem } from "@/lib/types";
@@ -61,6 +61,11 @@ const freeUpcoming: RegistrationListItem = {
   duration_minutes: 90,
   session_id: null,
   max_attempts: null,
+  navigation_policy: "free",
+  timer_mode: "overall",
+  section_count: 2,
+  question_count: 40,
+  sections_duration_minutes: 90,
 };
 
 const paidNoSchedule: RegistrationListItem = {
@@ -82,6 +87,11 @@ const paidNoSchedule: RegistrationListItem = {
   duration_minutes: 60,
   session_id: null,
   max_attempts: null,
+  navigation_policy: "sequential",
+  timer_mode: "per_test",
+  section_count: 3,
+  question_count: 60,
+  sections_duration_minutes: 75,
 };
 
 const sample: RegistrationListItem[] = [freeUpcoming, paidNoSchedule];
@@ -121,22 +131,92 @@ describe("ExamPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows a start button for a free exam with no check-in requirement", async () => {
+  it("offers the rules page, not a start button, for a ready exam without check-in", async () => {
     render(<ExamPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Try Out UTBK Gratis #12")).toBeInTheDocument();
     });
-    expect(screen.getAllByRole("button", { name: /Mulai/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Mulai/i })).not.toBeInTheDocument();
+    const hrefs = screen.getAllByRole("link", { name: /Lihat aturan ujian/i }).map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/exam/reg-1");
+    expect(startSessionMutate).not.toHaveBeenCalled();
   });
 
-  it("shows the check-in token input when no schedule is set but check-in is required", async () => {
+  it("offers the rules page instead of an inline token input when check-in is required", async () => {
     render(<ExamPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Ujian Akhir Matematika")).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("Token dari kartu ujian")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Token dari kartu ujian")).not.toBeInTheDocument();
+    const card = screen.getByText("Ujian Akhir Matematika").closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByRole("link", { name: /Lihat aturan ujian/i })).toHaveAttribute("href", "/exam/reg-2");
+  });
+
+  it("shows time, section and question facts with the navigation rule", async () => {
+    render(<ExamPage />);
+
+    const card = (await screen.findByText("Ujian Akhir Matematika")).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Total waktu")).toBeInTheDocument();
+    expect(within(card).getByText("75")).toBeInTheDocument();
+    expect(within(card).getByText("Timer per section")).toBeInTheDocument();
+    expect(within(card).getByText("3")).toBeInTheDocument();
+    expect(within(card).getByText("60")).toBeInTheDocument();
+    expect(within(card).getByText("Section berurutan")).toBeInTheDocument();
+
+    const free = (await screen.findByText("Try Out UTBK Gratis #12")).closest("[data-slot='card']") as HTMLElement;
+    expect(within(free).getByText("Waktu pengerjaan")).toBeInTheDocument();
+    expect(within(free).getByText("90")).toBeInTheDocument();
+    expect(within(free).getByText("Satu timer ujian")).toBeInTheDocument();
+    expect(within(free).getByText("Bebas pindah section")).toBeInTheDocument();
+  });
+
+  it("shows a same-day schedule as one date and a time range, and a cross-day one as two dates", async () => {
+    registrationsState = {
+      data: [
+        { ...freeUpcoming, id: "same", exam_title: "Satu Hari", scheduled_at: "2026-07-15T02:00:00Z", scheduled_end_at: "2026-07-15T04:00:00Z" },
+        { ...freeUpcoming, id: "cross", exam_title: "Lintas Hari", scheduled_at: "2026-07-15T02:00:00Z", scheduled_end_at: "2026-07-17T04:00:00Z" },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    const same = (await screen.findByText("Satu Hari")).closest("[data-slot='card']") as HTMLElement;
+    expect(same.textContent?.match(/15 Jul 2026/g)).toHaveLength(1);
+    expect(within(same).getByText(/09[.:]00.*11[.:]00/)).toBeInTheDocument();
+
+    const cross = screen.getByText("Lintas Hari").closest("[data-slot='card']") as HTMLElement;
+    expect(within(cross).getByText(/15 Jul 2026/)).toBeInTheDocument();
+    expect(within(cross).getByText(/17 Jul 2026/)).toBeInTheDocument();
+  });
+
+  it("shows a neutral not-open badge, countdown and detail link for an upcoming exam", async () => {
+    registrationsState = {
+      data: [
+        {
+          ...paidNoSchedule,
+          id: "reg-up",
+          exam_title: "Tryout Belum Buka",
+          scheduled_at: new Date(Date.now() + 3 * 60 * 60_000).toISOString(),
+          check_in_window_minutes: 15,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    const card = (await screen.findByText("Tryout Belum Buka")).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Belum dibuka")).toBeInTheDocument();
+    expect(within(card).getByText(/Dibuka dalam 2 jam/)).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Lihat Detail" })).toHaveAttribute("href", "/exam/reg-up");
+    expect(within(card).queryByRole("link", { name: /Lihat aturan ujian/i })).not.toBeInTheDocument();
   });
 
   it("shows an empty state when there are no registrations", async () => {
@@ -175,8 +255,9 @@ describe("ExamPage", () => {
       expect(screen.getByText("Tryout Terbuka")).toBeInTheDocument();
     });
     // Without a window this would already show "Kadaluarsa" (expired) since
-    // scheduled_at is in the past — the window keeps check-in open instead.
-    expect(screen.getByPlaceholderText("Token dari kartu ujian")).toBeInTheDocument();
+    // scheduled_at is in the past — the window keeps the exam ready instead.
+    expect(screen.getByRole("link", { name: /Lihat aturan ujian/i })).toBeInTheDocument();
+    expect(screen.getByText("Check-in dibuka")).toBeInTheDocument();
     expect(screen.queryByText("Kadaluarsa")).not.toBeInTheDocument();
   });
 
@@ -451,7 +532,8 @@ describe("ExamPage", () => {
         expect(screen.getByText(reg.exam_title)).toBeInTheDocument();
       });
 
-      const link = screen.getByRole("link", { name: /Lihat Detail/i });
+      const ready = label === "checkin" || label === "start";
+      const link = screen.getByRole("link", { name: ready ? /Lihat aturan ujian/i : /Lihat Detail/i });
       expect(link, `state "${label}" should expose a route to the card`).toHaveAttribute(
         "href",
         `/exam/${reg.id}`,

@@ -1473,7 +1473,65 @@ func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid student id", ErrValidation)
 	}
-	return s.storeRepo.GetExamRegistrationsByStudent(ctx, sid)
+	items, err := s.storeRepo.GetExamRegistrationsByStudent(ctx, sid)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		raw := items[i].RawRules
+		items[i].NavigationPolicy, items[i].TimerMode = effectiveExamRules(raw.FormatVersion, raw.Mode, raw.NavigationPolicy, raw.TimerMode)
+	}
+	return items, nil
+}
+
+// GetExamPreview is the admin read-only twin of the student registration
+// detail's exam block: no registration, token or card data, and no writes.
+func (s *Service) GetExamPreview(ctx context.Context, examID uuid.UUID) (*model.RegistrationExam, error) {
+	exam, err := s.storeRepo.GetExamPreview(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+	if err := s.fillRegistrationExam(ctx, exam); err != nil {
+		return nil, err
+	}
+	return exam, nil
+}
+
+func (s *Service) fillRegistrationExam(ctx context.Context, exam *model.RegistrationExam) error {
+	raw := exam.RawRules
+	exam.NavigationPolicy, exam.TimerMode = effectiveExamRules(raw.FormatVersion, raw.Mode, raw.NavigationPolicy, raw.TimerMode)
+	sections, err := s.storeRepo.GetExamSections(ctx, exam.ID)
+	if err != nil {
+		return err
+	}
+	exam.Sections = sections
+	return nil
+}
+
+// GetStudentRegistrationDetail is the student detail page read: the shared
+// registration detail plus the exam's rules and sections, which the start and
+// card paths do not need.
+func (s *Service) GetStudentRegistrationDetail(ctx context.Context, regID, studentID string) (*model.RegistrationDetail, error) {
+	detail, err := s.GetExamRegistration(ctx, regID, studentID)
+	if err != nil {
+		return nil, err
+	}
+	exam, err := s.storeRepo.GetExamPreview(ctx, detail.Exam.ID)
+	if err != nil {
+		return nil, err
+	}
+	detail.Exam.MaxAttempts = exam.MaxAttempts
+	detail.Exam.SectionCount = exam.SectionCount
+	detail.Exam.QuestionCount = exam.QuestionCount
+	detail.Exam.SectionsDurationMinutes = exam.SectionsDurationMinutes
+	detail.Exam.RawRules = exam.RawRules
+	if err := s.fillRegistrationExam(ctx, &detail.Exam); err != nil {
+		return nil, err
+	}
+	return detail, nil
 }
 
 func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID string) (*model.RegistrationDetail, error) {

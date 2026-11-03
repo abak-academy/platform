@@ -365,6 +365,60 @@ type RegistrationListItem struct {
 	// retake, 0 or 1 means a single sitting. Carried so the card can compute
 	// whether a submitted registration still has attempts left (FR20/FR21).
 	MaxAttempts *int `json:"max_attempts"`
+	// NavigationPolicy and TimerMode are the effective rules, filled by the
+	// service from RawRules; SectionCount/QuestionCount/SectionsDurationMinutes
+	// aggregate the exam's Tests (null duration means the exam has no Test).
+	NavigationPolicy        string          `json:"navigation_policy"`
+	TimerMode               string          `json:"timer_mode"`
+	SectionCount            int             `json:"section_count"`
+	QuestionCount           int             `json:"question_count"`
+	SectionsDurationMinutes *int            `json:"sections_duration_minutes"`
+	RawRules                ExamRuleColumns `json:"-"`
+}
+
+// ExamRuleColumns carries the raw exam columns the service resolves into the
+// effective navigation policy and timer mode.
+type ExamRuleColumns struct {
+	FormatVersion    int
+	Mode             string
+	NavigationPolicy string
+	TimerMode        string
+}
+
+// ExamPreviewSection is one Test of an exam as the student sees it before
+// starting: counts and metadata only, never question content.
+type ExamPreviewSection struct {
+	TestID               uuid.UUID `json:"test_id"`
+	Title                string    `json:"title"`
+	DurationMinutes      int       `json:"duration_minutes"`
+	QuestionCount        int       `json:"question_count"`
+	QuestionPresentation string    `json:"question_presentation"`
+}
+
+// RegistrationExam is the nested exam config of RegistrationDetail and the body
+// of the admin student-preview endpoint.
+type RegistrationExam struct {
+	ID                   uuid.UUID  `json:"id"`
+	Title                string     `json:"title"`
+	ScheduledAt          *time.Time `json:"scheduled_at"`
+	ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
+	RequiresCheckin      bool       `json:"requires_checkin"`
+	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
+	// TimerMode and NavigationPolicy are the effective rules (see RawRules).
+	TimerMode        string `json:"timer_mode"`
+	NavigationPolicy string `json:"navigation_policy"`
+	MaxAttempts      *int   `json:"max_attempts"`
+	DurationMinutes  *int   `json:"duration_minutes"`
+	ResultConfig     string `json:"result_config"`
+	// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
+	ExamNumber              *int                 `json:"exam_number"`
+	CardEnabled             bool                 `json:"card_enabled"`
+	CardNotes               []string             `json:"card_notes"`
+	SectionCount            int                  `json:"section_count"`
+	QuestionCount           int                  `json:"question_count"`
+	SectionsDurationMinutes *int                 `json:"sections_duration_minutes"`
+	Sections                []ExamPreviewSection `json:"sections"`
+	RawRules                ExamRuleColumns      `json:"-"`
 }
 
 // RegistrationDetail is the read shape returned by GET /api/v1/exam/registrations/:id:
@@ -392,21 +446,7 @@ type RegistrationDetail struct {
 		HelpURL      string `json:"help_url"`
 		SocialHandle string `json:"social_handle"`
 	} `json:"contact"`
-	Exam struct {
-		ID                   uuid.UUID  `json:"id"`
-		Title                string     `json:"title"`
-		ScheduledAt          *time.Time `json:"scheduled_at"`
-		ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
-		RequiresCheckin      bool       `json:"requires_checkin"`
-		CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
-		TimerMode            string     `json:"timer_mode"`
-		DurationMinutes      *int       `json:"duration_minutes"`
-		ResultConfig         string     `json:"result_config"`
-		// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
-		ExamNumber  *int     `json:"exam_number"`
-		CardEnabled bool     `json:"card_enabled"`
-		CardNotes   []string `json:"card_notes"`
-	} `json:"exam"`
+	Exam RegistrationExam `json:"exam"`
 }
 
 // ExamRosterEntry is one row of the admin participant roster for an exam

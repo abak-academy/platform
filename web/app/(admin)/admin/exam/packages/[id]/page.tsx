@@ -107,6 +107,7 @@ export default function ExamPackageDetailPage() {
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
   const hasResultsWorkspace = hasCapability(role, "results-workspace:read");
+  const canPreviewStudent = hasCapability(role, "exam-preview:read");
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
@@ -390,10 +391,19 @@ export default function ExamPackageDetailPage() {
           data ? `${data.format_version === 2 ? t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free") : examModeLabel(data.mode, t)} · ${data.timer_mode === "per_test" ? t("format_timer_section") : data.duration_minutes != null ? `${data.duration_minutes} ${t("minutes")}` : t("format_timer_overall")} · ${formatScheduled(data.scheduled_at)}` : undefined
         }
         actions={
-          data && !isSchoolScoped ? (
-            <Button className="rounded-full" onClick={() => setEditOpen(true)}>
-              {t("exam_admin_settings")}
-            </Button>
+          data && (canPreviewStudent || !isSchoolScoped) ? (
+            <>
+              {canPreviewStudent && (
+                <Button asChild variant="outline" className="rounded-full">
+                  <Link href={`/admin/exam/packages/${id}/preview`}>{t("admin_exam_preview_student")}</Link>
+                </Button>
+              )}
+              {!isSchoolScoped && (
+                <Button className="rounded-full" onClick={() => setEditOpen(true)}>
+                  {t("exam_admin_settings")}
+                </Button>
+              )}
+            </>
           ) : undefined
         }
       />

@@ -1291,6 +1291,37 @@ describe("composable section presentation", () => {
   });
 });
 
+describe("ExamPackageDetailPage — student preview button", () => {
+  beforeEach(() => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    examState = {
+      data: sampleExam,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  it.each(["super_admin", "admin_exam"])("%s sees a Pratinjau siswa link to the preview route", async (role) => {
+    mockRole = role;
+    render(<ExamPackageDetailPage />);
+
+    const link = await screen.findByRole("link", { name: /pratinjau siswa/i });
+    expect(link).toHaveAttribute("href", "/admin/exam/packages/exam-1/preview");
+  });
+
+  it.each(["admin_school", "admin_store", undefined])("%s does not see the preview link", async (role) => {
+    mockRole = role;
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("link", { name: /pratinjau siswa/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("composable exam — material conflicts and policy lock", () => {
   const sectionId = "5f1d1c2e-3b4a-4c6d-8e9f-0a1b2c3d4e5f";
   const composable = (over: Partial<ExamDetail> = {}, presentation: "one_per_page" | "all_on_page" = "all_on_page"): ExamDetail => ({
