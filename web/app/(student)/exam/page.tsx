@@ -220,7 +220,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     );
 
   return (
-    <Card className="gap-0 p-5">
+    <Card className="min-w-0 gap-0 p-5">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em] whitespace-nowrap text-ink-500 uppercase">
           <ClipboardList className="size-4 text-brand-600" />
@@ -233,7 +233,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         {reg.exam_title}
       </h3>
 
-      <dl className="mt-4 grid grid-cols-[1.5fr_1fr_1fr] border-y border-line py-3 text-xs">
+      <dl className="mt-4 grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] border-y border-line py-3 text-xs">
         <div className="min-w-0 pr-3">
           <dt className="text-ink-500">
             {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
