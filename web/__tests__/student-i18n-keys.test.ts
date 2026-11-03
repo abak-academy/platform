@@ -141,7 +141,7 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "competition_empty", id: "Anda belum terdaftar pada ujian apapun", en: "You are not enrolled in any exams" },
   { key: "competition_error", id: "Gagal memuat data ujian", en: "Failed to load exam data" },
   { key: "competition_detail_back", id: "Kembali", en: "Back" },
-  { key: "competition_detail_exam_info", id: "Informasi Ujian", en: "Exam Information" },
+  { key: "competition_detail_exam_info", id: "Informasi ujian", en: "Exam information" },
   { key: "competition_detail_scheduled_at", id: "Jadwal", en: "Scheduled" },
   { key: "competition_detail_token_label", id: "Token", en: "Token" },
   { key: "competition_detail_show_token", id: "Tampilkan Token", en: "Show Token" },
