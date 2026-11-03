@@ -178,7 +178,7 @@ describe("TestDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 1, name: /tryout utbk saintek/i })).toBeInTheDocument();
     });
-    expect(screen.getByText("Matematika · Aljabar · 90 min")).toBeInTheDocument();
+    expect(screen.getByText("Matematika · Aljabar")).toBeInTheDocument();
   });
 
   it("shows a back-link to the tests list", async () => {
@@ -194,7 +194,7 @@ describe("TestDetailPage", () => {
   it("separates questions, material/instructions and test information into tabs", async () => {
     renderWithClient(<TestDetailPage />);
 
-    expect(await screen.findByRole("tab", { name: "Soal", selected: true })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "Soal (2)", selected: true })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /materi & instruksi/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /informasi tes/i })).toBeInTheDocument();
     expect(screen.getByText("Apa ibu kota Indonesia?")).toBeInTheDocument();
@@ -204,6 +204,104 @@ describe("TestDetailPage", () => {
     await openTab(/informasi tes/i);
     expect(screen.getByLabelText(/judul/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/durasi/i)).toBeInTheDocument();
+  });
+
+  it("shows the question count, duration and save status in the meta row", async () => {
+    renderWithClient(<TestDetailPage />);
+
+    const meta = await screen.findByTestId("test-meta-row");
+    expect(within(meta).getByText("2 soal")).toBeInTheDocument();
+    expect(within(meta).getByText("90 menit")).toBeInTheDocument();
+    expect(within(meta).getByRole("status")).toHaveTextContent("Pengaturan tersimpan");
+
+    await openTab(/informasi tes/i);
+    fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Judul baru" } });
+    expect(within(meta).getByRole("status")).toHaveTextContent("Ada pengaturan belum disimpan");
+  });
+
+  it("shows how many exams use the test when exam_count is positive", async () => {
+    testDetailState = {
+      ...testDetailState,
+      data: { test: { ...sampleTest, exam_count: 3 }, questions: sampleQuestions },
+    };
+    renderWithClient(<TestDetailPage />);
+
+    expect(within(await screen.findByTestId("test-meta-row")).getByText("Dipakai pada 3 ujian")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["is 0", 0],
+    ["is absent", undefined],
+  ])("hides the usage item when exam_count %s", async (_label, examCount) => {
+    testDetailState = {
+      ...testDetailState,
+      data: { test: { ...sampleTest, exam_count: examCount }, questions: sampleQuestions },
+    };
+    renderWithClient(<TestDetailPage />);
+
+    await screen.findByTestId("test-meta-row");
+    expect(screen.queryByText(/dipakai pada/i)).not.toBeInTheDocument();
+  });
+
+  it("explains that one test can serve several exams", async () => {
+    renderWithClient(<TestDetailPage />);
+
+    expect(await screen.findByText(/satu tes dapat digunakan di beberapa ujian/i)).toBeInTheDocument();
+  });
+
+  it("marks questions with their own material and shows the exam-display warning", async () => {
+    const withOwn: QuestionWithOptions[] = [
+      sampleQuestions[0],
+      { ...sampleQuestions[1], question: { ...sampleQuestions[1].question, material_html: "<p>Bacaan soal</p>" } },
+    ];
+    questionsState = { ...questionsState, data: { data: withOwn } };
+    renderWithClient(<TestDetailPage />);
+
+    const first = (await screen.findByText("Apa ibu kota Indonesia?")).closest("[data-question-row]") as HTMLElement;
+    const second = screen.getByText("Sebutkan 1+1").closest("[data-question-row]") as HTMLElement;
+    expect(within(first).getByText("Materi bersama")).toBeInTheDocument();
+    expect(within(first).queryByText("Materi sendiri")).not.toBeInTheDocument();
+    expect(within(second).getByText("Materi sendiri")).toBeInTheDocument();
+    expect(within(second).queryByText("Materi bersama")).not.toBeInTheDocument();
+
+    const display = screen.getByTestId("test-display-card");
+    expect(within(display).getByText("1 soal memiliki materi sendiri")).toBeInTheDocument();
+  });
+
+  it("does not warn about per-question material when every question uses the shared one", async () => {
+    renderWithClient(<TestDetailPage />);
+
+    const display = await screen.findByTestId("test-display-card");
+    expect(within(display).queryByText(/memiliki materi sendiri/i)).not.toBeInTheDocument();
+    expect(within(display).getByText(/tidak ada materi per soal/i)).toBeInTheDocument();
+  });
+
+  it("Atur materi switches to the Materi & instruksi tab", async () => {
+    renderWithClient(<TestDetailPage />);
+
+    const sidebar = await screen.findByTestId("test-material-sidebar");
+    fireEvent.click(within(sidebar).getByRole("button", { name: /atur materi/i }));
+
+    expect(await screen.findByRole("tab", { name: /materi & instruksi/i, selected: true })).toBeInTheDocument();
+    expect(screen.getByLabelText("Instruksi section")).toBeInTheDocument();
+  });
+
+  it("renders the shared material and instructions as two titled cards with an ownership notice", async () => {
+    renderWithClient(<TestDetailPage />);
+    await openTab(/materi & instruksi/i);
+
+    expect(screen.getByRole("heading", { name: "Materi bersama" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Instruksi pengerjaan" })).toBeInTheDocument();
+    expect(screen.getByText(/materi dan instruksi milik sumber tes/i)).toBeInTheDocument();
+    expect(screen.queryByTestId("test-material-sidebar")).not.toBeInTheDocument();
+  });
+
+  it("groups test information into identity and audio cards", async () => {
+    renderWithClient(<TestDetailPage />);
+    await openTab(/informasi tes/i);
+
+    expect(screen.getByRole("heading", { name: "Identitas & durasi" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Audio section" })).toBeInTheDocument();
   });
 
   it("saves test metadata via useUpdateTest", async () => {
@@ -489,7 +587,7 @@ describe("TestDetailPage", () => {
     await openTab(/informasi tes/i);
     fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Judul baru" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /pratinjau tes/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Pratinjau" }));
 
     expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/simpan pengaturan terlebih dahulu/i));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -498,7 +596,7 @@ describe("TestDetailPage", () => {
   it("previews the saved test read-only without calling any mutation", async () => {
     renderWithClient(<TestDetailPage />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /pratinjau tes/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pratinjau" }));
 
     const dialog = await screen.findByRole("dialog", { name: /tryout utbk saintek/i });
     expect(within(dialog).getByText(/tidak ada sesi atau percobaan/i)).toBeInTheDocument();
@@ -545,7 +643,7 @@ describe("TestDetailPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /dari bank/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole("dialog", { name: /pilih soal dari bank/i })).toBeInTheDocument();
+      expect(screen.getByRole("dialog", { name: /pilih dari bank soal/i })).toBeInTheDocument();
     });
 
     const row = screen.getByText("Bank question one").closest("button");

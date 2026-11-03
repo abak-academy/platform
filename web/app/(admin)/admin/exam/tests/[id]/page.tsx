@@ -5,11 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
+  BookOpen,
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  Clock,
   Eye,
-  Library,
+  Info,
   List,
   Plus,
   Unlink,
@@ -48,7 +50,7 @@ import { useUnsavedChangesGuard } from "@/lib/hooks/use-unsaved-changes-guard";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { materialHTMLOrNull, stripHtmlToPlainText } from "@/lib/rich-text";
-import { FORMAT_TONE, DIFFICULTY_TONE } from "@/lib/question-tone";
+import { FORMAT_TONE } from "@/lib/question-tone";
 import type { AdminUpdateTestInput, QuestionWithOptions, QuestionFormat, Test } from "@/lib/types";
 
 const FORMAT_BADGE: Record<
@@ -70,18 +72,19 @@ const FORMAT_BADGE: Record<
   true_false: "tests_format_true_false",
 };
 
-const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard"> = {
-  easy: "diff_easy",
-  medium: "diff_medium",
-  hard: "diff_hard",
-};
-
 const SECTION_TYPES: Array<{ value: string; labelKey: string }> = [
   { value: "", labelKey: "tests_field_section_type_none" },
   { value: "listening", labelKey: "tests_field_section_type_listening" },
   { value: "reading", labelKey: "tests_field_section_type_reading" },
   { value: "writing", labelKey: "tests_field_section_type_writing" },
 ];
+
+const SELECT_CLASS =
+  "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50";
+
+function hasOwnMaterial(question: QuestionWithOptions): boolean {
+  return Boolean(question.question.material_html?.trim());
+}
 
 function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error) return err.message;
@@ -124,6 +127,32 @@ function isDirty(draft: TestDraft, baseline: TestDraft): boolean {
   return normalize(draft) !== normalize(baseline);
 }
 
+function SectionCard({
+  title,
+  description,
+  actions,
+  children,
+  ...rest
+}: {
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+} & React.ComponentProps<"section">) {
+  return (
+    <section className="min-w-0 rounded-xl border bg-card text-card-foreground shadow-sm" {...rest}>
+      <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-ink-900">{title}</h2>
+          {description && <p className="mt-1 text-sm text-ink-500">{description}</p>}
+        </div>
+        {actions}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function QuestionRow({
   question,
   index,
@@ -145,79 +174,79 @@ function QuestionRow({
   const isFirst = index === 0;
   const isLast = index === total - 1;
   const q = question.question;
-  const difficultyKey = q.difficulty ? DIFFICULTY_LABELS[q.difficulty] : undefined;
 
   return (
-    <div
-      data-question-row
-      className={`flex items-start gap-3 p-3 ${index < total - 1 ? "border-b" : ""}`}
-    >
-      <div className="flex flex-col items-center gap-0.5 pt-0.5 text-ink-500">
-        <button
-          type="button"
-          onClick={() => onReorder(q.id, "up")}
-          disabled={isFirst || reordering}
-          aria-label={t("tests_reorder_up")}
-          className="hover:text-ink-900 disabled:opacity-30"
-        >
-          <ChevronUp className="size-4" />
-        </button>
-        <span className="text-sm font-semibold text-ink-900">{index + 1}</span>
-        <button
-          type="button"
-          onClick={() => onReorder(q.id, "down")}
-          disabled={isLast || reordering}
-          aria-label={t("tests_reorder_down")}
-          className="hover:text-ink-900 disabled:opacity-30"
-        >
-          <ChevronDown className="size-4" />
-        </button>
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-2 text-sm text-ink-900 [overflow-wrap:anywhere]">{stripHtmlToPlainText(q.body)}</p>
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <Badge variant="outline" className={cn("border-transparent", FORMAT_TONE[q.format])}>
-            {t(FORMAT_BADGE[q.format])}
-          </Badge>
-          {q.topic && (
-            <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
-              {q.topic}
-            </Badge>
-          )}
-          {difficultyKey && (
-            <Badge
-              variant="outline"
-              className={cn("border-transparent", q.difficulty && DIFFICULTY_TONE[q.difficulty])}
+    <tr data-question-row className="border-t align-top">
+      <td className="w-24 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <span className="grid size-7 place-items-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700">
+            {index + 1}
+          </span>
+          <div className="flex flex-col text-ink-500">
+            <button
+              type="button"
+              onClick={() => onReorder(q.id, "up")}
+              disabled={isFirst || reordering}
+              aria-label={t("tests_reorder_up")}
+              className="hover:text-ink-900 disabled:opacity-30"
             >
-              {t(difficultyKey)}
-            </Badge>
-          )}
+              <ChevronUp className="size-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => onReorder(q.id, "down")}
+              disabled={isLast || reordering}
+              aria-label={t("tests_reorder_down")}
+              className="hover:text-ink-900 disabled:opacity-30"
+            >
+              <ChevronDown className="size-4" />
+            </button>
+          </div>
         </div>
-      </div>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          onClick={() => onPreview(index)}
-          aria-label={t("tests_preview_question")}
-          title={t("tests_preview_question")}
-        >
-          <Eye className="size-3.5" />
-        </Button>
-        <Button
-          type="button"
-          size="icon-xs"
-          variant="ghost"
-          onClick={() => onDetach(q.id)}
-          aria-label={t("tests_detach_question")}
-          title={t("tests_detach_question")}
-          className="text-danger hover:text-danger"
-        >
-          <Unlink className="size-3.5" />
-        </Button>
-      </div>
-    </div>
+      </td>
+      <td className="min-w-[210px] max-w-[410px] px-4 py-3">
+        <p className="line-clamp-2 text-sm text-ink-900 [overflow-wrap:anywhere]">{stripHtmlToPlainText(q.body)}</p>
+      </td>
+      <td className="px-4 py-3">
+        <Badge variant="outline" className={cn("border-transparent", FORMAT_TONE[q.format])}>
+          {t(FORMAT_BADGE[q.format])}
+        </Badge>
+      </td>
+      <td className="px-4 py-3 text-sm">
+        {hasOwnMaterial(question) ? (
+          <Badge variant="outline" className="border-transparent bg-warn-bg text-warn">
+            {t("tests_material_own_badge")}
+          </Badge>
+        ) : (
+          t("tests_material_shared_badge")
+        )}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            onClick={() => onPreview(index)}
+            aria-label={t("tests_preview_question")}
+            title={t("tests_preview_question")}
+          >
+            <Eye className="size-3.5" />
+          </Button>
+          <Button
+            type="button"
+            size="icon-xs"
+            variant="outline"
+            onClick={() => onDetach(q.id)}
+            aria-label={t("tests_detach_question")}
+            title={t("tests_detach_question")}
+            className="text-danger hover:text-danger"
+          >
+            <Unlink className="size-3.5" />
+          </Button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -231,6 +260,7 @@ export default function TestDetailPage() {
   const [detachTarget, setDetachTarget] = useState<string | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [materialOpen, setMaterialOpen] = useState(false);
+  const [tab, setTab] = useState("questions");
 
   const {
     data: detail,
@@ -365,6 +395,8 @@ export default function TestDetailPage() {
   const savedMaterial = detail?.test.shared_material_html;
   const hasSavedMaterial = Boolean(savedMaterial?.trim());
   const ready = !isLoading && !isError && draft !== null;
+  const ownMaterialCount = questions.filter(hasOwnMaterial).length;
+  const examCount = detail?.test.exam_count ?? 0;
 
   return (
     <div className="space-y-6 fade-in">
@@ -384,11 +416,7 @@ export default function TestDetailPage() {
       <AdminPageHeader
         icon={ClipboardList}
         title={detail ? detail.test.title : t("sys_loading")}
-        description={
-          detail
-            ? `${detail.test.subject} · ${detail.test.topic} · ${detail.test.duration_minutes} min`
-            : undefined
-        }
+        description={detail ? `${detail.test.subject} · ${detail.test.topic}` : undefined}
         actionsAlign="end"
         actions={
           ready ? (
@@ -426,247 +454,333 @@ export default function TestDetailPage() {
       )}
 
       {ready && draft && (
-        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Tabs defaultValue="questions" className="min-w-0">
-            <TabsList className="h-auto w-full flex-wrap justify-start sm:w-fit">
-              <TabsTrigger value="questions" className="text-sm">
-                {t("tests_tab_questions")}
-              </TabsTrigger>
-              <TabsTrigger value="material" className="text-sm">
-                {t("tests_tab_material")}
-              </TabsTrigger>
-              <TabsTrigger value="info" className="text-sm">
-                {t("tests_tab_info")}
-              </TabsTrigger>
+        <>
+          <div data-testid="test-meta-row" className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-500">
+            <span className="inline-flex items-center gap-1.5">
+              <ClipboardList className="size-4" />
+              {t("tests_questions_n").replace("{n}", String(questions.length))}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="size-4" />
+              {t("tests_minutes_n").replace("{n}", String(detail?.test.duration_minutes ?? ""))}
+            </span>
+            {examCount > 0 && (
+              <span className="inline-flex items-center gap-1.5">
+                <BookOpen className="size-4" />
+                {t("tests_meta_used_by").replace("{n}", String(examCount))}
+              </span>
+            )}
+            <span role="status">{t(dirty ? "tests_save_status_dirty" : "tests_save_status_saved")}</span>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border bg-surface-2 px-4 py-3 text-sm text-ink-500">
+            <BookOpen className="mt-0.5 size-4 shrink-0 text-brand-600" />
+            <p>{t("tests_shared_notice")}</p>
+          </div>
+
+          <Tabs value={tab} onValueChange={setTab} className="min-w-0 gap-0">
+            <TabsList
+              variant="line"
+              className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b p-0"
+            >
+              {[
+                ["questions", `${t("tests_tab_questions")} (${questions.length})`],
+                ["material", t("tests_tab_material")],
+                ["info", t("tests_tab_info")],
+              ].map(([value, label]) => (
+                <TabsTrigger
+                  key={value}
+                  value={value}
+                  className="h-auto flex-none rounded-none px-4 py-3 text-sm data-[state=active]:text-brand-700 group-data-[orientation=horizontal]/tabs:after:bottom-0 group-data-[orientation=horizontal]/tabs:after:bg-brand-600"
+                >
+                  {label}
+                </TabsTrigger>
+              ))}
             </TabsList>
 
-            <TabsContent value="questions" className="space-y-4 pt-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-[15px] font-semibold text-ink-900">
-                  {t("tests_questions_in_this_test")}{" "}
-                  <span className="font-normal text-ink-500">· {questions.length}</span>
-                </h3>
-                <div className="flex items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-                    <Library className="mr-1 size-4" />
-                    {t("tests_from_bank")}
-                  </Button>
-                  <Button type="button" size="sm" onClick={() => setCreating(true)} disabled={creating}>
-                    <Plus className="mr-1 size-4" />
-                    {t("tests_new_question")}
-                  </Button>
+            <TabsContent value="questions" className="pt-6">
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(250px,1fr)]">
+                <div className="min-w-0 space-y-4">
+                  {creating && (
+                    <QuestionEditor
+                      testId={id}
+                      onCancel={() => setCreating(false)}
+                      onSaved={() => setCreating(false)}
+                    />
+                  )}
+
+                  <SectionCard
+                    title={t("tests_arrangement_title")}
+                    description={t("tests_arrangement_desc")}
+                    actions={
+                      <div className="flex items-center gap-2">
+                        <Button type="button" variant="outline" onClick={() => setCreating(true)} disabled={creating}>
+                          <Plus className="mr-1 size-4" />
+                          {t("tests_new_question")}
+                        </Button>
+                        <Button type="button" onClick={() => setPickerOpen(true)}>
+                          <Plus className="mr-1 size-4" />
+                          {t("tests_from_bank")}
+                        </Button>
+                      </div>
+                    }
+                  >
+                    {questions.length === 0 ? (
+                      <div className="border-t px-4 py-10 text-center text-ink-500">
+                        <List className="mx-auto size-8" strokeWidth={1.4} />
+                        <p className="mt-3 text-sm">{t("tests_questions_empty")}</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[650px] text-sm">
+                          <thead className="bg-muted text-left">
+                            <tr>
+                              <th className="px-4 py-3 font-medium">{t("tests_q_col_order")}</th>
+                              <th className="px-4 py-3 font-medium">{t("tests_q_col_question")}</th>
+                              <th className="px-4 py-3 font-medium">{t("tests_q_col_format")}</th>
+                              <th className="px-4 py-3 font-medium">{t("tests_q_col_material")}</th>
+                              <th className="px-4 py-3 font-medium">{t("tests_q_col_actions")}</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {questions.map((q, idx) => (
+                              <QuestionRow
+                                key={q.question.id}
+                                question={q}
+                                index={idx}
+                                total={questions.length}
+                                reordering={reorder.isPending}
+                                onReorder={handleReorder}
+                                onPreview={openPreview}
+                                onDetach={setDetachTarget}
+                              />
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </SectionCard>
                 </div>
-              </div>
 
-              {creating && (
-                <QuestionEditor
-                  testId={id}
-                  onCancel={() => setCreating(false)}
-                  onSaved={() => setCreating(false)}
-                />
-              )}
-
-              <div className="rounded-2xl bg-white shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)]">
-                {questions.length === 0 ? (
-                  <div className="px-4 py-10 text-center text-ink-500">
-                    <List className="mx-auto size-8" strokeWidth={1.4} />
-                    <p className="mt-3 text-sm">{t("tests_questions_empty")}</p>
-                    <div className="mt-5 flex items-center justify-center gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-                        <Library className="mr-1 size-4" />
-                        {t("tests_from_bank")}
-                      </Button>
-                      <Button type="button" size="sm" onClick={() => setCreating(true)} disabled={creating}>
-                        <Plus className="mr-1 size-4" />
-                        {t("tests_new_question")}
+                <aside className="min-w-0 space-y-6">
+                  <section
+                    data-testid="test-material-sidebar"
+                    className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-card-foreground shadow-sm"
+                  >
+                    <h2 className="text-base font-semibold text-ink-900">{t("tests_material_sidebar_title")}</h2>
+                    {hasSavedMaterial ? (
+                      <RichContent
+                        html={savedMaterial ?? ""}
+                        className="max-h-72 overflow-y-auto rounded-lg border p-4 text-sm [overflow-wrap:anywhere] [&_img]:h-auto [&_img]:max-w-full"
+                      />
+                    ) : (
+                      <p className="text-sm text-ink-500">{t("tests_material_empty")}</p>
+                    )}
+                    <p className="text-sm text-ink-500">{t("tests_material_sidebar_desc")}</p>
+                    <div className="flex flex-wrap gap-2">
+                      {hasSavedMaterial && (
+                        <Button type="button" size="sm" variant="outline" onClick={() => setMaterialOpen(true)}>
+                          <Eye className="mr-1 size-3.5" />
+                          {t("tests_material_view_full")}
+                        </Button>
+                      )}
+                      <Button type="button" size="sm" variant="outline" onClick={() => setTab("material")}>
+                        {t("tests_material_set")}
                       </Button>
                     </div>
-                  </div>
-                ) : (
-                  questions.map((q, idx) => (
-                    <QuestionRow
-                      key={q.question.id}
-                      question={q}
-                      index={idx}
-                      total={questions.length}
-                      reordering={reorder.isPending}
-                      onReorder={handleReorder}
-                      onPreview={openPreview}
-                      onDetach={setDetachTarget}
-                    />
-                  ))
-                )}
+                  </section>
+
+                  <section
+                    data-testid="test-display-card"
+                    className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-card-foreground shadow-sm"
+                  >
+                    <h2 className="text-base font-semibold text-ink-900">{t("tests_display_title")}</h2>
+                    <p className="text-sm text-ink-500">{t("tests_display_desc")}</p>
+                    {ownMaterialCount > 0 ? (
+                      <div className="rounded-lg bg-warn-bg p-3 text-sm text-warn">
+                        <p className="font-semibold">
+                          {t("tests_display_own_material").replace("{n}", String(ownMaterialCount))}
+                        </p>
+                        <p>{t("tests_display_own_material_body")}</p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-success-bg p-3 text-sm text-success">
+                        {t("tests_display_ok")}
+                      </div>
+                    )}
+                    <p className="border-t pt-3 text-xs text-ink-500">{t("tests_display_duration_note")}</p>
+                  </section>
+                </aside>
               </div>
             </TabsContent>
 
-            <TabsContent value="material" className="space-y-6 pt-2">
-              <div className="grid gap-2">
-                <Label htmlFor="test-shared-material">{t("format_shared_material")}</Label>
-                <RichTextEditor
-                  id="test-shared-material"
-                  aria-label={t("format_shared_material")}
-                  value={draft.material}
-                  onChange={(html) => patchDraft({ material: html })}
-                  disabled={update.isPending}
-                />
-                <p className="text-xs text-ink-500">{t("format_reusable_material_hint")}</p>
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="test-instructions">{t("format_instructions")}</Label>
-                <RichTextEditor
-                  id="test-instructions"
-                  aria-label={t("format_instructions")}
-                  value={draft.instructions}
-                  onChange={(html) => patchDraft({ instructions: html })}
-                  disabled={update.isPending}
-                />
+            <TabsContent value="material" className="pt-6">
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+                <SectionCard title={t("format_shared_material")} description={t("tests_material_card_desc")}>
+                  <div className="space-y-2 border-t p-5">
+                    <RichTextEditor
+                      id="test-shared-material"
+                      aria-label={t("format_shared_material")}
+                      value={draft.material}
+                      onChange={(html) => patchDraft({ material: html })}
+                      disabled={update.isPending}
+                    />
+                    <p className="text-xs text-ink-500">{t("tests_material_override_hint")}</p>
+                    <p className="text-xs text-ink-500">{t("format_reusable_material_hint")}</p>
+                  </div>
+                </SectionCard>
+                <div className="min-w-0 space-y-4">
+                  <SectionCard title={t("tests_instructions_title")} description={t("tests_instructions_desc")}>
+                    <div className="border-t p-5">
+                      <RichTextEditor
+                        id="test-instructions"
+                        aria-label={t("format_instructions")}
+                        value={draft.instructions}
+                        onChange={(html) => patchDraft({ instructions: html })}
+                        disabled={update.isPending}
+                      />
+                    </div>
+                  </SectionCard>
+                  <div className="flex items-start gap-3 rounded-xl bg-brand-50 p-4 text-sm text-brand-700">
+                    <Info className="mt-0.5 size-4 shrink-0" />
+                    <div>
+                      <p className="font-semibold">{t("tests_ownership_title")}</p>
+                      <p>{t("tests_ownership_body")}</p>
+                    </div>
+                  </div>
+                </div>
               </div>
             </TabsContent>
 
-            <TabsContent value="info" className="pt-2">
-              <div className="space-y-6 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)]">
-                <div className="grid gap-2">
-                  <Label htmlFor="test-title">{t("tests_field_title")}</Label>
-                  <Input
-                    id="test-title"
-                    value={draft.title}
-                    onChange={(e) => patchDraft({ title: e.target.value })}
-                    placeholder={t("tests_field_title")}
-                    disabled={update.isPending}
-                  />
-                </div>
+            <TabsContent value="info" className="pt-6">
+              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+                <SectionCard title={t("tests_info_identity_title")}>
+                  <div className="space-y-5 border-t p-5">
+                    <div className="grid gap-2">
+                      <Label htmlFor="test-title">{t("tests_field_title")}</Label>
+                      <Input
+                        id="test-title"
+                        value={draft.title}
+                        onChange={(e) => patchDraft({ title: e.target.value })}
+                        placeholder={t("tests_field_title")}
+                        disabled={update.isPending}
+                      />
+                    </div>
 
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="test-subject">{t("tests_field_subject")}</Label>
-                    <Input
-                      id="test-subject"
-                      value={draft.subject}
-                      onChange={(e) => patchDraft({ subject: e.target.value })}
-                      placeholder={t("tests_field_subject")}
-                      disabled={update.isPending}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="test-topic">{t("tests_field_topic")}</Label>
-                    <select
-                      id="test-topic"
-                      value={draft.topic}
-                      onChange={(e) => patchDraft({ topic: e.target.value })}
-                      disabled={update.isPending}
-                      className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                    >
-                      <option value="" disabled>
-                        {t("tests_field_topic")}
-                      </option>
-                      {draft.topic && !topicNames.includes(draft.topic) && (
-                        <option value={draft.topic}>{draft.topic}</option>
-                      )}
-                      {topicNames.map((name) => (
-                        <option key={name} value={name}>
-                          {name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div className="grid gap-2">
-                    <Label htmlFor="test-duration">{t("tests_field_duration")}</Label>
-                    <Input
-                      id="test-duration"
-                      type="number"
-                      min={1}
-                      value={draft.duration}
-                      onChange={(e) => patchDraft({ duration: e.target.value })}
-                      placeholder="60"
-                      disabled={update.isPending}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
-                    <select
-                      id="test-audio-play-limit"
-                      value={draft.audioPlayLimit}
-                      onChange={(e) => patchDraft({ audioPlayLimit: e.target.value })}
-                      disabled={update.isPending}
-                      className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                    >
-                      <option value="">{t("unlimited")}</option>
-                      {!["", "1", "2", "3"].includes(draft.audioPlayLimit) && (
-                        <option value={draft.audioPlayLimit}>{draft.audioPlayLimit}×</option>
-                      )}
-                      <option value="1">1×</option>
-                      <option value="2">2×</option>
-                      <option value="3">3×</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>{t("tests_field_section_type")}</Label>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {SECTION_TYPES.map(({ value, labelKey }) => (
-                      <label
-                        key={value || "none"}
-                        className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm"
-                      >
-                        <input
-                          type="radio"
-                          name="section_type"
-                          value={value}
-                          checked={draft.sectionType === value}
-                          onChange={() => patchDraft({ sectionType: value })}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div className="grid gap-2">
+                        <Label htmlFor="test-subject">{t("tests_field_subject")}</Label>
+                        <Input
+                          id="test-subject"
+                          value={draft.subject}
+                          onChange={(e) => patchDraft({ subject: e.target.value })}
+                          placeholder={t("tests_field_subject")}
                           disabled={update.isPending}
                         />
-                        <span>{t(labelKey as Parameters<typeof t>[0])}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {draft.sectionType === "listening" && (
-                    <p className="text-xs text-ink-500">
-                      URL audio wajib diisi untuk sesi Listening.
-                    </p>
-                  )}
-                </div>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="test-topic">{t("tests_field_topic")}</Label>
+                        <select
+                          id="test-topic"
+                          value={draft.topic}
+                          onChange={(e) => patchDraft({ topic: e.target.value })}
+                          disabled={update.isPending}
+                          className={SELECT_CLASS}
+                        >
+                          <option value="" disabled>
+                            {t("tests_field_topic")}
+                          </option>
+                          {draft.topic && !topicNames.includes(draft.topic) && (
+                            <option value={draft.topic}>{draft.topic}</option>
+                          )}
+                          {topicNames.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
-                  <AudioUploadInput
-                    id="test-audio-url"
-                    value={draft.audioUrl}
-                    onChange={(url) => patchDraft({ audioUrl: url })}
-                    placeholder="https://..."
-                    disabled={update.isPending}
-                  />
-                </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="test-duration">{t("tests_field_duration")}</Label>
+                      <Input
+                        id="test-duration"
+                        type="number"
+                        min={1}
+                        value={draft.duration}
+                        onChange={(e) => patchDraft({ duration: e.target.value })}
+                        placeholder="60"
+                        disabled={update.isPending}
+                      />
+                      <p className="text-xs text-ink-500">{t("tests_info_duration_hint")}</p>
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label>{t("tests_field_section_type")}</Label>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {SECTION_TYPES.map(({ value, labelKey }) => (
+                          <label
+                            key={value || "none"}
+                            className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm"
+                          >
+                            <input
+                              type="radio"
+                              name="section_type"
+                              value={value}
+                              checked={draft.sectionType === value}
+                              onChange={() => patchDraft({ sectionType: value })}
+                              disabled={update.isPending}
+                            />
+                            <span>{t(labelKey as Parameters<typeof t>[0])}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-ink-500">{t("tests_info_section_type_hint")}</p>
+                      {draft.sectionType === "listening" && (
+                        <p className="text-xs text-ink-500">{t("tests_info_listening_requires_audio")}</p>
+                      )}
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title={t("tests_info_audio_title")} description={t("tests_info_audio_desc")}>
+                  <div className="space-y-5 border-t p-5">
+                    <div className="grid gap-2">
+                      <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
+                      <AudioUploadInput
+                        id="test-audio-url"
+                        value={draft.audioUrl}
+                        onChange={(url) => patchDraft({ audioUrl: url })}
+                        placeholder="https://..."
+                        disabled={update.isPending}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
+                      <select
+                        id="test-audio-play-limit"
+                        value={draft.audioPlayLimit}
+                        onChange={(e) => patchDraft({ audioPlayLimit: e.target.value })}
+                        disabled={update.isPending}
+                        className={SELECT_CLASS}
+                      >
+                        <option value="">{t("unlimited")}</option>
+                        {!["", "1", "2", "3"].includes(draft.audioPlayLimit) && (
+                          <option value={draft.audioPlayLimit}>{draft.audioPlayLimit}×</option>
+                        )}
+                        <option value="1">1×</option>
+                        <option value="2">2×</option>
+                        <option value="3">3×</option>
+                      </select>
+                      <p className="text-xs text-ink-500">{t("tests_info_audio_limit_hint")}</p>
+                    </div>
+                  </div>
+                </SectionCard>
               </div>
             </TabsContent>
           </Tabs>
-
-          <aside
-            data-testid="test-material-sidebar"
-            className="min-w-0 space-y-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[var(--md-sys-color-outline-variant)] lg:sticky lg:top-6"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-[15px] font-semibold text-ink-900">{t("tests_material_sidebar_title")}</h3>
-              {hasSavedMaterial && (
-                <Button type="button" size="sm" variant="ghost" onClick={() => setMaterialOpen(true)}>
-                  {t("tests_material_view_full")}
-                </Button>
-              )}
-            </div>
-            {hasSavedMaterial ? (
-              <RichContent
-                html={savedMaterial ?? ""}
-                className="max-h-72 overflow-y-auto text-sm [overflow-wrap:anywhere] [&_img]:h-auto [&_img]:max-w-full"
-              />
-            ) : (
-              <p className="text-sm text-ink-500">{t("tests_material_empty")}</p>
-            )}
-          </aside>
-        </div>
+        </>
       )}
 
       <QuestionPickerModal
