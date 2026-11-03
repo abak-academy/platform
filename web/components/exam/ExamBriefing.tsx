@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, CalendarDays, Clock, Eye, Lock } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Clock, Eye, Lock, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,29 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
         </p>
       </Card>
 
+      {exam.whatsapp_group_url && (
+        <Card className="mt-4 space-y-3 p-5">
+          <div className="flex items-start gap-3">
+            <Users className="mt-0.5 size-5 shrink-0 text-ink-500" />
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg font-semibold text-ink-900">{t("exam_event_student_wa_title")}</h2>
+              <p className="mt-1 text-sm text-ink-500">{t("exam_event_student_wa_body")}</p>
+              <p className="mt-1 text-xs text-ink-500">{t("exam_event_student_wa_optional")}</p>
+            </div>
+          </div>
+          <Button asChild variant="outline">
+            <a
+              href={exam.whatsapp_group_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t("exam_event_student_wa_aria")}
+            >
+              {t("exam_event_student_wa_cta")}
+            </a>
+          </Button>
+        </Card>
+      )}
+
       {afterInfo}
 
       {exam.requires_checkin && (
@@ -171,6 +194,27 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
             {perTest ? t("examdetail_time_caption_per_test") : t("examdetail_time_caption_overall")}
           </div>
         </div>
+        {(exam.additional_rules_note || exam.additional_rules_url) && (
+          <div className="flex items-start gap-3 text-sm">
+            <BookOpen className="mt-0.5 size-4 shrink-0 text-ink-500" />
+            <div className="min-w-0">
+              <h3 className="font-semibold text-ink-900">{t("exam_event_student_rules_title")}</h3>
+              {exam.additional_rules_note && (
+                <p className="whitespace-pre-line [overflow-wrap:anywhere] text-ink-500">{exam.additional_rules_note}</p>
+              )}
+              {exam.additional_rules_url && (
+                <a
+                  href={exam.additional_rules_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-block font-medium [overflow-wrap:anywhere] text-brand-700 hover:underline"
+                >
+                  {t("exam_event_rules_link")}
+                </a>
+              )}
+            </div>
+          </div>
+        )}
         <div className="border-t border-line pt-4">
           <h3 className="text-sm font-semibold text-ink-900">{t("examdetail_sections_title")}</h3>
           {exam.sections.length === 0 ? (

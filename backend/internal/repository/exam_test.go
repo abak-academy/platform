@@ -318,7 +318,7 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 		t.Fatalf("scanExam returned error: %v", err)
 	}
 
-	if got := len(rec.dests); got != 32 {
+	if got := len(rec.dests); got != 35 {
 		t.Fatalf("scanExam passed %d destinations, want 32", got)
 	}
 
@@ -378,6 +378,11 @@ func TestScanExam_passes_expected_destinations(t *testing.T) {
 	}
 	if _, ok := rec.dests[31].(*string); !ok {
 		t.Errorf("dest[31] = %T, want *string (navigation_policy)", rec.dests[31])
+	}
+	for i, name := range []string{"whatsapp_group_url", "additional_rules_note", "additional_rules_url"} {
+		if _, ok := rec.dests[32+i].(**string); !ok {
+			t.Errorf("dest[%d] = %T, want **string (%s, nullable pointer field)", 32+i, rec.dests[32+i], name)
+		}
 	}
 }
 

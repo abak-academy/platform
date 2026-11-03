@@ -231,6 +231,10 @@ type examPatchRequest struct {
 	// NavigationPolicy is a plain string: absent (empty) preserves the stored
 	// value, matching Mode's PATCH semantics.
 	NavigationPolicy string `json:"navigation_policy"`
+	// Event info: absent preserves; null or blank clears (the service trims blank to nil).
+	WhatsAppGroupURL    Nullable[string] `json:"whatsapp_group_url"`
+	AdditionalRulesNote Nullable[string] `json:"additional_rules_note"`
+	AdditionalRulesURL  Nullable[string] `json:"additional_rules_url"`
 }
 
 // applyNullable overlays a Nullable[T] PATCH field onto a *T model field: absent
@@ -314,6 +318,9 @@ func (h *Handler) AdminUpdateExam(c echo.Context) error {
 	if req.NavigationPolicy != "" {
 		overlay.NavigationPolicy = req.NavigationPolicy
 	}
+	applyNullable(req.WhatsAppGroupURL, &overlay.WhatsAppGroupURL)
+	applyNullable(req.AdditionalRulesNote, &overlay.AdditionalRulesNote)
+	applyNullable(req.AdditionalRulesURL, &overlay.AdditionalRulesURL)
 
 	out, err := h.svc.UpdateExam(c.Request().Context(), id, overlay, ClaimsFromContext(c).Sub)
 	if err != nil {

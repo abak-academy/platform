@@ -18,6 +18,7 @@ import {
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ResultsWorkspaceTab } from "@/components/admin/ResultsWorkspaceTab";
 import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
+import { ExamAdditionalRulesCard, ExamWhatsAppCard } from "@/components/admin/ExamEventInfo";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
@@ -442,6 +443,7 @@ export default function ExamPackageDetailPage() {
           </div>
 
           {tab === "overview" && (
+            <div className="space-y-4">
             <div className="md-card-outlined space-y-4 p-6">
               <h2 className="text-title-large font-semibold">
                 {t("admin_exam_detail_tab_overview")}
@@ -624,6 +626,8 @@ export default function ExamPackageDetailPage() {
                 </div>
               )}
             </div>
+            <ExamWhatsAppCard url={data.whatsapp_group_url} canManage={!isSchoolScoped} />
+            </div>
           )}
 
           {tab === "tests" && (
@@ -767,6 +771,8 @@ export default function ExamPackageDetailPage() {
                 </div>
               </div>
 
+              <div className="min-w-0 space-y-4">
+              <ExamAdditionalRulesCard exam={data} />
               <div className="md-card-outlined p-4">
                 <h3 className="text-title-medium mb-3 font-semibold">
                   {t("admin_exam_detail_tests_available")}
@@ -841,6 +847,7 @@ export default function ExamPackageDetailPage() {
                     </Button>
                   </div>
                 )}
+              </div>
               </div>
             </div>
           )}

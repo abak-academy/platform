@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -881,6 +882,9 @@ func validateExam(e model.Exam) error {
 			return fmt.Errorf("%w: each card note must be %d characters or fewer", ErrValidation, maxCardNoteLen)
 		}
 	}
+	if err := validateEventInfo(e); err != nil {
+		return err
+	}
 	if e.ScheduledEndAt != nil {
 		if e.ScheduledAt == nil {
 			return fmt.Errorf("%w: scheduled_end_at requires scheduled_at", ErrValidation)
@@ -955,9 +959,62 @@ func normalizeCardNotes(notes []string) []string {
 	return out
 }
 
+const (
+	maxEventURLLen         = 2048
+	maxAdditionalRulesNote = 500
+	whatsAppGroupHost      = "chat.whatsapp.com"
+)
+
+func trimOptional(p *string) *string {
+	if p == nil {
+		return nil
+	}
+	t := strings.TrimSpace(*p)
+	if t == "" {
+		return nil
+	}
+	return &t
+}
+
+func normalizeEventInfo(m *model.Exam) {
+	m.WhatsAppGroupURL = trimOptional(m.WhatsAppGroupURL)
+	m.AdditionalRulesNote = trimOptional(m.AdditionalRulesNote)
+	m.AdditionalRulesURL = trimOptional(m.AdditionalRulesURL)
+}
+
+func parseEventURL(raw string, schemes ...string) (*url.URL, bool) {
+	if len(raw) > maxEventURLLen {
+		return nil, false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || !slices.Contains(schemes, u.Scheme) {
+		return nil, false
+	}
+	return u, true
+}
+
+func validateEventInfo(e model.Exam) error {
+	if e.WhatsAppGroupURL != nil {
+		u, ok := parseEventURL(*e.WhatsAppGroupURL, "https")
+		if !ok || strings.ToLower(u.Host) != whatsAppGroupHost || strings.Trim(u.Path, "/") == "" {
+			return fmt.Errorf("%w: whatsapp_group_url must be an https://%s link", ErrValidation, whatsAppGroupHost)
+		}
+	}
+	if e.AdditionalRulesURL != nil {
+		if _, ok := parseEventURL(*e.AdditionalRulesURL, "http", "https"); !ok {
+			return fmt.Errorf("%w: additional_rules_url must be an http or https link", ErrValidation)
+		}
+	}
+	if e.AdditionalRulesNote != nil && utf8.RuneCountInString(*e.AdditionalRulesNote) > maxAdditionalRulesNote {
+		return fmt.Errorf("%w: additional_rules_note must be %d characters or fewer", ErrValidation, maxAdditionalRulesNote)
+	}
+	return nil
+}
+
 func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, error) {
 	m.FormatVersion = 2
 	m.CardNotes = normalizeCardNotes(m.CardNotes)
+	normalizeEventInfo(&m)
 	if m.ResultConfig == "" {
 		m.ResultConfig = "hidden"
 	}
@@ -981,6 +1038,7 @@ func (s *Service) CreateExam(ctx context.Context, m model.Exam) (model.Exam, err
 
 func (s *Service) UpdateExam(ctx context.Context, id uuid.UUID, m model.Exam, actorID string) (model.Exam, error) {
 	m.CardNotes = normalizeCardNotes(m.CardNotes)
+	normalizeEventInfo(&m)
 	commonFields := m
 	commonFields.CertificateDesign = nil
 	if err := validateExam(commonFields); err != nil {
@@ -1528,6 +1586,9 @@ func (s *Service) GetStudentRegistrationDetail(ctx context.Context, regID, stude
 	detail.Exam.QuestionCount = exam.QuestionCount
 	detail.Exam.SectionsDurationMinutes = exam.SectionsDurationMinutes
 	detail.Exam.RawRules = exam.RawRules
+	detail.Exam.WhatsAppGroupURL = exam.WhatsAppGroupURL
+	detail.Exam.AdditionalRulesNote = exam.AdditionalRulesNote
+	detail.Exam.AdditionalRulesURL = exam.AdditionalRulesURL
 	if err := s.fillRegistrationExam(ctx, &detail.Exam); err != nil {
 		return nil, err
 	}
