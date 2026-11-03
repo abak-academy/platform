@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Search } from "lucide-react";
+import { Calendar, Search, X } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ export default function ExamPackagesPage() {
   const [editing, setEditing] = useState<ExamListItem | null>(null);
 
   const [searchInput, setSearchInput] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
   const q = useDebouncedValue(searchInput).trim();
   const [cursor, setCursor] = useState<string | undefined>();
   const [nextCursor, setNextCursor] = useState<string | undefined>();
@@ -77,14 +78,36 @@ export default function ExamPackagesPage() {
         }
       />
 
-      <div className="relative w-full sm:w-64">
-        <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-        <Input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={t("search")}
-          className="pl-9"
-        />
+      <div className="flex items-center gap-3">
+        <div className="relative w-full min-w-0 flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
+          <Input
+            ref={searchRef}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t("exam_packages_search_placeholder")}
+            aria-label={t("exam_packages_search_placeholder")}
+            className="px-9"
+          />
+          {searchInput && (
+            <button
+              type="button"
+              aria-label={t("exam_packages_search_clear")}
+              onClick={() => {
+                setSearchInput("");
+                searchRef.current?.focus();
+              }}
+              className="absolute right-2 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded-full text-ink-500 hover:bg-muted hover:text-ink-900"
+            >
+              <X className="size-4" />
+            </button>
+          )}
+        </div>
+        {!isLoading && !isError && (
+          <span className="shrink-0 text-sm text-ink-500" aria-live="polite">
+            {t("exam_packages_count").replace("{n}", `${items.length}${nextCursor ? "+" : ""}`)}
+          </span>
+        )}
       </div>
 
       {isLoading && (
