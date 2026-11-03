@@ -47,6 +47,11 @@ describe("ExamWhatsAppCard", () => {
     expect(screen.queryByText("Link tersedia")).not.toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
+
+  it("renders no anchor for a stored value that is not a WhatsApp group link", () => {
+    render(<ExamWhatsAppCard url="javascript:alert(1)" />);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
 });
 
 describe("ExamAdditionalRulesCard", () => {
@@ -199,6 +204,39 @@ describe("ExamAdditionalRulesCard", () => {
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("boom"));
     expect(screen.getByLabelText(/keterangan tambahan/i)).toHaveValue("Catatan");
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("renders no anchor for a stored javascript: rules link, keeping the note", () => {
+    render(<ExamAdditionalRulesCard exam={{ ...baseExam, additional_rules_note: "Catatan", additional_rules_url: "javascript:alert(1)" }} />);
+    expect(screen.getByText("Catatan")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it.each(["https://user@example.com/x", "https:example.com/x"])("rejects the rules link %s on save", async (value) => {
+    render(<ExamAdditionalRulesCard exam={baseExam} />);
+    fireEvent.click(toggle());
+    fireEvent.input(screen.getByLabelText(/link aturan lengkap/i), { target: { value } });
+    fireEvent.click(screen.getByRole("button", { name: /simpan aturan tambahan/i }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(mockUpdateExam).not.toHaveBeenCalled();
+  });
+
+  it("follows stored values cleared from outside while not editing", () => {
+    const { rerender } = render(<ExamAdditionalRulesCard exam={withRules} />);
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    rerender(<ExamAdditionalRulesCard exam={baseExam} />);
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(toggle()).not.toBeChecked();
+    expect(screen.queryByLabelText(/keterangan tambahan/i)).not.toBeInTheDocument();
+  });
+
+  it("follows stored values set from outside while not editing", () => {
+    const { rerender } = render(<ExamAdditionalRulesCard exam={baseExam} />);
+    rerender(<ExamAdditionalRulesCard exam={withRules} />);
+    expect(screen.getByText(/baca panduan teknis\./i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(toggle()).toBeChecked();
+    expect(screen.getByLabelText(/link aturan lengkap/i)).toHaveValue("https://example.com/panduan");
   });
 
   it("does not claim to save together with the Test list", () => {

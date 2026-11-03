@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ImageUploadInput } from "@/components/admin/ImageUploadInput";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isWhatsAppGroupUrl } from "@/lib/exam-event-info";
 import { useTranslation } from "@/lib/i18n";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
@@ -58,15 +59,6 @@ function nonNegativeInt(value: string): number | null {
 function isAtLeastTwo(value: string): boolean {
   const n = value === "" ? NaN : Number(value);
   return Number.isInteger(n) && n >= 2;
-}
-
-function isWhatsAppGroupUrl(value: string): boolean {
-  try {
-    const u = new URL(value);
-    return u.protocol === "https:" && u.host.toLowerCase() === "chat.whatsapp.com" && u.pathname.replace(/\//g, "") !== "";
-  } catch {
-    return false;
-  }
 }
 
 function inputValueFromNumber(n: number | null | undefined): string {

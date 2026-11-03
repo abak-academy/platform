@@ -7,23 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { useUpdateExam } from "@/lib/hooks/admin-exams";
+import { isHttpUrl, isWhatsAppGroupUrl } from "@/lib/exam-event-info";
 import { useTranslation } from "@/lib/i18n";
 import type { ExamDetail } from "@/lib/types";
 
 // Mirrors maxAdditionalRulesNote in backend/internal/service/exam.go.
 const MAX_RULES_NOTE = 500;
 
-export function isHttpUrl(value: string): boolean {
-  try {
-    const u = new URL(value);
-    return (u.protocol === "http:" || u.protocol === "https:") && u.host !== "";
-  } catch {
-    return false;
-  }
-}
-
 export function ExamWhatsAppCard({ url, canManage = true }: { url?: string | null; canManage?: boolean }) {
   const { t } = useTranslation();
+  const validUrl = url && isWhatsAppGroupUrl(url) ? url : null;
   return (
     <section className="md-card-outlined min-w-0 space-y-3 p-6" aria-labelledby="exam-wa-card-title">
       <div className="flex items-start gap-3">
@@ -35,18 +28,18 @@ export function ExamWhatsAppCard({ url, canManage = true }: { url?: string | nul
           <p className="text-sm text-ink-500">{t("exam_event_wa_card_subtitle")}</p>
         </div>
       </div>
-      {url ? (
+      {validUrl ? (
         <div className="space-y-1 text-sm">
           <span className="inline-block rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">
             {t("exam_event_wa_available")}
           </span>
           <a
-            href={url}
+            href={validUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="block font-medium [overflow-wrap:anywhere] text-brand-700 hover:underline"
           >
-            {url} ↗
+            {validUrl} ↗
           </a>
           <p className="text-ink-500">{t("exam_event_wa_available_hint")}</p>
         </div>
@@ -76,7 +69,9 @@ export function ExamAdditionalRulesCard({ exam }: { exam: ExamDetail }) {
 
   if (syncedFrom.note !== exam.additional_rules_note || syncedFrom.url !== exam.additional_rules_url) {
     setSyncedFrom({ note: exam.additional_rules_note, url: exam.additional_rules_url });
-    setStored({ note: exam.additional_rules_note ?? "", url: exam.additional_rules_url ?? "" });
+    const next = { note: exam.additional_rules_note ?? "", url: exam.additional_rules_url ?? "" };
+    setStored(next);
+    if (!editing) resetDraft(next);
   }
 
   function resetDraft(from: { note: string; url: string }) {
@@ -146,7 +141,7 @@ export function ExamAdditionalRulesCard({ exam }: { exam: ExamDetail }) {
               </Button>
             </div>
             {stored.note && <p className="whitespace-pre-line [overflow-wrap:anywhere] text-ink-600">{stored.note}</p>}
-            {stored.url && (
+            {stored.url && isHttpUrl(stored.url) && (
               <a
                 href={stored.url}
                 target="_blank"

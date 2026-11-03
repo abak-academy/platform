@@ -7,6 +7,7 @@ import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, Clock, Eye, Lock, Users 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { isHttpUrl, isWhatsAppGroupUrl } from "@/lib/exam-event-info";
 import { accessWindow, workingMinutes } from "@/lib/exam-schedule";
 import { useTranslation } from "@/lib/i18n";
 import type { RegistrationExam } from "@/lib/types";
@@ -124,7 +125,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
         </p>
       </Card>
 
-      {exam.whatsapp_group_url && (
+      {exam.whatsapp_group_url && isWhatsAppGroupUrl(exam.whatsapp_group_url) && (
         <Card className="mt-4 space-y-3 p-5">
           <div className="flex items-start gap-3">
             <Users className="mt-0.5 size-5 shrink-0 text-ink-500" />
@@ -194,7 +195,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
             {perTest ? t("examdetail_time_caption_per_test") : t("examdetail_time_caption_overall")}
           </div>
         </div>
-        {(exam.additional_rules_note || exam.additional_rules_url) && (
+        {(exam.additional_rules_note || (exam.additional_rules_url && isHttpUrl(exam.additional_rules_url))) && (
           <div className="flex items-start gap-3 text-sm">
             <BookOpen className="mt-0.5 size-4 shrink-0 text-ink-500" />
             <div className="min-w-0">
@@ -202,7 +203,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, after
               {exam.additional_rules_note && (
                 <p className="whitespace-pre-line [overflow-wrap:anywhere] text-ink-500">{exam.additional_rules_note}</p>
               )}
-              {exam.additional_rules_url && (
+              {exam.additional_rules_url && isHttpUrl(exam.additional_rules_url) && (
                 <a
                   href={exam.additional_rules_url}
                   target="_blank"

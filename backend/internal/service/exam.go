@@ -987,7 +987,7 @@ func parseEventURL(raw string, schemes ...string) (*url.URL, bool) {
 		return nil, false
 	}
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" || !slices.Contains(schemes, u.Scheme) {
+	if err != nil || u.Host == "" || u.User != nil || !slices.Contains(schemes, u.Scheme) {
 		return nil, false
 	}
 	return u, true

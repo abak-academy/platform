@@ -76,6 +76,8 @@ Server tidak pernah fetch, join, atau memverifikasi URL. Scheme lain (`javascrip
 
 **Rollout.** Migrasi aditif lebih dulu (backend), lalu UI. UI toleran terhadap field absen (diperlakukan sebagai tidak tersimpan), jadi urutan deploy tidak kritis; rollback aman karena down hanya menjatuhkan kolom baru.
 
+Urutan rollback: rollback aplikasi lebih dulu, baru jalankan `0071` down; binary baru membaca ketiga kolom pada setiap SELECT exam, sehingga menjatuhkan kolom saat binary baru masih berjalan merusak seluruh query exam.
+
 ## Acceptance and proof
 
 1. Migrasi: up lalu down lalu up pada DB nyata (pola `migration_0069_exam_product_stock_test.go`); kolom ada, nullable, baris lama bernilai NULL.

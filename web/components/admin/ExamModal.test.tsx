@@ -721,6 +721,9 @@ describe("ExamModal", () => {
       ["another host", "https://example.com/AbC"],
       ["lookalike host", "https://chat.whatsapp.com.evil.com/AbC"],
       ["no invite code", "https://chat.whatsapp.com/"],
+      ["explicit port", "https://chat.whatsapp.com:443/AbC"],
+      ["opaque scheme", "https:chat.whatsapp.com/AbC"],
+      ["userinfo", "https://x@chat.whatsapp.com/AbC"],
       ["not a url", "bukan link"],
     ])("blocks submit for %s", async (_name, value) => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={sampleExam} />);

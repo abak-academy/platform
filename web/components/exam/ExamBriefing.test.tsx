@@ -149,3 +149,16 @@ describe("ExamBriefing additional rules", () => {
     expect(screen.getByText("Catatan")).toBeInTheDocument();
   });
 });
+
+describe("ExamBriefing stored-value hardening", () => {
+  it("renders no join anchor when the stored whatsapp value is not a group link", () => {
+    renderBriefing({ whatsapp_group_url: "javascript:alert(1)" });
+    expect(waLink()).not.toBeInTheDocument();
+  });
+
+  it("renders no rules anchor for a javascript: url but keeps the note", () => {
+    renderBriefing({ additional_rules_note: "Catatan", additional_rules_url: "javascript:alert(1)" });
+    expect(screen.getByText("Catatan")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /baca aturan lengkap/i })).not.toBeInTheDocument();
+  });
+});
