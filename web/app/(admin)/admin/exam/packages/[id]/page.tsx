@@ -40,6 +40,7 @@ import {
   useExamAnalytics,
   useExamLeaderboard,
   useGradeEssay,
+  useExamRegistrationCounts,
   useGradingSessions,
   useReplaceExamTests,
   useSessionEssays,
@@ -137,6 +138,9 @@ export default function ExamPackageDetailPage() {
   const [confirmDisableCertificate, setConfirmDisableCertificate] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
+  const { data: registrationCounts } = useExamRegistrationCounts(id);
+  const registeredCount =
+    data?.registration_count ?? (registrationCounts ? registrationCounts.total - registrationCounts.revoked : undefined);
   const policyLocked = data?.format_version === 2 && data.has_sessions === true;
   const replaceTests = useReplaceExamTests(id);
   const setCertificateEnabled = useSetCertificateEnabled(id);
@@ -431,7 +435,12 @@ export default function ExamPackageDetailPage() {
         title={title}
         description={
           data
-            ? `${t("exam_packages_registered_count").replace("{n}", String(data.registration_count ?? 0))} · ${t(data.has_sessions ? "exam_admin_meta_has_sessions" : "exam_admin_meta_no_sessions")}`
+            ? [
+                registeredCount != null ? t("exam_packages_registered_count").replace("{n}", String(registeredCount)) : null,
+                t(data.has_sessions ? "exam_admin_meta_has_sessions" : "exam_admin_meta_no_sessions"),
+              ]
+                .filter(Boolean)
+                .join(" · ")
             : undefined
         }
         actions={

@@ -104,7 +104,7 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/admin/exam/packages/exam-2");
 
     await expect(page.getByRole("button", { name: "Pengaturan", exact: true })).toBeVisible();
-    await expect(page.getByText("Jendela Check-in")).toBeVisible();
+    await expect(page.getByText("Jendela check-in")).toBeVisible();
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
 
     await page.getByRole("button", { name: /^Tes & section \(\d+\)$/ }).click();

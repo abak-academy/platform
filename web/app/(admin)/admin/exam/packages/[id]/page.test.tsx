@@ -69,6 +69,7 @@ vi.mock("@/lib/hooks/admin-uploads", () => ({
 
 beforeEach(() => {
   mockRole = undefined;
+  registrationCountsState = { data: undefined };
   mockSetCertificateEnabled.mockClear();
   mockSetCardEnabled.mockClear();
   adminTestsState = {
@@ -154,8 +155,11 @@ let leaderboardState: {
   isFetching: false,
 };
 
+let registrationCountsState: { data: { total: number; revoked: number } | undefined } = { data: undefined };
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExam: () => examState,
+  useExamRegistrationCounts: () => registrationCountsState,
   useReplaceExamTests: () => ({ mutateAsync: mockReplaceTests, isPending: false }),
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: mockUpdateExam, isPending: false }),
@@ -1549,15 +1553,23 @@ describe("ExamPackageDetailPage — prototype parity", () => {
   const openTests = () => fireEvent.click(screen.getByRole("button", { name: /^tes & section \(\d+\)$/i }));
 
   describe("header", () => {
-    it("shows registered participants and 'belum ada sesi' instead of the old subtitle", () => {
-      open(composable());
+    it("counts participants from the registration counts, excluding revoked, with 'belum ada sesi'", () => {
+      registrationCountsState = { data: { total: 14, revoked: 2 } };
+      open(composable({ registration_count: undefined }));
       expect(screen.getByText("12 peserta terdaftar · belum ada sesi")).toBeInTheDocument();
       expect(screen.queryByText(/Berurutan · Timer per section/)).not.toBeInTheDocument();
     });
 
-    it("says 'sudah ada sesi' once sessions exist and treats a missing count as zero", () => {
-      open(composable({ has_sessions: true, registration_count: undefined }));
-      expect(screen.getByText("0 peserta terdaftar · sudah ada sesi")).toBeInTheDocument();
+    it("prefers registration_count when the payload carries it, and says 'sudah ada sesi' once sessions exist", () => {
+      registrationCountsState = { data: { total: 99, revoked: 0 } };
+      open(composable({ has_sessions: true, registration_count: 7 }));
+      expect(screen.getByText("7 peserta terdaftar · sudah ada sesi")).toBeInTheDocument();
+    });
+
+    it("never prints a made-up zero while the participant count is unknown", () => {
+      open(composable({ registration_count: undefined }));
+      expect(screen.getByText("belum ada sesi")).toBeInTheDocument();
+      expect(screen.queryByText(/peserta terdaftar/)).not.toBeInTheDocument();
     });
 
     it("labels the tests tab with the section count", () => {
