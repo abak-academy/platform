@@ -115,9 +115,9 @@ describe("TestsPage", () => {
 
     expect(screen.getByText("Matematika")).toBeInTheDocument();
     expect(screen.getByText("Aljabar")).toBeInTheDocument();
-    expect(screen.getByText(/90\s*min/)).toBeInTheDocument();
+    expect(screen.getByText(/90\s*menit/)).toBeInTheDocument();
     expect(screen.getByText("Reading")).toBeInTheDocument();
-    expect(screen.getByText(/60\s*min/)).toBeInTheDocument();
+    expect(screen.getByText(/60\s*menit/)).toBeInTheDocument();
   });
 
   it("navigates to the test detail page when a row is clicked", async () => {
@@ -306,6 +306,7 @@ describe("TestsPage", () => {
     render(<TestsPage />);
     await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
 
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
     const subjectSelect = screen.getByTestId("tests-subject-filter") as HTMLSelectElement;
     const topicSelect = screen.getByTestId("tests-topic-filter") as HTMLSelectElement;
 
@@ -387,7 +388,7 @@ describe("TestsPage", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("shows question count, duration and material/audio indicators per row", () => {
+  it("shows question count, duration and material/audio text lines per row", () => {
     testsState = {
       ...testsState,
       data: {
@@ -401,11 +402,42 @@ describe("TestsPage", () => {
     render(<TestsPage />);
 
     const [first, second] = screen.getAllByTestId("test-row");
-    expect(within(first).getByText("12")).toBeInTheDocument();
-    expect(within(first).getByText("Materi")).toBeInTheDocument();
-    expect(within(first).getByText("Audio")).toBeInTheDocument();
-    expect(within(second).queryByText("Materi")).not.toBeInTheDocument();
-    expect(within(second).queryByText("Audio")).not.toBeInTheDocument();
+    expect(within(first).getByText("12 soal")).toBeInTheDocument();
+    expect(within(first).getByText("90 menit")).toBeInTheDocument();
+    expect(within(first).getByText("Materi bersama")).toBeInTheDocument();
+    expect(within(first).getByText("Audio section")).toBeInTheDocument();
+    expect(within(second).getByText("0 soal")).toBeInTheDocument();
+    expect(within(second).getByText("Tanpa materi bersama")).toBeInTheDocument();
+    expect(within(second).queryByText("Audio section")).not.toBeInTheDocument();
+  });
+
+  it("shows the result count beside the search and the source-of-truth footnote", () => {
+    testsState = { ...testsState, data: { data: sampleTests, total: 22 } };
+    render(<TestsPage />);
+
+    expect(screen.getByTestId("tests-count")).toHaveTextContent("22 tes");
+    expect(screen.getByText(/tes adalah sumber soal, materi, dan durasi/i)).toBeInTheDocument();
+  });
+
+  it("falls back to the loaded row count when the server sends no total", () => {
+    render(<TestsPage />);
+
+    expect(screen.getByTestId("tests-count")).toHaveTextContent("2 tes");
+  });
+
+  it("keeps the subject and topic filters behind the Filter button and counts active ones", () => {
+    render(<TestsPage />);
+
+    expect(screen.queryByTestId("tests-subject-filter")).not.toBeInTheDocument();
+    const filterButton = screen.getByRole("button", { name: /^filter$/i });
+    expect(filterButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(filterButton);
+    expect(screen.getByTestId("tests-subject-filter")).toBeInTheDocument();
+    expect(screen.getByTestId("tests-topic-filter")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId("tests-subject-filter"), { target: { value: "Fisika" } });
+    expect(screen.getByRole("button", { name: /^filter \(1\)$/i })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("never requests the previous cursor with a changed filter", async () => {
@@ -418,6 +450,7 @@ describe("TestsPage", () => {
     );
     mockUseAdminTests.mockClear();
 
+    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
     fireEvent.change(screen.getByTestId("tests-subject-filter"), { target: { value: "Fisika" } });
 
     const stale = mockUseAdminTests.mock.calls.filter(

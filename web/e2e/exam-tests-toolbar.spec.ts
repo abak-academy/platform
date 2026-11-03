@@ -90,6 +90,7 @@ for (const viewport of VIEWPORTS) {
     const toolbar = page.getByTestId("exam-tests-toolbar");
     await expect(toolbar).toBeVisible();
 
+    await page.getByRole("button", { name: /^filter/i }).click();
     const subjectSelect = page.getByTestId("tests-subject-filter");
     const topicSelect = page.getByTestId("tests-topic-filter");
     const searchInput = page.getByTestId("tests-search-input");

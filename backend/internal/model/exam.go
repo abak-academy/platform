@@ -35,8 +35,10 @@ type Test struct {
 	InstructionsHTML   *string `json:"instructions_html"`
 	// QuestionCount is only populated by list-style reads (e.g. ListTests LEFT JOIN).
 	// It is zero on freshly created tests and on direct GetByID reads.
-	QuestionCount int       `json:"question_count"`
-	CreatedAt     time.Time `json:"created_at"`
+	QuestionCount int `json:"question_count"`
+	// ExamCount is the number of exams this test is attached to; populated by GetTestDetail and ListTests only.
+	ExamCount int       `json:"exam_count"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Question is a reusable bank item. `Format` is one of: mcq, multi_answer, short,

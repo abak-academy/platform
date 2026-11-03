@@ -182,7 +182,8 @@ describe("QuestionPickerModal", () => {
 
     fireEvent.click(screen.getByText("bold text").closest("button") as HTMLElement);
 
-    const [formatSelect, topicSelect] = screen.getAllByRole("combobox");
+    const formatSelect = screen.getByLabelText("tests_picker_format_label");
+    const topicSelect = screen.getByLabelText("tests_picker_topic_label");
     fireEvent.change(formatSelect, { target: { value: "essay" } });
     fireEvent.change(topicSelect, { target: { value: "topic-9" } });
     fireEvent.change(screen.getByPlaceholderText("tests_picker_search"), { target: { value: "segitiga" } });
@@ -196,6 +197,23 @@ describe("QuestionPickerModal", () => {
     fireEvent.click(screen.getByRole("button", { name: "tests_picker_confirm" }));
 
     await vi.waitFor(() => expect(onAttach).toHaveBeenCalledWith(expect.arrayContaining(["bqr1", "other"])));
+  });
+
+  it("shows the result count and resets search and filters only when one is active", () => {
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
+    );
+
+    expect(screen.getByText("tests_picker_count")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "tests_picker_reset" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("tests_picker_format_label"), { target: { value: "essay" } });
+    fireEvent.change(screen.getByLabelText("tests_picker_search_label"), { target: { value: "kota" } });
+    fireEvent.click(screen.getByRole("button", { name: "tests_picker_reset" }));
+
+    expect(screen.getByLabelText("tests_picker_format_label")).toHaveValue("all");
+    expect(screen.getByLabelText("tests_picker_search_label")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "tests_picker_reset" })).not.toBeInTheDocument();
   });
 
   it("keeps the selection and stays open when the server rejects the attach", async () => {
