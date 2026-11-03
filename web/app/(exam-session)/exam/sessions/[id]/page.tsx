@@ -1228,13 +1228,14 @@ export default function SessionPage() {
       : t("exam_packages_modal_mode_ielts")
     : currentTestTitle;
   const sectionProgress =
-    composable && examListTitle && currentTest && tests.length > 0
+    composable && currentTest && tests.length > 0
       ? `${t("session_section_progress")
           .replace("{n}", String(tests.indexOf(currentTest) + 1))
           .replace("{total}", String(tests.length))} · ${currentTestTitle}`
       : null;
   const examSubtitle = sectionProgress ?? (isSectioned ? activeTest?.title : currentTest?.subject);
   const unansweredCount = questionsToShow.length - sectionAnsweredCount;
+  const unansweredInSection = isSectioned && !!activeTest && tests.length > 1;
 
   return (
     // Dynamic viewport height keeps the exam shell clear of mobile browser chrome.
@@ -1615,7 +1616,7 @@ export default function SessionPage() {
             <DialogTitle>{t("submit_confirm")}</DialogTitle>
             <DialogDescription>{t("session_submit_final")}</DialogDescription>
           </DialogHeader>
-          <UnansweredNotice count={unansweredCount} />
+          <UnansweredNotice count={unansweredCount} inSection={unansweredInSection} />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
               variant="destructive"
@@ -1642,7 +1643,7 @@ export default function SessionPage() {
               {t("session_advance_locks").replace("{title}", activeTest?.title ?? "")}
             </DialogDescription>
           </DialogHeader>
-          <UnansweredNotice count={unansweredCount} />
+          <UnansweredNotice count={unansweredCount} inSection={unansweredInSection} />
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-start">
             <Button
               variant="destructive"
@@ -1723,14 +1724,15 @@ export default function SessionPage() {
   );
 }
 
-function UnansweredNotice({ count }: { count: number }) {
+function UnansweredNotice({ count, inSection }: { count: number; inSection: boolean }) {
   const { t } = useTranslation();
+  const unansweredKey = `session_confirm_unanswered${inSection ? "_section" : ""}${count === 1 ? "_one" : ""}` as const;
   return (
     <div
       className={`rounded-lg px-3 py-2 text-sm ${count > 0 ? "bg-warn-bg text-warn" : "bg-success-bg text-success"}`}
     >
       <div className="font-semibold">
-        {count > 0 ? t("session_confirm_unanswered").replace("{n}", String(count)) : t("session_confirm_all_answered")}
+        {count > 0 ? t(unansweredKey).replace("{n}", String(count)) : t("session_confirm_all_answered")}
       </div>
       {count > 0 && <div className="mt-0.5 text-ink-700">{t("session_confirm_unanswered_hint")}</div>}
     </div>

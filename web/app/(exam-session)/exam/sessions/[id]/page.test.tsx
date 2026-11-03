@@ -4495,6 +4495,7 @@ describe("SessionPage", () => {
       render(<SessionPage />);
       await enterFullscreenSectioned();
       expect(screen.getByTestId("exam-title")).toHaveTextContent("TPS");
+      expect(screen.getByTestId("exam-section-progress")).toHaveTextContent("Section 1 dari 2");
     });
 
     it("lists answered, flagged and current in the navigator legend", async () => {
@@ -4515,8 +4516,20 @@ describe("SessionPage", () => {
       fireEvent.click(screen.getByTestId("session-nav-1"));
       fireEvent.click(await screen.findByRole("button", { name: "Lanjut ke section berikutnya" }));
       const dialog = await screen.findByRole("dialog");
-      expect(dialog).toHaveTextContent("1 soal belum dijawab");
-      expect(dialog).toHaveTextContent("Section TPS akan dikunci");
+      expect(dialog).toHaveTextContent("1 soal belum dijawab di section ini");
+      expect(dialog).toHaveTextContent("TPS akan dikunci dan tidak dapat dibuka kembali");
+      expect(dialog).not.toHaveTextContent("Section TPS");
+    });
+
+    it("scopes the unanswered count to the section in English, singular for one", async () => {
+      uiStore = { lang: "en" };
+      sessionState.data = sequential("per_test");
+      render(<SessionPage />);
+      await enterFullscreenSectioned();
+      fireEvent.click(screen.getAllByRole("radio")[0]);
+      fireEvent.click(screen.getByTestId("session-nav-1"));
+      fireEvent.click(await screen.findByRole("button", { name: "Continue to next section" }));
+      expect(await screen.findByRole("dialog")).toHaveTextContent("1 question unanswered in this section");
     });
 
     it("says all questions are answered when none are left", async () => {
@@ -4536,6 +4549,7 @@ describe("SessionPage", () => {
       fireEvent.click(within(screen.getByTestId("exam-top-bar")).getByRole("button", { name: "Kumpulkan" }));
       const dialog = await screen.findByRole("dialog");
       expect(dialog).toHaveTextContent("2 soal belum dijawab");
+      expect(dialog).not.toHaveTextContent("di section ini");
       expect(dialog).toHaveTextContent("Setelah dikumpulkan, jawaban tidak dapat diubah");
     });
   });
