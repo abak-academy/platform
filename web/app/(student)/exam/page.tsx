@@ -5,37 +5,25 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  ArrowRight,
   CalendarDays,
   Clock,
   Download,
-  KeyRound,
+  Lock,
   Play,
   Trophy,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useCheckIn, useRegistrations, useStartSession } from "@/lib/hooks/exam";
+import { useRegistrations, useStartSession } from "@/lib/hooks/exam";
+import { accessWindow, workingMinutes } from "@/lib/exam-schedule";
 import { useTranslation } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { RegistrationListItem } from "@/lib/types";
-
-function formatScheduled(scheduledAt: string | null): string {
-  if (!scheduledAt) return "—";
-  const d = new Date(scheduledAt);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
 
 // "6 hari 7 jam" / "45 menit" style countdown, matching the mockup's PkgCard.
 function formatCountdown(ms: number, lang: "id" | "en"): string {
@@ -179,7 +167,6 @@ function PkgSection({
 function PkgCard({ reg }: { reg: RegistrationListItem }) {
   const { t, lang } = useTranslation();
   const router = useRouter();
-  const [token, setToken] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -187,26 +174,13 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     return () => clearInterval(id);
   }, []);
 
-  const checkInMutation = useCheckIn();
   const startSessionMutation = useStartSession();
 
   const state = computeCardState(reg, now);
-
-  const handleCheckIn = () => {
-    if (!token.trim()) return;
-    checkInMutation.mutate(
-      { token: token.trim() },
-      {
-        onSuccess: () => {
-          toast.success(t("checkin_success"));
-          setToken("");
-        },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : t("invalid_token"));
-        },
-      },
-    );
-  };
+  const ready = state.kind === "start" || state.kind === "checkin";
+  const minutes = workingMinutes(reg);
+  const sequential = reg.navigation_policy === "sequential";
+  const access = accessWindow(reg.scheduled_at, reg.scheduled_end_at, lang);
 
   const handleStart = async () => {
     try {
@@ -234,40 +208,86 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         )}
       </div>
 
-      <h3 className="mt-3 text-[15px] leading-snug font-semibold text-ink-900">
+      <h3 className="mt-3 text-[15px] leading-snug font-semibold [overflow-wrap:anywhere] text-ink-900">
         {reg.exam_title}
       </h3>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500">
-        {reg.duration_minutes != null && (
-          <span className="inline-flex items-center gap-1">
-            <Clock className="size-3" />
-            {reg.duration_minutes} {t("minutes")}
-          </span>
+
+      <dl className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <div className="min-w-0">
+          <dt className="text-ink-500">
+            {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
+          </dt>
+          <dd className="mt-0.5 font-semibold text-ink-900">
+            {minutes != null ? (
+              <>
+                <span className="text-base">{minutes}</span> {t("minutes")}
+              </>
+            ) : (
+              "—"
+            )}
+          </dd>
+          <dd className="text-[11px] text-ink-500">
+            {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-ink-500">{t("examcard_sections")}</dt>
+          <dd className="mt-0.5 text-base font-semibold text-ink-900">{reg.section_count}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="text-ink-500">{t("examcard_questions")}</dt>
+          <dd className="mt-0.5 text-base font-semibold text-ink-900">{reg.question_count}</dd>
+        </div>
+      </dl>
+
+      {access && (
+        <div className="mt-3 flex items-start gap-2 text-xs text-ink-700">
+          <CalendarDays className="mt-0.5 size-3.5 shrink-0 text-ink-500" />
+          <div className="min-w-0 flex-1">
+            <div className="text-ink-500">{t("examcard_access")}</div>
+            {access.to && access.sameDay ? (
+              <div className="mt-0.5 flex flex-wrap justify-between gap-x-3 font-medium">
+                <span>{access.from.date}</span>
+                <span>
+                  {access.from.time} – {access.to.time} WIB
+                </span>
+              </div>
+            ) : (
+              <div className="mt-0.5 font-medium">
+                <div>
+                  {access.from.date}, {access.from.time} WIB
+                </div>
+                {access.to && (
+                  <div>
+                    {access.to.date}, {access.to.time} WIB
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-start gap-2 rounded-md bg-surface-2 px-3 py-2 text-xs">
+        {sequential ? (
+          <Lock className="mt-0.5 size-3.5 shrink-0 text-ink-500" />
+        ) : (
+          <ArrowRight className="mt-0.5 size-3.5 shrink-0 text-ink-500" />
         )}
-        {reg.scheduled_at && (
-          <span className="inline-flex items-center gap-1">
-            <CalendarDays className="size-3" />
-            {formatScheduled(reg.scheduled_at)}
-            {reg.scheduled_end_at && ` – ${formatScheduled(reg.scheduled_end_at)}`}
-          </span>
-        )}
+        <div className="min-w-0">
+          <div className="font-semibold text-ink-900">
+            {sequential ? t("examcard_nav_sequential") : t("examcard_nav_free")}
+          </div>
+          <div className="text-ink-500">
+            {sequential ? t("examcard_nav_sequential_hint") : t("examcard_nav_free_hint")}
+          </div>
+        </div>
       </div>
 
       <div className="mt-3.5 border-t border-line pt-3.5">
-        {state.kind === "start" && (
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 text-xs text-ink-500">
-              {t("attempts").replace("{n}", String(reg.attempts_used))}
-            </div>
-            <Button
-              size="sm"
-              className="shrink-0 rounded-full"
-              onClick={handleStart}
-              disabled={startSessionMutation.isPending}
-            >
-              <Play className="mr-1 size-3.5" />
-              {startSessionMutation.isPending ? t("sys_loading") : t("start_exam")}
-            </Button>
+        {ready && (
+          <div className="mb-2 text-xs text-ink-500">
+            {t("attempts").replace("{n}", String(reg.attempts_used))}
           </div>
         )}
 
@@ -286,12 +306,9 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         {state.kind === "locked" && (
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <div className="text-xs text-ink-500">
-                {t("checkin_opens")} {formatScheduled(state.opensAt.toISOString())}
-              </div>
-              <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-info">
+              <div className="flex items-center gap-1 text-xs font-semibold text-info">
                 <Clock className="size-3" />
-                {formatCountdown(state.opensAt.getTime() - now, lang)}
+                {t("examcard_opens_in").replace("{time}", formatCountdown(state.opensAt.getTime() - now, lang))}
               </div>
             </div>
             <Button
@@ -303,32 +320,6 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
               <Download className="mr-1 size-3.5" />
               {t("download_card")}
             </Button>
-          </div>
-        )}
-
-        {state.kind === "checkin" && (
-          <div>
-            <label className="text-xs font-semibold text-ink-600">{t("enter_token")}</label>
-            <div className="mt-1.5 flex gap-2">
-              <Input
-                value={token}
-                onChange={(e) => setToken(e.target.value.toUpperCase())}
-                placeholder={t("token_placeholder")}
-                className="font-mono uppercase"
-              />
-              <Button
-                size="sm"
-                className="shrink-0 rounded-full"
-                onClick={handleCheckIn}
-                disabled={!token.trim() || checkInMutation.isPending}
-              >
-                {checkInMutation.isPending ? t("sys_loading") : t("check_in")}
-              </Button>
-            </div>
-            <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-500">
-              <KeyRound className="size-3" />
-              {t("token_hint")}
-            </div>
           </div>
         )}
 
@@ -360,8 +351,15 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
 
         {/* FR-45: the card must stay reachable regardless of state, so this link
             is unconditional rather than duplicated into each branch above. */}
-        <Button asChild size="sm" variant="outline" className="mt-2 w-full rounded-full">
-          <Link href={`/exam/${reg.id}`}>{t("competition_view_detail")}</Link>
+        <Button
+          asChild
+          size="sm"
+          variant={ready ? "default" : "outline"}
+          className={`w-full rounded-full ${ready ? "" : "mt-2"}`}
+        >
+          <Link href={`/exam/${reg.id}`}>
+            {ready ? t("examcard_rules_cta") : t("competition_view_detail")}
+          </Link>
         </Button>
       </div>
     </Card>
@@ -372,7 +370,7 @@ function StateBadge({ state }: { state: CardState }) {
   const { t } = useTranslation();
   const labelKey =
     state.kind === "locked"
-      ? "st_locked"
+      ? "examcard_upcoming_badge"
       : state.kind === "checkin"
         ? "st_checkin"
         : state.kind === "in_progress"

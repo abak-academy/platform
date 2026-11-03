@@ -1725,12 +1725,29 @@ func (r *Repository) StampOrderItemFulfilledAt(ctx context.Context, tx pgx.Tx, o
 	return err
 }
 
+// examSectionAggregateJoin attaches per-exam Test aggregates (sections, questions,
+// summed duration) to a query whose exam alias is e; the aggregate always yields
+// one row, with a NULL duration when the exam has no Test.
+const examSectionAggregateJoin = `LEFT JOIN LATERAL (
+			SELECT COUNT(*)::int AS section_count,
+				COALESCE(SUM(qc.n), 0)::int AS question_count,
+				SUM(t.duration_minutes)::int AS sections_duration
+			FROM exam_test et
+			JOIN test t ON t.id = et.test_id
+			LEFT JOIN LATERAL (
+				SELECT COUNT(*) AS n FROM test_question tq WHERE tq.test_id = t.id
+			) qc ON true
+			WHERE et.exam_id = e.id
+		) agg ON true`
+
 func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentID uuid.UUID) ([]model.RegistrationListItem, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, reg.exam_id, reg.token, reg.card_key,
 			reg.checked_in_at, reg.attempts_used, reg.status, reg.created_at,
 			e.title, e.scheduled_at, e.scheduled_end_at, e.is_free, e.requires_checkin,
-			e.check_in_window_minutes, e.duration_minutes, e.max_attempts, s.id
+			e.check_in_window_minutes, e.duration_minutes, e.max_attempts, s.id,
+			e.format_version, e.mode, e.navigation_policy, e.timer_mode,
+			agg.section_count, agg.question_count, agg.sections_duration
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		LEFT JOIN LATERAL (
@@ -1739,6 +1756,7 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 			ORDER BY attempt_number DESC
 			LIMIT 1
 		) s ON true
+		`+examSectionAggregateJoin+`
 		WHERE reg.student_id = $1 AND reg.status <> 'revoked'
 		ORDER BY reg.created_at DESC`,
 		studentID,
@@ -1758,6 +1776,8 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 			&checkedInAt, &item.AttemptsUsed, &item.Status, &item.CreatedAt,
 			&item.ExamTitle, &item.ScheduledAt, &item.ScheduledEndAt, &item.IsFree, &item.RequiresCheckin,
 			&item.CheckInWindowMinutes, &item.DurationMinutes, &item.MaxAttempts, &item.SessionID,
+			&item.RawRules.FormatVersion, &item.RawRules.Mode, &item.RawRules.NavigationPolicy, &item.RawRules.TimerMode,
+			&item.SectionCount, &item.QuestionCount, &item.SectionsDurationMinutes,
 		); err != nil {
 			return nil, err
 		}
@@ -1793,18 +1813,23 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 				SELECT string_agg(DISTINCT t.subject, ', ')
 				FROM exam_test et JOIN test t ON t.id = et.test_id
 				WHERE et.exam_id = e.id
-			), '') AS subject
+			), '') AS subject,
+			e.max_attempts, e.format_version, e.mode, e.navigation_policy,
+			agg.section_count, agg.question_count, agg.sections_duration
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
+		`+examSectionAggregateJoin+`
 		WHERE reg.id = $1 AND reg.student_id = $2`,
 		regID, studentID,
 	).Scan(
 		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
-		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
+		&detail.Exam.CheckInWindowMinutes, &detail.Exam.RawRules.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
 		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
+		&detail.Exam.MaxAttempts, &detail.Exam.RawRules.FormatVersion, &detail.Exam.RawRules.Mode, &detail.Exam.RawRules.NavigationPolicy,
+		&detail.Exam.SectionCount, &detail.Exam.QuestionCount, &detail.Exam.SectionsDurationMinutes,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -1822,6 +1847,70 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		return nil, err
 	}
 	return &detail, nil
+}
+
+func (r *Repository) GetExamSections(ctx context.Context, examID uuid.UUID) ([]model.ExamPreviewSection, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT t.id, t.title, t.duration_minutes,
+			(SELECT COUNT(*) FROM test_question tq WHERE tq.test_id = t.id)::int,
+			et.question_presentation
+		FROM exam_test et
+		JOIN test t ON t.id = et.test_id
+		WHERE et.exam_id = $1
+		ORDER BY et.sort_order`,
+		examID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sections := []model.ExamPreviewSection{}
+	for rows.Next() {
+		var sec model.ExamPreviewSection
+		if err := rows.Scan(&sec.TestID, &sec.Title, &sec.DurationMinutes, &sec.QuestionCount, &sec.QuestionPresentation); err != nil {
+			return nil, err
+		}
+		sections = append(sections, sec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return sections, nil
+}
+
+// GetExamPreview returns the exam config the student detail page renders, with
+// no registration scoping; Sections is left for the caller (GetExamSections).
+func (r *Repository) GetExamPreview(ctx context.Context, examID uuid.UUID) (*model.RegistrationExam, error) {
+	var exam model.RegistrationExam
+	var cardNotesRaw []byte
+	err := r.pool.QueryRow(ctx,
+		`SELECT e.id, e.title, e.scheduled_at, e.scheduled_end_at, e.requires_checkin, e.check_in_window_minutes,
+			e.timer_mode, e.duration_minutes, e.result_config, e.exam_number,
+			e.card_enabled, e.card_notes,
+			e.max_attempts, e.format_version, e.mode, e.navigation_policy,
+			agg.section_count, agg.question_count, agg.sections_duration
+		FROM exam e
+		`+examSectionAggregateJoin+`
+		WHERE e.id = $1`,
+		examID,
+	).Scan(
+		&exam.ID, &exam.Title, &exam.ScheduledAt, &exam.ScheduledEndAt, &exam.RequiresCheckin, &exam.CheckInWindowMinutes,
+		&exam.RawRules.TimerMode, &exam.DurationMinutes, &exam.ResultConfig, &exam.ExamNumber,
+		&exam.CardEnabled, &cardNotesRaw,
+		&exam.MaxAttempts, &exam.RawRules.FormatVersion, &exam.RawRules.Mode, &exam.RawRules.NavigationPolicy,
+		&exam.SectionCount, &exam.QuestionCount, &exam.SectionsDurationMinutes,
+	)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	if err := decodeCardNotes(cardNotesRaw, &exam.CardNotes); err != nil {
+		return nil, err
+	}
+	return &exam, nil
 }
 
 // GetRegistrationForPrint returns a registration by id alone, with no student

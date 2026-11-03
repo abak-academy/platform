@@ -112,6 +112,7 @@ export default function ExamPackageDetailPage() {
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
   const hasResultsWorkspace = hasCapability(role, "results-workspace:read");
+  const canPreviewStudent = hasCapability(role, "exam-preview:read");
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
@@ -380,9 +381,16 @@ export default function ExamPackageDetailPage() {
         }
         actions={
           data ? (
-            <Badge variant={data.status === "published" ? "default" : "secondary"}>
-              {data.status ?? "draft"}
-            </Badge>
+            <>
+              {canPreviewStudent && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/admin/exam/packages/${id}/preview`}>{t("admin_exam_preview_student")}</Link>
+                </Button>
+              )}
+              <Badge variant={data.status === "published" ? "default" : "secondary"}>
+                {data.status ?? "draft"}
+              </Badge>
+            </>
           ) : undefined
         }
       />

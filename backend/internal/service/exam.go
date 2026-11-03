@@ -1473,7 +1473,42 @@ func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid student id", ErrValidation)
 	}
-	return s.storeRepo.GetExamRegistrationsByStudent(ctx, sid)
+	items, err := s.storeRepo.GetExamRegistrationsByStudent(ctx, sid)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		raw := items[i].RawRules
+		items[i].NavigationPolicy, items[i].TimerMode = effectiveExamRules(raw.FormatVersion, raw.Mode, raw.NavigationPolicy, raw.TimerMode)
+	}
+	return items, nil
+}
+
+// GetExamPreview is the admin read-only twin of the student registration
+// detail's exam block: no registration, token or card data, and no writes.
+func (s *Service) GetExamPreview(ctx context.Context, examID uuid.UUID) (*model.RegistrationExam, error) {
+	exam, err := s.storeRepo.GetExamPreview(ctx, examID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, ErrExamNotFound
+		}
+		return nil, err
+	}
+	if err := s.fillRegistrationExam(ctx, exam); err != nil {
+		return nil, err
+	}
+	return exam, nil
+}
+
+func (s *Service) fillRegistrationExam(ctx context.Context, exam *model.RegistrationExam) error {
+	raw := exam.RawRules
+	exam.NavigationPolicy, exam.TimerMode = effectiveExamRules(raw.FormatVersion, raw.Mode, raw.NavigationPolicy, raw.TimerMode)
+	sections, err := s.storeRepo.GetExamSections(ctx, exam.ID)
+	if err != nil {
+		return err
+	}
+	exam.Sections = sections
+	return nil
 }
 
 func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID string) (*model.RegistrationDetail, error) {
@@ -1495,6 +1530,9 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 		return nil, ErrRegistrationRevoked
 	}
 	if err == nil && detail != nil {
+		if err := s.fillRegistrationExam(ctx, &detail.Exam); err != nil {
+			return nil, err
+		}
 		if detail.ParticipantNumber != nil {
 			// Prefix by the exam's scheduled date (WIB), falling back to the
 			// registration date when the exam is not yet scheduled.

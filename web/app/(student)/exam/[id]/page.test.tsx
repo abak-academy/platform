@@ -73,11 +73,20 @@ const sampleWithCheckin: RegistrationDetail = {
     scheduled_end_at: null,
     requires_checkin: true,
     check_in_window_minutes: 30,
-    timer_mode: "overall",
+    timer_mode: "per_test",
+    navigation_policy: "sequential",
+    max_attempts: 2,
     duration_minutes: 120,
     result_config: "{}",
     card_enabled: true,
     card_notes: [],
+    section_count: 2,
+    question_count: 50,
+    sections_duration_minutes: 100,
+    sections: [
+      { test_id: "t-1", title: "Penalaran Umum", duration_minutes: 60, question_count: 30, question_presentation: "one_per_page" },
+      { test_id: "t-2", title: "Literasi Bahasa", duration_minutes: 40, question_count: 20, question_presentation: "all_on_page" },
+    ],
   },
 };
 
@@ -85,6 +94,10 @@ const sampleNoCheckin: RegistrationDetail = {
   ...sampleWithCheckin,
   exam: { ...sampleWithCheckin.exam, requires_checkin: false },
 };
+
+function tickUnderstanding() {
+  fireEvent.click(screen.getByRole("checkbox", { name: /saya memahami aturan/i }));
+}
 
 describe("ExamDetailPage", () => {
   beforeEach(() => {
@@ -248,6 +261,7 @@ describe("ExamDetailPage", () => {
     );
 
     render(<ExamDetailPage />);
+    tickUnderstanding();
     fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
 
     await waitFor(() => {
@@ -452,7 +466,8 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     render(<ExamDetailPage />);
 
     const btn = screen.getByRole("button", { name: /mulai ujian/i });
-    expect(btn).toBeInTheDocument();
+    expect(btn).toBeDisabled();
+    tickUnderstanding();
     expect(btn).not.toBeDisabled();
   });
 
@@ -494,6 +509,8 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     render(<ExamDetailPage />);
 
     const btn = screen.getByRole("button", { name: /mulai ujian/i });
+    expect(btn).toBeDisabled();
+    tickUnderstanding();
     expect(btn).not.toBeDisabled();
   });
 
@@ -511,8 +528,76 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     startSessionMutate.mockResolvedValue({ session_id: "sess-1", remaining_seconds: 7200, timer_mode: "overall", tests: [] });
 
     render(<ExamDetailPage />);
+    tickUnderstanding();
     fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
 
     expect(startSessionMutate).toHaveBeenCalledWith("reg-1");
+  });
+
+  it("does not require the understanding checkbox to resume an in_progress session", () => {
+    registrationState = {
+      ...registrationState,
+      data: { ...sampleWithCheckin, status: "in_progress", checked_in_at: "2026-07-15T08:45:00Z" },
+    };
+    render(<ExamDetailPage />);
+
+    expect(screen.queryByRole("checkbox", { name: /saya memahami aturan/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lanjutkan ujian" })).not.toBeDisabled();
+  });
+});
+
+// ── Before-you-start briefing (a3) ──────────────────────────────────────────
+describe("ExamDetailPage — briefing", () => {
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+    startSessionMutate.mockReset();
+    checkInMutate.mockReset();
+    registrationState = {
+      data: sampleNoCheckin,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  it("explains schedule, timer scope, navigation and the ordered sections without starting anything", () => {
+    render(<ExamDetailPage />);
+
+    expect(screen.getByText("Jadwal akses")).toBeInTheDocument();
+    expect(screen.getByText(/hanya membatasi mulai sesi baru/i)).toBeInTheDocument();
+    expect(screen.getByText("Waktu pengerjaan")).toBeInTheDocument();
+    expect(screen.getByText("100 menit total")).toBeInTheDocument();
+    expect(screen.getAllByText("Timer per section").length).toBeGreaterThan(0);
+    expect(screen.getByText("Section berurutan")).toBeInTheDocument();
+
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Penalaran Umum");
+    expect(items[0]).toHaveTextContent("30 soal");
+    expect(items[0]).toHaveTextContent("Satu soal per halaman");
+    expect(items[0]).toHaveTextContent("60 menit");
+    expect(items[1]).toHaveTextContent("Literasi Bahasa");
+    expect(items[1]).toHaveTextContent("Semua soal dalam satu halaman");
+    expect(screen.getByText("Maksimal 2 percobaan")).toBeInTheDocument();
+
+    expect(startSessionMutate).not.toHaveBeenCalled();
+    expect(checkInMutate).not.toHaveBeenCalled();
+  });
+
+  it("shows one shared timer and free navigation for an overall exam", () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleNoCheckin,
+        exam: { ...sampleNoCheckin.exam, timer_mode: "overall", navigation_policy: "free", max_attempts: null },
+      },
+    };
+    render(<ExamDetailPage />);
+
+    expect(screen.getByText("120 menit")).toBeInTheDocument();
+    expect(screen.getByText("Satu timer ujian")).toBeInTheDocument();
+    expect(screen.getByText("Bebas pindah section")).toBeInTheDocument();
+    expect(screen.getAllByText("Timer bersama").length).toBe(2);
+    expect(screen.getByText("Percobaan tanpa batas")).toBeInTheDocument();
   });
 });

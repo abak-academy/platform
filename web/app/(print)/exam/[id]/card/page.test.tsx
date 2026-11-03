@@ -66,11 +66,17 @@ const registration: RegistrationDetail = {
     scheduled_end_at: null,
     requires_checkin: true,
     check_in_window_minutes: 15,
-    timer_mode: "fixed",
+    timer_mode: "overall",
+    navigation_policy: "free",
+    max_attempts: null,
     duration_minutes: 90,
     result_config: "full",
     card_enabled: true,
     card_notes: [],
+    section_count: 0,
+    question_count: 0,
+    sections_duration_minutes: null,
+    sections: [],
   },
 };
 

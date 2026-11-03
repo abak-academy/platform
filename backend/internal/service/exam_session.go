@@ -160,6 +160,16 @@ func sectionTimer(exam *model.Exam) bool {
 	return sequentialSession(exam)
 }
 
+func effectiveExamRules(formatVersion int, mode, navigationPolicy, timerMode string) (string, string) {
+	if formatVersion == 2 {
+		return navigationPolicy, timerMode
+	}
+	if mode == "utbk" || mode == "ielts" {
+		return "sequential", "per_test"
+	}
+	return "free", "overall"
+}
+
 func legacySessionMode(exam *model.Exam) string {
 	if exam.FormatVersion == 2 {
 		return ""

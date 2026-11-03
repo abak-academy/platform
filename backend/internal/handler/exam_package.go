@@ -84,6 +84,20 @@ func (h *Handler) AdminGetExam(c echo.Context) error {
 	return c.JSON(http.StatusOK, detail)
 }
 
+// AdminPreviewExam returns the exam as the student detail page renders it,
+// without any registration.
+func (h *Handler) AdminPreviewExam(c echo.Context) error {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		return badRequest(c, "invalid id")
+	}
+	exam, err := h.svc.GetExamPreview(c.Request().Context(), id)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, exam)
+}
+
 // AdminListExamRegistrations returns the read-only admin participant roster
 // for an exam (FR-32): registrations joined with student name/username and
 // each row's FR-24 display participant number.
