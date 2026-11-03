@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import TestsPage from "./page";
@@ -82,6 +82,11 @@ const sampleTests: Test[] = [
 ];
 
 describe("TestsPage", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
   beforeEach(() => {
     testsState = {
       data: { data: sampleTests },
@@ -196,8 +201,8 @@ describe("TestsPage", () => {
     expect(screen.getByRole("dialog", { name: /tes baru/i })).toBeInTheDocument();
 
     fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Tryout Baru" } });
-    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Matematika" } });
-    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Aljabar" } });
+    fireEvent.change(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Fisika" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "Optik" } });
     fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
@@ -206,8 +211,8 @@ describe("TestsPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Tryout Baru",
-          subject: "Matematika",
-          topic: "Aljabar",
+          subject: "Fisika",
+          topic: "Optik",
           duration_minutes: 60,
         })
       );
@@ -260,7 +265,6 @@ describe("TestsPage", () => {
       expect(toast.success).toHaveBeenCalledWith("Tes dihapus");
     });
 
-    vi.unstubAllGlobals();
   });
 
   it("fetches with no filters when every control is at its default (FR-16)", async () => {
@@ -296,7 +300,6 @@ describe("TestsPage", () => {
       expect.objectContaining({ q: "aljabar" })
     );
 
-    vi.useRealTimers();
   });
 
   it("re-scopes the topic dropdown to the selected subject and clears a stale topic (FR-13)", async () => {
@@ -358,5 +361,82 @@ describe("TestsPage", () => {
     });
     expect(screen.queryByText(/menampilkan/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /muat lebih banyak/i })).not.toBeInTheDocument();
+  });
+
+  it("opens the new empty test's detail page after create", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "t3", title: "Tryout Baru" });
+
+    render(<TestsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /tes baru/i }));
+    fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Tryout Baru" } });
+    fireEvent.change(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Fisika" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "Optik" } });
+    fireEvent.change(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/admin/exam/tests/t3"));
+  });
+
+  it("offers retry when the list fails to load", async () => {
+    const refetch = vi.fn();
+    testsState = { data: null, isLoading: false, isError: true, error: new Error("gagal memuat tes"), refetch };
+
+    render(<TestsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /coba lagi/i }));
+
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("shows question count, duration and material/audio indicators per row", () => {
+    testsState = {
+      ...testsState,
+      data: {
+        data: [
+          { ...sampleTests[0], question_count: 12, shared_material_html: "<p>Bacaan</p>", audio_url: "https://cdn.test/a.mp3" },
+          { ...sampleTests[1], question_count: 0 },
+        ],
+      },
+    };
+
+    render(<TestsPage />);
+
+    const [first, second] = screen.getAllByTestId("test-row");
+    expect(within(first).getByText("12")).toBeInTheDocument();
+    expect(within(first).getByText("Materi")).toBeInTheDocument();
+    expect(within(first).getByText("Audio")).toBeInTheDocument();
+    expect(within(second).queryByText("Materi")).not.toBeInTheDocument();
+    expect(within(second).queryByText("Audio")).not.toBeInTheDocument();
+  });
+
+  it("never requests the previous cursor with a changed filter", async () => {
+    testsState = { ...testsState, data: { data: sampleTests, next_cursor: "cursor-2", total: 22 } };
+    render(<TestsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /muat lebih banyak/i }));
+    await waitFor(() =>
+      expect(mockUseAdminTests).toHaveBeenLastCalledWith(expect.objectContaining({ cursor: "cursor-2" })),
+    );
+    mockUseAdminTests.mockClear();
+
+    fireEvent.change(screen.getByTestId("tests-subject-filter"), { target: { value: "Fisika" } });
+
+    const stale = mockUseAdminTests.mock.calls.filter(
+      ([filters]) => filters?.subject === "Fisika" && filters?.cursor === "cursor-2",
+    );
+    expect(stale).toHaveLength(0);
+    expect(mockUseAdminTests).toHaveBeenLastCalledWith(
+      expect.objectContaining({ subject: "Fisika", cursor: undefined }),
+    );
+  });
+
+  it("exposes each row as a real link to the detail page, named by the test title", () => {
+    render(<TestsPage />);
+
+    const link = screen.getByRole("link", { name: "Tryout UTBK Saintek" });
+    expect(link).toHaveAttribute("href", "/admin/exam/tests/t1");
+
+    fireEvent.click(link);
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push).toHaveBeenCalledWith("/admin/exam/tests/t1");
   });
 });

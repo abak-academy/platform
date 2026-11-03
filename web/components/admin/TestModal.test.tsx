@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { TestModal } from "./TestModal";
 import type { Test } from "@/lib/types";
 
@@ -16,6 +16,21 @@ vi.mock("@/lib/hooks/admin-uploads", () => ({
     isPending: false,
   }),
 }));
+
+vi.mock("@/lib/hooks/admin-topics", () => ({
+  useTopics: () => ({
+    data: {
+      data: [
+        { id: "topic-1", name: "Aljabar", subject: "Matematika" },
+        { id: "topic-2", name: "Geometri", subject: "Matematika" },
+        { id: "topic-3", name: "Reading", subject: "Bahasa Inggris" },
+      ],
+    },
+    isLoading: false,
+  }),
+}));
+
+const blankEdit: Test = { id: "t0", title: "", subject: "", topic: "", duration_minutes: 0 };
 
 describe("TestModal", () => {
   beforeEach(() => {
@@ -88,8 +103,8 @@ describe("TestModal", () => {
     );
 
     fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Tryout 1" } });
-    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Matematika" } });
-    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Aljabar" } });
+    fireEvent.change(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Matematika" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "Aljabar" } });
     fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
@@ -160,8 +175,8 @@ describe("TestModal", () => {
     );
 
     fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Tryout 1" } });
-    fireEvent.input(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Matematika" } });
-    fireEvent.input(screen.getByLabelText(/topik/i), { target: { value: "Aljabar" } });
+    fireEvent.change(screen.getByLabelText(/mata pelajaran/i), { target: { value: "Matematika" } });
+    fireEvent.change(screen.getByLabelText(/topik/i), { target: { value: "Aljabar" } });
     fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "0" } });
 
     const saveButton = screen.getByRole("button", { name: /^simpan$/i });
@@ -173,6 +188,7 @@ describe("TestModal", () => {
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -197,6 +213,7 @@ describe("TestModal", () => {
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -221,11 +238,12 @@ describe("TestModal", () => {
     });
   });
 
-  it("renders a section_type picker with none, listening, reading, writing options on create", () => {
+  it("renders a section_type picker with none, listening, reading, writing options on edit", () => {
     render(
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -237,11 +255,12 @@ describe("TestModal", () => {
     expect(screen.getByLabelText("Writing")).toBeInTheDocument();
   });
 
-  it("defaults to none (null section_type) on create", () => {
+  it("defaults to none (null section_type) on edit", () => {
     render(
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -253,11 +272,12 @@ describe("TestModal", () => {
     expect(screen.getByLabelText("Writing")).not.toBeChecked();
   });
 
-  it("includes section_type in create payload when set", async () => {
+  it("includes section_type in update payload when set", async () => {
     render(
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -339,6 +359,7 @@ describe("TestModal", () => {
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -362,6 +383,7 @@ describe("TestModal", () => {
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -379,6 +401,33 @@ describe("TestModal", () => {
 
     const saveButton = screen.getByRole("button", { name: /^simpan$/i });
     expect(saveButton).toBeEnabled();
+  });
+
+  it("create mode asks only for title, subject, topic and duration", () => {
+    render(<TestModal open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+
+    expect(screen.getByLabelText(/judul/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/durasi/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/url audio/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Listening")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/materi bersama/i)).not.toBeInTheDocument();
+  });
+
+  it("create mode offers catalog subjects and scopes topics to the chosen subject", () => {
+    render(<TestModal open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+
+    const subject = screen.getByLabelText(/mata pelajaran/i);
+    const topic = screen.getByLabelText(/topik/i);
+    expect(topic).toBeDisabled();
+
+    fireEvent.change(subject, { target: { value: "Matematika" } });
+    expect(topic).toBeEnabled();
+    expect(within(topic).getByRole("option", { name: "Geometri" })).toBeInTheDocument();
+    expect(within(topic).queryByRole("option", { name: "Reading" })).not.toBeInTheDocument();
+
+    fireEvent.change(topic, { target: { value: "Geometri" } });
+    fireEvent.change(subject, { target: { value: "Bahasa Inggris" } });
+    expect(topic).toHaveValue("");
   });
 
   it("calls onOpenChange(false) when cancel clicked", () => {
@@ -400,6 +449,7 @@ describe("TestModal", () => {
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />
@@ -418,6 +468,7 @@ describe("TestModal", () => {
       <TestModal
         open={true}
         onOpenChange={mockOnOpenChange}
+        test={blankEdit}
         onSubmit={mockOnSubmit}
         isPending={false}
       />

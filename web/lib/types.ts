@@ -725,9 +725,10 @@ export interface AdminUpdateTestInput {
   subject?: string;
   topic?: string;
   duration_minutes?: number;
-  audio_url?: string;
-  audio_play_limit?: number;
-  section_type?: string;
+  /** null clears the field server-side; an absent key preserves it. */
+  audio_url?: string | null;
+  audio_play_limit?: number | null;
+  section_type?: string | null;
 }
 
 export interface AdminQuestionOptionInput {
