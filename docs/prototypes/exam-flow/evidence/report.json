@@ -1,0 +1,37 @@
+{
+  "scope": "static prototype only; no production/API/database verification",
+  "verified_at": "2026-11-02T10:26:22.749Z",
+  "passed": [
+    "admin list: standard header/table, no exam status, search/reset/empty, legacy notice",
+    "admin overview: no duplicate fields/actions; attempts finite/unlimited/off; policy lock",
+    "section composition: material conflict/fix, add/reorder/remove, save barrier, invalid policy",
+    "WhatsApp: optional, domain validation, configured block placement, destination, no join required",
+    "student upcoming/preflight and sequential runtime: own/shared material, both presentations, blanks, submit",
+    "responsive admin list/overview and student detail at seven viewport widths"
+  ],
+  "viewports": [
+    1713,
+    1440,
+    1200,
+    1024,
+    768,
+    390,
+    360
+  ],
+  "screenshots": [
+    "admin-list-desktop.png",
+    "admin-overview-desktop.png",
+    "student-whatsapp-desktop.png",
+    "student-upcoming-card.png",
+    "student-information-desktop.png",
+    "student-detail-mobile.png"
+  ],
+  "sources": {
+    "index.html": "09eaae4198c7a502e9916dd79e7f5e2c8530d533cedf22935139289a63783b8e",
+    "style.css": "cff8733645c63ac0ecba57c38ce8822fc3790a61d03bd0846fb22016e2303fea",
+    "app.js": "ac43c625a0bebce4aa5f5c0f60f06ed3cfe7f636883ff6e84dcbdde3cea6cd54",
+    "verify.cjs": "e56e80557303fbebc0cd4989efe2a4c83171a4afb00e5643e621cf6588d0fc3c"
+  },
+  "errors": [],
+  "external_requests": []
+}
