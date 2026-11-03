@@ -37,6 +37,8 @@ const DIFFICULTY_LABEL: Record<string, string> = {
   hard: "diff_hard",
 };
 
+const CLAMP_THRESHOLD = 140;
+
 // Was ["mcq","multi_answer","short","fill_blank","essay"] — stale twice over:
 // it still offered the two retired formats and never offered multi_blank or
 // true_false at all, so the picker couldn't filter by the formats that
@@ -81,6 +83,7 @@ export function QuestionPickerModal({
   const [topicId, setTopicId] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isAttaching, setIsAttaching] = useState(false);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const filters = useMemo(
     () => ({
@@ -106,8 +109,18 @@ export function QuestionPickerModal({
       setFormat("all");
       setTopicId("all");
       setSelected(new Set());
+      setExpanded(new Set());
     }
   }, [open]);
+
+  function toggleExpanded(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -188,60 +201,95 @@ export function QuestionPickerModal({
             {bank.isLoading && (
               <div className="p-4 text-center text-muted-foreground">{t("sys_loading")}</div>
             )}
-            {!bank.isLoading && rows.length === 0 && (
+            {bank.isError && (
+              <div className="space-y-2 p-4 text-center text-danger">
+                <p>{t("tests_picker_error")}</p>
+                <Button type="button" size="sm" variant="outline" onClick={() => bank.refetch()}>
+                  {t("retry")}
+                </Button>
+              </div>
+            )}
+            {!bank.isLoading && !bank.isError && rows.length === 0 && (
               <div className="p-4 text-center text-muted-foreground">{t("tests_picker_empty")}</div>
             )}
             {rows.map((row) => {
               const isAttached = attachedIds.has(row.question.id);
               const isSelected = selected.has(row.question.id);
+              const body = stripHtmlToPlainText(row.question.body);
+              const isExpanded = expanded.has(row.question.id);
               return (
-                <button
-                  type="button"
+                <div
                   key={row.question.id}
-                  disabled={isAttached}
-                  onClick={() => toggle(row.question.id)}
-                  className={`flex w-full items-center gap-3 overflow-hidden border-b px-3 py-2 text-left transition-colors last:border-b-0 ${
+                  className={`border-b last:border-b-0 ${
                     isAttached
-                      ? "cursor-default opacity-50"
+                      ? "opacity-50"
                       : isSelected
-                        ? "bg-green-50 hover:bg-green-50"
+                        ? "bg-green-50"
                         : "hover:bg-muted/30"
                   }`}
                 >
-                  <SelectionBox selected={isSelected} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-ink-900">
-                      {stripHtmlToPlainText(row.question.body)}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="max-w-[140px] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                        {row.question.id}
-                      </span>
-                      <Badge variant="outline">
-                        {t(FORMAT_LABELS[row.question.format] as Parameters<typeof t>[0])}
-                      </Badge>
-                      {row.question.topic && (
-                        <span className="max-w-[160px] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          {row.question.topic}
+                  <button
+                    type="button"
+                    disabled={isAttached}
+                    onClick={() => toggle(row.question.id)}
+                    className={`flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
+                      isAttached ? "cursor-default" : ""
+                    }`}
+                  >
+                    <SelectionBox selected={isSelected} />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`min-w-0 text-sm text-ink-900 [overflow-wrap:anywhere] ${
+                          isExpanded ? "" : "line-clamp-3"
+                        }`}
+                      >
+                        {body}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <span className="max-w-[140px] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                          {row.question.id}
                         </span>
-                      )}
-                      {row.question.difficulty &&
-                        DIFFICULTY_LABEL[row.question.difficulty] && (
-                          <Badge variant="secondary">
-                            {t(DIFFICULTY_LABEL[row.question.difficulty] as Parameters<typeof t>[0])}
-                          </Badge>
+                        <Badge variant="outline">
+                          {t(FORMAT_LABELS[row.question.format] as Parameters<typeof t>[0])}
+                        </Badge>
+                        {row.question.topic && (
+                          <span className="max-w-[160px] truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {row.question.topic}
+                          </span>
                         )}
+                        {row.question.difficulty &&
+                          DIFFICULTY_LABEL[row.question.difficulty] && (
+                            <Badge variant="secondary">
+                              {t(DIFFICULTY_LABEL[row.question.difficulty] as Parameters<typeof t>[0])}
+                            </Badge>
+                          )}
+                      </div>
                     </div>
-                  </div>
-                  {isAttached && (
-                    <span className="flex-shrink-0 text-[11px] text-muted-foreground">
-                      {t("tests_picker_attached_badge")}
-                    </span>
+                    {isAttached && (
+                      <span className="flex-shrink-0 text-[11px] text-muted-foreground">
+                        {t("tests_picker_attached_badge")}
+                      </span>
+                    )}
+                  </button>
+                  {body.length > CLAMP_THRESHOLD && (
+                    <button
+                      type="button"
+                      onClick={() => toggleExpanded(row.question.id)}
+                      className="mb-2 ml-11 text-xs font-medium text-primary hover:underline"
+                    >
+                      {t(isExpanded ? "tests_picker_less" : "tests_picker_more")}
+                    </button>
                   )}
-                </button>
+                </div>
               );
             })}
           </div>
+
+          {bank.data?.next_cursor && (
+            <p className="text-xs text-muted-foreground">
+              {t("tests_picker_partial").replace("{n}", String(rows.length))}
+            </p>
+          )}
 
           <p className="text-sm text-muted-foreground">
             {t("tests_picker_selected").replace("{n}", String(selected.size))}

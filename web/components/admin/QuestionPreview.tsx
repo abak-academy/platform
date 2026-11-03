@@ -36,7 +36,7 @@ const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard
 // reads it as a broken question. Renders each token as an inert box chip after
 // RichContent has sanitised — the effect runs on the final DOM, so the chip
 // markup never has to survive the sanitiser's allowlist.
-function MultiBlankPreviewBody({ html }: { html: string }) {
+export function MultiBlankPreviewBody({ html }: { html: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const root = ref.current;

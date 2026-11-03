@@ -402,6 +402,34 @@ describe("admin-tests hooks", () => {
       queryKey: adminTestsKeys.questions("t1"),
     });
   });
+
+  it("useAttachQuestions_refetches_attached_set_when_the_server_rejects", async () => {
+    mockAuthFetch.mockRejectedValueOnce(new Error("sibling test already has this question"));
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useAttachQuestions("t1"), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ question_ids: ["q1"] })).rejects.toThrow();
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminTestsKeys.questions("t1") });
+  });
+
+  it("useReorderTestQuestions_refetches_attached_set_when_the_order_is_stale", async () => {
+    mockAuthFetch.mockRejectedValueOnce(new Error("order must contain every attached question"));
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useReorderTestQuestions("t1"), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.mutateAsync({ question_ids: ["q2", "q1"] })).rejects.toThrow();
+    });
+
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminTestsKeys.questions("t1") });
+  });
 });
 
 function wrapperFactory() {

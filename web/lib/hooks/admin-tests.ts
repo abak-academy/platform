@@ -178,6 +178,9 @@ export function useAttachQuestions(testId: string) {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
       qc.invalidateQueries({ queryKey: adminBankQuestionsKeys.lists() });
     },
+    onError: () => {
+      qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+    },
   });
 }
 
@@ -210,6 +213,9 @@ export function useReorderTestQuestions(testId: string) {
         },
       ),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
+    },
+    onError: () => {
       qc.invalidateQueries({ queryKey: adminTestsKeys.questions(testId) });
     },
   });

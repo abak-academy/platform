@@ -50,7 +50,9 @@ export default function TestsPage() {
     if (topic && !topicOptions.some((opt) => opt.name === topic)) setTopic("");
   }, [topic, topicsForSubject.data]);
 
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
+  const filterKey = `${subject}\u0000${topic}\u0000${q}`;
+  const [page, setPage] = useState<{ key: string; cursor?: string }>({ key: filterKey });
+  const cursor = page.key === filterKey ? page.cursor : undefined;
   const [entries, setEntries] = useState<Test[]>([]);
 
   const {
@@ -59,6 +61,7 @@ export default function TestsPage() {
     isError,
     error,
     isFetching,
+    refetch,
   } = useAdminTests({
     subject: subject || undefined,
     topic: topic || undefined,
@@ -70,9 +73,8 @@ export default function TestsPage() {
   const update = useUpdateTest(editingTest?.id ?? "");
   const remove = useDeleteTest(deletingId ?? "");
 
-  // Reset pagination when filters change
+  // Reset accumulated rows when filters change
   useEffect(() => {
-    setCursor(undefined);
     setEntries([]);
   }, [subject, topic, q]);
 
@@ -88,7 +90,7 @@ export default function TestsPage() {
 
   function handleLoadMore() {
     if (testsResp?.next_cursor) {
-      setCursor(testsResp.next_cursor);
+      setPage({ key: filterKey, cursor: testsResp.next_cursor });
     }
   }
 
@@ -113,8 +115,11 @@ export default function TestsPage() {
         await update.mutateAsync(input as AdminUpdateTestInput);
         toast.success(t("tests_update_success"));
       } else {
-        await create.mutateAsync(input as AdminCreateTestInput);
+        const created = await create.mutateAsync(input as AdminCreateTestInput);
         toast.success(t("tests_create_success"));
+        setModalOpen(false);
+        router.push(`/admin/exam/tests/${created.id}`);
+        return;
       }
       setModalOpen(false);
       setEditingTest(null);
@@ -204,69 +209,87 @@ export default function TestsPage() {
 
       {isError && (
         <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
-          {errorMessage(error)}
+          <p>{errorMessage(error)}</p>
+          <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => refetch()}>
+            {t("retry")}
+          </Button>
         </div>
       )}
 
       {!isError && tests.length > 0 && (
-        <div className="md-card-outlined divide-y">
-            {tests.map((test) => (
-              <div
-                key={test.id}
-                data-testid="test-row"
-                role="button"
-                tabIndex={0}
-                onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    router.push(`/admin/exam/tests/${test.id}`);
-                  }
-                }}
-                className="flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-ink-900 truncate">{test.title}</div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-500">
-                    <span>{test.subject}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{test.topic}</span>
-                    <span aria-hidden="true">·</span>
-                    <span>{test.duration_minutes} min</span>
-                    <Badge variant="secondary" className="ml-1">
-                      {test.question_count ?? 0} {t("tests_question_count")}
-                    </Badge>
-                  </div>
-                </div>
-                <div
-                  className="flex items-center gap-1"
-                  onClick={(e) => e.stopPropagation()}
+        <div className="overflow-x-auto md-card-outlined">
+          <table className="w-full text-sm">
+            <thead className="bg-muted">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium">{t("tests_col_test")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("tests_col_subject_topic")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("tests_col_questions")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("tests_col_duration")}</th>
+                <th className="px-4 py-3 text-left font-medium">{t("tests_col_content")}</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody>
+              {tests.map((test) => (
+                <tr
+                  key={test.id}
+                  data-testid="test-row"
+                  tabIndex={0}
+                  onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/admin/exam/tests/${test.id}`);
+                    }
+                  }}
+                  className="cursor-pointer border-t align-top transition-colors hover:bg-muted/40"
                 >
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => openEdit(test)}
-                    aria-label={t("action_edit")}
-                  >
-                    <Pencil className="mr-1 size-3.5" />
-                    {t("action_edit")}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDelete(test.id)}
-                    disabled={remove.isPending && deletingId === test.id}
-                    aria-label={t("action_delete")}
-                    className="text-danger hover:text-danger"
-                  >
-                    <Trash2 className="mr-1 size-3.5" />
-                    {t("action_delete")}
-                  </Button>
-                </div>
-              </div>
-            ))}
+                  <td className="max-w-[18rem] px-4 py-3 font-medium [overflow-wrap:anywhere]">{test.title}</td>
+                  <td className="px-4 py-3">
+                    <div>{test.subject}</div>
+                    <div className="text-xs text-ink-500">{test.topic}</div>
+                  </td>
+                  <td className="px-4 py-3 tabular-nums">{test.question_count ?? 0}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{test.duration_minutes} min</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {test.shared_material_html?.trim() && (
+                        <Badge variant="secondary">{t("tests_content_material")}</Badge>
+                      )}
+                      {test.audio_url && <Badge variant="secondary">{t("tests_content_audio")}</Badge>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => openEdit(test)}
+                        aria-label={t("action_edit")}
+                      >
+                        <Pencil className="mr-1 size-3.5" />
+                        {t("action_edit")}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleDelete(test.id)}
+                        disabled={remove.isPending && deletingId === test.id}
+                        aria-label={t("action_delete")}
+                        className="text-danger hover:text-danger"
+                      >
+                        <Trash2 className="mr-1 size-3.5" />
+                        {t("action_delete")}
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
