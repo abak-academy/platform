@@ -1449,3 +1449,66 @@ describe("composable exam — material conflicts and policy lock", () => {
     act(() => useUIStore.setState({ lang: "id" }));
   });
 });
+
+describe("ExamPackageDetailPage — exam event info", () => {
+  const open = (over: Partial<ExamDetail> = {}, role?: string) => {
+    (useParams as ReturnType<typeof vi.fn>).mockReturnValue({ id: "exam-1" });
+    mockRole = role;
+    examState = {
+      data: { ...sampleExam, format_version: 2, navigation_policy: "sequential", has_sessions: false, ...over },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    adminTestsState = { data: { data: sampleAvailableTests }, isLoading: false, isFetching: false };
+    useUIStore.setState({ lang: "id" });
+    mockUpdateExam.mockReset();
+    mockUpdateExam.mockResolvedValue({});
+    return render(<ExamPackageDetailPage />);
+  };
+
+  it("summary tab shows the WhatsApp group card with the stored link", () => {
+    open({ whatsapp_group_url: "https://chat.whatsapp.com/AbC" });
+    const card = screen.getByRole("region", { name: "Grup WhatsApp kompetisi" });
+    expect(within(card).getByText("Link tersedia")).toBeInTheDocument();
+    expect(within(card).getByRole("link")).toHaveAttribute("href", "https://chat.whatsapp.com/AbC");
+  });
+
+  it("summary tab says the link is not provided, without a reason", () => {
+    open({ whatsapp_group_url: null });
+    const card = screen.getByRole("region", { name: "Grup WhatsApp kompetisi" });
+    expect(within(card).getByText("Tidak dicantumkan")).toBeInTheDocument();
+    expect(within(card).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("puts the Aturan pengerjaan card in the right column above the Test picker", () => {
+    open();
+    fireEvent.click(screen.getByRole("button", { name: /^tes & section$/i }));
+    const rules = screen.getByRole("region", { name: "Aturan pengerjaan" });
+    const picker = screen.getByRole("heading", { name: "Tes Tersedia" });
+    const attached = screen.getByRole("heading", { name: "Tes Terlampir" });
+    expect(rules.compareDocumentPosition(picker) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(attached.compareDocumentPosition(rules) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(rules.parentElement).toBe(picker.closest("div.md-card-outlined")!.parentElement);
+  });
+
+  it("keeps the rules editable while policy and section controls are locked by sessions", () => {
+    open({ has_sessions: true });
+    fireEvent.click(screen.getByRole("button", { name: /^tes & section$/i }));
+    expect(screen.getAllByRole("button", { name: /^tambah$/i })[0]).toBeDisabled();
+    const toggle = screen.getByRole("checkbox", { name: /tambahkan aturan tambahan/i });
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+    fireEvent.input(screen.getByLabelText(/keterangan tambahan/i), { target: { value: "Catatan" } });
+    fireEvent.click(screen.getByRole("button", { name: /simpan aturan tambahan/i }));
+    return waitFor(() =>
+      expect(mockUpdateExam).toHaveBeenCalledWith({ additional_rules_note: "Catatan", additional_rules_url: null }),
+    );
+  });
+
+  it("does not show the manage hint to school-scoped admins", () => {
+    open({ whatsapp_group_url: null }, "admin_school");
+    expect(screen.queryByText(/kelola link melalui pengaturan/i)).not.toBeInTheDocument();
+  });
+});

@@ -184,6 +184,11 @@ type Exam struct {
 	FormatVersion int `json:"format_version"`
 	// NavigationPolicy governs cross-section movement for format 2 (free|sequential).
 	NavigationPolicy string `json:"navigation_policy"`
+	// WhatsAppGroupURL, AdditionalRulesNote and AdditionalRulesURL are optional
+	// event info shown to students on the exam briefing; never an exam gate.
+	WhatsAppGroupURL    *string `json:"whatsapp_group_url"`
+	AdditionalRulesNote *string `json:"additional_rules_note"`
+	AdditionalRulesURL  *string `json:"additional_rules_url"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -418,6 +423,9 @@ type RegistrationExam struct {
 	QuestionCount           int                  `json:"question_count"`
 	SectionsDurationMinutes *int                 `json:"sections_duration_minutes"`
 	Sections                []ExamPreviewSection `json:"sections"`
+	WhatsAppGroupURL        *string              `json:"whatsapp_group_url"`
+	AdditionalRulesNote     *string              `json:"additional_rules_note"`
+	AdditionalRulesURL      *string              `json:"additional_rules_url"`
 	RawRules                ExamRuleColumns      `json:"-"`
 }
 
