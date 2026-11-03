@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useBankQuestions } from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
@@ -187,6 +188,14 @@ export function QuestionPickerModal({
   }
 
   const rows = bank.data?.data ?? [];
+  const filtersActive = search !== "" || format !== "all" || topicId !== "all";
+
+  function resetFilters() {
+    setSearch("");
+    setFormat("all");
+    setTopicId("all");
+  }
+
   const topicOptions = topics.data?.data ?? [];
 
   return (
@@ -194,48 +203,69 @@ export function QuestionPickerModal({
       <DialogContent className="max-w-[720px] sm:!max-w-[720px]" style={{ maxWidth: 720 }}>
         <DialogHeader>
           <DialogTitle>{t("tests_picker_title")}</DialogTitle>
-          <DialogDescription>{t("tests_picker_search")}</DialogDescription>
+          <DialogDescription>{t("tests_picker_subtitle")}</DialogDescription>
         </DialogHeader>
 
         <div className="min-w-0 space-y-3 py-1">
-          <div className="flex h-9 items-center gap-2 rounded-lg border border-input bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-ring/40">
-            <Search className="size-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("tests_picker_search")}
-              className="h-8 flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
-            />
+          <div className="grid gap-2">
+            <Label htmlFor="picker-search">{t("tests_picker_search_label")}</Label>
+            <div className="flex h-9 items-center gap-2 rounded-lg border border-input bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-ring/40">
+              <Search className="size-4 text-muted-foreground" />
+              <Input
+                id="picker-search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("tests_picker_search")}
+                className="h-8 flex-1 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+              />
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <select
-              data-slot="select"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
-              className="h-7 shrink-0 rounded-full border border-input bg-background px-3 text-xs"
-            >
-              <option value="all">{t("tab_all")}</option>
-              {ALL_FORMATS.map((f) => (
-                <option key={f} value={f}>
-                  {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-                </option>
-              ))}
-            </select>
-            <select
-              data-slot="select"
-              value={topicId}
-              onChange={(e) => setTopicId(e.target.value)}
-              disabled={topics.isLoading}
-              className="h-7 shrink-0 rounded-full border border-input bg-background px-3 text-xs"
-            >
-              <option value="all">{t("tests_picker_topic_all")}</option>
-              {topicOptions.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.name}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="picker-topic">{t("tests_picker_topic_label")}</Label>
+              <select
+                id="picker-topic"
+                data-slot="select"
+                value={topicId}
+                onChange={(e) => setTopicId(e.target.value)}
+                disabled={topics.isLoading}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="all">{t("tests_picker_topic_all")}</option>
+                {topicOptions.map((topic) => (
+                  <option key={topic.id} value={topic.id}>
+                    {topic.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="picker-format">{t("tests_picker_format_label")}</Label>
+              <select
+                id="picker-format"
+                data-slot="select"
+                value={format}
+                onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
+                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+              >
+                <option value="all">{t("tab_all")}</option>
+                {ALL_FORMATS.map((f) => (
+                  <option key={f} value={f}>
+                    {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span>{t("tests_picker_count").replace("{n}", String(rows.length))}</span>
+            {filtersActive && (
+              <button type="button" onClick={resetFilters} className="font-medium text-primary hover:underline">
+                {t("tests_picker_reset")}
+              </button>
+            )}
           </div>
 
           <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-md border border-input">
@@ -265,7 +295,7 @@ export function QuestionPickerModal({
                     isAttached
                       ? "opacity-50"
                       : isSelected
-                        ? "bg-green-50"
+                        ? "bg-brand-50"
                         : "hover:bg-muted/30"
                   }`}
                 >
@@ -330,20 +360,22 @@ export function QuestionPickerModal({
             </p>
           )}
 
+        </div>
+
+        <DialogFooter className="items-center sm:justify-between">
           <p className="text-sm text-muted-foreground">
             {t("tests_picker_selected").replace("{n}", String(selected.size))}
           </p>
-        </div>
-
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isAttaching}>
-            {t("cancel")}
-          </Button>
-          <Button type="button" onClick={handleAttach} disabled={selected.size === 0 || isAttaching}>
-            {isAttaching
-              ? t("saving")
-              : t("tests_picker_confirm").replace("{n}", String(selected.size))}
-          </Button>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isAttaching}>
+              {t("cancel")}
+            </Button>
+            <Button type="button" onClick={handleAttach} disabled={selected.size === 0 || isAttaching}>
+              {isAttaching
+                ? t("saving")
+                : t("tests_picker_confirm").replace("{n}", String(selected.size))}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

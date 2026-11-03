@@ -115,7 +115,7 @@ for (const viewport of VIEWPORTS) {
     expect(await noSidewaysScroll(page)).toBe(true);
 
     await page.goto("/admin/exam/tests/t1");
-    await expect(page.getByRole("tab", { name: "Soal" })).toBeVisible();
+    await expect(page.getByRole("tab", { name: /^Soal/ })).toBeVisible();
     await expect(page.getByText(/Soal terpasang/)).toBeVisible();
     expect(await noSidewaysScroll(page)).toBe(true);
     const sidebar = page.getByTestId("test-material-sidebar");
@@ -128,7 +128,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.getByLabel(/judul/i)).toBeVisible();
     expect(await noSidewaysScroll(page)).toBe(true);
 
-    await page.getByRole("tab", { name: "Soal" }).click();
+    await page.getByRole("tab", { name: /^Soal/ }).click();
     await page.getByRole("button", { name: /dari bank/i }).first().click();
     await expect(page.getByText(/Teks bank yang sangat panjang/).first()).toBeVisible();
     await expect(page.getByRole("button", { name: "Lihat selengkapnya" }).first()).toBeVisible();
@@ -136,7 +136,7 @@ for (const viewport of VIEWPORTS) {
     expect(await noSidewaysScroll(page)).toBe(true);
     await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: /pratinjau tes/i }).click();
+    await page.getByRole("button", { name: "Pratinjau", exact: true }).click();
     await expect(page.getByText(/tidak ada sesi atau percobaan/i)).toBeVisible();
     expect(await dialogFits(page)).toBe(true);
     expect(await noSidewaysScroll(page)).toBe(true);
