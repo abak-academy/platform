@@ -112,8 +112,15 @@ for (const viewport of VIEWPORTS) {
     await expect(select).toBeDisabled();
     await expect(page.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeVisible();
     await expect(page.getByText(/#1 · Literasi Membaca: soal 2, 4 punya materi sendiri/)).toBeVisible();
-    const box = await select.boundingBox();
-    expect(box?.width ?? 0).toBeGreaterThanOrEqual(220);
+    const fit = await select.evaluate((el) => {
+      const s = el as HTMLSelectElement;
+      const cs = getComputedStyle(s);
+      const ctx = document.createElement("canvas").getContext("2d")!;
+      ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const longest = Math.max(...[...s.options].map((o) => ctx.measureText(o.text).width));
+      return { needed: longest + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 24, width: s.getBoundingClientRect().width };
+    });
+    expect(fit.width).toBeGreaterThanOrEqual(fit.needed);
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
   });
 }

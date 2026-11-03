@@ -790,7 +790,7 @@ export default function ExamPackageDetailPage() {
                       const materialCount = entry?.material_question_positions?.length ?? 0;
                       const title = meta?.title ?? testId;
                       return (
-                        <li key={`${testId}-${idx}`} className="rounded-lg border border-line p-4">
+                        <li key={`${testId}-${idx}`} className="rounded-lg border border-line p-3 sm:p-4">
                           <div className="flex items-start gap-3">
                             <NumberChip n={idx + 1} />
                             <div className="min-w-0 flex-1">
@@ -841,7 +841,7 @@ export default function ExamPackageDetailPage() {
                           </div>
                           {data.format_version === 2 && (
                             <>
-                              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_160px]">
                                 <div className="grid content-start gap-1.5">
                                   <span className="text-xs text-ink-500">{t("format_presentation")}</span>
                                   <select
@@ -1222,15 +1222,15 @@ function AdminCard({
 }) {
   return (
     <section aria-labelledby={id} className="min-w-0 rounded-[20px] border border-line bg-surface text-foreground">
-      <div className="flex flex-wrap items-start justify-between gap-3 px-6 py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-5 sm:px-6">
         <div className="min-w-0">
           <h2 id={id} className="text-title-medium font-semibold">{title}</h2>
           {description && <p className="mt-1 text-sm text-ink-500">{description}</p>}
         </div>
         {actions}
       </div>
-      {children && <div className="border-t border-line p-6">{children}</div>}
-      {footer && <div className="border-t border-line px-6 py-4">{footer}</div>}
+      {children && <div className="border-t border-line p-4 sm:p-6">{children}</div>}
+      {footer && <div className="border-t border-line px-4 py-4 sm:px-6">{footer}</div>}
     </section>
   );
 }

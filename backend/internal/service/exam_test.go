@@ -1036,13 +1036,14 @@ func TestValidateTest_accepts_writing_section(t *testing.T) {
 
 func entryTitled(title string, sectionType *string) model.ExamTestEntry {
 	return model.ExamTestEntry{Test: struct {
-		ID              uuid.UUID `json:"id"`
-		Title           string    `json:"title"`
-		Subject         string    `json:"subject"`
-		Topic           *string   `json:"topic"`
-		DurationMinutes *int      `json:"duration_minutes"`
-		SectionType     *string   `json:"section_type,omitempty"`
-		QuestionCount   int       `json:"question_count"`
+		ID                uuid.UUID `json:"id"`
+		Title             string    `json:"title"`
+		Subject           string    `json:"subject"`
+		Topic             *string   `json:"topic"`
+		DurationMinutes   *int      `json:"duration_minutes"`
+		SectionType       *string   `json:"section_type,omitempty"`
+		QuestionCount     int       `json:"question_count"`
+		HasSharedMaterial bool      `json:"has_shared_material"`
 	}{Title: title, SectionType: sectionType}}
 }
 
