@@ -16,68 +16,15 @@ import {
 import { toast } from "sonner";
 
 import { useRegistrations, useStartSession } from "@/lib/hooks/exam";
+import { computeCardState } from "@/lib/exam-card-state";
 import { accessWindow, countdownParts, workingMinutes } from "@/lib/exam-schedule";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { CardState } from "@/lib/exam-card-state";
 import type { RegistrationListItem } from "@/lib/types";
-
-type CardState =
-  | { kind: "start" }
-  | { kind: "locked"; opensAt: Date }
-  | { kind: "checkin" }
-  | { kind: "in_progress" }
-  | { kind: "expired" }
-  | { kind: "submitted"; sessionId: string; hasAttemptsLeft: boolean };
-
-// Mirrors design-app-abak's PkgCard state machine (stateMeta: free/locked/
-// checkin/checkedin/inprogress/expired/submitted), driven by real fields
-// instead of mock data.
-function computeCardState(reg: RegistrationListItem, now: number): CardState {
-  if (reg.status === "submitted") {
-    // session_id is nullable (list join picks the latest attempt) — without
-    // it there's nowhere valid to link, so fall back to in_progress's detail link.
-    if (reg.session_id) {
-      // nil max_attempts is unlimited; 0 or 1 is a single sitting.
-      const maxAttempts = reg.max_attempts;
-      const unlimited = maxAttempts == null;
-      const ceiling = maxAttempts != null && maxAttempts > 0 ? maxAttempts : 1;
-      return {
-        kind: "submitted",
-        sessionId: reg.session_id,
-        hasAttemptsLeft: unlimited || reg.attempts_used < ceiling,
-      };
-    }
-    return { kind: "in_progress" };
-  }
-  if (reg.status === "in_progress") return { kind: "in_progress" };
-  if (reg.status === "checked_in") return { kind: "start" };
-  if (!reg.requires_checkin) {
-    // Even without check-in, a set scheduled_end_at turns scheduled_at into an
-    // availability window (backend gates StartSession on it regardless of
-    // requires_checkin) — mirror that here so "Start" isn't shown outside it.
-    if (reg.scheduled_end_at) {
-      const start = reg.scheduled_at ? new Date(reg.scheduled_at).getTime() : null;
-      const end = new Date(reg.scheduled_end_at).getTime();
-      if (start !== null && now < start) return { kind: "locked", opensAt: new Date(start) };
-      if (now > end) return { kind: "expired" };
-    }
-    return { kind: "start" };
-  }
-  if (!reg.scheduled_at) return { kind: "checkin" };
-  const scheduledAt = new Date(reg.scheduled_at).getTime();
-  const windowMin = reg.check_in_window_minutes ?? 15;
-  const opensAt = scheduledAt - windowMin * 60_000;
-  if (now < opensAt) return { kind: "locked", opensAt: new Date(opensAt) };
-  // Without an availability window, check-in closes the instant scheduled_at
-  // is reached (windowEnd collapses to scheduledAt) — with one, it stays open
-  // through scheduled_end_at, matching the backend CheckIn windowing.
-  const windowEnd = reg.scheduled_end_at ? new Date(reg.scheduled_end_at).getTime() : scheduledAt;
-  if (now < windowEnd) return { kind: "checkin" };
-  return { kind: "expired" };
-}
 
 export default function ExamPage() {
   const { t } = useTranslation();
@@ -185,6 +132,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
   const detailHref = `/exam/${reg.id}`;
   const resuming = state.kind === "in_progress" && reg.status === "in_progress";
   const detailIsPrimary =
+    (state.kind === "submitted" && !state.sessionId) ||
     state.kind === "start" ||
     state.kind === "checkin" ||
     state.kind === "locked" ||
@@ -322,7 +270,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
               <Play className="size-3.5" />
               {startSessionMutation.isPending ? t("sys_loading") : t("continue_exam")}
             </Button>
-          ) : state.kind === "submitted" ? (
+          ) : state.kind === "submitted" && state.sessionId ? (
             <Button asChild size="sm" className="shrink-0 rounded-full">
               <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
             </Button>

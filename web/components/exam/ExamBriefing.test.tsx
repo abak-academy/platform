@@ -1,3 +1,4 @@
+import type { ComponentProps } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { ExamBriefing, type BriefingGate } from "./ExamBriefing";
@@ -34,7 +35,7 @@ const gate = { kind: "start" as const, disabled: false, pending: false, onStart:
 
 function renderBriefing(
   over: Partial<RegistrationExam> = {},
-  props: { preview?: boolean; status?: "ready" | "upcoming"; gate?: BriefingGate; afterHowTo?: React.ReactNode } = {},
+  props: { preview?: boolean; status?: ComponentProps<typeof ExamBriefing>["status"]; gate?: BriefingGate; afterHowTo?: React.ReactNode } = {},
 ) {
   return render(
     <ExamBriefing
@@ -183,11 +184,20 @@ describe("ExamBriefing information card", () => {
   it.each([
     ["ready", { status: "ready" as const }, "Siap dikerjakan"],
     ["upcoming", { status: "upcoming" as const }, "Belum dibuka"],
+    ["check-in", { status: "checkin" as const }, "Check-in dibuka"],
+    ["expired", { status: "expired" as const }, "Kadaluarsa"],
+    ["done", { status: "done" as const }, "Selesai"],
     ["resume", { gate: { ...gate, kind: "resume" as const } }, "Sedang berjalan"],
   ])("shows the %s status badge in the card header", (_n, props, label) => {
     renderBriefing(schedule, props);
     const card = screen.getByRole("heading", { name: "Informasi ujian" }).closest("[data-slot='card']") as HTMLElement;
     expect(within(card).getByText(label)).toBeInTheDocument();
+  });
+
+  it("shows no status badge in preview mode", () => {
+    renderBriefing(schedule, { preview: true });
+    const card = screen.getByRole("heading", { name: "Informasi ujian" }).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).queryByText("Siap dikerjakan")).not.toBeInTheDocument();
   });
 
   it("shows the full weekday date and large hours with WIB for a same-day window", () => {

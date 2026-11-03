@@ -357,6 +357,10 @@ describe("ExamPage", () => {
     expect(screen.queryByText(/exam\/sessions\/null/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Lanjutkan ujian" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Lihat Detail/i })).toHaveAttribute("href", "/exam/reg-7");
+    const card = screen.getByText("Tryout Tanpa Sesi").closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Selesai")).toBeInTheDocument();
+    expect(within(card).getByText("Ujian telah selesai")).toBeInTheDocument();
+    expect(within(card).queryByText("Sesi sedang berlangsung")).not.toBeInTheDocument();
   });
 
   it("offers a retake alongside the result link when attempts remain (FR20)", async () => {
@@ -645,6 +649,11 @@ describe("ExamPage card parity", () => {
   ])("maps the %s state to its status badge", async (_n, reg, label) => {
     show(reg as RegistrationListItem);
     expect(within(await cardOf("Paket Parity")).getByText(label)).toBeInTheDocument();
+  });
+
+  it("is not open for a checked-in student before scheduled_at", async () => {
+    show({ ...base, requires_checkin: true, status: "checked_in", scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Belum dibuka")).toBeInTheDocument();
   });
 
   it("keeps the check-in badge when check-in is open", async () => {

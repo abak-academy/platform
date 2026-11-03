@@ -672,9 +672,34 @@ describe("ExamDetailPage — access status badge", () => {
     expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
   });
 
-  it("is ready once the check-in window is open", () => {
+  it("says check-in is open once the check-in window is open, like the list card", () => {
     show(sampleWithCheckin, "2026-07-15T08:45:00Z");
-    expect(screen.getByText("Siap dikerjakan")).toBeInTheDocument();
+    expect(screen.getByText("Check-in dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is expired after scheduled_end_at when the student never started", () => {
+    show(withExam({ scheduled_at: "2026-07-15T09:00:00Z", scheduled_end_at: "2026-07-15T11:00:00Z" }), "2026-07-15T12:00:00Z");
+    expect(screen.getByText("Kadaluarsa")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is expired once check-in has closed", () => {
+    show(sampleWithCheckin, "2026-07-15T09:30:00Z");
+    expect(screen.getByText("Kadaluarsa")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is done when submitted with no attempts left", () => {
+    show({ ...withExam({ max_attempts: 1 }, "submitted"), attempts_used: 1 }, "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Selesai")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is not open for a checked-in student before scheduled_at", () => {
+    show({ ...sampleWithCheckin, status: "checked_in" }, "2026-07-15T08:55:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
   });
 
   it("is not open before scheduled_at when a scheduled_end_at makes it an access window", () => {

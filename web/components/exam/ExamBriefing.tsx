@@ -25,7 +25,7 @@ interface ExamBriefingProps {
   backHref: string;
   backLabel: string;
   preview?: boolean;
-  status?: "ready" | "upcoming";
+  status?: "ready" | "upcoming" | "checkin" | "expired" | "done";
   afterHowTo?: ReactNode;
   checkIn?: ReactNode;
   gate: BriefingGate | null;
@@ -50,7 +50,13 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
     ? [t("st_inprogress"), "bg-brand-50 text-brand-700"]
     : status === "upcoming"
       ? [t("examcard_upcoming_badge"), "border-line bg-surface-2 text-ink-700"]
-      : [t("examcard_status_ready"), "bg-success-bg text-success"];
+      : status === "checkin"
+        ? [t("st_checkin"), "bg-brand-50 text-brand-700"]
+        : status === "expired"
+          ? [t("st_expired"), "bg-warn-bg text-warn"]
+          : status === "done"
+            ? [t("examcard_status_done"), "bg-success-bg text-success"]
+            : [t("examcard_status_ready"), "bg-success-bg text-success"];
   const startDisabled = preview || !gate || gate.disabled || gate.pending || (!resume && !understood);
 
   return (
@@ -78,7 +84,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
       <Card className="space-y-4 p-5">
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-serif text-xl font-semibold text-ink-900">{t("competition_detail_exam_info")}</h2>
-          <Badge className={`rounded-full border-transparent ${statusClass}`}>{statusLabel}</Badge>
+          {!preview && <Badge className={`rounded-full border-transparent ${statusClass}`}>{statusLabel}</Badge>}
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <section className="flex min-w-0 flex-col rounded-xl border border-line p-4">
