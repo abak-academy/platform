@@ -1844,12 +1844,9 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 				SELECT string_agg(DISTINCT t.subject, ', ')
 				FROM exam_test et JOIN test t ON t.id = et.test_id
 				WHERE et.exam_id = e.id
-			), '') AS subject,
-			e.max_attempts, e.format_version, e.mode, e.navigation_policy,
-			agg.section_count, agg.question_count, agg.sections_duration
+			), '') AS subject
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
-		`+examSectionAggregateJoin+`
 		WHERE reg.id = $1 AND reg.student_id = $2`,
 		regID, studentID,
 	).Scan(
@@ -1859,8 +1856,6 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.RawRules.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
 		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
-		&detail.Exam.MaxAttempts, &detail.Exam.RawRules.FormatVersion, &detail.Exam.RawRules.Mode, &detail.Exam.RawRules.NavigationPolicy,
-		&detail.Exam.SectionCount, &detail.Exam.QuestionCount, &detail.Exam.SectionsDurationMinutes,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -1973,7 +1968,7 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 		&detail.ID, &detail.StudentID, &detail.ExamID, &detail.Token, &cardKey,
 		&checkedInAt, &detail.AttemptsUsed, &detail.Status, &detail.CreatedAt, &detail.ParticipantNumber,
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
-		&detail.Exam.CheckInWindowMinutes, &detail.Exam.TimerMode, &detail.Exam.DurationMinutes,
+		&detail.Exam.CheckInWindowMinutes, &detail.Exam.RawRules.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
 		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
 	)

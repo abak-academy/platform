@@ -637,7 +637,7 @@ func (h *Handler) StudentGetRegistration(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	id := c.Param("id")
-	detail, err := h.svc.GetExamRegistration(c.Request().Context(), id, claims.Sub)
+	detail, err := h.svc.GetStudentRegistrationDetail(c.Request().Context(), id, claims.Sub)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

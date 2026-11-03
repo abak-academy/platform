@@ -257,6 +257,7 @@ describe("ExamPage", () => {
     // Without a window this would already show "Kadaluarsa" (expired) since
     // scheduled_at is in the past — the window keeps the exam ready instead.
     expect(screen.getByRole("link", { name: /Lihat aturan ujian/i })).toBeInTheDocument();
+    expect(screen.getByText("Check-in dibuka")).toBeInTheDocument();
     expect(screen.queryByText("Kadaluarsa")).not.toBeInTheDocument();
   });
 

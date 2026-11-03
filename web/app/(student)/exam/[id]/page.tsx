@@ -94,15 +94,17 @@ export default function ExamDetailPage() {
     scheduledAt
       ? new Date(scheduledAt.getTime() - windowMin * 60 * 1_000)
       : null;
+  const windowEnd = reg?.exam.scheduled_end_at
+    ? new Date(reg.exam.scheduled_end_at)
+    : scheduledAt;
   const inWindow =
     windowOpen !== null &&
-    scheduledAt !== null &&
+    windowEnd !== null &&
     now >= windowOpen &&
-    now < scheduledAt;
+    now < windowEnd;
   const isBeforeWindow =
     windowOpen !== null && scheduledAt !== null && now < windowOpen;
-  const isAfterWindow =
-    scheduledAt !== null && now >= scheduledAt;
+  const isAfterWindow = windowEnd !== null && now >= windowEnd;
 
   const showCheckInForm =
     reg?.exam.requires_checkin && reg?.status === "registered";
@@ -224,10 +226,10 @@ export default function ExamDetailPage() {
             id="checkin-token"
             type="text"
             value={token}
-            onChange={(e) => setToken(e.target.value)}
+            onChange={(e) => setToken(e.target.value.toUpperCase())}
             placeholder={t("token_placeholder")}
             disabled={!inWindow}
-            className="mt-1 block w-full rounded-md border border-ink-200 bg-white px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-1 block w-full rounded-md border border-ink-200 bg-white px-3 py-2 font-mono text-sm uppercase text-ink-900 placeholder:text-ink-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
         <p className="text-xs text-ink-400">{t("token_hint")}</p>

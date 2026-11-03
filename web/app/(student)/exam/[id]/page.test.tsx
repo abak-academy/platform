@@ -344,6 +344,51 @@ describe("ExamDetailPage — check-in form (FR27)", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps check-in open after scheduled_at while scheduled_end_at is still ahead", () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        exam: { ...sampleWithCheckin.exam, scheduled_end_at: "2026-07-15T11:00:00Z" },
+      },
+    };
+    vi.setSystemTime("2026-07-15T10:00:00Z");
+    render(<ExamDetailPage />);
+
+    const input = screen.getByPlaceholderText(/token dari kartu ujian/i);
+    expect(input).not.toBeDisabled();
+    expect(screen.queryByText(/check-in sudah ditutup/i)).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "MYTOKEN" } });
+    fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
+    expect(checkInMutate).toHaveBeenCalledWith({ token: "MYTOKEN" }, expect.any(Object));
+  });
+
+  it("closes check-in once scheduled_end_at has passed", () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        exam: { ...sampleWithCheckin.exam, scheduled_end_at: "2026-07-15T11:00:00Z" },
+      },
+    };
+    vi.setSystemTime("2026-07-15T11:30:00Z");
+    render(<ExamDetailPage />);
+
+    expect(screen.getByText(/check-in sudah ditutup/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/token dari kartu ujian/i)).toBeDisabled();
+  });
+
+  it("uppercases the token as it is typed and submits it uppercase", () => {
+    vi.setSystemTime("2026-07-15T08:45:00Z");
+    render(<ExamDetailPage />);
+
+    const input = screen.getByPlaceholderText(/token dari kartu ujian/i);
+    fireEvent.change(input, { target: { value: "ab12cd" } });
+    expect(input).toHaveValue("AB12CD");
+    fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
+    expect(checkInMutate).toHaveBeenCalledWith({ token: "AB12CD" }, expect.any(Object));
+  });
+
   it("calls check-in mutation with token on submit", () => {
     vi.setSystemTime("2026-07-15T08:45:00Z");
     render(<ExamDetailPage />);

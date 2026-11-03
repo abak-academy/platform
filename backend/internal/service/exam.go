@@ -1511,6 +1511,29 @@ func (s *Service) fillRegistrationExam(ctx context.Context, exam *model.Registra
 	return nil
 }
 
+// GetStudentRegistrationDetail is the student detail page read: the shared
+// registration detail plus the exam's rules and sections, which the start and
+// card paths do not need.
+func (s *Service) GetStudentRegistrationDetail(ctx context.Context, regID, studentID string) (*model.RegistrationDetail, error) {
+	detail, err := s.GetExamRegistration(ctx, regID, studentID)
+	if err != nil {
+		return nil, err
+	}
+	exam, err := s.storeRepo.GetExamPreview(ctx, detail.Exam.ID)
+	if err != nil {
+		return nil, err
+	}
+	detail.Exam.MaxAttempts = exam.MaxAttempts
+	detail.Exam.SectionCount = exam.SectionCount
+	detail.Exam.QuestionCount = exam.QuestionCount
+	detail.Exam.SectionsDurationMinutes = exam.SectionsDurationMinutes
+	detail.Exam.RawRules = exam.RawRules
+	if err := s.fillRegistrationExam(ctx, &detail.Exam); err != nil {
+		return nil, err
+	}
+	return detail, nil
+}
+
 func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID string) (*model.RegistrationDetail, error) {
 	rid, err := uuid.Parse(regID)
 	if err != nil {
@@ -1530,9 +1553,6 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 		return nil, ErrRegistrationRevoked
 	}
 	if err == nil && detail != nil {
-		if err := s.fillRegistrationExam(ctx, &detail.Exam); err != nil {
-			return nil, err
-		}
 		if detail.ParticipantNumber != nil {
 			// Prefix by the exam's scheduled date (WIB), falling back to the
 			// registration date when the exam is not yet scheduled.

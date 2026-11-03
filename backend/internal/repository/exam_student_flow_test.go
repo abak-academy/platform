@@ -98,12 +98,8 @@ func TestExamStudentFlow_aggregatesAndSections(t *testing.T) {
 			if err != nil {
 				t.Fatalf("detail: %v", err)
 			}
-			assertAggregate(t, "detail", detail.Exam.SectionCount, detail.Exam.QuestionCount, detail.Exam.SectionsDurationMinutes, tt.wantSections, tt.wantQuestion, tt.wantDuration)
-			if detail.Exam.RawRules.NavigationPolicy != "sequential" || detail.Exam.RawRules.TimerMode != "per_test" || detail.Exam.RawRules.FormatVersion != 2 {
-				t.Errorf("detail RawRules = %+v", detail.Exam.RawRules)
-			}
-			if detail.Exam.MaxAttempts == nil || *detail.Exam.MaxAttempts != 2 {
-				t.Errorf("detail MaxAttempts = %v, want 2", detail.Exam.MaxAttempts)
+			if detail.Exam.SectionCount != 0 || detail.Exam.QuestionCount != 0 || detail.Exam.SectionsDurationMinutes != nil || detail.Exam.Sections != nil {
+				t.Errorf("GetExamRegistrationByID (start path) must not carry section aggregates: %+v", detail.Exam)
 			}
 
 			preview, err := repo.GetExamPreview(ctx, examID)
@@ -111,6 +107,9 @@ func TestExamStudentFlow_aggregatesAndSections(t *testing.T) {
 				t.Fatalf("preview: %v", err)
 			}
 			assertAggregate(t, "preview", preview.SectionCount, preview.QuestionCount, preview.SectionsDurationMinutes, tt.wantSections, tt.wantQuestion, tt.wantDuration)
+			if preview.MaxAttempts == nil || *preview.MaxAttempts != 2 || preview.RawRules.NavigationPolicy != "sequential" || preview.RawRules.TimerMode != "per_test" || preview.RawRules.FormatVersion != 2 {
+				t.Errorf("preview max attempts / rules = %v %+v", preview.MaxAttempts, preview.RawRules)
+			}
 			if preview.ID != examID || preview.Title != "Flow Exam" {
 				t.Errorf("preview identity = %v %q", preview.ID, preview.Title)
 			}
@@ -188,5 +187,20 @@ func assertAggregate(t *testing.T, label string, sections, questions int, durati
 		t.Errorf("%s sections duration = %v, want %v", label, duration, wantDuration)
 	case duration != nil && *duration != *wantDuration:
 		t.Errorf("%s sections duration = %d, want %d", label, *duration, *wantDuration)
+	}
+}
+
+func TestExamStudentFlow_printPathKeepsRawTimerOutOfExamTimerMode(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	examID := seedStudentFlowExam(t, pool, 1, "utbk", "free", "overall", nil)
+	regID := insertGradingRegistration(t, pool, insertGradingUser(t, pool, "student", "Print Student"), examID)
+
+	detail, err := repo.GetRegistrationForPrint(context.Background(), regID)
+	if err != nil {
+		t.Fatalf("print: %v", err)
+	}
+	if detail.Exam.TimerMode != "" || detail.Exam.RawRules.TimerMode != "overall" {
+		t.Errorf("TimerMode = %q, RawRules.TimerMode = %q, want empty and raw overall", detail.Exam.TimerMode, detail.Exam.RawRules.TimerMode)
 	}
 }
