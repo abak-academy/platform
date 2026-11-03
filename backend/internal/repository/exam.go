@@ -1506,6 +1506,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		`SELECT et.id, et.exam_id, et.test_id, et.sort_order, et.question_presentation,
 			t.id, t.title, t.subject, t.topic, t.duration_minutes, t.section_type,
 			COALESCE(q.cnt, 0),
+			COALESCE(t.shared_material_html, '') ~ '\S',
 			ARRAY(
 				SELECT m.pos FROM (
 					SELECT ROW_NUMBER() OVER (ORDER BY tq.sort_order) AS pos,
@@ -1541,7 +1542,7 @@ func (r *Repository) GetExamDetail(ctx context.Context, id uuid.UUID) (*model.Ex
 		if err := rows.Scan(
 			&entry.ID, &entry.ExamID, &entry.TestID, &entry.SortOrder, &entry.QuestionPresentation,
 			&entry.Test.ID, &entry.Test.Title, &entry.Test.Subject, &topic, &entry.Test.DurationMinutes,
-			&sectionType, &entry.Test.QuestionCount, &entry.MaterialQuestionPositions,
+			&sectionType, &entry.Test.QuestionCount, &entry.Test.HasSharedMaterial, &entry.MaterialQuestionPositions,
 		); err != nil {
 			return nil, err
 		}

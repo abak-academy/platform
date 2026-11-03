@@ -335,13 +335,14 @@ type ExamListItem struct {
 type ExamTestEntry struct {
 	ExamTest `json:",inline"`
 	Test     struct {
-		ID              uuid.UUID `json:"id"`
-		Title           string    `json:"title"`
-		Subject         string    `json:"subject"`
-		Topic           *string   `json:"topic"`
-		DurationMinutes *int      `json:"duration_minutes"`
-		SectionType     *string   `json:"section_type,omitempty"`
-		QuestionCount   int       `json:"question_count"`
+		ID                uuid.UUID `json:"id"`
+		Title             string    `json:"title"`
+		Subject           string    `json:"subject"`
+		Topic             *string   `json:"topic"`
+		DurationMinutes   *int      `json:"duration_minutes"`
+		SectionType       *string   `json:"section_type,omitempty"`
+		QuestionCount     int       `json:"question_count"`
+		HasSharedMaterial bool      `json:"has_shared_material"`
 	} `json:"test"`
 	// MaterialQuestionPositions are 1-based positions (by test_question.sort_order) of
 	// questions carrying their own material; positions only, never the material itself.

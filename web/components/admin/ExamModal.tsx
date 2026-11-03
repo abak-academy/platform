@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -70,11 +71,66 @@ const RADIO_CARD_BASE =
 const RADIO_CARD_ON = "border-brand-400 bg-brand-50 text-brand-800";
 const RADIO_CARD_OFF = "border-line text-ink-700 hover:border-ink-300";
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <h3 className="border-b border-line pb-1.5 text-xs font-semibold tracking-wide text-ink-500 uppercase">
+    <section className="grid gap-3 border-b border-line pb-6 last:border-b-0 last:pb-0">
+      <div>
+        <h3 className="text-sm font-semibold text-ink-900">{title}</h3>
+        {description && <p className="mt-0.5 text-xs text-ink-500">{description}</p>}
+      </div>
       {children}
-    </h3>
+    </section>
+  );
+}
+
+function ChoiceCard({
+  name,
+  value,
+  checked,
+  onChange,
+  disabled,
+  title,
+  description,
+}: {
+  name: string;
+  value: string;
+  checked: boolean;
+  onChange: () => void;
+  disabled: boolean;
+  title: string;
+  description: string;
+}) {
+  const id = useId();
+  return (
+    <label
+      className={`flex items-start gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+        checked ? RADIO_CARD_ON : RADIO_CARD_OFF
+      }`}
+    >
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={onChange}
+        disabled={disabled}
+        aria-labelledby={`${id}-title`}
+        aria-describedby={`${id}-desc`}
+        className="mt-1"
+      />
+      <span className="grid gap-0.5">
+        <span id={`${id}-title`} className="font-medium">{title}</span>
+        <small id={`${id}-desc`} className="text-xs font-normal text-ink-500">{description}</small>
+      </span>
+    </label>
   );
 }
 
@@ -251,437 +307,491 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
     }
   }
 
+  const selectClass =
+    "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50";
+  const perTestNeedsSequential = composable && timerMode === "per_test" && navigation !== "sequential";
+
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-[900px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle className="font-serif">
               {isEdit
-                ? t("exam_packages_modal_edit_title")
+                ? t("exam_admin_settings_title")
                 : t("exam_packages_modal_create_title")}
             </DialogTitle>
+            <DialogDescription>{t("exam_admin_settings_subtitle")}</DialogDescription>
           </DialogHeader>
 
-          <div className="grid max-h-[70vh] gap-6 overflow-y-auto py-4 pr-1">
-            <div className="grid gap-3">
-              <SectionHeading>{t("exam_packages_modal_section_details")}</SectionHeading>
-              <div className="grid gap-2">
-                <Label htmlFor="exam-title">{t("exam_packages_modal_title")}</Label>
-                <Input
-                  id="exam-title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder={t("exam_packages_modal_title_placeholder")}
-                  disabled={isPending}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-scheduled-at">
-                    {t("exam_packages_modal_scheduled_at")}
-                  </Label>
-                  <Input
-                    id="exam-scheduled-at"
-                    type="datetime-local"
-                    value={scheduledAt}
-                    onChange={(e) => setScheduledAt(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-scheduled-end-at">
-                    {t("exam_packages_modal_scheduled_end_at")}
-                  </Label>
-                  <Input
-                    id="exam-scheduled-end-at"
-                    type="datetime-local"
-                    value={scheduledEndAt}
-                    onChange={(e) => setScheduledEndAt(e.target.value)}
-                    disabled={isPending}
-                    aria-invalid={endBeforeStart}
-                    className={endBeforeStart ? "border-danger focus-visible:ring-danger/30" : undefined}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-ink-400">
-                {endBeforeStart
-                  ? t("exam_packages_modal_end_before_start")
-                  : t("exam_packages_modal_scheduled_end_hint")}
-              </p>
-              <div className="grid gap-2">
-                <Label htmlFor="exam-whatsapp-url">{t("exam_event_whatsapp_label")}</Label>
-                <Input
-                  id="exam-whatsapp-url"
-                  type="url"
-                  value={whatsappUrl}
-                  onChange={(e) => setWhatsappUrl(e.target.value)}
-                  placeholder={t("exam_event_whatsapp_placeholder")}
-                  disabled={isPending}
-                  aria-invalid={whatsappInvalid}
-                  className={whatsappInvalid ? "border-danger focus-visible:ring-danger/30" : undefined}
-                />
-                {whatsappInvalid ? (
-                  <p role="alert" className="text-xs text-danger">{t("exam_event_whatsapp_invalid")}</p>
-                ) : (
-                  <p className="text-xs text-ink-400">{t("exam_event_whatsapp_hint")}</p>
-                )}
-              </div>
-            </div>
-
-            <div className="grid gap-3">
-              <SectionHeading>{t("exam_packages_modal_section_format")}</SectionHeading>
-              {policyLocked && <p className="text-xs text-ink-500">{t("exam_admin_policy_locked")}</p>}
-              {composable ? (
-                <div className="grid gap-2">
-                  <Label>{t("format_navigation")}</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["free", "sequential"] as const).map(value => (
-                      <label key={value} className={`${RADIO_CARD_BASE} ${navigation === value ? RADIO_CARD_ON : RADIO_CARD_OFF}`}>
-                        <input type="radio" name="navigation_policy" checked={navigation === value} onChange={() => setNavigation(value)} disabled={isPending || policyLocked} />
-                        <span>{t(value === "free" ? "format_navigation_free" : "format_navigation_sequential")}</span>
-                      </label>
-                    ))}
+          <div className="max-h-[70vh] overflow-y-auto py-4 pr-1">
+            <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_15rem]">
+              <div className="grid min-w-0 gap-6">
+                <FormSection
+                  title={t("exam_packages_modal_section_details")}
+                  description={t("exam_admin_modal_details_desc")}
+                >
+                  <div className="grid gap-2">
+                    <Label htmlFor="exam-title">{t("exam_packages_modal_title")}</Label>
+                    <Input
+                      id="exam-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      placeholder={t("exam_packages_modal_title_placeholder")}
+                      disabled={isPending}
+                    />
                   </div>
-                </div>
-              ) : (
-              <div className="grid gap-2">
-                <Label>{t("exam_packages_modal_mode")}</Label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(
-                    [
-                      ["standard", t("exam_packages_modal_mode_standard")],
-                      ["utbk", t("exam_packages_modal_mode_utbk")],
-                      ["ielts", t("exam_packages_modal_mode_ielts")],
-                    ] as const
-                  ).map(([value, label]) => (
-                    <label
-                      key={value}
-                      className={`${RADIO_CARD_BASE} ${mode === value ? RADIO_CARD_ON : RADIO_CARD_OFF}`}
-                    >
-                      <input
-                        type="radio"
-                        name="mode"
-                        value={value}
-                        checked={mode === value}
-                        onChange={() => setMode(value)}
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="exam-scheduled-at">
+                        {t("exam_packages_modal_scheduled_at")}
+                      </Label>
+                      <Input
+                        id="exam-scheduled-at"
+                        type="datetime-local"
+                        value={scheduledAt}
+                        onChange={(e) => setScheduledAt(e.target.value)}
                         disabled={isPending}
                       />
-                      <span>{label}</span>
-                    </label>
-                  ))}
-                </div>
-                {mode !== "standard" && (
-                  <p className="text-xs text-ink-400">{t("exam_packages_modal_mode_hint")}</p>
-                )}
-              </div>
-              )}
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="exam-scheduled-end-at">
+                        {t("exam_packages_modal_scheduled_end_at")}
+                      </Label>
+                      <Input
+                        id="exam-scheduled-end-at"
+                        type="datetime-local"
+                        value={scheduledEndAt}
+                        onChange={(e) => setScheduledEndAt(e.target.value)}
+                        disabled={isPending}
+                        aria-invalid={endBeforeStart}
+                        className={endBeforeStart ? "border-danger focus-visible:ring-danger/30" : undefined}
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-ink-400">
+                    {endBeforeStart
+                      ? t("exam_packages_modal_end_before_start")
+                      : t("exam_packages_modal_scheduled_end_hint")}
+                  </p>
+                  <div className="grid gap-2">
+                    <Label htmlFor="exam-whatsapp-url">{t("exam_event_whatsapp_label")}</Label>
+                    <Input
+                      id="exam-whatsapp-url"
+                      type="url"
+                      value={whatsappUrl}
+                      onChange={(e) => setWhatsappUrl(e.target.value)}
+                      placeholder={t("exam_event_whatsapp_placeholder")}
+                      disabled={isPending}
+                      aria-invalid={whatsappInvalid}
+                      className={whatsappInvalid ? "border-danger focus-visible:ring-danger/30" : undefined}
+                    />
+                    {whatsappInvalid ? (
+                      <p role="alert" className="text-xs text-danger">{t("exam_event_whatsapp_invalid")}</p>
+                    ) : (
+                      <p className="text-xs text-ink-400">{t("exam_event_whatsapp_hint")}</p>
+                    )}
+                  </div>
+                </FormSection>
 
-              {composable && timerMode === "per_test" && navigation !== "sequential" && <p role="alert" className="text-sm text-danger">{t("format_timer_navigation_hint")}</p>}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label>{t("exam_packages_modal_timer_mode")}</Label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(
-                      [
-                        ["overall", t("exam_packages_modal_timer_overall")],
-                        ["per_test", t("exam_packages_modal_timer_per_test")],
-                      ] as const
-                    ).map(([value, label]) => (
-                      <label
-                        key={value}
-                        className={`${RADIO_CARD_BASE} ${timerMode === value ? RADIO_CARD_ON : RADIO_CARD_OFF}`}
-                      >
-                        <input
-                          type="radio"
+                <FormSection
+                  title={t("exam_packages_modal_section_format")}
+                  description={t("exam_admin_modal_format_desc")}
+                >
+                  {policyLocked && <p className="text-xs text-ink-500">{t("exam_admin_policy_locked")}</p>}
+                  {composable ? (
+                    <div className="grid gap-2">
+                      <Label>{t("format_navigation")}</Label>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {(["free", "sequential"] as const).map((value) => (
+                          <ChoiceCard
+                            key={value}
+                            name="navigation_policy"
+                            value={value}
+                            checked={navigation === value}
+                            onChange={() => setNavigation(value)}
+                            disabled={isPending || policyLocked}
+                            title={t(value === "free" ? "format_navigation_free" : "format_navigation_sequential")}
+                            description={t(value === "free" ? "exam_admin_nav_free_desc" : "exam_admin_nav_sequential_desc")}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-2">
+                      <Label>{t("exam_packages_modal_mode")}</Label>
+                      <div className="grid gap-2 sm:grid-cols-3">
+                        {(
+                          [
+                            ["standard", t("exam_packages_modal_mode_standard")],
+                            ["utbk", t("exam_packages_modal_mode_utbk")],
+                            ["ielts", t("exam_packages_modal_mode_ielts")],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <label
+                            key={value}
+                            className={`${RADIO_CARD_BASE} ${mode === value ? RADIO_CARD_ON : RADIO_CARD_OFF}`}
+                          >
+                            <input
+                              type="radio"
+                              name="mode"
+                              value={value}
+                              checked={mode === value}
+                              onChange={() => setMode(value)}
+                              disabled={isPending}
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+                      {mode !== "standard" && (
+                        <p className="text-xs text-ink-400">{t("exam_packages_modal_mode_hint")}</p>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid gap-2">
+                    <Label>{t("exam_packages_modal_timer_mode")}</Label>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {(["overall", "per_test"] as const).map((value) => (
+                        <ChoiceCard
+                          key={value}
                           name="timer_mode"
                           value={value}
                           checked={timerMode === value}
                           onChange={() => { setTimerMode(value); if (composable && value === "per_test") setNavigation("sequential"); }}
                           disabled={isPending || policyLocked}
+                          title={t(value === "overall" ? "exam_packages_modal_timer_overall" : "exam_packages_modal_timer_per_test")}
+                          description={t(value === "overall" ? "exam_admin_timer_overall_desc" : "exam_admin_timer_per_test_desc")}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  {perTestNeedsSequential && <p role="alert" className="text-sm text-danger">{t("format_timer_navigation_hint")}</p>}
+                  {composable && !perTestNeedsSequential && (
+                    <p className="rounded-md bg-muted px-3 py-2 text-xs text-ink-600">
+                      {t(timerMode === "overall" ? "exam_admin_timer_overall_help" : "exam_admin_timer_per_test_help")}
+                    </p>
+                  )}
+                  {timerMode === "overall" && (
+                    <div className="grid gap-2">
+                      <Label htmlFor="exam-duration-minutes">
+                        {t("exam_packages_modal_duration_minutes")}
+                      </Label>
+                      <Input
+                        id="exam-duration-minutes"
+                        type="number"
+                        min={1}
+                        value={duration}
+                        onChange={(e) => setDuration(e.target.value)}
+                        placeholder="60"
+                        disabled={isPending || policyLocked}
+                      />
+                    </div>
+                  )}
+                  <label
+                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                      randomize ? RADIO_CARD_ON : RADIO_CARD_OFF
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={randomize}
+                      onChange={(e) => setRandomize(e.target.checked)}
+                      disabled={isPending || policyLocked}
+                    />
+                    <span>{t("exam_packages_modal_randomize")}</span>
+                  </label>
+                  <p className="text-xs text-ink-500">{t("exam_admin_randomize_help")}</p>
+                </FormSection>
+
+                <FormSection
+                  title={t("exam_packages_modal_section_access")}
+                  description={t("exam_admin_modal_access_desc")}
+                >
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {(
+                      [
+                        [isFree, setIsFree, t("exam_packages_modal_is_free")],
+                        [requiresCheckin, setRequiresCheckin, t("exam_packages_modal_requires_checkin")],
+                        [allowLeaderboard, setAllowLeaderboard, t("exam_packages_modal_allow_leaderboard")],
+                      ] as const
+                    ).map(([checked, setChecked, label]) => (
+                      <label
+                        key={label}
+                        className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
+                          checked ? RADIO_CARD_ON : RADIO_CARD_OFF
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => setChecked(e.target.checked)}
+                          disabled={isPending}
                         />
                         <span>{label}</span>
                       </label>
                     ))}
                   </div>
-                </div>
-                {timerMode === "overall" && (
-                  <div className="grid gap-2">
-                    <Label htmlFor="exam-duration-minutes">
-                      {t("exam_packages_modal_duration_minutes")}
-                    </Label>
-                    <Input
-                      id="exam-duration-minutes"
-                      type="number"
-                      min={1}
-                      value={duration}
-                      onChange={(e) => setDuration(e.target.value)}
-                      placeholder="60"
-                      disabled={isPending || policyLocked}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
 
-            <div className="grid gap-3">
-              <SectionHeading>{t("exam_packages_modal_section_access")}</SectionHeading>
-              <div className="grid grid-cols-2 gap-2">
-                {(
-                  [
-                    [isFree, setIsFree, t("exam_packages_modal_is_free"), false],
-                    [requiresCheckin, setRequiresCheckin, t("exam_packages_modal_requires_checkin"), false],
-                    [allowLeaderboard, setAllowLeaderboard, t("exam_packages_modal_allow_leaderboard"), false],
-                    [randomize, setRandomize, t("exam_packages_modal_randomize"), true],
-                  ] as const
-                ).map(([checked, setChecked, label, isPolicy]) => (
-                  <label
-                    key={label}
-                    className={`flex items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors ${
-                      checked ? RADIO_CARD_ON : RADIO_CARD_OFF
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => setChecked(e.target.checked)}
-                      disabled={isPending || (policyLocked && isPolicy)}
-                    />
-                    <span>{label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-3">
-              <SectionHeading>{t("exam_packages_modal_section_results")}</SectionHeading>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-result-config">{t("exam_packages_modal_result_config")}</Label>
-                  <select
-                    id="exam-result-config"
-                    value={resultConfig}
-                    onChange={(e) => setResultConfig(e.target.value as ExamResultConfig)}
-                    disabled={isPending}
-                    className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    <option value="hidden">{t("exam_packages_modal_result_config_hidden")}</option>
-                    <option value="score_only">{t("exam_packages_modal_result_config_score_only")}</option>
-                    <option value="score_pembahasan">{t("exam_packages_modal_result_config_score_pembahasan")}</option>
-                  </select>
-                  <dl className="grid gap-1 text-xs text-ink-400">
-                    <div>
-                      <dt className="inline font-medium text-ink-500">
-                        {t("exam_packages_modal_result_config_hidden")}:{" "}
-                      </dt>
-                      <dd className="inline">
-                        {t("exam_packages_modal_result_config_hidden_desc")}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="inline font-medium text-ink-500">
-                        {t("exam_packages_modal_result_config_score_only")}:{" "}
-                      </dt>
-                      <dd className="inline">
-                        {t("exam_packages_modal_result_config_score_only_desc")}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt className="inline font-medium text-ink-500">
-                        {t("exam_packages_modal_result_config_score_pembahasan")}:{" "}
-                      </dt>
-                      <dd className="inline">
-                        {t("exam_packages_modal_result_config_score_pembahasan_desc")}
-                      </dd>
-                    </div>
-                  </dl>
-                  <p className="text-xs text-ink-400">
-                    {t("exam_packages_modal_result_config_never_publish_hint")}
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-result-release-at">{t("exam_packages_modal_result_release_at")}</Label>
-                  <Input
-                    id="exam-result-release-at"
-                    type="datetime-local"
-                    value={resultReleaseAt}
-                    onChange={(e) => setResultReleaseAt(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-check-in-window">{t("exam_packages_modal_check_in_window")}</Label>
-                  <Input
-                    id="exam-check-in-window"
-                    type="number"
-                    min={0}
-                    value={checkInWindow}
-                    onChange={(e) => setCheckInWindow(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-grace-window">{t("exam_packages_modal_grace_window")}</Label>
-                  <Input
-                    id="exam-grace-window"
-                    type="number"
-                    min={0}
-                    value={graceWindow}
-                    onChange={(e) => setGraceWindow(e.target.value)}
-                    disabled={isPending}
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-2">
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={allowMultipleAttempts}
-                    onChange={(e) => setAllowMultipleAttempts(e.target.checked)}
-                    disabled={isPending}
-                  />
-                  <span>{t("exam_admin_attempts_multiple")}</span>
-                </label>
-                {!allowMultipleAttempts && (
-                  <p className="text-xs text-ink-500">{t("exam_admin_attempts_single_hint")}</p>
-                )}
-                {allowMultipleAttempts && (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {!unlimitedAttempts && (
-                      <div className="grid gap-2">
-                        <Label htmlFor="exam-max-attempts">{t("exam_admin_attempts_count")}</Label>
-                        <Input
-                          id="exam-max-attempts"
-                          type="number"
-                          min={2}
-                          step={1}
-                          value={attemptsCount}
-                          onChange={(e) => setAttemptsCount(e.target.value)}
-                          disabled={isPending}
-                        />
-                        {!isAtLeastTwo(attemptsCount) && (
-                          <p role="alert" className="text-xs text-danger">{t("exam_admin_attempts_required")}</p>
-                        )}
-                      </div>
-                    )}
-                    <label className="flex items-center gap-2 self-end pb-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={unlimitedAttempts}
-                        onChange={(e) => setUnlimitedAttempts(e.target.checked)}
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="exam-check-in-window">{t("exam_packages_modal_check_in_window")}</Label>
+                      <Input
+                        id="exam-check-in-window"
+                        type="number"
+                        min={0}
+                        value={checkInWindow}
+                        onChange={(e) => setCheckInWindow(e.target.value)}
                         disabled={isPending}
                       />
-                      <span>{t("exam_admin_attempts_unlimited")}</span>
-                    </label>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="exam-grace-window">{t("exam_packages_modal_grace_window")}</Label>
+                      <Input
+                        id="exam-grace-window"
+                        type="number"
+                        min={0}
+                        value={graceWindow}
+                        onChange={(e) => setGraceWindow(e.target.value)}
+                        disabled={isPending}
+                      />
+                    </div>
                   </div>
+
+                  <div className="grid gap-2">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={allowMultipleAttempts}
+                        onChange={(e) => setAllowMultipleAttempts(e.target.checked)}
+                        disabled={isPending}
+                      />
+                      <span>{t("exam_admin_attempts_multiple")}</span>
+                    </label>
+                    {!allowMultipleAttempts && (
+                      <p className="text-xs text-ink-500">{t("exam_admin_attempts_single_hint")}</p>
+                    )}
+                    {allowMultipleAttempts && (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {!unlimitedAttempts && (
+                          <div className="grid gap-2">
+                            <Label htmlFor="exam-max-attempts">{t("exam_admin_attempts_count")}</Label>
+                            <Input
+                              id="exam-max-attempts"
+                              type="number"
+                              min={2}
+                              step={1}
+                              value={attemptsCount}
+                              onChange={(e) => setAttemptsCount(e.target.value)}
+                              disabled={isPending}
+                            />
+                            {!isAtLeastTwo(attemptsCount) && (
+                              <p role="alert" className="text-xs text-danger">{t("exam_admin_attempts_required")}</p>
+                            )}
+                          </div>
+                        )}
+                        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={unlimitedAttempts}
+                            onChange={(e) => setUnlimitedAttempts(e.target.checked)}
+                            disabled={isPending}
+                          />
+                          <span>{t("exam_admin_attempts_unlimited")}</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </FormSection>
+
+                <FormSection
+                  title={t("exam_packages_modal_section_results")}
+                  description={t("exam_admin_modal_results_desc")}
+                >
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid content-start gap-2">
+                      <Label htmlFor="exam-result-config">{t("exam_packages_modal_result_config")}</Label>
+                      <select
+                        id="exam-result-config"
+                        value={resultConfig}
+                        onChange={(e) => setResultConfig(e.target.value as ExamResultConfig)}
+                        disabled={isPending}
+                        className={selectClass}
+                      >
+                        <option value="hidden">{t("exam_packages_modal_result_config_hidden")}</option>
+                        <option value="score_only">{t("exam_packages_modal_result_config_score_only")}</option>
+                        <option value="score_pembahasan">{t("exam_packages_modal_result_config_score_pembahasan")}</option>
+                      </select>
+                      <dl className="grid gap-1 text-xs text-ink-400">
+                        <div>
+                          <dt className="inline font-medium text-ink-500">
+                            {t("exam_packages_modal_result_config_hidden")}:{" "}
+                          </dt>
+                          <dd className="inline">
+                            {t("exam_packages_modal_result_config_hidden_desc")}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="inline font-medium text-ink-500">
+                            {t("exam_packages_modal_result_config_score_only")}:{" "}
+                          </dt>
+                          <dd className="inline">
+                            {t("exam_packages_modal_result_config_score_only_desc")}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="inline font-medium text-ink-500">
+                            {t("exam_packages_modal_result_config_score_pembahasan")}:{" "}
+                          </dt>
+                          <dd className="inline">
+                            {t("exam_packages_modal_result_config_score_pembahasan_desc")}
+                          </dd>
+                        </div>
+                      </dl>
+                      <p className="text-xs text-ink-400">
+                        {t("exam_packages_modal_result_config_never_publish_hint")}
+                      </p>
+                    </div>
+                    <div className="grid content-start gap-2">
+                      <Label htmlFor="exam-result-release-at">{t("exam_packages_modal_result_release_at")}</Label>
+                      <Input
+                        id="exam-result-release-at"
+                        type="datetime-local"
+                        value={resultReleaseAt}
+                        onChange={(e) => setResultReleaseAt(e.target.value)}
+                        disabled={isPending}
+                      />
+                    </div>
+                  </div>
+                </FormSection>
+
+                {isEdit && (
+                  <FormSection
+                    title={t("exam_admin_modal_card_title")}
+                    description={t("exam_admin_modal_card_desc")}
+                  >
+                    <div className="grid gap-3">
+                      <h4 className="text-xs font-semibold text-ink-700">{t("exam_packages_modal_section_card")}</h4>
+                      <p className="text-xs text-ink-400">
+                        {t("exam_packages_modal_card_notes_hint")}
+                      </p>
+                      {cardNotes.length === 0 ? (
+                        <p className="text-xs text-ink-500">
+                          {t("exam_packages_modal_card_notes_empty")}
+                        </p>
+                      ) : null}
+                      {cardNotes.map((note, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <Input
+                            aria-label={t("exam_packages_modal_card_note_label") + " " + (i + 1)}
+                            value={note}
+                            maxLength={MAX_CARD_NOTE_LEN}
+                            onChange={(e) =>
+                              setCardNotes((prev) =>
+                                prev.map((v, j) => (j === i ? e.target.value : v)),
+                              )
+                            }
+                            disabled={isPending}
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-full px-3"
+                            aria-label={t("exam_packages_modal_card_note_remove")}
+                            onClick={() => setCardNotes((prev) => prev.filter((_, j) => j !== i))}
+                            disabled={isPending}
+                          >
+                            ×
+                          </Button>
+                        </div>
+                      ))}
+                      <div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-full"
+                          onClick={() => setCardNotes((prev) => [...prev, ""])}
+                          disabled={isPending || cardNotes.length >= MAX_CARD_NOTES}
+                        >
+                          {t("exam_packages_modal_card_note_add")}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <h4 className="text-xs font-semibold text-ink-700">{t("exam_packages_modal_section_end_screen")}</h4>
+                      <p className="text-xs text-ink-400">
+                        {t("exam_packages_modal_end_screen_hint")}
+                      </p>
+                      <div className="grid gap-2">
+                        <Label htmlFor="exam-end-screen-image">
+                          {t("exam_packages_modal_end_screen_image")}
+                        </Label>
+                        <ImageUploadInput
+                          id="exam-end-screen-image"
+                          aria-label={t("exam_packages_modal_end_screen_image")}
+                          value={endScreenImageUrl}
+                          onChange={setEndScreenImageUrl}
+                          disabled={isPending}
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="exam-end-screen-promo">
+                          {t("exam_packages_modal_end_screen_promo")}
+                        </Label>
+                        <textarea
+                          id="exam-end-screen-promo"
+                          data-slot="textarea"
+                          value={endScreenPromoText}
+                          onChange={(e) => setEndScreenPromoText(e.target.value)}
+                          rows={3}
+                          disabled={isPending}
+                          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+                  </FormSection>
                 )}
               </div>
-            </div>
 
-            {isEdit && (
-              <div className="grid gap-3">
-                <SectionHeading>{t("exam_packages_modal_section_card")}</SectionHeading>
-                <p className="text-xs text-ink-400">
-                  {t("exam_packages_modal_card_notes_hint")}
-                </p>
-                {cardNotes.length === 0 ? (
-                  <p className="text-xs text-ink-500">
-                    {t("exam_packages_modal_card_notes_empty")}
+              <aside className="hidden self-start rounded-lg border border-line bg-surface-2 p-4 text-sm md:sticky md:top-0 md:block">
+                <h3 className="text-sm font-semibold text-ink-900">{t("exam_admin_distinguish_title")}</h3>
+                <ul className="mt-3 grid gap-3 text-xs text-ink-600">
+                  {(["schedule", "timer", "navigation", "presentation"] as const).map((key) => (
+                    <li key={key}>
+                      <strong className="text-ink-900">{t(`exam_admin_distinguish_${key}_label` as const)}</strong>
+                      {": "}
+                      {t(`exam_admin_distinguish_${key}` as const)}
+                    </li>
+                  ))}
+                </ul>
+                {!policyLocked && (
+                  <p className="mt-4 border-t border-line pt-3 text-xs text-ink-500">
+                    {t("exam_admin_distinguish_after_sessions")}
                   </p>
-                ) : null}
-                {cardNotes.map((note, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Input
-                      aria-label={t("exam_packages_modal_card_note_label") + " " + (i + 1)}
-                      value={note}
-                      maxLength={MAX_CARD_NOTE_LEN}
-                      onChange={(e) =>
-                        setCardNotes((prev) =>
-                          prev.map((v, j) => (j === i ? e.target.value : v)),
-                        )
-                      }
-                      disabled={isPending}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-full px-3"
-                      aria-label={t("exam_packages_modal_card_note_remove")}
-                      onClick={() => setCardNotes((prev) => prev.filter((_, j) => j !== i))}
-                      disabled={isPending}
-                    >
-                      ×
-                    </Button>
-                  </div>
-                ))}
-                <div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="rounded-full"
-                    onClick={() => setCardNotes((prev) => [...prev, ""])}
-                    disabled={isPending || cardNotes.length >= MAX_CARD_NOTES}
-                  >
-                    {t("exam_packages_modal_card_note_add")}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {isEdit && (
-              <div className="grid gap-3">
-                <SectionHeading>{t("exam_packages_modal_section_end_screen")}</SectionHeading>
-                <p className="text-xs text-ink-400">
-                  {t("exam_packages_modal_end_screen_hint")}
-                </p>
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-end-screen-image">
-                    {t("exam_packages_modal_end_screen_image")}
-                  </Label>
-                  <ImageUploadInput
-                    id="exam-end-screen-image"
-                    aria-label={t("exam_packages_modal_end_screen_image")}
-                    value={endScreenImageUrl}
-                    onChange={setEndScreenImageUrl}
-                    disabled={isPending}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="exam-end-screen-promo">
-                    {t("exam_packages_modal_end_screen_promo")}
-                  </Label>
-                  <textarea
-                    id="exam-end-screen-promo"
-                    data-slot="textarea"
-                    value={endScreenPromoText}
-                    onChange={(e) => setEndScreenPromoText(e.target.value)}
-                    rows={3}
-                    disabled={isPending}
-                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
-                  />
-                </div>
-              </div>
-            )}
+                )}
+              </aside>
+            </div>
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full"
-              onClick={onClose}
-              disabled={isPending}
-            >
-              {t("exam_packages_modal_cancel")}
-            </Button>
-            <Button type="submit" className="rounded-full" disabled={!canSubmit || isPending}>
-              {isPending ? t("saving") : t("exam_packages_modal_save")}
-            </Button>
+          <DialogFooter className="sm:items-center sm:justify-between">
+            <span className="text-xs text-ink-500">{isEdit ? t("exam_admin_settings_hint") : ""}</span>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-full"
+                onClick={onClose}
+                disabled={isPending}
+              >
+                {t("exam_packages_modal_cancel")}
+              </Button>
+              <Button type="submit" className="rounded-full" disabled={!canSubmit || isPending}>
+                {isPending ? t("saving") : isEdit ? t("exam_admin_settings_save") : t("exam_packages_modal_save")}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>

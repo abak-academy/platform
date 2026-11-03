@@ -334,7 +334,7 @@ describe("ExamPackagesPage", () => {
     });
     useExamsSpy.mockClear();
 
-    const search = screen.getByPlaceholderText("Cari…");
+    const search = screen.getByPlaceholderText("Cari ujian…");
     fireEvent.change(search, { target: { value: "  matematika  " } });
 
     expect(useExamsSpy).not.toHaveBeenCalledWith(
@@ -411,18 +411,44 @@ describe("ExamPackagesPage", () => {
     await waitFor(() => expect(screen.getByText("Tryout TKA")).toBeInTheDocument());
 
     vi.useFakeTimers();
-    fireEvent.change(screen.getByPlaceholderText("Cari…"), { target: { value: "fisika" } });
+    fireEvent.change(screen.getByPlaceholderText("Cari ujian…"), { target: { value: "fisika" } });
     await act(async () => vi.advanceTimersByTime(300));
     expect(screen.getByText("Tryout Fisika")).toBeInTheDocument();
     expect(screen.queryByText("Tryout TKA")).not.toBeInTheDocument();
     expect(useExamsSpy).toHaveBeenLastCalledWith({ cursor: undefined, limit: 20, q: "fisika" });
 
-    fireEvent.change(screen.getByPlaceholderText("Cari…"), { target: { value: "" } });
+    fireEvent.change(screen.getByPlaceholderText("Cari ujian…"), { target: { value: "" } });
     await act(async () => vi.advanceTimersByTime(300));
     expect(useExamsSpy).toHaveBeenLastCalledWith({ cursor: undefined, limit: 20, q: undefined });
     expect(screen.queryByText("Tryout Fisika")).not.toBeInTheDocument();
     expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
 
     vi.useRealTimers();
+  });
+  it("shows the number of exams next to a full-width search, adding + while more pages remain", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    const { unmount } = render(<ExamPackagesPage />);
+    expect(await screen.findByText("3 ujian")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Cari ujian…").parentElement).toHaveClass("w-full");
+    expect(screen.getByPlaceholderText("Cari ujian…").parentElement).not.toHaveClass("sm:w-64");
+    unmount();
+
+    examsState = { data: { data: sampleExams, next_cursor: "c2" }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    expect(await screen.findByText("3+ ujian")).toBeInTheDocument();
+  });
+
+  it("offers a clear button only while the search has text, and clearing empties the box", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    const search = screen.getByPlaceholderText("Cari ujian…");
+    expect(screen.queryByRole("button", { name: "Hapus pencarian" })).not.toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "ipa" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hapus pencarian" }));
+
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Hapus pencarian" })).not.toBeInTheDocument();
   });
 });

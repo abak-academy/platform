@@ -54,7 +54,15 @@ export function ExamWhatsAppCard({ url, canManage = true }: { url?: string | nul
   );
 }
 
-export function ExamAdditionalRulesCard({ exam }: { exam: ExamDetail }) {
+export function ExamAdditionalRulesCard({
+  exam,
+  summary,
+  footnote,
+}: {
+  exam: ExamDetail;
+  summary?: React.ReactNode;
+  footnote?: React.ReactNode;
+}) {
   const { t } = useTranslation();
   const update = useUpdateExam(exam.id);
 
@@ -121,6 +129,8 @@ export function ExamAdditionalRulesCard({ exam }: { exam: ExamDetail }) {
       <h3 id="exam-rules-card-title" className="text-title-medium font-semibold">
         {t("exam_event_rules_title")}
       </h3>
+
+      {summary}
 
       {!showForm ? (
         <div className="flex items-start gap-3 text-sm">
@@ -222,6 +232,8 @@ export function ExamAdditionalRulesCard({ exam }: { exam: ExamDetail }) {
           <p className="text-xs text-ink-500">{t("exam_event_rules_separate_save")}</p>
         </form>
       )}
+
+      {footnote && <p className="border-t border-line pt-3 text-xs text-ink-500">{footnote}</p>}
     </section>
   );
 }

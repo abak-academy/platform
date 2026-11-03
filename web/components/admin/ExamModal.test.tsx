@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 import { ExamModal } from "./ExamModal";
 import type { ExamListItem } from "@/lib/types";
 
@@ -61,7 +61,7 @@ describe("ExamModal", () => {
       expect(screen.getByLabelText(/judul/i)).toHaveValue("UTS Matematika");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockUpdateExam).toHaveBeenCalled();
@@ -87,7 +87,7 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/judul/i), { target:{value:"Configured Exam"} });
     fireEvent.input(screen.getByLabelText(/durasi/i), { target:{value:"60"} });
     fireEvent.click(screen.getByLabelText(label));
-    fireEvent.click(screen.getByRole("button", {name:/^simpan$/i}));
+    fireEvent.click(screen.getByRole("button", {name:/^simpan(?: pengaturan)?$/i}));
     await waitFor(() => expect(mockCreateExam).toHaveBeenCalledWith(expect.objectContaining({navigation_policy:label === "Bebas" ? "free" : "sequential"})));
     expect(mockCreateExam.mock.calls[0][0]).not.toHaveProperty("mode");
   });
@@ -95,10 +95,10 @@ describe("ExamModal", () => {
   it("per-section timer requires sequential navigation", () => {
     render(<ExamModal open={true} onClose={vi.fn()} />);
     fireEvent.input(screen.getByLabelText(/judul/i), {target:{value:"Configured Exam"}});
-    fireEvent.click(screen.getByLabelText("Per Tes"));
+    fireEvent.click(screen.getByLabelText("Per section"));
     expect(screen.getByLabelText("Berurutan")).toBeChecked();
     fireEvent.click(screen.getByLabelText("Bebas"));
-    expect(screen.getByRole("button", {name:/^simpan$/i})).toBeDisabled();
+    expect(screen.getByRole("button", {name:/^simpan(?: pengaturan)?$/i})).toBeDisabled();
   });
 
   it("includes mode in update payload", async () => {
@@ -121,7 +121,7 @@ describe("ExamModal", () => {
       target: { value: "Updated Title" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockUpdateExam).toHaveBeenCalledWith(
@@ -228,7 +228,7 @@ describe("ExamModal", () => {
       target: { value: "3" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockUpdateExam).toHaveBeenCalledWith(
@@ -258,9 +258,9 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/judul/i), {
       target: { value: "Paket Minimal" },
     });
-    fireEvent.click(screen.getByLabelText("Per Tes"));
+    fireEvent.click(screen.getByLabelText("Per section"));
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockCreateExam).toHaveBeenCalledWith(
@@ -315,9 +315,9 @@ describe("ExamModal", () => {
     );
 
     await waitFor(() => {
-      expect((screen.getByLabelText("Mulai") as HTMLInputElement).value).not.toBe("");
+      expect((screen.getByLabelText("Mulai akses") as HTMLInputElement).value).not.toBe("");
     });
-    expect((screen.getByLabelText("Berakhir") as HTMLInputElement).value).not.toBe("");
+    expect((screen.getByLabelText("Batas akhir mulai sesi") as HTMLInputElement).value).not.toBe("");
   });
 
   it("omits scheduled_end_at from the payload when left blank", async () => {
@@ -328,8 +328,8 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/judul/i), {
       target: { value: "No Window Exam" },
     });
-    fireEvent.click(screen.getByLabelText("Per Tes"));
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByLabelText("Per section"));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockCreateExam).toHaveBeenCalledWith(
@@ -346,14 +346,14 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/judul/i), {
       target: { value: "Window Exam" },
     });
-    fireEvent.click(screen.getByLabelText("Per Tes"));
-    fireEvent.input(screen.getByLabelText("Mulai"), {
+    fireEvent.click(screen.getByLabelText("Per section"));
+    fireEvent.input(screen.getByLabelText("Mulai akses"), {
       target: { value: "2026-08-01T09:00" },
     });
-    fireEvent.input(screen.getByLabelText("Berakhir"), {
+    fireEvent.input(screen.getByLabelText("Batas akhir mulai sesi"), {
       target: { value: "2026-08-03T09:00" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockCreateExam).toHaveBeenCalledWith(
@@ -368,17 +368,17 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/judul/i), {
       target: { value: "Invalid Window Exam" },
     });
-    fireEvent.input(screen.getByLabelText("Mulai"), {
+    fireEvent.input(screen.getByLabelText("Mulai akses"), {
       target: { value: "2026-08-01T09:00" },
     });
-    fireEvent.input(screen.getByLabelText("Berakhir"), {
+    fireEvent.input(screen.getByLabelText("Batas akhir mulai sesi"), {
       target: { value: "2026-08-01T08:00" },
     });
 
     expect(
       screen.getByText("Waktu berakhir harus setelah waktu mulai"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i })).toBeDisabled();
     expect(mockCreateExam).not.toHaveBeenCalled();
   });
 
@@ -429,7 +429,7 @@ describe("ExamModal", () => {
       target: { value: "Thanks for taking the exam!" },
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockUpdateExam).toHaveBeenCalledWith(
@@ -452,7 +452,7 @@ describe("ExamModal", () => {
       expect(screen.getByLabelText(/judul/i)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockUpdateExam).toHaveBeenCalledWith(
@@ -482,7 +482,7 @@ describe("ExamModal", () => {
     });
     // Poin 2 stays blank and must not reach the payload.
 
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     await waitFor(() => {
       expect(mockUpdateExam).toHaveBeenCalledWith(
@@ -507,7 +507,7 @@ describe("ExamModal", () => {
     async function submitCreate() {
       fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Paket Percobaan" } });
       fireEvent.input(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
-      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
     }
 
     it("create defaults to a single attempt with the multi-attempt box off", async () => {
@@ -551,7 +551,7 @@ describe("ExamModal", () => {
       fireEvent.click(screen.getByLabelText("Izinkan lebih dari satu percobaan"));
       fireEvent.input(screen.getByLabelText("Jumlah percobaan"), { target: { value } });
 
-      expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i })).toBeDisabled();
     });
 
     it.each([
@@ -585,7 +585,7 @@ describe("ExamModal", () => {
       mockUpdateExam.mockResolvedValue({ id: "exam-1" });
       render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, max_attempts: null }} />);
 
-      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
       await waitFor(() => expect(mockUpdateExam).toHaveBeenCalledWith(expect.objectContaining({ max_attempts: null })));
     });
@@ -600,8 +600,8 @@ describe("ExamModal", () => {
       expect(screen.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeInTheDocument();
       expect(screen.getByLabelText("Bebas")).toBeDisabled();
       expect(screen.getByLabelText("Berurutan")).toBeDisabled();
-      expect(screen.getByLabelText("Keseluruhan")).toBeDisabled();
-      expect(screen.getByLabelText("Per Tes")).toBeDisabled();
+      expect(screen.getByLabelText("Seluruh ujian")).toBeDisabled();
+      expect(screen.getByLabelText("Per section")).toBeDisabled();
       expect(screen.getByLabelText(/durasi/i)).toBeDisabled();
       expect(screen.getByLabelText("Acak Soal")).toBeDisabled();
 
@@ -624,7 +624,7 @@ describe("ExamModal", () => {
       mockUpdateExam.mockResolvedValue({ id: "exam-1" });
       render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...composableExam, requires_checkin: false }} policyLocked />);
 
-      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
       await waitFor(() =>
         expect(mockUpdateExam).toHaveBeenCalledWith(
@@ -640,7 +640,7 @@ describe("ExamModal", () => {
 
       fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Judul Belum Disimpan" } });
       fireEvent.click(screen.getByLabelText("Berurutan"));
-      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
       await waitFor(() => expect(mockUpdateExam).toHaveBeenCalled());
 
       rerender(
@@ -665,7 +665,7 @@ describe("ExamModal", () => {
       mockUpdateExam.mockRejectedValue(new ApiError("exam_has_sessions", "exam already has sessions", 409));
       render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} onSessionsConflict={onSessionsConflict} />);
 
-      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
       await waitFor(() => expect(onSessionsConflict).toHaveBeenCalled());
       expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/sudah memiliki sesi/i));
@@ -674,7 +674,7 @@ describe("ExamModal", () => {
 
   describe("whatsapp group link", () => {
     const WA = "https://chat.whatsapp.com/AbCdEf123";
-    const submit = () => fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+    const submit = () => fireEvent.click(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i }));
 
     it("is pre-filled from the exam on edit", () => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, whatsapp_group_url: WA }} />);
@@ -729,7 +729,75 @@ describe("ExamModal", () => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={sampleExam} />);
       fireEvent.input(screen.getByLabelText(/link grup whatsapp kompetisi/i), { target: { value } });
       expect(await screen.findByRole("alert")).toHaveTextContent(/chat\.whatsapp\.com/i);
-      expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i })).toBeDisabled();
+    });
+  });
+  describe("prototype layout", () => {
+    const composableExam: ExamListItem = { ...sampleExam, format_version: 2, navigation_policy: "free" };
+
+    it("titles an existing exam 'Pengaturan ujian' with a subtitle and a 'Simpan pengaturan' footer", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      expect(screen.getByRole("heading", { name: "Pengaturan ujian" })).toBeInTheDocument();
+      expect(screen.getByText(/dipisahkan agar tidak tertukar/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Simpan pengaturan" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Batal" })).toBeInTheDocument();
+    });
+
+    it("keeps the create title and Simpan label for a new exam", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+      expect(screen.getByRole("heading", { name: "Buat Ujian" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Simpan" })).toBeInTheDocument();
+    });
+
+    it("groups the fields under the five prototype section headings", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      for (const name of ["Informasi & jadwal akses", "Aturan pengerjaan", "Akses peserta", "Hasil ujian", "Kartu & layar selesai"]) {
+        expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+      }
+    });
+
+    it("omits the card section for a new exam", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+      expect(screen.queryByRole("heading", { name: "Kartu & layar selesai" })).not.toBeInTheDocument();
+    });
+
+    it("describes each navigation and timer choice and keeps the title as the accessible name", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      expect(screen.getByLabelText("Berurutan")).toHaveAccessibleDescription("Section selesai tidak dapat dibuka lagi.");
+      expect(screen.getByLabelText("Per section")).toHaveAccessibleDescription("Durasi diambil dari setiap Test.");
+    });
+
+    it("explains the timer choice and swaps the help for the sequential-navigation error", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      expect(screen.getByText(/timer terus berjalan ketika berpindah section/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText("Per section"));
+      expect(screen.getByText(/timer dimulai ulang pada section berikutnya/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText("Bebas"));
+      expect(screen.getByRole("alert")).toHaveTextContent(/memerlukan navigasi berurutan/i);
+      expect(screen.queryByText(/timer dimulai ulang pada section berikutnya/i)).not.toBeInTheDocument();
+    });
+
+    it("shows the 'Yang perlu dibedakan' panel, and drops the post-session note once locked", () => {
+      const { rerender } = render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      const panel = screen.getByRole("complementary");
+      expect(within(panel).getByText("Yang perlu dibedakan")).toBeInTheDocument();
+      expect(within(panel).getByText(/kapan sesi baru boleh dimulai/i)).toBeInTheDocument();
+      expect(within(panel).getByText(/setelah ada sesi, aturan pengerjaan/i)).toBeInTheDocument();
+      rerender(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} policyLocked />);
+      expect(within(screen.getByRole("complementary")).queryByText(/setelah ada sesi, aturan pengerjaan/i)).not.toBeInTheDocument();
+    });
+
+    it("hides the panel below the md breakpoint via the hidden class", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      expect(screen.getByRole("complementary", { hidden: true }).className).toMatch(/(^|\s)hidden(\s|$)/);
+    });
+
+    it("puts check-in fields and the attempts checkbox under Akses peserta", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      const access = screen.getByRole("heading", { name: "Akses peserta" }).closest("section")!;
+      expect(within(access).getByLabelText(/jendela check-in/i)).toBeInTheDocument();
+      expect(within(access).getByLabelText("Izinkan lebih dari satu percobaan")).toBeInTheDocument();
+      expect(within(access).getByLabelText("Tampilkan Leaderboard")).toBeInTheDocument();
     });
   });
 });
