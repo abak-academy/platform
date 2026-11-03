@@ -60,10 +60,18 @@ export function workingMinutes(exam: {
   return exam.duration_minutes;
 }
 
-export function countdownParts(ms: number): { unit: "day" | "hour" | "minute"; n: number } | null {
+export type CountdownUnit = "day" | "hour" | "minute";
+
+export function countdownParts(ms: number): { unit: CountdownUnit; n: number }[] | null {
   if (ms <= 0) return null;
   const minutes = Math.ceil(ms / 60_000);
-  if (minutes >= 24 * 60) return { unit: "day", n: Math.floor(minutes / (24 * 60)) };
-  if (minutes >= 60) return { unit: "hour", n: Math.floor(minutes / 60) };
-  return { unit: "minute", n: minutes };
+  const days = Math.floor(minutes / (24 * 60));
+  const hours = Math.floor((minutes % (24 * 60)) / 60);
+  const mins = minutes % 60;
+  const all: { unit: CountdownUnit; n: number }[] = [
+    { unit: "day", n: days },
+    { unit: "hour", n: hours },
+    { unit: "minute", n: mins },
+  ];
+  return all.filter((p) => p.n > 0).slice(0, 2);
 }

@@ -42,18 +42,26 @@ describe("accessWindow weekday", () => {
 
 describe("countdownParts", () => {
   const MIN = 60_000;
-  it("reports whole days when a day or more remains", () => {
-    expect(countdownParts(5 * 24 * 60 * MIN + 3 * 60 * MIN)).toEqual({ unit: "day", n: 5 });
+  const H = 60 * MIN;
+  const D = 24 * H;
+  it("reports days with the leftover hours when a day or more remains", () => {
+    expect(countdownParts(5 * D + 3 * H)).toEqual([{ unit: "day", n: 5 }, { unit: "hour", n: 3 }]);
+    expect(countdownParts(D + 23 * H + 10 * MIN)).toEqual([{ unit: "day", n: 1 }, { unit: "hour", n: 23 }]);
   });
 
-  it("switches to hours below one day", () => {
-    expect(countdownParts(23 * 60 * MIN + 59 * MIN)).toEqual({ unit: "hour", n: 23 });
-    expect(countdownParts(2 * 60 * MIN)).toEqual({ unit: "hour", n: 2 });
+  it("skips a zero unit", () => {
+    expect(countdownParts(2 * D)).toEqual([{ unit: "day", n: 2 }]);
+    expect(countdownParts(2 * D + 30 * MIN)).toEqual([{ unit: "day", n: 2 }, { unit: "minute", n: 30 }]);
+  });
+
+  it("reports hours with the leftover minutes below one day", () => {
+    expect(countdownParts(2 * H + 40 * MIN)).toEqual([{ unit: "hour", n: 2 }, { unit: "minute", n: 40 }]);
+    expect(countdownParts(2 * H)).toEqual([{ unit: "hour", n: 2 }]);
   });
 
   it("switches to minutes below one hour and never shows 0", () => {
-    expect(countdownParts(45 * MIN)).toEqual({ unit: "minute", n: 45 });
-    expect(countdownParts(10_000)).toEqual({ unit: "minute", n: 1 });
+    expect(countdownParts(45 * MIN)).toEqual([{ unit: "minute", n: 45 }]);
+    expect(countdownParts(10_000)).toEqual([{ unit: "minute", n: 1 }]);
   });
 
   it("is null once the moment has passed", () => {

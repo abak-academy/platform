@@ -369,7 +369,10 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
 function formatOpensIn(ms: number, t: (key: I18nKey) => string): string {
   const parts = countdownParts(ms);
   if (!parts) return t("examcard_opens_soon");
-  return t("examcard_opens_in").replace("{time}", t(`examcard_countdown_${parts.unit}`).replace("{n}", String(parts.n)));
+  const time = parts
+    .map(({ unit, n }) => t(`examcard_countdown_${unit}${n === 1 ? "_one" : ""}`).replace("{n}", String(n)))
+    .join(" ");
+  return t("examcard_opens_in").replace("{time}", time);
 }
 
 const BADGE_TONE = {

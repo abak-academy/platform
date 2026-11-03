@@ -693,7 +693,18 @@ describe("ExamPage card parity", () => {
 
   it("counts down in days, then hours, then minutes before access opens", async () => {
     show({ ...base, scheduled_at: new Date(Date.now() + 5 * 86_400_000 + 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 6 * 86_400_000).toISOString() });
-    expect(within(await cardOf("Paket Parity")).getByText("Dibuka dalam 5 hari")).toBeInTheDocument();
+    expect(within(await cardOf("Paket Parity")).getByText("Dibuka dalam 5 hari 1 jam")).toBeInTheDocument();
+  });
+
+  it("shows the two largest units, e.g. hours and minutes", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 2 * 3_600_000 + 40 * 60_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText(/^Dibuka dalam 2 jam (39|40) menit$/)).toBeInTheDocument();
+  });
+
+  it("uses singular English units for a count of one", async () => {
+    uiStore = { lang: "en" };
+    show({ ...base, scheduled_at: new Date(Date.now() + 86_400_000 + 3_600_000 + 30_000).toISOString(), scheduled_end_at: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Opens in 1 day 1 hour")).toBeInTheDocument();
   });
 
   it("counts down in minutes when under an hour", async () => {
