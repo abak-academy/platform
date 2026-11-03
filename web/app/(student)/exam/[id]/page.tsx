@@ -120,7 +120,10 @@ export default function ExamDetailPage() {
   const showCheckInForm =
     reg?.exam.requires_checkin && reg?.status === "registered";
   const showStartGate =
-    reg?.status === "checked_in" || !reg?.exam.requires_checkin;
+    reg?.status === "checked_in" ||
+    reg?.status === "in_progress" ||
+    !reg?.exam.requires_checkin;
+  const isResume = reg?.status === "in_progress";
   const startDisabled = Boolean(
     reg?.exam.requires_checkin &&
       reg?.status === "checked_in" &&
@@ -327,7 +330,7 @@ export default function ExamDetailPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="font-serif text-base font-semibold text-ink-900">
-                {t("exam_start_button")}
+                {isResume ? t("continue_exam") : t("exam_start_button")}
               </h3>
               {startDisabled && scheduledAt && (
                 <p className="mt-1 text-sm text-ink-500">
@@ -344,7 +347,9 @@ export default function ExamDetailPage() {
             >
               {startSessionMutation.isPending
                 ? t("sys_loading")
-                : t("exam_start_button")}
+                : isResume
+                  ? t("continue_exam")
+                  : t("exam_start_button")}
             </Button>
           </div>
         </Card>

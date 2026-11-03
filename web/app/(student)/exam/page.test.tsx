@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 
 import ExamPage from "./page";
 import type { RegistrationListItem } from "@/lib/types";
@@ -90,6 +90,8 @@ describe("ExamPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
     pushMock.mockClear();
+    startSessionMutate.mockReset();
+    toastError.mockReset();
     registrationsState = {
       data: sample,
       isLoading: false,
@@ -272,6 +274,8 @@ describe("ExamPage", () => {
     });
     expect(screen.queryByRole("link", { name: /Lihat hasil/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/exam\/sessions\/null/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Lanjutkan ujian" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lihat Detail/i })).toHaveAttribute("href", "/exam/reg-7");
   });
 
   it("offers a retake alongside the result link when attempts remain (FR20)", async () => {
@@ -455,6 +459,55 @@ describe("ExamPage", () => {
 
       unmount();
     }
+  });
+
+  it("resumes an in_progress exam directly from the card", async () => {
+    startSessionMutate.mockResolvedValue({ session_id: "sess-live" });
+    registrationsState = {
+      data: [{ ...paidNoSchedule, id: "reg-live", exam_title: "Tryout Live", status: "in_progress" }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Lanjutkan ujian" }));
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/exam/sessions/sess-live"));
+    expect(startSessionMutate).toHaveBeenCalledWith("reg-live");
+    expect(screen.getByRole("link", { name: /Lihat Detail/i })).toHaveAttribute("href", "/exam/reg-live");
+  });
+
+  it("shows the server error when resuming is rejected", async () => {
+    startSessionMutate.mockRejectedValue(new Error("device mismatch"));
+    registrationsState = {
+      data: [{ ...paidNoSchedule, id: "reg-live", exam_title: "Tryout Live", status: "in_progress" }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Lanjutkan ujian" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("device mismatch"));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the continue label in English", async () => {
+    uiStore = { lang: "en" };
+    registrationsState = {
+      data: [{ ...paidNoSchedule, status: "in_progress" }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    expect(await screen.findByRole("button", { name: "Continue exam" })).toBeInTheDocument();
   });
 
   it("shows an error state with a retry action", async () => {

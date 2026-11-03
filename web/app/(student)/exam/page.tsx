@@ -271,6 +271,18 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
           </div>
         )}
 
+        {state.kind === "in_progress" && reg.status === "in_progress" && (
+          <Button
+            size="sm"
+            className="w-full rounded-full"
+            onClick={handleStart}
+            disabled={startSessionMutation.isPending}
+          >
+            <Play className="mr-1 size-3.5" />
+            {startSessionMutation.isPending ? t("sys_loading") : t("continue_exam")}
+          </Button>
+        )}
+
         {state.kind === "locked" && (
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">

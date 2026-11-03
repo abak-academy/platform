@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  useCheckIn,
+  useStartSession,
   useSaveAnswers,
   useReconnectSession,
   useSubmitSession,
@@ -260,5 +262,54 @@ describe("useSaveAnswers onSuccess and the mounted session query (issue #94)", (
     await waitFor(() => {
       expect(mockAuthFetch.mock.calls.some(isGetCall)).toBe(true);
     });
+  });
+});
+
+describe("exam device header", () => {
+  beforeEach(() => {
+    mockAuthFetch.mockReset();
+    mockAuthFetch.mockResolvedValue({});
+    localStorage.clear();
+  });
+
+  function sentDeviceHeader() {
+    const init = mockAuthFetch.mock.calls[0][1] as { headers?: Record<string, string> };
+    return init?.headers?.["X-Exam-Device"];
+  }
+
+  it("sends the stored device id on check-in", async () => {
+    localStorage.setItem("exam-device-id", "device-1");
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useCheckIn(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate({ token: "ABC" });
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBe("device-1");
+  });
+
+  it("sends the stored device id on start session", async () => {
+    localStorage.setItem("exam-device-id", "device-1");
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useStartSession(), { wrapper });
+
+    await act(async () => {
+      result.current.mutate("reg-1");
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBe("device-1");
+  });
+
+  it("sends the stored device id on session reconnect", async () => {
+    localStorage.setItem("exam-device-id", "device-1");
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useReconnectSession("session-1"), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(sentDeviceHeader()).toBe("device-1");
   });
 });

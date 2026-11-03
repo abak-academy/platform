@@ -20,6 +20,11 @@ import (
 
 // ---------- Session result types ----------
 
+type DeviceProof struct {
+	ID       string
+	LegacyFP string
+}
+
 type CheckInResult struct {
 	RegistrationID uuid.UUID  `json:"registration_id"`
 	ExamTitle      string     `json:"exam_title"`
@@ -336,12 +341,41 @@ func computeSectionRemaining(section model.ExamSessionSection) int64 {
 	return int64(math.Max(0, time.Until(deadline).Seconds()))
 }
 
+const deviceKeyTTL = 24 * time.Hour
+
+func deviceKey(registrationID uuid.UUID) string {
+	return "exam:device:" + registrationID.String()
+}
+
+// verifyDevice accepts the stored device if it equals the device ID, or the legacy
+// IP+UA fingerprint (rolled-out clients), and migrates a legacy key to the device ID.
+func (s *Service) verifyDevice(ctx context.Context, registrationID uuid.UUID, device DeviceProof) error {
+	key := deviceKey(registrationID)
+	stored, err := s.rdb.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return ErrDeviceMismatch
+	}
+	if err != nil {
+		return err
+	}
+	if device.ID != "" && stored == device.ID {
+		return nil
+	}
+	if stored != device.LegacyFP {
+		return ErrDeviceMismatch
+	}
+	if device.ID != "" {
+		return s.rdb.Set(ctx, key, device.ID, redis.KeepTTL).Err()
+	}
+	return nil
+}
+
 // ---------- CheckIn ----------
 
 // CheckIn validates the registration token, the check-in window, and stamps
 // checked_in_at in a transaction. A device-lock key is written to Redis.
 // FR2–FR5.
-func (s *Service) CheckIn(ctx context.Context, studentID, token, fp string) (CheckInResult, error) {
+func (s *Service) CheckIn(ctx context.Context, studentID, token string, device DeviceProof) (CheckInResult, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return CheckInResult{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -407,12 +441,11 @@ func (s *Service) CheckIn(ctx context.Context, studentID, token, fp string) (Che
 	}
 
 	// Redis device lock
-	key := "exam:device:" + reg.ID.String()
-	ttl := 24 * time.Hour
-	if exam.DurationMinutes != nil && *exam.DurationMinutes > 0 {
-		ttl = time.Duration(*exam.DurationMinutes) * time.Minute
+	stored := device.ID
+	if stored == "" {
+		stored = device.LegacyFP
 	}
-	if err := s.rdb.Set(ctx, key, fp, ttl).Err(); err != nil {
+	if err := s.rdb.Set(ctx, deviceKey(reg.ID), stored, deviceKeyTTL).Err(); err != nil {
 		return CheckInResult{}, err
 	}
 
@@ -427,7 +460,7 @@ func (s *Service) CheckIn(ctx context.Context, studentID, token, fp string) (Che
 
 // StartSession creates a new exam session. For requires_checkin=true exams it
 // validates the window, check-in status, and device fingerprint. FR6–FR12.
-func (s *Service) StartSession(ctx context.Context, studentID, registrationID, fp string) (SessionStartPayload, error) {
+func (s *Service) StartSession(ctx context.Context, studentID, registrationID string, device DeviceProof) (SessionStartPayload, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return SessionStartPayload{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -454,6 +487,22 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		return SessionStartPayload{}, err
 	}
 
+	live, err := s.storeRepo.GetInProgressSessionForRegistration(ctx, rid, sid)
+	if err == nil {
+		if exam.RequiresCheckin {
+			if err := s.verifyDevice(ctx, rid, device); err != nil {
+				return SessionStartPayload{}, err
+			}
+			if err := s.rdb.Expire(ctx, deviceKey(rid), deviceKeyTTL).Err(); err != nil {
+				return SessionStartPayload{}, err
+			}
+		}
+		return s.sessionStartPayload(ctx, exam, live)
+	}
+	if !errors.Is(err, repository.ErrNotFound) {
+		return SessionStartPayload{}, err
+	}
+
 	// Availability window (ScheduledEndAt set): applies regardless of
 	// requires_checkin — a window exam is only startable within
 	// [scheduled_at, scheduled_end_at], same bound the CheckIn window check uses.
@@ -475,26 +524,12 @@ func (s *Service) StartSession(ctx context.Context, studentID, registrationID, f
 		if detail.CheckedInAt == nil {
 			return SessionStartPayload{}, ErrNotCheckedIn
 		}
-
-		key := "exam:device:" + rid.String()
-		deviceFP, err := s.rdb.Get(ctx, key).Result()
-		if err == redis.Nil {
-			return SessionStartPayload{}, ErrDeviceMismatch
-		}
-		if err != nil {
+		if err := s.verifyDevice(ctx, rid, device); err != nil {
 			return SessionStartPayload{}, err
 		}
-		if deviceFP != fp {
-			return SessionStartPayload{}, ErrDeviceMismatch
+		if err := s.rdb.Expire(ctx, deviceKey(rid), deviceKeyTTL).Err(); err != nil {
+			return SessionStartPayload{}, err
 		}
-	}
-
-	live, err := s.storeRepo.GetInProgressSessionForRegistration(ctx, rid, sid)
-	if err == nil {
-		return s.sessionStartPayload(ctx, exam, live)
-	}
-	if !errors.Is(err, repository.ErrNotFound) {
-		return SessionStartPayload{}, err
 	}
 
 	// An exam with no attached questions cannot be sat — reject the NEW start
@@ -637,7 +672,7 @@ func (s *Service) sessionStartPayload(ctx context.Context, exam *model.Exam, ses
 
 // ReconnectSession returns the current session state, questions, saved answers,
 // and remaining time. FR13–FR14.
-func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID string) (SessionStatePayload, error) {
+func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID string, device DeviceProof) (SessionStatePayload, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return SessionStatePayload{}, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -658,6 +693,12 @@ func (s *Service) ReconnectSession(ctx context.Context, studentID, sessionID str
 	exam, err := s.storeRepo.GetExamForSession(ctx, sess.ExamID)
 	if err != nil {
 		return SessionStatePayload{}, err
+	}
+
+	if sess.Status == "in_progress" && exam.RequiresCheckin {
+		if err := s.verifyDevice(ctx, sess.RegistrationID, device); err != nil {
+			return SessionStatePayload{}, err
+		}
 	}
 
 	remaining := computeRemainingSeconds(sess.StartedAt, exam.DurationMinutes, sess.ExtendedUntil)

@@ -47,7 +47,7 @@ func TestComposableRuntime_RealSessionLifecycle(t *testing.T) {
 			var student, reg uuid.UUID
 			require.NoError(t, repo.Pool().QueryRow(ctx, `INSERT INTO users (name,username,jenjang,role,status,auth_provider) VALUES ('Runtime Student',$1,'sd','student','active','password') RETURNING id`, "rt_"+uniqueSuffix()).Scan(&student))
 			require.NoError(t, repo.Pool().QueryRow(ctx, `INSERT INTO exam_registration (student_id,exam_id,token) VALUES ($1,$2,$3) RETURNING id`, student, exam.ID, uuid.NewString()).Scan(&reg))
-			start, err := svc.StartSession(ctx, student.String(), reg.String(), "fp")
+			start, err := svc.StartSession(ctx, student.String(), reg.String(), DeviceProof{LegacyFP: "fp"})
 			require.NoError(t, err)
 			require.Len(t, start.Tests, 2)
 			require.Len(t, start.Tests[0].Questions, 4)
@@ -87,7 +87,7 @@ func TestComposableRuntime_RealSessionLifecycle(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-			resumed, err := svc.ReconnectSession(ctx, student.String(), start.SessionID.String())
+			resumed, err := svc.ReconnectSession(ctx, student.String(), start.SessionID.String(), DeviceProof{})
 			require.NoError(t, err)
 			require.Equal(t, start.Tests[0].Questions, resumed.Tests[0].Questions)
 			require.NotEmpty(t, resumed.Answers)
@@ -154,7 +154,7 @@ func TestComposableRuntime_ExpiryClock(t *testing.T) {
 			for _, r := range results {
 				require.NoError(t, r.Err)
 			}
-			state, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+			state, err := svc.ReconnectSession(ctx, student.String(), sid.String(), DeviceProof{})
 			require.NoError(t, err)
 			require.Equal(t, tc.want, state.Status)
 		})
@@ -196,14 +196,14 @@ func TestComposableRuntime_MonitorExtension(t *testing.T) {
 				require.NoError(t, err)
 				_, err = repo.Pool().Exec(ctx, `INSERT INTO exam_session_section(session_id,test_id,sort_order,duration_minutes,status,started_at) VALUES($1,$2,0,30,'active',$3)`, sid, tid, started)
 				require.NoError(t, err)
-				before, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+				before, err := svc.ReconnectSession(ctx, student.String(), sid.String(), DeviceProof{})
 				require.NoError(t, err)
 				require.NoError(t, svc.ReopenSession(ctx, sid.String(), 15))
-				after, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+				after, err := svc.ReconnectSession(ctx, student.String(), sid.String(), DeviceProof{})
 				require.NoError(t, err)
 				require.InDelta(t, before.RemainingSeconds+900, after.RemainingSeconds, 5)
 				require.NoError(t, svc.ReopenSession(ctx, sid.String(), 10))
-				twice, err := svc.ReconnectSession(ctx, student.String(), sid.String())
+				twice, err := svc.ReconnectSession(ctx, student.String(), sid.String(), DeviceProof{})
 				require.NoError(t, err)
 				require.InDelta(t, after.RemainingSeconds+600, twice.RemainingSeconds, 5)
 				exam, err := repo.GetExamByID(ctx, eid)

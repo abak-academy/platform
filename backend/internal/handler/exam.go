@@ -667,6 +667,16 @@ func fingerprint(ip, ua string) string {
 	return hex.EncodeToString(h[:])
 }
 
+func deviceProof(c echo.Context) service.DeviceProof {
+	proof := service.DeviceProof{LegacyFP: fingerprint(c.RealIP(), c.Request().UserAgent())}
+	if id := c.Request().Header.Get("X-Exam-Device"); len(id) == 36 {
+		if _, err := uuid.Parse(id); err == nil {
+			proof.ID = id
+		}
+	}
+	return proof
+}
+
 // StudentCheckIn validates the registration token and stamps check-in. FR2-FR5.
 func (h *Handler) StudentCheckIn(c echo.Context) error {
 	claims := claimsFromContext(c)
@@ -679,8 +689,7 @@ func (h *Handler) StudentCheckIn(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
-	result, err := h.svc.CheckIn(c.Request().Context(), claims.Sub, req.Token, fp)
+	result, err := h.svc.CheckIn(c.Request().Context(), claims.Sub, req.Token, deviceProof(c))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -699,8 +708,7 @@ func (h *Handler) StudentStartSession(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	fp := fingerprint(c.RealIP(), c.Request().UserAgent())
-	result, err := h.svc.StartSession(c.Request().Context(), claims.Sub, req.RegistrationID, fp)
+	result, err := h.svc.StartSession(c.Request().Context(), claims.Sub, req.RegistrationID, deviceProof(c))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -714,7 +722,7 @@ func (h *Handler) StudentReconnectSession(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	sessionID := c.Param("id")
-	result, err := h.svc.ReconnectSession(c.Request().Context(), claims.Sub, sessionID)
+	result, err := h.svc.ReconnectSession(c.Request().Context(), claims.Sub, sessionID, deviceProof(c))
 	if err != nil {
 		return mapServiceError(c, err)
 	}

@@ -44,7 +44,7 @@ func TestStartSession_RealDB_ExamWithoutQuestions(t *testing.T) {
 		t.Fatalf("insert exam_registration: %v", err)
 	}
 
-	if _, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp"); !errors.Is(err, ErrExamNotReady) {
+	if _, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"}); !errors.Is(err, ErrExamNotReady) {
 		t.Fatalf("StartSession without questions: want ErrExamNotReady, got %v", err)
 	}
 
@@ -110,7 +110,7 @@ func TestStartSession_RealDB_ExamWithoutQuestions(t *testing.T) {
 		t.Fatalf("commit: %v", err)
 	}
 
-	start, err := svc.StartSession(ctx, studentID.String(), regID.String(), "fp")
+	start, err := svc.StartSession(ctx, studentID.String(), regID.String(), DeviceProof{LegacyFP: "fp"})
 	if err != nil {
 		t.Fatalf("StartSession after attaching test: %v", err)
 	}
