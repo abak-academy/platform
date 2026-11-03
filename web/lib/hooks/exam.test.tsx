@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -274,6 +274,10 @@ describe("exam device header", () => {
     localStorage.clear();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   function sentDeviceHeader() {
     const init = mockAuthFetch.mock.calls[0][1] as { headers?: Record<string, string> };
     return init?.headers?.["X-Exam-Device"];
@@ -316,7 +320,7 @@ describe("exam device header", () => {
   });
 
   it("omits the header and still sends requests when storage throws", async () => {
-    vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+    vi.spyOn(Object.getPrototypeOf(localStorage), "getItem").mockImplementation(() => {
       throw new Error("denied");
     });
     const { wrapper } = wrapperFactory();
@@ -328,6 +332,5 @@ describe("exam device header", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(sentDeviceHeader()).toBeUndefined();
-    vi.restoreAllMocks();
   });
 });

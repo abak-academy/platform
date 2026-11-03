@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { getExamDeviceId } from "./exam-device";
 
@@ -6,8 +6,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 
 describe("getExamDeviceId", () => {
   beforeEach(() => {
-    vi.restoreAllMocks();
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("creates a uuid and persists it under exam-device-id", () => {
@@ -38,7 +41,7 @@ describe("getExamDeviceId", () => {
   });
 
   it("returns null when storage throws", () => {
-    vi.spyOn(localStorage, "getItem").mockImplementation(() => {
+    vi.spyOn(Object.getPrototypeOf(localStorage), "getItem").mockImplementation(() => {
       throw new Error("denied");
     });
 
