@@ -242,20 +242,15 @@ func TestTestReads_ExamCount(t *testing.T) {
 		seedAdminReadExam(t, pool, "EC "+uuid.NewString()), shared)
 	require.NoError(t, err)
 
-	detail, err := repo.GetTestDetail(ctx, unused)
-	require.NoError(t, err)
-	require.Equal(t, 0, detail.Test.ExamCount)
+	for id, want := range map[uuid.UUID]int{unused: 0, shared: 2} {
+		detail, err := repo.GetTestDetail(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, want, detail.Test.ExamCount)
 
-	detail, err = repo.GetTestDetail(ctx, shared)
-	require.NoError(t, err)
-	require.Equal(t, 2, detail.Test.ExamCount)
-
-	list, _, err := repo.ListTests(ctx, TestFilter{Limit: 1000})
-	require.NoError(t, err)
-	counts := map[uuid.UUID]int{}
-	for _, tst := range list {
-		counts[tst.ID] = tst.ExamCount
+		list, _, err := repo.ListTests(ctx, TestFilter{Q: detail.Test.Title, Limit: 10})
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+		require.Equal(t, id, list[0].ID)
+		require.Equal(t, want, list[0].ExamCount)
 	}
-	require.Equal(t, 0, counts[unused])
-	require.Equal(t, 2, counts[shared])
 }

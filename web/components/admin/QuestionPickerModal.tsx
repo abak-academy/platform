@@ -260,7 +260,7 @@ export function QuestionPickerModal({
           </div>
 
           <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>{t("tests_picker_count").replace("{n}", String(rows.length))}</span>
+            <span>{!bank.isLoading && t("tests_picker_count").replace("{n}", String(rows.length))}</span>
             {filtersActive && (
               <button type="button" onClick={resetFilters} className="font-medium text-primary hover:underline">
                 {t("tests_picker_reset")}

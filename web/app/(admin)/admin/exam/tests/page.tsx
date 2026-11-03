@@ -169,7 +169,7 @@ export default function TestsPage() {
           type="button"
           variant="outline"
           aria-expanded={filtersOpen}
-          aria-controls="tests-filter-panel"
+          aria-controls={filtersOpen ? "tests-filter-panel" : undefined}
           onClick={() => setFiltersOpen((open) => !open)}
         >
           <SlidersHorizontal className="mr-1 size-4" />
