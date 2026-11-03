@@ -1553,7 +1553,7 @@ describe("SessionPage", () => {
         screen.getByText(/selesaikan section ini\?/i),
       ).toBeInTheDocument();
       expect(
-        within(screen.getByRole("dialog")).getByText(/\d\/2 soal/i),
+        within(screen.getByRole("dialog")).getByText("2 soal belum dijawab"),
       ).toBeInTheDocument();
     }
 
