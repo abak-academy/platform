@@ -149,19 +149,23 @@ describe("ExamPackagesPage", () => {
     expect(rows).toHaveLength(sampleExams.length);
 
     const overall = rows[0];
-    expect(within(overall).getByText("2 section · 30 soal")).toBeInTheDocument();
-    expect(within(overall).getByText("Bebas")).toBeInTheDocument();
-    expect(within(overall).getByText("Tampilan soal diatur per section")).toBeInTheDocument();
+    expect(within(overall).getByText("2 section")).toBeInTheDocument();
+    expect(within(overall).getByText("30 soal")).toBeInTheDocument();
+    expect(within(overall).getByText("Bebas pindah section")).toBeInTheDocument();
+    expect(within(overall).getByText("Tampilan soal per section")).toBeInTheDocument();
     expect(within(overall).getByText("90 menit total")).toBeInTheDocument();
-    expect(within(overall).getByText("Timer seluruh ujian")).toBeInTheDocument();
-    expect(within(overall).getByText(/2026.*–.*2026/)).toBeInTheDocument();
+    expect(within(overall).getByText("Satu timer seluruh ujian")).toBeInTheDocument();
+    expect(within(overall).getByText("1 Jul 2026, 15.00 WIB")).toBeInTheDocument();
+    expect(within(overall).getByText("sampai 1 Jul 2026, 17.00 WIB")).toBeInTheDocument();
     expect(within(overall).getByText("0 peserta terdaftar")).toBeInTheDocument();
 
     const perTest = rows[1];
-    expect(within(perTest).getByText("3 section · 45 soal")).toBeInTheDocument();
-    expect(within(perTest).getByText("Berurutan")).toBeInTheDocument();
-    expect(within(perTest).getByText("Total 105 menit")).toBeInTheDocument();
-    expect(within(perTest).getByText("Timer per section")).toBeInTheDocument();
+    expect(within(perTest).getByText("3 section")).toBeInTheDocument();
+    expect(within(perTest).getByText("45 soal")).toBeInTheDocument();
+    expect(within(perTest).getByText("Section berurutan")).toBeInTheDocument();
+    expect(within(perTest).getByText("Per section")).toBeInTheDocument();
+    expect(within(perTest).getByText("Total 105 menit dari Test")).toBeInTheDocument();
+    expect(within(perTest).getByText("Tanpa batas akhir akses")).toBeInTheDocument();
     expect(within(perTest).getByText("7 peserta terdaftar")).toBeInTheDocument();
   });
 
@@ -172,13 +176,16 @@ describe("ExamPackagesPage", () => {
     await screen.findByText("Tryout Lama");
 
     const legacy = screen.getAllByTestId("package-row")[2];
-    expect(within(legacy).getAllByText("Format sebelumnya").length).toBeGreaterThan(0);
+    expect(within(legacy).getAllByText("Format sebelumnya").length).toBe(2);
+    expect(within(legacy).getByText("Pengaturan mengikuti mode")).toBeInTheDocument();
     expect(within(legacy).getByText("UTBK")).toBeInTheDocument();
-    expect(within(legacy).getByText("60 menit total")).toBeInTheDocument();
-    expect(within(legacy).queryByText(/section ·/)).not.toBeInTheDocument();
+    expect(within(legacy).getByText("60 menit")).toBeInTheDocument();
+    expect(within(legacy).getByText("Timer ujian")).toBeInTheDocument();
+    expect(within(legacy).getByText("Tanpa jadwal akses")).toBeInTheDocument();
+    expect(within(legacy).queryByText(/\d+ soal/)).not.toBeInTheDocument();
   });
 
-  it("shows a dash when working time is unknown", async () => {
+  it("shows only the per-section label when section durations are unknown", async () => {
     examsState = {
       data: { data: [{ ...sampleExams[1], id: "e9", title: "Tanpa Section", sections_duration_minutes: null }] },
       isLoading: false,
@@ -190,7 +197,7 @@ describe("ExamPackagesPage", () => {
     const row = (await screen.findByText("Tanpa Section")).closest("[data-testid=package-row]") as HTMLElement;
 
     const cells = within(row).getAllByRole("cell");
-    expect(cells[3]).toHaveTextContent("—");
+    expect(cells[3]).toHaveTextContent(/^Per section$/);
   });
 
   it("renders no status badge, no status filter, and the products footnote", async () => {

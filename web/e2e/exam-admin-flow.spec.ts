@@ -92,9 +92,10 @@ for (const viewport of VIEWPORTS) {
     await page.goto("/admin/exam/packages");
 
     await expect(page.getByRole("columnheader")).toHaveCount(5);
-    await expect(page.getByText("2 section · 35 soal")).toBeVisible();
-    await expect(page.getByText("Total 70 menit")).toBeVisible();
-    await expect(page.getByText("Format sebelumnya")).toBeVisible();
+    await expect(page.getByText("2 section", { exact: true })).toBeVisible();
+    await expect(page.getByText("35 soal", { exact: true })).toBeVisible();
+    await expect(page.getByText("Total 70 menit dari Test")).toBeVisible();
+    await expect(page.getByText("Format sebelumnya").first()).toBeVisible();
     expect(await pageDoesNotScrollSideways(page)).toBe(true);
   });
 

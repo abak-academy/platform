@@ -11,22 +11,21 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { examModeLabel } from "@/lib/exam-mode";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { accessWindow } from "@/lib/exam-schedule";
 import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
 
-function formatScheduled(iso?: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("id-ID", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+function Sub({ children }: { children: React.ReactNode }) {
+  return <div className="mt-0.5 text-xs text-ink-500">{children}</div>;
+}
+
+function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions", n: number) {
+  return t(n === 1 ? `${key}_one` : key).replace("{n}", String(n));
 }
 
 export default function ExamPackagesPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const router = useRouter();
   const role = useAuthStore((s) => s.user?.role);
   const [showCreate, setShowCreate] = useState(false);
@@ -134,7 +133,7 @@ export default function ExamPackagesPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_exam")}</th>
+                  <th className="min-w-[14rem] px-4 py-3 text-left font-medium">{t("exam_admin_col_exam")}</th>
                   <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_composition")}</th>
                   <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_delivery")}</th>
                   <th className="px-4 py-3 text-left font-medium">{t("exam_admin_col_time")}</th>
@@ -144,8 +143,8 @@ export default function ExamPackagesPage() {
               <tbody>
                 {items.map((exam) => {
                   const composable = exam.format_version === 2;
-                  const workingMinutes =
-                    exam.timer_mode === "per_test" ? exam.sections_duration_minutes : exam.duration_minutes;
+                  const perSection = composable && exam.timer_mode === "per_test";
+                  const access = accessWindow(exam.scheduled_at ?? null, exam.scheduled_end_at ?? null, lang);
                   const open = () => router.push(`/admin/exam/packages/${exam.id}`);
                   return (
                     <tr
@@ -162,61 +161,90 @@ export default function ExamPackagesPage() {
                       className="cursor-pointer border-t align-top transition-colors hover:bg-muted/40"
                     >
                       <td className="px-4 py-3">
-                        <div className="font-medium">{exam.title}</div>
+                        <div className="font-medium text-ink-900">{exam.title}</div>
                         {/* ?? not || — a registration_count of 0 must still render */}
-                        <div className="text-xs text-ink-500">
+                        <Sub>
                           {t("exam_packages_registered_count").replace(
                             "{n}",
                             String(exam.registration_count ?? 0)
                           )}
-                        </div>
+                        </Sub>
                       </td>
-                      <td className="px-4 py-3">
-                        {composable
-                          ? t("exam_admin_composition")
-                              .replace("{sections}", String(exam.section_count ?? 0))
-                              .replace("{questions}", String(exam.question_count ?? 0))
-                          : t("exam_admin_legacy_format")}
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {composable ? (
+                          <>
+                            <div>{plural(t, "exam_admin_list_sections", exam.section_count ?? 0)}</div>
+                            <Sub>{plural(t, "exam_admin_list_questions", exam.question_count ?? 0)}</Sub>
+                          </>
+                        ) : (
+                          <>
+                            <div>{t("exam_admin_legacy_format")}</div>
+                            <Sub>{t("exam_admin_legacy_settings")}</Sub>
+                          </>
+                        )}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="whitespace-nowrap px-4 py-3">
                         {composable ? (
                           <>
                             <div>
                               {t(
                                 exam.navigation_policy === "sequential"
-                                  ? "format_navigation_sequential"
-                                  : "format_navigation_free"
+                                  ? "exam_admin_list_nav_sequential"
+                                  : "exam_admin_list_nav_free"
                               )}
                             </div>
-                            <div className="text-xs text-ink-500">
-                              {t("exam_admin_presentation_per_section")}
-                            </div>
+                            <Sub>{t("exam_admin_presentation_per_section")}</Sub>
                           </>
                         ) : (
-                          examModeLabel(exam.mode, t)
+                          <>
+                            <div>{examModeLabel(exam.mode, t)}</div>
+                            <Sub>{t("exam_admin_legacy_format")}</Sub>
+                          </>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        {workingMinutes == null ? (
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {perSection ? (
+                          <>
+                            <div>{t("exam_admin_time_per_section")}</div>
+                            {exam.sections_duration_minutes != null && (
+                              <Sub>
+                                {t("exam_admin_time_sections_total").replace(
+                                  "{n}",
+                                  String(exam.sections_duration_minutes)
+                                )}
+                              </Sub>
+                            )}
+                          </>
+                        ) : exam.duration_minutes == null ? (
                           "—"
                         ) : (
                           <>
                             <div>
-                              {t(
-                                exam.timer_mode === "per_test"
-                                  ? "exam_admin_time_sections_total"
-                                  : "exam_admin_time_overall"
-                              ).replace("{n}", String(workingMinutes))}
+                              {t(composable ? "exam_admin_time_overall" : "exam_admin_time_legacy").replace(
+                                "{n}",
+                                String(exam.duration_minutes)
+                              )}
                             </div>
-                            <div className="text-xs text-ink-500">
-                              {t(exam.timer_mode === "per_test" ? "format_timer_section" : "format_timer_overall")}
-                            </div>
+                            <Sub>{t(composable ? "exam_admin_time_overall_hint" : "exam_admin_time_legacy_hint")}</Sub>
                           </>
                         )}
                       </td>
-                      <td className="px-4 py-3">
-                        {formatScheduled(exam.scheduled_at)}
-                        {exam.scheduled_end_at && ` – ${formatScheduled(exam.scheduled_end_at)}`}
+                      <td className="whitespace-nowrap px-4 py-3">
+                        {access ? (
+                          <>
+                            <div>{`${access.from.date}, ${access.from.time} WIB`}</div>
+                            <Sub>
+                              {access.to
+                                ? t("exam_admin_access_until").replace(
+                                    "{date}",
+                                    `${access.to.date}, ${access.to.time} WIB`
+                                  )
+                                : t("exam_admin_access_no_end")}
+                            </Sub>
+                          </>
+                        ) : (
+                          t("exam_admin_access_none")
+                        )}
                       </td>
                     </tr>
                   );
