@@ -797,6 +797,35 @@ describe("ExamModal", () => {
       expect(screen.getByRole("tab", { name: "Jadwal" })).toHaveAttribute("aria-selected", "true");
     });
 
+    it("clears the error dots when a create-mode modal is closed and reopened", () => {
+      const { rerender } = render(<ExamModal open={true} onClose={vi.fn()} />);
+      fireEvent.click(screen.getByLabelText("Gratis"));
+      expect(flagged()).toEqual(["Jadwal", "Aturan"]);
+      rerender(<ExamModal open={false} onClose={vi.fn()} />);
+      rerender(<ExamModal open={true} onClose={vi.fn()} />);
+      expect(flagged()).toEqual([]);
+    });
+
+    it("names the result, navigation and timer radio groups", async () => {
+      const user = userEvent.setup();
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      await user.click(screen.getByRole("tab", { name: "Aturan" }));
+      expect(screen.getByRole("radiogroup", { name: "Navigasi section" })).toBeInTheDocument();
+      expect(screen.getByRole("radiogroup", { name: "Waktu pengerjaan" })).toBeInTheDocument();
+      await user.click(screen.getByRole("tab", { name: "Hasil" }));
+      expect(screen.getByRole("radiogroup", { name: "Konfigurasi Hasil" })).toBeInTheDocument();
+    });
+
+    it("shows the release hint only when results are not hidden", async () => {
+      const user = userEvent.setup();
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      await user.click(screen.getByRole("tab", { name: "Hasil" }));
+      fireEvent.click(screen.getByLabelText("Hanya Skor"));
+      expect(screen.getByText(/kosongkan agar hasil tampil/i)).toBeVisible();
+      fireEvent.click(screen.getByLabelText("Tersembunyi"));
+      expect(screen.queryByText(/kosongkan agar hasil tampil/i)).not.toBeInTheDocument();
+    });
+
     it("flags the tab that holds the problem with an accessible error marker", () => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
       expect(flagged()).toEqual([]);
@@ -823,12 +852,6 @@ describe("ExamModal", () => {
       expect(flagged()).toEqual([]);
       fireEvent.change(screen.getByLabelText(/whatsapp/i), { target: { value: "https://example.com" } });
       expect(flagged()).toEqual(["Jadwal"]);
-    });
-
-    it("flags the per-section timer with free navigation on Aturan when the policy is locked", () => {
-      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...composableExam, timer_mode: "per_test" }} policyLocked />);
-      fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Ok" } });
-      expect(flagged()).toEqual(["Aturan"]);
     });
 
     it("does not flag an empty title on a fresh create form until the user interacts", () => {

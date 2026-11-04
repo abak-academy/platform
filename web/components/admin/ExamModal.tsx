@@ -34,7 +34,7 @@ interface ExamModalProps {
 type TimerMode = "overall" | "per_test";
 type ExamTab = "schedule" | "rules" | "participants" | "results" | "display";
 
-const PANEL_CLASS = "grid gap-4 data-[state=inactive]:hidden";
+const PANEL_CLASS = "grid gap-4";
 
 const RESULT_CONFIGS = [
   ["hidden", "exam_packages_modal_result_config_hidden", "exam_packages_modal_result_config_hidden_desc"],
@@ -432,8 +432,8 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                 {policyLocked && <p className="text-xs text-ink-500">{t("exam_admin_policy_locked")}</p>}
                 {composable ? (
                   <div className="grid gap-2">
-                    <Label>{t("format_navigation")}</Label>
-                    <div className="grid gap-2 sm:grid-cols-2">
+                    <Label id="exam-format_navigation">{t("format_navigation")}</Label>
+                    <div role="radiogroup" aria-labelledby="exam-format_navigation" className="grid gap-2 sm:grid-cols-2">
                       {(["free", "sequential"] as const).map((value) => (
                         <ChoiceCard
                           key={value}
@@ -482,8 +482,8 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                 )}
 
                 <div className="grid gap-2">
-                  <Label>{t("exam_packages_modal_timer_mode")}</Label>
-                  <div className="grid gap-2 sm:grid-cols-2">
+                  <Label id="exam-exam_packages_modal_timer_mode">{t("exam_packages_modal_timer_mode")}</Label>
+                  <div role="radiogroup" aria-labelledby="exam-exam_packages_modal_timer_mode" className="grid gap-2 sm:grid-cols-2">
                     {(["overall", "per_test"] as const).map((value) => (
                       <ChoiceCard
                         key={value}
@@ -632,8 +632,8 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
 
               <TabsContent value="results" forceMount hidden={tab !== "results"} className={PANEL_CLASS}>
                 <div className="grid gap-2">
-                  <Label>{t("exam_packages_modal_result_config")}</Label>
-                  <div className="grid gap-2">
+                  <Label id="exam-exam_packages_modal_result_config">{t("exam_packages_modal_result_config")}</Label>
+                  <div role="radiogroup" aria-labelledby="exam-exam_packages_modal_result_config" className="grid gap-2">
                     {RESULT_CONFIGS.map(([value, titleKey, descKey]) => (
                       <ChoiceCard
                         key={value}
@@ -657,7 +657,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                     onChange={(e) => setResultReleaseAt(e.target.value)}
                     disabled={isPending}
                   />
-                  <p className="text-xs text-ink-400">{t("exam_packages_modal_result_release_hint")}</p>
+                  {resultConfig !== "hidden" && <p className="text-xs text-ink-400">{t("exam_packages_modal_result_release_hint")}</p>}
                 </div>
               </TabsContent>
 
