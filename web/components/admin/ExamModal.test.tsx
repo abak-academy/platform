@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ExamModal } from "./ExamModal";
 import type { ExamListItem } from "@/lib/types";
 
@@ -186,9 +187,7 @@ describe("ExamModal", () => {
     );
 
     await waitFor(() => {
-      expect(
-        (screen.getByLabelText(/konfigurasi hasil/i) as HTMLSelectElement).value,
-      ).toBe("score_only");
+      expect(screen.getByLabelText("Hanya Skor")).toBeChecked();
     });
 
     expect(
@@ -215,9 +214,7 @@ describe("ExamModal", () => {
     fireEvent.input(screen.getByLabelText(/judul/i), {
       target: { value: "UTS Matematika Updated" },
     });
-    fireEvent.change(screen.getByLabelText(/konfigurasi hasil/i), {
-      target: { value: "score_pembahasan" },
-    });
+    fireEvent.click(screen.getByLabelText("Skor + Pembahasan"));
     fireEvent.input(screen.getByLabelText(/jendela check-in/i), {
       target: { value: "30" },
     });
@@ -273,31 +270,36 @@ describe("ExamModal", () => {
     });
   });
 
-  it("FR-43: explains what students see for each result_config option, and that never publishing is a supported end state", () => {
+  it("FR-43: each result_config option carries one short description and no never-publish paragraph", () => {
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    expect(
-      screen.getByText(/siswa tidak melihat skor atau pembahasan/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/siswa hanya melihat skor akhir/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/siswa melihat skor akhir beserta pembahasan/i),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText(/tidak pernah mempublikasikan hasil.*bukan kesalahan konfigurasi/i),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Tersembunyi")).toHaveAccessibleDescription("Skor tidak ditampilkan.");
+    expect(screen.getByLabelText("Hanya Skor")).toHaveAccessibleDescription("Siswa melihat skor akhir.");
+    expect(screen.getByLabelText("Skor + Pembahasan")).toHaveAccessibleDescription("Skor beserta pembahasan tiap soal.");
+    expect(screen.queryByText(/tidak pernah mempublikasikan hasil/i)).not.toBeInTheDocument();
   });
 
-  it("result_config is constrained to allowed options", () => {
+  it.each([
+    ["Tersembunyi", "hidden"],
+    ["Hanya Skor", "score_only"],
+    ["Skor + Pembahasan", "score_pembahasan"],
+  ])("the %s choice submits result_config %s", async (label, value) => {
+    mockUpdateExam.mockResolvedValue({ id: "exam-1" });
+    render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...sampleExam, result_config: value === "hidden" ? "score_only" : "hidden" }} onSaved={vi.fn()} />);
+
+    fireEvent.click(screen.getByLabelText(label));
+    fireEvent.click(screen.getByRole("button", { name: "Simpan pengaturan" }));
+
+    await waitFor(() => expect(mockUpdateExam).toHaveBeenCalledWith(expect.objectContaining({ result_config: value })));
+  });
+
+  it("result_config is offered as exactly the three allowed radio choices", () => {
     render(<ExamModal open={true} onClose={vi.fn()} onSaved={vi.fn()} />);
 
-    const select = screen.getByLabelText(/konfigurasi hasil/i) as HTMLSelectElement;
-    const options = Array.from(select.options).map((o) => o.value);
-    expect(options).toContain("hidden");
-    expect(options).toContain("score_only");
-    expect(options).toContain("score_pembahasan");
+    const values = (screen.getAllByRole("radio", { hidden: true }) as HTMLInputElement[])
+      .filter((r) => r.name === "result_config")
+      .map((r) => r.value);
+    expect(values).toEqual(["hidden", "score_only", "score_pembahasan"]);
   });
 
   it("pre-fills scheduled start and end from exam data on edit", async () => {
@@ -471,6 +473,7 @@ describe("ExamModal", () => {
       <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
     );
 
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Tampilan" }));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /tambah poin/i })).toBeInTheDocument();
     });
@@ -496,6 +499,7 @@ describe("ExamModal", () => {
       <ExamModal open={true} onClose={vi.fn()} exam={sampleExam} onSaved={vi.fn()} />,
     );
 
+    await userEvent.setup().click(screen.getByRole("tab", { name: "Tampilan" }));
     const addButton = await screen.findByRole("button", { name: /tambah poin/i });
     for (let i = 0; i < 5; i++) fireEvent.click(addButton);
 
@@ -732,15 +736,22 @@ describe("ExamModal", () => {
       expect(screen.getByRole("button", { name: /^simpan(?: pengaturan)?$/i })).toBeDisabled();
     });
   });
-  describe("prototype layout", () => {
+  describe("tabs layout", () => {
     const composableExam: ExamListItem = { ...sampleExam, format_version: 2, navigation_policy: "free" };
+    const tabNames = ["Jadwal", "Aturan", "Peserta", "Hasil", "Tampilan"];
+    const flagged = () =>
+      screen
+        .getAllByRole("tab")
+        .filter((t) => /perlu diperbaiki/i.test(t.textContent ?? ""))
+        .map((t) => (t.textContent ?? "").replace(/perlu diperbaiki/i, ""));
 
-    it("titles an existing exam 'Pengaturan ujian' with a subtitle and a 'Simpan pengaturan' footer", () => {
+    it("titles an existing exam 'Pengaturan ujian' with a 'Simpan pengaturan' footer and no sidebar or footer note", () => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
       expect(screen.getByRole("heading", { name: "Pengaturan ujian" })).toBeInTheDocument();
-      expect(screen.getByText(/dipisahkan agar tidak tertukar/i)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Simpan pengaturan" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Batal" })).toBeInTheDocument();
+      expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+      expect(screen.queryByText(/disimpan terpisah/i)).not.toBeInTheDocument();
     });
 
     it("keeps the create title and Simpan label for a new exam", () => {
@@ -749,16 +760,90 @@ describe("ExamModal", () => {
       expect(screen.getByRole("button", { name: "Simpan" })).toBeInTheDocument();
     });
 
-    it("groups the fields under the five prototype section headings", () => {
+    it("shows five tabs on edit, defaulting to Jadwal", () => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
-      for (const name of ["Informasi & jadwal akses", "Aturan pengerjaan", "Akses peserta", "Hasil ujian", "Kartu & layar selesai"]) {
-        expect(screen.getByRole("heading", { name })).toBeInTheDocument();
-      }
+      expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(tabNames);
+      expect(screen.getByRole("tab", { name: "Jadwal" })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByLabelText(/judul/i)).toBeVisible();
+      expect(screen.getByLabelText("Gratis")).not.toBeVisible();
     });
 
-    it("omits the card section for a new exam", () => {
+    it("omits the Tampilan tab for a new exam", () => {
       render(<ExamModal open={true} onClose={vi.fn()} />);
-      expect(screen.queryByRole("heading", { name: "Kartu & layar selesai" })).not.toBeInTheDocument();
+      expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(tabNames.slice(0, 4));
+      expect(screen.queryByLabelText(/gambar layar akhir/i)).not.toBeInTheDocument();
+    });
+
+    it("keeps entered values when switching tabs", async () => {
+      const user = userEvent.setup();
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Judul Baru" } });
+      await user.click(screen.getByRole("tab", { name: "Peserta" }));
+      fireEvent.change(screen.getByLabelText(/jendela check-in/i), { target: { value: "42" } });
+      await user.click(screen.getByRole("tab", { name: "Hasil" }));
+      expect(screen.getByLabelText("Hanya Skor")).toBeVisible();
+      await user.click(screen.getByRole("tab", { name: "Jadwal" }));
+      expect(screen.getByLabelText(/judul/i)).toHaveValue("Judul Baru");
+      await user.click(screen.getByRole("tab", { name: "Peserta" }));
+      expect(screen.getByLabelText(/jendela check-in/i)).toHaveValue(42);
+    });
+
+    it("returns to Jadwal each time the modal opens", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      await user.click(screen.getByRole("tab", { name: "Hasil" }));
+      rerender(<ExamModal open={false} onClose={vi.fn()} exam={composableExam} />);
+      rerender(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      expect(screen.getByRole("tab", { name: "Jadwal" })).toHaveAttribute("aria-selected", "true");
+    });
+
+    it("flags the tab that holds the problem with an accessible error marker", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      expect(flagged()).toEqual([]);
+
+      fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "" } });
+      expect(flagged()).toEqual(["Jadwal"]);
+      fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Ok" } });
+
+      fireEvent.change(screen.getByLabelText(/durasi/i), { target: { value: "" } });
+      expect(flagged()).toEqual(["Aturan"]);
+      fireEvent.change(screen.getByLabelText(/durasi/i), { target: { value: "60" } });
+
+      fireEvent.change(screen.getByLabelText("Jumlah percobaan"), { target: { value: "1" } });
+      expect(flagged()).toEqual(["Peserta"]);
+      expect(screen.getByRole("button", { name: "Simpan pengaturan" })).toBeDisabled();
+    });
+
+    it("flags Jadwal for an end before the start and for an invalid WhatsApp link", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
+      fireEvent.change(screen.getByLabelText(/mulai akses/i), { target: { value: "2026-07-02T10:00" } });
+      fireEvent.change(screen.getByLabelText(/batas akhir mulai/i), { target: { value: "2026-07-02T09:00" } });
+      expect(flagged()).toEqual(["Jadwal"]);
+      fireEvent.change(screen.getByLabelText(/batas akhir mulai/i), { target: { value: "2026-07-02T11:00" } });
+      expect(flagged()).toEqual([]);
+      fireEvent.change(screen.getByLabelText(/whatsapp/i), { target: { value: "https://example.com" } });
+      expect(flagged()).toEqual(["Jadwal"]);
+    });
+
+    it("flags the per-section timer with free navigation on Aturan when the policy is locked", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} exam={{ ...composableExam, timer_mode: "per_test" }} policyLocked />);
+      fireEvent.change(screen.getByLabelText(/judul/i), { target: { value: "Ok" } });
+      expect(flagged()).toEqual(["Aturan"]);
+    });
+
+    it("does not flag an empty title on a fresh create form until the user interacts", () => {
+      render(<ExamModal open={true} onClose={vi.fn()} />);
+      expect(flagged()).toEqual([]);
+      fireEvent.click(screen.getByLabelText("Gratis"));
+      expect(flagged()).toEqual(["Jadwal", "Aturan"]);
+    });
+
+    it("shows the policy-locked notice on the Aturan tab", async () => {
+      const user = userEvent.setup();
+      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} policyLocked />);
+      expect(screen.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).not.toBeVisible();
+      await user.click(screen.getByRole("tab", { name: "Aturan" }));
+      expect(screen.getByText(/terkunci karena ujian ini sudah memiliki sesi/i)).toBeVisible();
     });
 
     it("describes each navigation and timer choice and keeps the title as the accessible name", () => {
@@ -767,37 +852,22 @@ describe("ExamModal", () => {
       expect(screen.getByLabelText("Per section")).toHaveAccessibleDescription("Durasi diambil dari setiap Test.");
     });
 
-    it("explains the timer choice and swaps the help for the sequential-navigation error", () => {
+    it("shows the sequential-navigation error when per-section timer meets free navigation", () => {
       render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
-      expect(screen.getByText(/timer terus berjalan ketika berpindah section/i)).toBeInTheDocument();
       fireEvent.click(screen.getByLabelText("Per section"));
-      expect(screen.getByText(/timer dimulai ulang pada section berikutnya/i)).toBeInTheDocument();
+      expect(screen.queryByText(/memerlukan navigasi berurutan/i)).not.toBeInTheDocument();
       fireEvent.click(screen.getByLabelText("Bebas"));
-      expect(screen.getByRole("alert")).toHaveTextContent(/memerlukan navigasi berurutan/i);
-      expect(screen.queryByText(/timer dimulai ulang pada section berikutnya/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/memerlukan navigasi berurutan/i)).toHaveAttribute("role", "alert");
     });
 
-    it("shows the 'Yang perlu dibedakan' panel, and drops the post-session note once locked", () => {
-      const { rerender } = render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
-      const panel = screen.getByRole("complementary");
-      expect(within(panel).getByText("Yang perlu dibedakan")).toBeInTheDocument();
-      expect(within(panel).getByText(/kapan sesi baru boleh dimulai/i)).toBeInTheDocument();
-      expect(within(panel).getByText(/setelah ada sesi, aturan pengerjaan/i)).toBeInTheDocument();
-      rerender(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} policyLocked />);
-      expect(within(screen.getByRole("complementary")).queryByText(/setelah ada sesi, aturan pengerjaan/i)).not.toBeInTheDocument();
-    });
-
-    it("hides the panel below the md breakpoint via the hidden class", () => {
+    it("puts check-in fields and the attempts checkbox on the Peserta tab", async () => {
+      const user = userEvent.setup();
       render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
-      expect(screen.getByRole("complementary", { hidden: true }).className).toMatch(/(^|\s)hidden(\s|$)/);
-    });
-
-    it("puts check-in fields and the attempts checkbox under Akses peserta", () => {
-      render(<ExamModal open={true} onClose={vi.fn()} exam={composableExam} />);
-      const access = screen.getByRole("heading", { name: "Akses peserta" }).closest("section")!;
-      expect(within(access).getByLabelText(/jendela check-in/i)).toBeInTheDocument();
-      expect(within(access).getByLabelText("Izinkan lebih dari satu percobaan")).toBeInTheDocument();
-      expect(within(access).getByLabelText("Tampilkan Leaderboard")).toBeInTheDocument();
+      await user.click(screen.getByRole("tab", { name: "Peserta" }));
+      const panel = screen.getByRole("tabpanel");
+      expect(within(panel).getByLabelText(/jendela check-in/i)).toBeInTheDocument();
+      expect(within(panel).getByLabelText("Izinkan lebih dari satu percobaan")).toBeInTheDocument();
+      expect(within(panel).getByLabelText("Tampilkan Leaderboard")).toBeInTheDocument();
     });
   });
 });

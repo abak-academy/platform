@@ -63,6 +63,10 @@ Owner decisions (2026-11-03, not reopened):
 | Detail (before start) | Serif title; **Informasi ujian** with status badge and two panels (Jadwal akses: icon chip, full weekday date, large start–end hours + WIB, caption; Waktu pengerjaan: large minutes + "menit total", timer scope in brand colour, caption) and lock note. WhatsApp invitation after it. **Cara mengerjakan**: navigation, timer (with total and carry-over rule), "N soal · N section", extra rule, then Susunan section rows. **Siap memulai?** card unchanged in behaviour. Token card placement as prototype check-in. |
 | Runtime | Header shows exam title, section progress, timer labelled with scope ("Sisa waktu section" / "Sisa waktu ujian"); section rail with active section; question card; right navigator with legend (answered, flagged, current); end-of-section / submit confirmation names unanswered count and that the section locks. Behaviour, autosave and audio unchanged. |
 
+## Settings modal: tabs
+
+Decision (2026-11-04): the admin Exam settings / Buat ujian modal uses tabs (Jadwal, Aturan, Peserta, Hasil, Tampilan; Tampilan only when editing) instead of the prototype's single scroll plus "What to tell apart" sidebar. Reason: product owner reported too much text and overlapping content, especially in Exam results and Card & end screen. Panels stay mounted so values survive tab switches, the body has a fixed height between bordered header and footer, a tab carries an error dot when a field in it blocks Save, and each field or group keeps at most one short helper line. Payloads and student behaviour are unchanged.
+
 ## Technical contract
 
 - Backend (PR 2 only): `exam_count int` on Test detail JSON (`json:"exam_count"`), computed by a COUNT over `exam_test` in the repository read; list gets it only if added to the existing list query without N+1. Service/handler shape unchanged otherwise. Go test for 0 / N.
