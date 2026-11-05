@@ -836,6 +836,7 @@ export interface ExamListItem extends Exam {
   registration_count?: number;
   section_count?: number;
   question_count?: number;
+  session_count?: number;
   sections_duration_minutes?: number | null;
 }
 

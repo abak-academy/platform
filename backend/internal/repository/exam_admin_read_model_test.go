@@ -132,6 +132,37 @@ func TestListExams_RegistrationCountIgnoresRevokedAndStaysSchoolScoped(t *testin
 	require.Equal(t, 4, scoped.QuestionCount)
 }
 
+func TestListExams_SessionCount(t *testing.T) {
+	pool := newGradingTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+	prefix := "SESC " + uuid.NewString()
+
+	school := insertSchool(t, pool, prefix, "sc-"+uuid.NewString()[:8])
+	idle := seedAdminReadExam(t, pool, prefix+" idle")
+	busy := seedAdminReadExam(t, pool, prefix+" busy")
+	for _, status := range []string{"in_progress", "submitted"} {
+		student := insertSchoolUser(t, pool, "student", "Sess Student", school)
+		var regID uuid.UUID
+		require.NoError(t, pool.QueryRow(ctx,
+			`INSERT INTO exam_registration (student_id, exam_id, token, status) VALUES ($1, $2, $3, 'checked_in') RETURNING id`,
+			student, busy, uuid.NewString()).Scan(&regID))
+		_, err := pool.Exec(ctx,
+			`INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, status) VALUES ($1, $2, $3, now(), $4)`,
+			regID, student, busy, status)
+		require.NoError(t, err)
+	}
+
+	items, _, err := repo.ListExams(ctx, ExamFilter{Q: prefix, Limit: 10})
+	require.NoError(t, err)
+	require.Equal(t, 0, findListedExam(t, items, idle).SessionCount)
+	got := findListedExam(t, items, busy)
+	require.Equal(t, 2, got.SessionCount)
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"session_count":2`)
+}
+
 func TestListExams_StatusFilterStillWorks(t *testing.T) {
 	pool := newGradingTestPool(t)
 	repo := New(pool)

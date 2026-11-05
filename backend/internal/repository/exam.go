@@ -1242,7 +1242,7 @@ func scanExamListItem(row interface{ Scan(dest ...any) error }, item *model.Exam
 		&item.CardEnabled, &cardNotes, &item.FormatVersion, &item.NavigationPolicy,
 		&item.WhatsAppGroupURL, &item.AdditionalRulesNote, &item.AdditionalRulesURL,
 		&item.HasPublishedProduct, &item.RegistrationCount,
-		&item.SectionCount, &item.QuestionCount, &item.SectionsDurationMinutes,
+		&item.SectionCount, &item.QuestionCount, &item.SectionsDurationMinutes, &item.SessionCount,
 	)
 	if err != nil {
 		return err
@@ -1392,7 +1392,8 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 			SELECT SUM(t.duration_minutes)::int FROM exam_test et
 			JOIN test t ON t.id = et.test_id
 			WHERE et.exam_id = e.id
-		) AS sections_duration_minutes
+		) AS sections_duration_minutes,
+		(SELECT COUNT(*) FROM exam_session s WHERE s.exam_id = e.id) AS session_count
 	FROM exam e
 	WHERE 1=1`
 	// registration_count's placeholder is rendered in the SELECT list, before

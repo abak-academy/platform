@@ -325,6 +325,7 @@ type ExamListItem struct {
 	RegistrationCount   int  `json:"registration_count"`
 	SectionCount        int  `json:"section_count"`
 	QuestionCount       int  `json:"question_count"`
+	SessionCount        int  `json:"session_count"`
 	// SectionsDurationMinutes is nil only when no Test is attached.
 	SectionsDurationMinutes *int `json:"sections_duration_minutes"`
 }

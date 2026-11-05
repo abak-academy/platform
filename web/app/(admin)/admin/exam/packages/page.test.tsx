@@ -59,6 +59,7 @@ const sampleExams = [
     registration_count: 0,
     section_count: 2,
     question_count: 30,
+    session_count: 0,
     sections_duration_minutes: 75,
   },
   {
@@ -77,6 +78,7 @@ const sampleExams = [
     registration_count: 7,
     section_count: 3,
     question_count: 45,
+    session_count: 2,
     sections_duration_minutes: 105,
   },
   {
@@ -95,6 +97,7 @@ const sampleExams = [
     registration_count: 28,
     section_count: 0,
     question_count: 0,
+    session_count: 5,
     sections_duration_minutes: null,
   },
 ];
@@ -157,7 +160,7 @@ describe("ExamPackagesPage", () => {
     expect(within(overall).getByText("Satu timer seluruh ujian")).toBeInTheDocument();
     expect(within(overall).getByText("1 Jul 2026, 15.00 WIB")).toBeInTheDocument();
     expect(within(overall).getByText("sampai 1 Jul 2026, 17.00 WIB")).toBeInTheDocument();
-    expect(within(overall).getByText("0 peserta terdaftar")).toBeInTheDocument();
+    expect(within(overall).getByText("0 peserta terdaftar · Belum ada sesi")).toBeInTheDocument();
 
     const perTest = rows[1];
     expect(within(perTest).getByText("3 section")).toBeInTheDocument();
@@ -166,7 +169,7 @@ describe("ExamPackagesPage", () => {
     expect(within(perTest).getByText("Per section")).toBeInTheDocument();
     expect(within(perTest).getByText("Total 105 menit dari Test")).toBeInTheDocument();
     expect(within(perTest).getByText("Tanpa batas akhir akses")).toBeInTheDocument();
-    expect(within(perTest).getByText("7 peserta terdaftar")).toBeInTheDocument();
+    expect(within(perTest).getByText("7 peserta terdaftar · 2 sesi sudah dimulai")).toBeInTheDocument();
   });
 
   it("shows the previous-format label and legacy mode for a format 1 exam", async () => {
@@ -182,6 +185,7 @@ describe("ExamPackagesPage", () => {
     expect(within(legacy).getByText("60 menit")).toBeInTheDocument();
     expect(within(legacy).getByText("Timer ujian")).toBeInTheDocument();
     expect(within(legacy).getByText("Tanpa jadwal akses")).toBeInTheDocument();
+    expect(within(legacy).getByText("28 peserta terdaftar")).toBeInTheDocument();
     expect(within(legacy).queryByText(/\d+ soal/)).not.toBeInTheDocument();
   });
 
@@ -309,10 +313,10 @@ describe("ExamPackagesPage", () => {
     });
 
     const row1 = screen.getByText("UTS Matematika").closest("[data-testid=package-row]") as HTMLElement;
-    expect(within(row1).getByText("0 peserta terdaftar")).toBeInTheDocument();
+    expect(within(row1).getByText(/^0 peserta terdaftar/)).toBeInTheDocument();
 
     const row2 = screen.getByText("UAS IPA").closest("[data-testid=package-row]") as HTMLElement;
-    expect(within(row2).getByText("7 peserta terdaftar")).toBeInTheDocument();
+    expect(within(row2).getByText(/^7 peserta terdaftar/)).toBeInTheDocument();
   });
 
   it("fetches /admin/exams without ever sending a status filter", async () => {

@@ -20,7 +20,7 @@ function Sub({ children }: { children: React.ReactNode }) {
   return <div className="mt-0.5 text-xs text-ink-500">{children}</div>;
 }
 
-function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions", n: number) {
+function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions" | "exam_admin_list_sessions_started", n: number) {
   return t(n === 1 ? `${key}_one` : key).replace("{n}", String(n));
 }
 
@@ -167,6 +167,14 @@ export default function ExamPackagesPage() {
                           {t("exam_packages_registered_count").replace(
                             "{n}",
                             String(exam.registration_count ?? 0)
+                          )}
+                          {composable && exam.session_count != null && (
+                            <>
+                              {" · "}
+                              {exam.session_count === 0
+                                ? t("exam_admin_list_no_sessions")
+                                : plural(t, "exam_admin_list_sessions_started", exam.session_count)}
+                            </>
                           )}
                         </Sub>
                       </td>
