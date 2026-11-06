@@ -3,6 +3,7 @@
 import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
+import { getExamDeviceId } from "@/lib/exam-device";
 import type {
   RegistrationDetail,
   RegistrationListItem,
@@ -54,6 +55,11 @@ export function useRegistration(id: string | undefined) {
   });
 }
 
+function examDeviceHeaders(): Record<string, string> {
+  const id = getExamDeviceId();
+  return id ? { "X-Exam-Device": id } : {};
+}
+
 // ── Session hooks (FR26) ─────────────────────────────────────────────────
 
 export function useCheckIn() {
@@ -62,7 +68,11 @@ export function useCheckIn() {
     mutationFn: ({ token }: { token: string }) =>
       authFetch<CheckInResult>(
         `/exam/checkin`,
-        { method: "POST", body: JSON.stringify({ token }) },
+        {
+          method: "POST",
+          headers: examDeviceHeaders(),
+          body: JSON.stringify({ token }),
+        },
       ),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: examKeys.details() });
@@ -76,6 +86,7 @@ export function useStartSession() {
     mutationFn: (registrationId: string) =>
       authFetch<SessionStartPayload>("/exam/sessions", {
         method: "POST",
+        headers: examDeviceHeaders(),
         body: JSON.stringify({ registration_id: registrationId }),
       }),
   });
@@ -87,6 +98,7 @@ export function useReconnectSession(sessionId: string | undefined) {
     queryFn: () =>
       authFetch<SessionState>(
         `/exam/sessions/${encodeURIComponent(sessionId!)}`,
+        { headers: examDeviceHeaders() },
       ),
     enabled: Boolean(sessionId),
   });

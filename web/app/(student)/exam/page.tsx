@@ -5,107 +5,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   AlertCircle,
+  ArrowRight,
   CalendarDays,
-  Clock,
+  ClipboardList,
   Download,
-  KeyRound,
+  Lock,
   Play,
   Trophy,
-  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useCheckIn, useRegistrations, useStartSession } from "@/lib/hooks/exam";
-import { useTranslation } from "@/lib/i18n";
+import { useRegistrations, useStartSession } from "@/lib/hooks/exam";
+import { computeCardState } from "@/lib/exam-card-state";
+import { accessWindow, countdownParts, workingMinutes } from "@/lib/exam-schedule";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { CardState } from "@/lib/exam-card-state";
 import type { RegistrationListItem } from "@/lib/types";
-
-function formatScheduled(scheduledAt: string | null): string {
-  if (!scheduledAt) return "—";
-  const d = new Date(scheduledAt);
-  if (Number.isNaN(d.getTime())) return "—";
-  return new Intl.DateTimeFormat("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(d);
-}
-
-// "6 hari 7 jam" / "45 menit" style countdown, matching the mockup's PkgCard.
-function formatCountdown(ms: number, lang: "id" | "en"): string {
-  if (ms <= 0) return lang === "id" ? "Segera" : "Any moment";
-  const totalMinutes = Math.floor(ms / 60_000);
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-  const dayLabel = lang === "id" ? "hari" : "d";
-  const hourLabel = lang === "id" ? "jam" : "h";
-  const minLabel = lang === "id" ? "menit" : "m";
-  if (days > 0) return `${days} ${dayLabel} ${hours} ${hourLabel}`;
-  if (hours > 0) return `${hours} ${hourLabel} ${minutes} ${minLabel}`;
-  return `${minutes} ${minLabel}`;
-}
-
-type CardState =
-  | { kind: "start" }
-  | { kind: "locked"; opensAt: Date }
-  | { kind: "checkin" }
-  | { kind: "in_progress" }
-  | { kind: "expired" }
-  | { kind: "submitted"; sessionId: string; hasAttemptsLeft: boolean };
-
-// Mirrors design-app-abak's PkgCard state machine (stateMeta: free/locked/
-// checkin/checkedin/inprogress/expired/submitted), driven by real fields
-// instead of mock data.
-function computeCardState(reg: RegistrationListItem, now: number): CardState {
-  if (reg.status === "submitted") {
-    // session_id is nullable (list join picks the latest attempt) — without
-    // it there's nowhere valid to link, so fall back to in_progress's detail link.
-    if (reg.session_id) {
-      // nil max_attempts is unlimited; 0 or 1 is a single sitting.
-      const maxAttempts = reg.max_attempts;
-      const unlimited = maxAttempts == null;
-      const ceiling = maxAttempts != null && maxAttempts > 0 ? maxAttempts : 1;
-      return {
-        kind: "submitted",
-        sessionId: reg.session_id,
-        hasAttemptsLeft: unlimited || reg.attempts_used < ceiling,
-      };
-    }
-    return { kind: "in_progress" };
-  }
-  if (reg.status === "in_progress") return { kind: "in_progress" };
-  if (reg.status === "checked_in") return { kind: "start" };
-  if (!reg.requires_checkin) {
-    // Even without check-in, a set scheduled_end_at turns scheduled_at into an
-    // availability window (backend gates StartSession on it regardless of
-    // requires_checkin) — mirror that here so "Start" isn't shown outside it.
-    if (reg.scheduled_end_at) {
-      const start = reg.scheduled_at ? new Date(reg.scheduled_at).getTime() : null;
-      const end = new Date(reg.scheduled_end_at).getTime();
-      if (start !== null && now < start) return { kind: "locked", opensAt: new Date(start) };
-      if (now > end) return { kind: "expired" };
-    }
-    return { kind: "start" };
-  }
-  if (!reg.scheduled_at) return { kind: "checkin" };
-  const scheduledAt = new Date(reg.scheduled_at).getTime();
-  const windowMin = reg.check_in_window_minutes ?? 15;
-  const opensAt = scheduledAt - windowMin * 60_000;
-  if (now < opensAt) return { kind: "locked", opensAt: new Date(opensAt) };
-  // Without an availability window, check-in closes the instant scheduled_at
-  // is reached (windowEnd collapses to scheduledAt) — with one, it stays open
-  // through scheduled_end_at, matching the backend CheckIn windowing.
-  const windowEnd = reg.scheduled_end_at ? new Date(reg.scheduled_end_at).getTime() : scheduledAt;
-  if (now < windowEnd) return { kind: "checkin" };
-  return { kind: "expired" };
-}
 
 export default function ExamPage() {
   const { t } = useTranslation();
@@ -179,7 +98,6 @@ function PkgSection({
 function PkgCard({ reg }: { reg: RegistrationListItem }) {
   const { t, lang } = useTranslation();
   const router = useRouter();
-  const [token, setToken] = useState("");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -187,26 +105,16 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     return () => clearInterval(id);
   }, []);
 
-  const checkInMutation = useCheckIn();
   const startSessionMutation = useStartSession();
 
   const state = computeCardState(reg, now);
-
-  const handleCheckIn = () => {
-    if (!token.trim()) return;
-    checkInMutation.mutate(
-      { token: token.trim() },
-      {
-        onSuccess: () => {
-          toast.success(t("checkin_success"));
-          setToken("");
-        },
-        onError: (err) => {
-          toast.error(err instanceof Error ? err.message : t("invalid_token"));
-        },
-      },
-    );
-  };
+  const minutes = workingMinutes(reg);
+  const sequential = reg.navigation_policy === "sequential";
+  const access = accessWindow(reg.scheduled_at, reg.scheduled_end_at, lang);
+  const attempts =
+    reg.max_attempts == null
+      ? t("examdetail_attempts_unlimited")
+      : t("examdetail_attempts_max").replace("{n}", String(Math.max(1, reg.max_attempts)));
 
   const handleStart = async () => {
     try {
@@ -221,160 +129,222 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     router.push(`/exam/${reg.id}/card`);
   };
 
+  const detailHref = `/exam/${reg.id}`;
+  const resuming = state.kind === "in_progress" && reg.status === "in_progress";
+  const detailIsPrimary =
+    (state.kind === "submitted" && !state.sessionId) ||
+    state.kind === "start" ||
+    state.kind === "checkin" ||
+    state.kind === "locked" ||
+    state.kind === "expired" ||
+    (state.kind === "in_progress" && !resuming);
+
+  let footerTitle = attempts;
+  let footerHint: string | null = null;
+  if (state.kind === "start" || state.kind === "checkin") footerHint = t("examcard_hint_ready");
+  else if (state.kind === "locked") {
+    footerTitle = formatOpensIn(state.opensAt.getTime() - now, t);
+    footerHint = attempts;
+  } else if (state.kind === "in_progress") {
+    footerTitle = t("examcard_progress_title");
+    footerHint = t("examcard_progress_hint");
+  } else if (state.kind === "submitted") {
+    footerTitle = t("examcard_done_title");
+    footerHint = t("examcard_done_hint");
+  } else if (state.kind === "expired") {
+    footerTitle = t("st_expired");
+    footerHint = attempts;
+  }
+
+  const detailLabel =
+    state.kind === "start" || state.kind === "checkin" ? (
+      <>
+        {t("examcard_rules_cta")} <ArrowRight className="size-3.5" />
+      </>
+    ) : (
+      <>
+        {t("examcard_detail_cta")} <ArrowRight className="size-3.5" />
+      </>
+    );
+
   return (
-    <Card className="gap-0 p-[18px]">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-600">
-          <Trophy className="size-5" />
-        </div>
-        {reg.is_free ? (
-          <Badge className="rounded-full">{t("free")}</Badge>
-        ) : (
-          <StateBadge state={state} />
-        )}
+    <Card className="min-w-0 gap-0 p-5">
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em] whitespace-nowrap text-ink-500 uppercase">
+          <ClipboardList className="size-4 text-brand-600" />
+          {t("examcard_kicker")}
+        </span>
+        <StateBadge state={state} />
       </div>
 
-      <h3 className="mt-3 text-[15px] leading-snug font-semibold text-ink-900">
+      <h3 className="mt-3 text-lg leading-snug font-semibold [overflow-wrap:anywhere] text-ink-900">
         {reg.exam_title}
       </h3>
-      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-ink-500">
-        {reg.duration_minutes != null && (
-          <span className="inline-flex items-center gap-1">
-            <Clock className="size-3" />
-            {reg.duration_minutes} {t("minutes")}
-          </span>
+
+      <dl className="mt-4 grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] border-y border-line py-3 text-xs">
+        <div className="min-w-0 pr-3">
+          <dt className="text-ink-500">
+            {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
+          </dt>
+          <dd className="mt-1 text-ink-900">
+            {minutes != null ? (
+              <>
+                <span className="text-3xl leading-none font-bold">{minutes}</span>{" "}
+                <span className="text-sm">{t("minutes")}</span>
+              </>
+            ) : (
+              "—"
+            )}
+          </dd>
+          <dd className="mt-1.5 text-ink-500">
+            {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+          </dd>
+        </div>
+        <div className="min-w-0 border-l border-line px-3">
+          <dt className="text-ink-500">{t("examcard_sections")}</dt>
+          <dd className="mt-1 text-3xl leading-none font-bold text-ink-900">{reg.section_count}</dd>
+        </div>
+        <div className="min-w-0 border-l border-line pl-3">
+          <dt className="text-ink-500">{t("examcard_questions")}</dt>
+          <dd className="mt-1 text-3xl leading-none font-bold text-ink-900">{reg.question_count}</dd>
+        </div>
+      </dl>
+
+      {access && (
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-xs">
+          <CalendarDays className="size-8 shrink-0 text-brand-600" strokeWidth={1.5} />
+          <div className="min-w-0 flex-1">
+            <div className="text-ink-500">{t("examcard_access")}</div>
+            {access.to && access.sameDay ? (
+              <div className="mt-0.5 flex flex-wrap justify-between gap-x-3 text-sm font-semibold text-ink-900">
+                <span>{access.from.date}</span>
+                <span className="font-medium">
+                  {access.from.time}–{access.to.time} WIB
+                </span>
+              </div>
+            ) : (
+              <div className="mt-0.5 text-sm font-semibold text-ink-900">
+                <div>
+                  {access.from.date}, {access.from.time} WIB
+                </div>
+                {access.to && (
+                  <div>
+                    {access.to.date}, {access.to.time} WIB
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-start gap-3 text-xs">
+        {sequential ? (
+          <Lock className="mt-0.5 size-4 shrink-0 text-ink-500" />
+        ) : (
+          <ArrowRight className="mt-0.5 size-4 shrink-0 text-ink-500" />
         )}
-        {reg.scheduled_at && (
-          <span className="inline-flex items-center gap-1">
-            <CalendarDays className="size-3" />
-            {formatScheduled(reg.scheduled_at)}
-            {reg.scheduled_end_at && ` – ${formatScheduled(reg.scheduled_end_at)}`}
-          </span>
-        )}
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-ink-900">
+            {sequential ? t("examcard_nav_sequential") : t("examcard_nav_free")}
+          </div>
+          <div className="text-ink-500">
+            {sequential ? t("examcard_nav_sequential_hint") : t("examcard_nav_free_hint")}
+          </div>
+        </div>
       </div>
 
-      <div className="mt-3.5 border-t border-line pt-3.5">
-        {state.kind === "start" && (
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1 text-xs text-ink-500">
-              {t("attempts").replace("{n}", String(reg.attempts_used))}
-            </div>
+      <div className="mt-4 border-t border-line pt-4">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
+          <div className="min-w-0 flex-1 basis-32 text-xs">
+            <div className="text-sm font-semibold text-ink-900">{footerTitle}</div>
+            {footerHint && <div className="mt-0.5 text-ink-500">{footerHint}</div>}
+          </div>
+          {resuming ? (
             <Button
               size="sm"
               className="shrink-0 rounded-full"
               onClick={handleStart}
               disabled={startSessionMutation.isPending}
             >
-              <Play className="mr-1 size-3.5" />
-              {startSessionMutation.isPending ? t("sys_loading") : t("start_exam")}
+              <Play className="size-3.5" />
+              {startSessionMutation.isPending ? t("sys_loading") : t("continue_exam")}
             </Button>
-          </div>
-        )}
-
-        {state.kind === "locked" && (
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-xs text-ink-500">
-                {t("checkin_opens")} {formatScheduled(state.opensAt.toISOString())}
-              </div>
-              <div className="mt-0.5 flex items-center gap-1 text-xs font-semibold text-info">
-                <Clock className="size-3" />
-                {formatCountdown(state.opensAt.getTime() - now, lang)}
-              </div>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="shrink-0 rounded-full"
-              onClick={handleDownload}
-            >
-              <Download className="mr-1 size-3.5" />
-              {t("download_card")}
+          ) : state.kind === "submitted" && state.sessionId ? (
+            <Button asChild size="sm" className="shrink-0 rounded-full">
+              <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
             </Button>
-          </div>
-        )}
+          ) : (
+            <Button asChild size="sm" className="shrink-0 rounded-full">
+              <Link href={detailHref}>{detailLabel}</Link>
+            </Button>
+          )}
+        </div>
 
-        {state.kind === "checkin" && (
-          <div>
-            <label className="text-xs font-semibold text-ink-600">{t("enter_token")}</label>
-            <div className="mt-1.5 flex gap-2">
-              <Input
-                value={token}
-                onChange={(e) => setToken(e.target.value.toUpperCase())}
-                placeholder={t("token_placeholder")}
-                className="font-mono uppercase"
-              />
-              <Button
-                size="sm"
-                className="shrink-0 rounded-full"
-                onClick={handleCheckIn}
-                disabled={!token.trim() || checkInMutation.isPending}
-              >
-                {checkInMutation.isPending ? t("sys_loading") : t("check_in")}
+        {/* FR-45: the card must stay reachable regardless of state, so a detail link
+            is always rendered, as the primary CTA or as a secondary action. */}
+        {(!detailIsPrimary || state.kind === "locked") && (
+          <div className="mt-2.5 flex flex-wrap justify-end gap-2">
+            {state.kind === "locked" && (
+              <Button size="sm" variant="outline" className="rounded-full" onClick={handleDownload}>
+                <Download className="size-3.5" />
+                {t("download_card")}
               </Button>
-            </div>
-            <div className="mt-1.5 flex items-center gap-1 text-xs text-ink-500">
-              <KeyRound className="size-3" />
-              {t("token_hint")}
-            </div>
-          </div>
-        )}
-
-        {state.kind === "submitted" && (
-          <div className="flex items-center gap-2">
-            {state.hasAttemptsLeft && (
+            )}
+            {state.kind === "submitted" && state.hasAttemptsLeft && (
               <Button
                 size="sm"
                 variant="outline"
-                className="shrink-0 rounded-full"
+                className="rounded-full"
                 onClick={handleStart}
                 disabled={startSessionMutation.isPending}
               >
                 {startSessionMutation.isPending ? t("sys_loading") : t("retake_exam")}
               </Button>
             )}
-            <Button asChild size="sm" className="flex-1 rounded-full">
-              <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
-            </Button>
+            {!detailIsPrimary && (
+              <Button asChild size="sm" variant="outline" className="rounded-full">
+                <Link href={detailHref}>{t("competition_view_detail")}</Link>
+              </Button>
+            )}
           </div>
         )}
-
-        {state.kind === "expired" && (
-          <div className="flex items-center gap-1.5 text-xs text-ink-500">
-            <XCircle className="size-3.5 text-danger" />
-            {t("st_expired")}
-          </div>
-        )}
-
-        {/* FR-45: the card must stay reachable regardless of state, so this link
-            is unconditional rather than duplicated into each branch above. */}
-        <Button asChild size="sm" variant="outline" className="mt-2 w-full rounded-full">
-          <Link href={`/exam/${reg.id}`}>{t("competition_view_detail")}</Link>
-        </Button>
       </div>
     </Card>
   );
 }
 
+function formatOpensIn(ms: number, t: (key: I18nKey) => string): string {
+  const parts = countdownParts(ms);
+  if (!parts) return t("examcard_opens_soon");
+  const time = parts
+    .map(({ unit, n }) => t(`examcard_countdown_${unit}${n === 1 ? "_one" : ""}`).replace("{n}", String(n)))
+    .join(" ");
+  return t("examcard_opens_in").replace("{time}", time);
+}
+
+const BADGE_TONE = {
+  success: "border-transparent bg-success-bg text-success",
+  brand: "border-transparent bg-brand-50 text-brand-700",
+  neutral: "border-line bg-surface-2 text-ink-700",
+  warn: "border-transparent bg-warn-bg text-warn",
+} as const;
+
 function StateBadge({ state }: { state: CardState }) {
   const { t } = useTranslation();
-  const labelKey =
+  const [labelKey, tone]: [I18nKey, keyof typeof BADGE_TONE] =
     state.kind === "locked"
-      ? "st_locked"
+      ? ["examcard_upcoming_badge", "neutral"]
       : state.kind === "checkin"
-        ? "st_checkin"
+        ? ["st_checkin", "brand"]
         : state.kind === "in_progress"
-          ? "st_inprogress"
+          ? ["st_inprogress", "brand"]
           : state.kind === "expired"
-            ? "st_expired"
+            ? ["st_expired", "warn"]
             : state.kind === "submitted"
-              ? "st_submitted"
-              : "st_checkedin";
-  return (
-    <Badge variant="outline" className="rounded-full">
-      {t(labelKey)}
-    </Badge>
-  );
+              ? ["examcard_status_done", "success"]
+              : ["examcard_status_ready", "success"];
+  return <Badge className={`rounded-full ${BADGE_TONE[tone]}`}>{t(labelKey)}</Badge>;
 }
 
 function EmptyExam() {

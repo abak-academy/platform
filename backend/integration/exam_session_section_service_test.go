@@ -158,7 +158,7 @@ func TestService_SectionedStart_SeedsSections(t *testing.T) {
 	studentID, regID, testIDs := seedSectionedExamForService(t, env, "utbk", []int{30, 45})
 	require.Len(t, testIDs, 2)
 
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	// FR-7: payload carries mode + active_test_id.
@@ -203,7 +203,7 @@ func TestService_AdvanceSection_PromotesAndIdempotent(t *testing.T) {
 	studentID, regID, testIDs := seedSectionedExamForService(t, env, "utbk", []int{30, 45, 20})
 	require.Len(t, testIDs, 3)
 
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	// Advance a pending section (testIDs[1]) -> ErrSectionNotActive (FR-11).
@@ -270,7 +270,7 @@ func TestService_SaveAnswers_SectionGuard(t *testing.T) {
 	studentID, regID, testIDs := seedSectionedExamForService(t, env, "utbk", []int{30, 45})
 	require.Len(t, testIDs, 2)
 
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	// Question IDs come straight from the start payload (groupQuestionsByTest).
@@ -308,7 +308,7 @@ func TestService_SaveAnswers_QuestionOutsideExamRejected(t *testing.T) {
 			ctx := context.Background()
 
 			studentID, regID, _ := seedSectionedExamForService(t, env, mode, []int{30})
-			start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+			start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 			require.NoError(t, err)
 
 			var outsideQuestionID uuid.UUID
@@ -341,7 +341,7 @@ func TestService_SaveAnswers_PositionOnlySkipsSectionGuardQueries(t *testing.T) 
 	env := newTestEnv(t)
 	ctx := context.Background()
 	studentID, regID, _ := seedSectionedExamForService(t, env, "utbk", []int{30})
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	svc, tracer := tracedSaveAnswersService(t, env)
@@ -365,7 +365,7 @@ func TestService_SaveAnswers_InvalidPositionRejectsWholeBatch(t *testing.T) {
 	env := newTestEnv(t)
 	ctx := context.Background()
 	studentID, regID, _ := seedSectionedExamForService(t, env, "utbk", []int{30})
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 	require.Len(t, start.Tests, 1)
 	require.Len(t, start.Tests[0].Questions, 1)
@@ -407,7 +407,7 @@ func TestService_SaveAnswers_StatementBudget(t *testing.T) {
 			env := newTestEnv(t)
 			ctx := context.Background()
 			studentID, regID, _ := seedSectionedExamForService(t, env, tc.mode, tc.sections)
-			start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+			start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 			require.NoError(t, err)
 			require.NotEmpty(t, start.Tests)
 			require.Len(t, start.Tests[0].Questions, 1)
@@ -487,7 +487,7 @@ func TestService_StandardMode_Regression(t *testing.T) {
 	).Scan(&regID2)
 	require.NoError(t, err)
 
-	start, err := env.svc.StartSession(ctx, student2, regID2, "fp")
+	start, err := env.svc.StartSession(ctx, student2, regID2, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	// FR-6: no exam_session_section rows for standard.
@@ -505,7 +505,7 @@ func TestService_StandardMode_Regression(t *testing.T) {
 	assert.Nil(t, start.ActiveTestID, "standard start must not set active_test_id")
 
 	// Reconnect: same regression — no mode/active_test_id, flat remaining.
-	state, err := env.svc.ReconnectSession(ctx, student2, start.SessionID.String())
+	state, err := env.svc.ReconnectSession(ctx, student2, start.SessionID.String(), service.DeviceProof{})
 	require.NoError(t, err)
 	assert.Empty(t, state.Mode)
 	assert.Nil(t, state.ActiveTestID)
@@ -537,14 +537,14 @@ func TestService_ReconnectSectioned_ReflectsSectionTruth(t *testing.T) {
 	studentID, regID, testIDs := seedSectionedExamForService(t, env, "utbk", []int{30, 45})
 	require.Len(t, testIDs, 2)
 
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	// Advance to the second section before reconnecting.
 	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0])
 	require.NoError(t, err)
 
-	state, err := env.svc.ReconnectSession(ctx, studentID, start.SessionID.String())
+	state, err := env.svc.ReconnectSession(ctx, studentID, start.SessionID.String(), service.DeviceProof{})
 	require.NoError(t, err)
 
 	assert.Equal(t, "utbk", state.Mode)
@@ -570,7 +570,7 @@ func TestService_AdvanceSection_StandardMode_Rejected(t *testing.T) {
 	studentID, regID, testIDs := seedSectionedExamForService(t, env, "standard", []int{30})
 	require.Len(t, testIDs, 1)
 
-	start, err := env.svc.StartSession(ctx, studentID, regID, "fp")
+	start, err := env.svc.StartSession(ctx, studentID, regID, service.DeviceProof{LegacyFP: "fp"})
 	require.NoError(t, err)
 
 	_, err = env.svc.AdvanceSection(ctx, studentID, start.SessionID.String(), testIDs[0])

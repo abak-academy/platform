@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, act } from "@testing-library/react";
 
 import ExamDetailPage from "./page";
 import { ApiError } from "@/lib/api";
@@ -73,11 +73,20 @@ const sampleWithCheckin: RegistrationDetail = {
     scheduled_end_at: null,
     requires_checkin: true,
     check_in_window_minutes: 30,
-    timer_mode: "overall",
+    timer_mode: "per_test",
+    navigation_policy: "sequential",
+    max_attempts: 2,
     duration_minutes: 120,
     result_config: "{}",
     card_enabled: true,
     card_notes: [],
+    section_count: 2,
+    question_count: 50,
+    sections_duration_minutes: 100,
+    sections: [
+      { test_id: "t-1", title: "Penalaran Umum", duration_minutes: 60, question_count: 30, question_presentation: "one_per_page" },
+      { test_id: "t-2", title: "Literasi Bahasa", duration_minutes: 40, question_count: 20, question_presentation: "all_on_page" },
+    ],
   },
 };
 
@@ -85,6 +94,10 @@ const sampleNoCheckin: RegistrationDetail = {
   ...sampleWithCheckin,
   exam: { ...sampleWithCheckin.exam, requires_checkin: false },
 };
+
+function tickUnderstanding() {
+  fireEvent.click(screen.getByRole("checkbox", { name: /saya memahami aturan/i }));
+}
 
 describe("ExamDetailPage", () => {
   beforeEach(() => {
@@ -248,6 +261,7 @@ describe("ExamDetailPage", () => {
     );
 
     render(<ExamDetailPage />);
+    tickUnderstanding();
     fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
 
     await waitFor(() => {
@@ -328,6 +342,51 @@ describe("ExamDetailPage — check-in form (FR27)", () => {
     expect(
       screen.queryByPlaceholderText(/token dari kartu ujian/i)
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps check-in open after scheduled_at while scheduled_end_at is still ahead", () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        exam: { ...sampleWithCheckin.exam, scheduled_end_at: "2026-07-15T11:00:00Z" },
+      },
+    };
+    vi.setSystemTime("2026-07-15T10:00:00Z");
+    render(<ExamDetailPage />);
+
+    const input = screen.getByPlaceholderText(/token dari kartu ujian/i);
+    expect(input).not.toBeDisabled();
+    expect(screen.queryByText(/check-in sudah ditutup/i)).not.toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "MYTOKEN" } });
+    fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
+    expect(checkInMutate).toHaveBeenCalledWith({ token: "MYTOKEN" }, expect.any(Object));
+  });
+
+  it("closes check-in once scheduled_end_at has passed", () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleWithCheckin,
+        exam: { ...sampleWithCheckin.exam, scheduled_end_at: "2026-07-15T11:00:00Z" },
+      },
+    };
+    vi.setSystemTime("2026-07-15T11:30:00Z");
+    render(<ExamDetailPage />);
+
+    expect(screen.getByText(/check-in sudah ditutup/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/token dari kartu ujian/i)).toBeDisabled();
+  });
+
+  it("uppercases the token as it is typed and submits it uppercase", () => {
+    vi.setSystemTime("2026-07-15T08:45:00Z");
+    render(<ExamDetailPage />);
+
+    const input = screen.getByPlaceholderText(/token dari kartu ujian/i);
+    fireEvent.change(input, { target: { value: "ab12cd" } });
+    expect(input).toHaveValue("AB12CD");
+    fireEvent.click(screen.getByRole("button", { name: /check-in/i }));
+    expect(checkInMutate).toHaveBeenCalledWith({ token: "AB12CD" }, expect.any(Object));
   });
 
   it("calls check-in mutation with token on submit", () => {
@@ -422,6 +481,23 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     vi.useRealTimers();
   });
 
+  it("shows the continue gate for an in_progress check-in exam and resumes on click", async () => {
+    startSessionMutate.mockResolvedValue({ session_id: "sess-live" });
+    registrationState = {
+      ...registrationState,
+      data: { ...sampleWithCheckin, status: "in_progress", checked_in_at: "2026-07-15T08:45:00Z" },
+    };
+    render(<ExamDetailPage />);
+
+    expect(screen.queryByRole("button", { name: "Mulai Ujian" })).not.toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Lanjutkan ujian" }));
+    });
+
+    expect(mockPush).toHaveBeenCalledWith("/exam/sessions/sess-live");
+    expect(startSessionMutate).toHaveBeenCalledWith("reg-1");
+  });
+
   it("shows enabled 'Mulai Ujian' button when checked_in and now >= scheduled_at", () => {
     registrationState = {
       ...registrationState,
@@ -435,7 +511,8 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     render(<ExamDetailPage />);
 
     const btn = screen.getByRole("button", { name: /mulai ujian/i });
-    expect(btn).toBeInTheDocument();
+    expect(btn).toBeDisabled();
+    tickUnderstanding();
     expect(btn).not.toBeDisabled();
   });
 
@@ -477,6 +554,8 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     render(<ExamDetailPage />);
 
     const btn = screen.getByRole("button", { name: /mulai ujian/i });
+    expect(btn).toBeDisabled();
+    tickUnderstanding();
     expect(btn).not.toBeDisabled();
   });
 
@@ -494,8 +573,147 @@ describe("ExamDetailPage — start gate (FR28)", () => {
     startSessionMutate.mockResolvedValue({ session_id: "sess-1", remaining_seconds: 7200, timer_mode: "overall", tests: [] });
 
     render(<ExamDetailPage />);
+    tickUnderstanding();
     fireEvent.click(screen.getByRole("button", { name: /mulai ujian/i }));
 
     expect(startSessionMutate).toHaveBeenCalledWith("reg-1");
+  });
+
+  it("does not require the understanding checkbox to resume an in_progress session", () => {
+    registrationState = {
+      ...registrationState,
+      data: { ...sampleWithCheckin, status: "in_progress", checked_in_at: "2026-07-15T08:45:00Z" },
+    };
+    render(<ExamDetailPage />);
+
+    expect(screen.queryByRole("checkbox", { name: /saya memahami aturan/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Lanjutkan ujian" })).not.toBeDisabled();
+  });
+});
+
+// ── Before-you-start briefing (a3) ──────────────────────────────────────────
+describe("ExamDetailPage — briefing", () => {
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+    startSessionMutate.mockReset();
+    checkInMutate.mockReset();
+    registrationState = {
+      data: sampleNoCheckin,
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+  });
+
+  it("explains schedule, timer scope, navigation and the ordered sections without starting anything", () => {
+    render(<ExamDetailPage />);
+
+    expect(screen.getByText("Jadwal akses")).toBeInTheDocument();
+    expect(screen.getByText(/hanya membatasi mulai sesi baru/i)).toBeInTheDocument();
+    expect(screen.getByText("Waktu pengerjaan")).toBeInTheDocument();
+    expect(screen.getByTestId("duration-panel")).toHaveTextContent("100menit total");
+    expect(screen.getAllByText("Timer per section").length).toBeGreaterThan(0);
+    expect(screen.getByText("Section berurutan")).toBeInTheDocument();
+
+    const items = screen.getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Penalaran Umum");
+    expect(items[0]).toHaveTextContent("30 soal");
+    expect(items[0]).toHaveTextContent("Satu soal per halaman");
+    expect(items[0]).toHaveTextContent("60 menit");
+    expect(items[1]).toHaveTextContent("Literasi Bahasa");
+    expect(items[1]).toHaveTextContent("Semua soal dalam satu halaman");
+    expect(screen.getByText("Maksimal 2 percobaan")).toBeInTheDocument();
+
+    expect(startSessionMutate).not.toHaveBeenCalled();
+    expect(checkInMutate).not.toHaveBeenCalled();
+  });
+
+  it("shows one shared timer and free navigation for an overall exam", () => {
+    registrationState = {
+      ...registrationState,
+      data: {
+        ...sampleNoCheckin,
+        exam: { ...sampleNoCheckin.exam, timer_mode: "overall", navigation_policy: "free", max_attempts: null },
+      },
+    };
+    render(<ExamDetailPage />);
+
+    expect(screen.getByTestId("duration-panel")).toHaveTextContent("120menit");
+    expect(screen.getAllByText("Satu timer ujian").length).toBeGreaterThan(0);
+    expect(screen.getByText("Bebas pindah section")).toBeInTheDocument();
+    expect(screen.getAllByText("Timer bersama").length).toBe(2);
+    expect(screen.getByText("Percobaan tanpa batas")).toBeInTheDocument();
+  });
+});
+
+describe("ExamDetailPage — access status badge", () => {
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+  const show = (data: RegistrationDetail, at: string) => {
+    registrationState = { data, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    vi.setSystemTime(at);
+    render(<ExamDetailPage />);
+  };
+  const withExam = (over: Partial<RegistrationDetail["exam"]>, status = "registered"): RegistrationDetail => ({
+    ...sampleNoCheckin,
+    status,
+    exam: { ...sampleNoCheckin.exam, ...over },
+  });
+
+  it("is not open before the check-in window of a check-in exam", () => {
+    show(sampleWithCheckin, "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("says check-in is open once the check-in window is open, like the list card", () => {
+    show(sampleWithCheckin, "2026-07-15T08:45:00Z");
+    expect(screen.getByText("Check-in dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is expired after scheduled_end_at when the student never started", () => {
+    show(withExam({ scheduled_at: "2026-07-15T09:00:00Z", scheduled_end_at: "2026-07-15T11:00:00Z" }), "2026-07-15T12:00:00Z");
+    expect(screen.getByText("Kadaluarsa")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is expired once check-in has closed", () => {
+    show(sampleWithCheckin, "2026-07-15T09:30:00Z");
+    expect(screen.getByText("Kadaluarsa")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is done when submitted with no attempts left", () => {
+    show({ ...withExam({ max_attempts: 1 }, "submitted"), attempts_used: 1 }, "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Selesai")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is not open for a checked-in student before scheduled_at", () => {
+    show({ ...sampleWithCheckin, status: "checked_in" }, "2026-07-15T08:55:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+    expect(screen.queryByText("Siap dikerjakan")).not.toBeInTheDocument();
+  });
+
+  it("is not open before scheduled_at when a scheduled_end_at makes it an access window", () => {
+    show(withExam({ scheduled_end_at: "2026-07-15T12:00:00Z" }), "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Belum dibuka")).toBeInTheDocument();
+  });
+
+  it("is ready before scheduled_at when there is no end, matching the list card", () => {
+    show(withExam({ scheduled_end_at: null }), "2026-07-15T08:00:00Z");
+    expect(screen.getByText("Siap dikerjakan")).toBeInTheDocument();
+  });
+
+  it("shows in progress when a session is running", () => {
+    show(withExam({}, "in_progress"), "2026-07-15T09:30:00Z");
+    expect(screen.getByText("Sedang berjalan")).toBeInTheDocument();
   });
 });

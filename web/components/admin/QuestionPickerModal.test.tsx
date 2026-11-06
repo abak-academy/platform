@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, within, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { QuestionPickerModal } from "./QuestionPickerModal";
@@ -22,10 +22,13 @@ const bankQuestions: BankQuestionListItem[] = [
   },
 ];
 
+const refetch = vi.fn();
+
 let bankState = {
   data: { data: bankQuestions, next_cursor: "" } as { data: BankQuestionListItem[]; next_cursor: string },
   isLoading: false,
   isError: false,
+  refetch,
 };
 
 let topicsState = {
@@ -60,12 +63,19 @@ function renderWithClient(ui: React.ReactNode) {
 }
 
 describe("QuestionPickerModal", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
     bankState = {
       data: { data: bankQuestions, next_cursor: "" },
       isLoading: false,
       isError: false,
+      refetch,
     };
+    refetch.mockReset();
     topicsState = {
       data: { data: [] },
       isLoading: false,
@@ -112,7 +122,145 @@ describe("QuestionPickerModal", () => {
     });
 
     expect(bankFilterCalls.at(-1)?.search).toBe("bold");
+  });
 
-    vi.useRealTimers();
+  function bankItem(id: string, body: string): BankQuestionListItem {
+    return {
+      question: { id, format: "mcq", body, point_correct: 1, point_wrong: 0, sort_order: 1 },
+      options: [],
+      attached_count: 0,
+    };
+  }
+
+  const longBody = "x".repeat(200);
+
+  function mockOverflow(overflowing: boolean) {
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(overflowing ? 100 : 40);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(60);
+  }
+
+  it("clamps long bodies to three lines and expands inside the row without selecting it", () => {
+    mockOverflow(true);
+    bankState = { ...bankState, data: { data: [bankItem("long1", longBody)], next_cursor: "" } };
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
+    );
+
+    const body = screen.getByText(longBody);
+    expect(body.className).toContain("line-clamp-3");
+    expect(body.className).toContain("[overflow-wrap:anywhere]");
+
+    fireEvent.click(screen.getByRole("button", { name: "tests_picker_more" }));
+    expect(screen.getByText(longBody).className).not.toContain("line-clamp-3");
+    expect(screen.getByRole("button", { name: "tests_picker_confirm" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "tests_picker_less" }));
+    expect(screen.getByText(longBody).className).toContain("line-clamp-3");
+  });
+
+  it("offers no expand toggle when the body fits in three lines, however many characters", () => {
+    mockOverflow(false);
+    bankState = { ...bankState, data: { data: [bankItem("long2", longBody)], next_cursor: "" } };
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
+    );
+    expect(screen.queryByRole("button", { name: "tests_picker_more" })).not.toBeInTheDocument();
+  });
+
+  it("sends search, topic_id and format together and keeps the selection when filters change", async () => {
+    const onAttach = vi.fn().mockResolvedValue(undefined);
+    topicsState = { data: { data: [{ id: "topic-9", name: "Geometri", subject: "Matematika" }] }, isLoading: false };
+    const { rerender } = renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={onAttach} />
+    );
+    const qc = new QueryClient();
+    const ui = (
+      <QueryClientProvider client={qc}>
+        <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={onAttach} />
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(screen.getByText("bold text").closest("button") as HTMLElement);
+
+    const formatSelect = screen.getByLabelText("tests_picker_format_label");
+    const topicSelect = screen.getByLabelText("tests_picker_topic_label");
+    fireEvent.change(formatSelect, { target: { value: "essay" } });
+    fireEvent.change(topicSelect, { target: { value: "topic-9" } });
+    fireEvent.change(screen.getByPlaceholderText("tests_picker_search"), { target: { value: "segitiga" } });
+    await vi.waitFor(() =>
+      expect(bankFilterCalls.at(-1)).toMatchObject({ search: "segitiga", topic_id: "topic-9", format: "essay" }),
+    );
+
+    bankState = { ...bankState, data: { data: [bankItem("other", "Soal lain")], next_cursor: "" } };
+    rerender(ui);
+    fireEvent.click(screen.getByText("Soal lain").closest("button") as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "tests_picker_confirm" }));
+
+    await vi.waitFor(() => expect(onAttach).toHaveBeenCalledWith(expect.arrayContaining(["bqr1", "other"])));
+  });
+
+  it("shows the result count and resets search and filters only when one is active", () => {
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
+    );
+
+    expect(screen.getByText("tests_picker_count")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "tests_picker_reset" })).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("tests_picker_format_label"), { target: { value: "essay" } });
+    fireEvent.change(screen.getByLabelText("tests_picker_search_label"), { target: { value: "kota" } });
+    fireEvent.click(screen.getByRole("button", { name: "tests_picker_reset" }));
+
+    expect(screen.getByLabelText("tests_picker_format_label")).toHaveValue("all");
+    expect(screen.getByLabelText("tests_picker_search_label")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "tests_picker_reset" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the selection and stays open when the server rejects the attach", async () => {
+    const onAttach = vi.fn().mockRejectedValue(new Error("sibling collision"));
+    const onOpenChange = vi.fn();
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={onOpenChange} testId="t" attached={[]} onAttach={onAttach} />
+    );
+
+    fireEvent.click(screen.getByText("bold text").closest("button") as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "tests_picker_confirm" }));
+
+    await vi.waitFor(() => expect(onAttach).toHaveBeenCalled());
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "tests_picker_confirm" })).toBeEnabled();
+  });
+
+  it("shows an error with retry when the bank fails to load", () => {
+    bankState = { ...bankState, isError: true, data: undefined as never };
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
+    );
+
+    expect(screen.getByText("tests_picker_error")).toBeInTheDocument();
+    expect(screen.queryByText("tests_picker_empty")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "retry" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("does not claim the whole bank is loaded when the API has another page", () => {
+    bankState = { ...bankState, data: { data: bankQuestions, next_cursor: "more" } };
+    renderWithClient(
+      <QuestionPickerModal open={true} onOpenChange={vi.fn()} testId="t" attached={[]} onAttach={vi.fn()} />
+    );
+    expect(screen.getByText("tests_picker_partial")).toBeInTheDocument();
+  });
+
+  it("does not let an already attached question be selected", () => {
+    renderWithClient(
+      <QuestionPickerModal
+        open={true}
+        onOpenChange={vi.fn()}
+        testId="t"
+        attached={[{ question: bankQuestions[0].question, options: [] }]}
+        onAttach={vi.fn()}
+      />
+    );
+    expect(screen.getByText("bold text").closest("button")).toBeDisabled();
   });
 });

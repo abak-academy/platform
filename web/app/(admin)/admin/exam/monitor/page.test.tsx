@@ -301,7 +301,7 @@ describe("ExamMonitorPage", () => {
     });
   });
 
-  it("only shows Reopen and Force Submit actions on overdue rows", async () => {
+  it("shows extension for active and overdue sessions; force submit only overdue", async () => {
     render(<ExamMonitorPage />);
     await selectExamRow("UTBK 2026");
 
@@ -311,15 +311,14 @@ describe("ExamMonitorPage", () => {
       expect(dewiElements.length).toBeGreaterThanOrEqual(1);
     });
 
-    // Should have exactly 1 Reopen and 1 Force Submit button
     const reopenButtons = screen.getAllByRole("button", { name: "Perpanjang" });
-    expect(reopenButtons).toHaveLength(1);
+    expect(reopenButtons).toHaveLength(2);
 
     const forceSubmitButtons = screen.getAllByRole("button", { name: "Paksa kumpulkan" });
     expect(forceSubmitButtons).toHaveLength(1);
   });
 
-  it("shows no actions on non-overdue rows", async () => {
+  it("does not offer session actions before starting or after submitting", async () => {
     render(<ExamMonitorPage />);
     await selectExamRow("UTBK 2026");
 
@@ -328,12 +327,21 @@ describe("ExamMonitorPage", () => {
       expect(screen.getByText("Siti Aisyah")).toBeInTheDocument();
     });
 
-    // Only 1 Reopen button total (for the one overdue row)
     const allReopen = screen.queryAllByRole("button", { name: "Perpanjang" });
-    expect(allReopen).toHaveLength(1);
+    expect(allReopen).toHaveLength(2);
 
     const allForceSubmit = screen.queryAllByRole("button", { name: "Paksa kumpulkan" });
     expect(allForceSubmit).toHaveLength(1);
+  });
+
+  it.each([["Ahmad Fauzi", "s2"], ["Dewi Lestari", "s3"]])("adds minutes only to %s's selected session", async (name, sessionId) => {
+    const dialog = vi.spyOn(window, "prompt").mockReturnValue("15");
+    render(<ExamMonitorPage />);
+    await selectExamRow("UTBK 2026");
+    const row = (await screen.findAllByText(name))[0].closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Perpanjang" }));
+    expect(reopenMutate).toHaveBeenCalledWith({ sessionId, extend_minutes: 15 }, expect.any(Object));
+    dialog.mockRestore();
   });
 
   it("renders the violation sidebar", async () => {

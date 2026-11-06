@@ -121,8 +121,8 @@ export default function ExamMonitorPage() {
     (sessionId: string) => {
       const minutes = prompt(t("monitor_reopen_prompt"));
       if (!minutes) return;
-      const n = parseInt(minutes, 10);
-      if (isNaN(n) || n <= 0) return;
+      const n = Number(minutes);
+      if (!Number.isInteger(n) || n <= 0) return;
       reopen.mutate(
         { sessionId, extend_minutes: n },
         {
@@ -319,7 +319,7 @@ export default function ExamMonitorPage() {
       key: "actions",
       header: t("th_actions"),
       cell: (row) =>
-        row.status === "overdue" && row.session_id ? (
+        (row.status === "in_progress" || row.status === "overdue") && row.session_id ? (
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
@@ -330,7 +330,7 @@ export default function ExamMonitorPage() {
               <RotateCcw size={12} />
               {t("monitor_actions_reopen")}
             </Button>
-            <Button
+            {row.status === "overdue" && <Button
               variant="outline"
               size="xs"
               onClick={() => handleForceSubmit(row.session_id!)}
@@ -338,7 +338,7 @@ export default function ExamMonitorPage() {
             >
               <XCircle size={12} />
               {t("monitor_actions_force_submit")}
-            </Button>
+            </Button>}
           </div>
         ) : null,
     },

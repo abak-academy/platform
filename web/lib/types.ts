@@ -624,6 +624,8 @@ export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "
 export type SectionType = "listening" | "reading" | "writing";
 
 export interface Test {
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
   id: string;
   title: string;
   subject: string;
@@ -633,10 +635,12 @@ export interface Test {
   audio_play_limit?: number | null;
   section_type?: string | null;
   question_count?: number;
+  exam_count?: number;
   created_at?: string;
 }
 
 export interface Question {
+  material_html?: string | null;
   id: string;
   format: QuestionFormat;
   body: string;
@@ -704,6 +708,8 @@ export interface TestDetail {
 }
 
 export interface AdminCreateTestInput {
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
   title: string;
   subject: string;
   topic: string;
@@ -714,13 +720,16 @@ export interface AdminCreateTestInput {
 }
 
 export interface AdminUpdateTestInput {
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
   title?: string;
   subject?: string;
   topic?: string;
   duration_minutes?: number;
-  audio_url?: string;
-  audio_play_limit?: number;
-  section_type?: string;
+  /** null clears the field server-side; an absent key preserves it. */
+  audio_url?: string | null;
+  audio_play_limit?: number | null;
+  section_type?: string | null;
 }
 
 export interface AdminQuestionOptionInput {
@@ -734,6 +743,7 @@ export interface AdminQuestionOptionInput {
 }
 
 export interface AdminQuestionInput {
+  material_html?: string | null;
   format: QuestionFormat;
   body: string;
   difficulty?: string;
@@ -781,6 +791,8 @@ export interface QuestionListResponse {
 }
 
 export interface Exam {
+  format_version?: number;
+  navigation_policy?: "free" | "sequential";
   id: string;
   title: string;
   is_free?: boolean;
@@ -813,15 +825,23 @@ export interface Exam {
   // post-submit image/promo block (FR-38/FR-39) — no templating, one of each.
   end_screen_image_url?: string | null;
   end_screen_promo_text?: string | null;
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 export interface ExamListItem extends Exam {
   has_published_product?: boolean;
   // optional: ExamDetail extends this, and the detail endpoint never sends it
   registration_count?: number;
+  section_count?: number;
+  question_count?: number;
+  session_count?: number;
+  sections_duration_minutes?: number | null;
 }
 
 export interface ExamTestEntry {
+  question_presentation?: "one_per_page" | "all_on_page";
   id: string;
   exam_id: string;
   test_id: string;
@@ -833,16 +853,20 @@ export interface ExamTestEntry {
     topic?: string | null;
     duration_minutes?: number | null;
     question_count: number;
+    has_shared_material?: boolean;
   };
+  material_question_positions?: number[];
 }
 
 export interface ExamDetail extends ExamListItem {
   tests: ExamTestEntry[];
+  has_sessions?: boolean;
 }
 
 export type ExamResultConfig = "hidden" | "score_only" | "score_pembahasan";
 
 export interface CreateExamPayload {
+  navigation_policy?: "free" | "sequential";
   title: string;
   scheduled_at?: string | null;
   scheduled_end_at?: string | null;
@@ -859,9 +883,13 @@ export interface CreateExamPayload {
   grace_window_minutes?: number | null;
   max_attempts?: number | null;
   card_notes?: string[];
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 export interface UpdateExamPayload {
+  navigation_policy?: "free" | "sequential";
   title?: string;
   scheduled_at?: string | null;
   scheduled_end_at?: string | null;
@@ -880,6 +908,9 @@ export interface UpdateExamPayload {
   end_screen_image_url?: string | null;
   end_screen_promo_text?: string | null;
   card_notes?: string[];
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 // ── Certificate design (admin editor, FR-17/18/25) ───────────────────────
@@ -952,6 +983,7 @@ export interface SessionQuestionOption {
 }
 
 export interface SessionQuestion {
+  material_html?: string | null;
   id: string;
   test_id: string;
   format: QuestionFormat;
@@ -968,6 +1000,10 @@ export interface SessionQuestion {
 }
 
 export interface SessionTest {
+  extended_until?: string | null;
+  shared_material_html?: string | null;
+  instructions_html?: string | null;
+  question_presentation?: "one_per_page" | "all_on_page";
   id: string;
   title: string;
   subject: string;
@@ -981,6 +1017,8 @@ export interface SessionTest {
 }
 
 export interface SessionStartPayload {
+  format_version?: number;
+  navigation_policy?: "free" | "sequential";
   session_id: string;
   remaining_seconds: number;
   timer_mode: string;
@@ -1033,6 +1071,8 @@ export interface CheckInResult {
 // ── Session monitor types (Slice 7) ────────────────────────────────────────
 
 export interface AdvanceSectionResult {
+  format_version?: number;
+  navigation_policy?: "free" | "sequential";
   mode?: string;
   active_test_id?: string | null;
   completed: boolean;
@@ -1129,6 +1169,43 @@ export interface RegistrationListItem {
   duration_minutes: number | null;
   session_id: string | null;
   max_attempts: number | null;
+  navigation_policy: "free" | "sequential";
+  timer_mode: "overall" | "per_test";
+  section_count: number;
+  question_count: number;
+  sections_duration_minutes: number | null;
+}
+
+export interface ExamPreviewSection {
+  test_id: string;
+  title: string;
+  duration_minutes: number;
+  question_count: number;
+  question_presentation: "one_per_page" | "all_on_page";
+}
+
+export interface RegistrationExam {
+  id: string;
+  title: string;
+  scheduled_at: string | null;
+  scheduled_end_at: string | null;
+  requires_checkin: boolean;
+  check_in_window_minutes: number | null;
+  timer_mode: "overall" | "per_test";
+  navigation_policy: "free" | "sequential";
+  max_attempts: number | null;
+  duration_minutes: number | null;
+  result_config: string;
+  exam_number?: number | null;
+  card_enabled: boolean;
+  card_notes: string[];
+  section_count: number;
+  question_count: number;
+  sections_duration_minutes: number | null;
+  sections: ExamPreviewSection[];
+  whatsapp_group_url?: string | null;
+  additional_rules_note?: string | null;
+  additional_rules_url?: string | null;
 }
 
 export interface RegistrationDetail {
@@ -1153,19 +1230,7 @@ export interface RegistrationDetail {
     help_url: string;
     social_handle: string;
   };
-  exam: {
-    id: string;
-    title: string;
-    scheduled_at: string | null;
-    scheduled_end_at: string | null;
-    requires_checkin: boolean;
-    check_in_window_minutes: number | null;
-    timer_mode: string;
-    duration_minutes: number | null;
-    result_config: string;
-    card_enabled: boolean;
-    card_notes: string[];
-  };
+  exam: RegistrationExam;
 }
 
 // ── Result & grading types (Slice 5) ─────────────────────────────────────

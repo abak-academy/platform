@@ -420,10 +420,10 @@ func TestCheckInAndStartSession_RejectRevokedRegistration(t *testing.T) {
 		examID, studentID,
 	).Scan(&token, &regID))
 
-	_, err := svc.CheckIn(ctx, studentID.String(), token, "fp-revoke-test")
+	_, err := svc.CheckIn(ctx, studentID.String(), token, DeviceProof{LegacyFP: "fp-revoke-test"})
 	require.True(t, errors.Is(err, ErrRegistrationRevoked), "CheckIn: want ErrRegistrationRevoked, got %v", err)
 
-	_, err = svc.StartSession(ctx, studentID.String(), regID, "fp-revoke-test")
+	_, err = svc.StartSession(ctx, studentID.String(), regID, DeviceProof{LegacyFP: "fp-revoke-test"})
 	require.True(t, errors.Is(err, ErrRegistrationRevoked), "StartSession: want ErrRegistrationRevoked, got %v", err)
 
 	_, err = svc.GetExamRegistration(ctx, regID, studentID.String())

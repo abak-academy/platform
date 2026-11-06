@@ -1,0 +1,40 @@
+{
+  "scope": "static prototype only; no production API, auth, database, build, or deployment verification",
+  "verified_at": "2026-11-03T09:27:40.083Z",
+  "base_commit": "0d2b6ca1a6c2985f903d16fbd94e71ee297a4540",
+  "sources": {
+    "index.html": "cdf3ac301b2cc69397e57328b9af11835380b02f9bea88410f57aed8a85444a2",
+    "style.css": "cff8733645c63ac0ecba57c38ce8822fc3790a61d03bd0846fb22016e2303fea",
+    "tests.css": "798a730bc129ab45f577d6e9fa835db2314d9a98e90d14c793a743a411491124",
+    "app.js": "8264ed6fcaebf071297002bb9fdd3d1d17f2f94b76719ba7b33182cda115ca2d",
+    "tests.js": "ecb2e4b2fca6844b5dfeb10bc1c11959a5ccc4f03e750de0d862969c154aadc1",
+    "verify.cjs": "e56e80557303fbebc0cd4989efe2a4c83171a4afb00e5643e621cf6588d0fc3c",
+    "verify-tests.cjs": "c0a98187c8ca54aa61d3013a17ea5b0d704bcfe810d9239725a6037f80710fac",
+    "verify-feedback.cjs": "59208ae4b7f1b40ae6f4c4dfc7b470085146ff414cdf613165b79bb6934a7992",
+    "verify-handoff.cjs": "f36dddba05b5b6bc78ab2e013abb00aff1dddfda4046a5e19740756c424a2a06"
+  },
+  "checks": [
+    {
+      "name": "exam",
+      "script": "verify.cjs",
+      "passed": true,
+      "exit_code": 0,
+      "log": "exam.log"
+    },
+    {
+      "name": "tests",
+      "script": "verify-tests.cjs",
+      "passed": true,
+      "exit_code": 0,
+      "log": "tests.log"
+    },
+    {
+      "name": "feedback",
+      "script": "verify-feedback.cjs",
+      "passed": true,
+      "exit_code": 0,
+      "log": "feedback.log"
+    }
+  ],
+  "passed": true
+}

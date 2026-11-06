@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, within } from "@testing-library/react";
 
 import ExamPage from "./page";
 import type { RegistrationListItem } from "@/lib/types";
@@ -61,6 +61,11 @@ const freeUpcoming: RegistrationListItem = {
   duration_minutes: 90,
   session_id: null,
   max_attempts: null,
+  navigation_policy: "free",
+  timer_mode: "overall",
+  section_count: 2,
+  question_count: 40,
+  sections_duration_minutes: 90,
 };
 
 const paidNoSchedule: RegistrationListItem = {
@@ -82,6 +87,11 @@ const paidNoSchedule: RegistrationListItem = {
   duration_minutes: 60,
   session_id: null,
   max_attempts: null,
+  navigation_policy: "sequential",
+  timer_mode: "per_test",
+  section_count: 3,
+  question_count: 60,
+  sections_duration_minutes: 75,
 };
 
 const sample: RegistrationListItem[] = [freeUpcoming, paidNoSchedule];
@@ -90,6 +100,8 @@ describe("ExamPage", () => {
   beforeEach(() => {
     uiStore = { lang: "id" };
     pushMock.mockClear();
+    startSessionMutate.mockReset();
+    toastError.mockReset();
     registrationsState = {
       data: sample,
       isLoading: false,
@@ -119,22 +131,92 @@ describe("ExamPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows a start button for a free exam with no check-in requirement", async () => {
+  it("offers the rules page, not a start button, for a ready exam without check-in", async () => {
     render(<ExamPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Try Out UTBK Gratis #12")).toBeInTheDocument();
     });
-    expect(screen.getAllByRole("button", { name: /Mulai/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: /Mulai/i })).not.toBeInTheDocument();
+    const hrefs = screen.getAllByRole("link", { name: /Lihat aturan ujian/i }).map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/exam/reg-1");
+    expect(startSessionMutate).not.toHaveBeenCalled();
   });
 
-  it("shows the check-in token input when no schedule is set but check-in is required", async () => {
+  it("offers the rules page instead of an inline token input when check-in is required", async () => {
     render(<ExamPage />);
 
     await waitFor(() => {
       expect(screen.getByText("Ujian Akhir Matematika")).toBeInTheDocument();
     });
-    expect(screen.getByPlaceholderText("Token dari kartu ujian")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Token dari kartu ujian")).not.toBeInTheDocument();
+    const card = screen.getByText("Ujian Akhir Matematika").closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByRole("link", { name: /Lihat aturan ujian/i })).toHaveAttribute("href", "/exam/reg-2");
+  });
+
+  it("shows time, section and question facts with the navigation rule", async () => {
+    render(<ExamPage />);
+
+    const card = (await screen.findByText("Ujian Akhir Matematika")).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Total waktu")).toBeInTheDocument();
+    expect(within(card).getByText("75")).toBeInTheDocument();
+    expect(within(card).getByText("Timer per section")).toBeInTheDocument();
+    expect(within(card).getByText("3")).toBeInTheDocument();
+    expect(within(card).getByText("60")).toBeInTheDocument();
+    expect(within(card).getByText("Section berurutan")).toBeInTheDocument();
+
+    const free = (await screen.findByText("Try Out UTBK Gratis #12")).closest("[data-slot='card']") as HTMLElement;
+    expect(within(free).getByText("Waktu pengerjaan")).toBeInTheDocument();
+    expect(within(free).getByText("90")).toBeInTheDocument();
+    expect(within(free).getByText("Satu timer ujian")).toBeInTheDocument();
+    expect(within(free).getByText("Bebas pindah section")).toBeInTheDocument();
+  });
+
+  it("shows a same-day schedule as one date and a time range, and a cross-day one as two dates", async () => {
+    registrationsState = {
+      data: [
+        { ...freeUpcoming, id: "same", exam_title: "Satu Hari", scheduled_at: "2026-07-15T02:00:00Z", scheduled_end_at: "2026-07-15T04:00:00Z" },
+        { ...freeUpcoming, id: "cross", exam_title: "Lintas Hari", scheduled_at: "2026-07-15T02:00:00Z", scheduled_end_at: "2026-07-17T04:00:00Z" },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    const same = (await screen.findByText("Satu Hari")).closest("[data-slot='card']") as HTMLElement;
+    expect(same.textContent?.match(/15 Jul 2026/g)).toHaveLength(1);
+    expect(within(same).getByText(/09[.:]00.*11[.:]00/)).toBeInTheDocument();
+
+    const cross = screen.getByText("Lintas Hari").closest("[data-slot='card']") as HTMLElement;
+    expect(within(cross).getByText(/15 Jul 2026/)).toBeInTheDocument();
+    expect(within(cross).getByText(/17 Jul 2026/)).toBeInTheDocument();
+  });
+
+  it("shows a neutral not-open badge, countdown and detail link for an upcoming exam", async () => {
+    registrationsState = {
+      data: [
+        {
+          ...paidNoSchedule,
+          id: "reg-up",
+          exam_title: "Tryout Belum Buka",
+          scheduled_at: new Date(Date.now() + 3 * 60 * 60_000).toISOString(),
+          check_in_window_minutes: 15,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    const card = (await screen.findByText("Tryout Belum Buka")).closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Belum dibuka")).toBeInTheDocument();
+    expect(within(card).getByText(/Dibuka dalam 2 jam/)).toBeInTheDocument();
+    expect(within(card).getByRole("link", { name: "Lihat detail" })).toHaveAttribute("href", "/exam/reg-up");
+    expect(within(card).queryByRole("link", { name: /Lihat aturan ujian/i })).not.toBeInTheDocument();
   });
 
   it("shows an empty state when there are no registrations", async () => {
@@ -173,8 +255,9 @@ describe("ExamPage", () => {
       expect(screen.getByText("Tryout Terbuka")).toBeInTheDocument();
     });
     // Without a window this would already show "Kadaluarsa" (expired) since
-    // scheduled_at is in the past — the window keeps check-in open instead.
-    expect(screen.getByPlaceholderText("Token dari kartu ujian")).toBeInTheDocument();
+    // scheduled_at is in the past — the window keeps the exam ready instead.
+    expect(screen.getByRole("link", { name: /Lihat aturan ujian/i })).toBeInTheDocument();
+    expect(screen.getByText("Check-in dibuka")).toBeInTheDocument();
     expect(screen.queryByText("Kadaluarsa")).not.toBeInTheDocument();
   });
 
@@ -272,6 +355,12 @@ describe("ExamPage", () => {
     });
     expect(screen.queryByRole("link", { name: /Lihat hasil/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/exam\/sessions\/null/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Lanjutkan ujian" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lihat Detail/i })).toHaveAttribute("href", "/exam/reg-7");
+    const card = screen.getByText("Tryout Tanpa Sesi").closest("[data-slot='card']") as HTMLElement;
+    expect(within(card).getByText("Selesai")).toBeInTheDocument();
+    expect(within(card).getByText("Ujian telah selesai")).toBeInTheDocument();
+    expect(within(card).queryByText("Sesi sedang berlangsung")).not.toBeInTheDocument();
   });
 
   it("offers a retake alongside the result link when attempts remain (FR20)", async () => {
@@ -447,7 +536,8 @@ describe("ExamPage", () => {
         expect(screen.getByText(reg.exam_title)).toBeInTheDocument();
       });
 
-      const link = screen.getByRole("link", { name: /Lihat Detail/i });
+      const ready = label === "checkin" || label === "start";
+      const link = screen.getByRole("link", { name: ready ? /Lihat aturan ujian/i : /Lihat Detail/i });
       expect(link, `state "${label}" should expose a route to the card`).toHaveAttribute(
         "href",
         `/exam/${reg.id}`,
@@ -455,6 +545,55 @@ describe("ExamPage", () => {
 
       unmount();
     }
+  });
+
+  it("resumes an in_progress exam directly from the card", async () => {
+    startSessionMutate.mockResolvedValue({ session_id: "sess-live" });
+    registrationsState = {
+      data: [{ ...paidNoSchedule, id: "reg-live", exam_title: "Tryout Live", status: "in_progress" }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Lanjutkan ujian" }));
+
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith("/exam/sessions/sess-live"));
+    expect(startSessionMutate).toHaveBeenCalledWith("reg-live");
+    expect(screen.getByRole("link", { name: /Lihat Detail/i })).toHaveAttribute("href", "/exam/reg-live");
+  });
+
+  it("shows the server error when resuming is rejected", async () => {
+    startSessionMutate.mockRejectedValue(new Error("device mismatch"));
+    registrationsState = {
+      data: [{ ...paidNoSchedule, id: "reg-live", exam_title: "Tryout Live", status: "in_progress" }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Lanjutkan ujian" }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("device mismatch"));
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the continue label in English", async () => {
+    uiStore = { lang: "en" };
+    registrationsState = {
+      data: [{ ...paidNoSchedule, status: "in_progress" }],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<ExamPage />);
+
+    expect(await screen.findByRole("button", { name: "Continue exam" })).toBeInTheDocument();
   });
 
   it("shows an error state with a retry action", async () => {
@@ -473,5 +612,112 @@ describe("ExamPage", () => {
     });
     screen.getByRole("button", { name: "Coba lagi" }).click();
     expect(refetch).toHaveBeenCalled();
+  });
+});
+
+describe("ExamPage card parity", () => {
+  const cardOf = async (title: string) =>
+    (await screen.findByText(title)).closest("[data-slot='card']") as HTMLElement;
+  const primaries = (card: HTMLElement) =>
+    Array.from(card.querySelectorAll("[data-slot='button'][data-variant='default']"));
+  const show = (reg: RegistrationListItem) => {
+    registrationsState = { data: [reg], isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    render(<ExamPage />);
+  };
+  const base: RegistrationListItem = { ...paidNoSchedule, id: "reg-p", exam_title: "Paket Parity", requires_checkin: false };
+
+  beforeEach(() => {
+    uiStore = { lang: "id" };
+    pushMock.mockClear();
+  });
+
+  it("labels every card with the Paket ujian kicker", async () => {
+    show(base);
+    expect(within(await cardOf("Paket Parity")).getByText("Paket ujian")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["ready", { ...base }, "Siap dikerjakan"],
+    ["checked in", { ...base, status: "checked_in" }, "Siap dikerjakan"],
+    ["in progress", { ...base, status: "in_progress" }, "Sedang berjalan"],
+    ["done", { ...base, status: "submitted", session_id: "s-1" }, "Selesai"],
+    [
+      "upcoming",
+      { ...base, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      "Belum dibuka",
+    ],
+  ])("maps the %s state to its status badge", async (_n, reg, label) => {
+    show(reg as RegistrationListItem);
+    expect(within(await cardOf("Paket Parity")).getByText(label)).toBeInTheDocument();
+  });
+
+  it("is not open for a checked-in student before scheduled_at", async () => {
+    show({ ...base, requires_checkin: true, status: "checked_in", scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Belum dibuka")).toBeInTheDocument();
+  });
+
+  it("keeps the check-in badge when check-in is open", async () => {
+    show({ ...base, requires_checkin: true });
+    expect(within(await cardOf("Paket Parity")).getByText("Check-in dibuka")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["ready", { ...base }, /Lihat aturan ujian/],
+    ["in progress", { ...base, status: "in_progress" }, /Lanjutkan ujian/],
+    ["done", { ...base, status: "submitted", session_id: "s-1", max_attempts: 3 }, /Lihat hasil/],
+    [
+      "upcoming",
+      { ...base, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
+      /^Lihat detail\s*$/,
+    ],
+    ["expired", { ...base, scheduled_at: "2020-01-01T00:00:00Z", scheduled_end_at: "2020-01-01T02:00:00Z" }, /^Lihat detail\s*$/],
+  ])("has exactly one primary CTA in the %s state", async (_n, reg, name) => {
+    show(reg as RegistrationListItem);
+    const card = await cardOf("Paket Parity");
+    const primary = primaries(card);
+    expect(primary).toHaveLength(1);
+    expect(primary[0].textContent).toMatch(name);
+  });
+
+  it("demotes the retake and detail actions to secondary next to the result CTA", async () => {
+    show({ ...base, status: "submitted", session_id: "s-1", max_attempts: 3 });
+    const card = await cardOf("Paket Parity");
+    expect(within(card).getByRole("button", { name: "Ulangi ujian" })).toHaveAttribute("data-variant", "outline");
+    expect(within(card).getByRole("link", { name: "Lihat Detail" })).toHaveAttribute("data-variant", "outline");
+  });
+
+  it("shows the access date on the left and hours on the right in WIB", async () => {
+    show({ ...base, scheduled_at: "2026-11-07T01:00:00Z", scheduled_end_at: "2026-11-07T03:00:00Z" });
+    const card = await cardOf("Paket Parity");
+    expect(within(card).getByText("7 Nov 2026")).toBeInTheDocument();
+    expect(within(card).getByText(/08[.:]00.10[.:]00 WIB/)).toBeInTheDocument();
+  });
+
+  it("states the attempt limit and the timer hint in the footer of a ready card", async () => {
+    show({ ...base, max_attempts: 1 });
+    const card = await cardOf("Paket Parity");
+    expect(within(card).getByText("Maksimal 1 percobaan")).toBeInTheDocument();
+    expect(within(card).getByText("Timer dimulai setelah konfirmasi.")).toBeInTheDocument();
+  });
+
+  it("counts down in days, then hours, then minutes before access opens", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 5 * 86_400_000 + 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 6 * 86_400_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Dibuka dalam 5 hari 1 jam")).toBeInTheDocument();
+  });
+
+  it("shows the two largest units, e.g. hours and minutes", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 2 * 3_600_000 + 40 * 60_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText(/^Dibuka dalam 2 jam (39|40) menit$/)).toBeInTheDocument();
+  });
+
+  it("uses singular English units for a count of one", async () => {
+    uiStore = { lang: "en" };
+    show({ ...base, scheduled_at: new Date(Date.now() + 86_400_000 + 3_600_000 + 30_000).toISOString(), scheduled_end_at: new Date(Date.now() + 3 * 86_400_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText("Opens in 1 day 1 hour")).toBeInTheDocument();
+  });
+
+  it("counts down in minutes when under an hour", async () => {
+    show({ ...base, scheduled_at: new Date(Date.now() + 40 * 60_000).toISOString(), scheduled_end_at: new Date(Date.now() + 3 * 3_600_000).toISOString() });
+    expect(within(await cardOf("Paket Parity")).getByText(/^Dibuka dalam (39|40) menit$/)).toBeInTheDocument();
   });
 });

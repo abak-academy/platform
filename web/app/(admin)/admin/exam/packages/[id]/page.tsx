@@ -1,28 +1,35 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
+import { ApiError } from "@/lib/api";
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Calendar,
+  Clock,
+  Eye,
   ListChecks,
-  Pencil,
   Plus,
-  Search,
+  SlidersHorizontal,
   Trash2,
   Trophy,
   Users,
+  type LucideIcon,
 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ResultsWorkspaceTab } from "@/components/admin/ResultsWorkspaceTab";
 import { CertificateDesignTab } from "@/components/admin/CertificateDesignTab";
+import { ExamAdditionalRulesCard, ExamWhatsAppCard } from "@/components/admin/ExamEventInfo";
+import { ExamAddTestDialog } from "@/components/admin/ExamAddTestDialog";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
 import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -33,6 +40,7 @@ import {
   useExamAnalytics,
   useExamLeaderboard,
   useGradeEssay,
+  useExamRegistrationCounts,
   useGradingSessions,
   useReplaceExamTests,
   useSessionEssays,
@@ -42,11 +50,13 @@ import {
 import { useAdminTests } from "@/lib/hooks/admin-tests";
 import { hasCapability } from "@/lib/hooks/use-capability";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { isHttpUrl } from "@/lib/exam-event-info";
 import { useTranslation } from "@/lib/i18n";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import { useAuthStore } from "@/stores/auth";
 import type {
   ExamLeaderboardEntry,
+  ExamResultConfig,
   GradingEssayItem,
   GradingSessionItem,
   Test,
@@ -88,6 +98,16 @@ const RESULTS_WORKSPACE_TABS: Tab[] = [
   "grading",
 ];
 
+const RESULT_CONFIG_KEYS = {
+  hidden: "exam_packages_modal_result_config_hidden",
+  score_only: "exam_packages_modal_result_config_score_only",
+  score_pembahasan: "exam_packages_modal_result_config_score_pembahasan",
+} as const satisfies Record<ExamResultConfig, string>;
+
+function resultConfigKey(value?: string | null) {
+  return value && value in RESULT_CONFIG_KEYS ? RESULT_CONFIG_KEYS[value as ExamResultConfig] : null;
+}
+
 function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof Error) return err.message;
   return fallback;
@@ -100,11 +120,6 @@ function formatScheduled(iso?: string | null): string {
   return d.toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function formatMode(mode?: string | null): string {
-  if (!mode || mode === "standard") return "Standard";
-  return mode.toUpperCase();
-}
-
 export default function ExamPackageDetailPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
@@ -112,14 +127,19 @@ export default function ExamPackageDetailPage() {
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
   const hasResultsWorkspace = hasCapability(role, "results-workspace:read");
+  const canPreviewStudent = hasCapability(role, "exam-preview:read");
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
   const [tab, setTab] = useState<Tab>("overview");
   const [editOpen, setEditOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [confirmDisableCertificate, setConfirmDisableCertificate] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useExam(id);
+  const { data: registrationCounts } = useExamRegistrationCounts(id);
+  const registeredCount = registrationCounts ? registrationCounts.total - registrationCounts.revoked : undefined;
+  const policyLocked = data?.format_version === 2 && data.has_sessions === true;
   const replaceTests = useReplaceExamTests(id);
   const setCertificateEnabled = useSetCertificateEnabled(id);
   const setCardEnabled = useSetCardEnabled(id);
@@ -148,6 +168,7 @@ export default function ExamPackageDetailPage() {
   const testQ = useDebouncedValue(testSearch).trim();
   const [testCursor, setTestCursor] = useState<string | undefined>(undefined);
   const [testEntries, setTestEntries] = useState<Test[]>([]);
+  const [addedTests, setAddedTests] = useState<Record<string, Test>>({});
 
   const {
     data: availableResp,
@@ -174,6 +195,7 @@ export default function ExamPackageDetailPage() {
     duration_minutes: number;
   }
 
+  const [presentations, setPresentations] = useState<Record<string, "one_per_page" | "all_on_page">>({});
   const [attachedIds, setAttachedIds] = useState<string[]>([]);
   const [pendingSections, setPendingSections] = useState<PendingSection[]>([]);
 
@@ -199,6 +221,7 @@ export default function ExamPackageDetailPage() {
   useEffect(() => {
     if (!data) return;
     setAttachedIds(data.tests.map((entry) => entry.test_id));
+    setPresentations(Object.fromEntries(data.tests.map(entry => [entry.test_id, entry.question_presentation ?? "one_per_page"])));
   }, [data]);
 
   useEffect(() => {
@@ -213,17 +236,24 @@ export default function ExamPackageDetailPage() {
     setScoreInputs(next);
   }, [essaysResp]);
 
-  const availableToAdd = useMemo(() => {
-    const attached = new Set(attachedIds);
-    return testEntries.filter((test) => !attached.has(test.id));
-  }, [testEntries, attachedIds]);
-
   function handleAddTest(testId: string) {
+    const added = testEntries.find((test) => test.id === testId);
+    if (added) setAddedTests((prev) => ({ ...prev, [testId]: added }));
     setAttachedIds((prev) => [...prev, testId]);
   }
 
   function handleRemoveTest(testId: string) {
     setAttachedIds((prev) => prev.filter((entry) => entry !== testId));
+  }
+
+  function handleMoveTest(index: number, delta: -1 | 1) {
+    setAttachedIds((prev) => {
+      const target = index + delta;
+      if (target < 0 || target >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   }
 
   const UTBK_PRESETS: PendingSection[] = [
@@ -254,10 +284,15 @@ export default function ExamPackageDetailPage() {
   async function handleSaveTests() {
     if (!id) return;
     try {
-      await replaceTests.mutateAsync(attachedIds);
+      await replaceTests.mutateAsync(data?.format_version === 2 ? attachedIds.map(test_id => ({ test_id, question_presentation: presentations[test_id] ?? "one_per_page" })) : attachedIds);
       toast.success(t("changes_saved"));
       refetch();
     } catch (e) {
+      if (e instanceof ApiError && e.code === "exam_has_sessions") {
+        toast.error(t("exam_admin_has_sessions_error"));
+        refetch();
+        return;
+      }
       toast.error(errorMessage(e, t("error_generic")));
     }
   }
@@ -331,6 +366,32 @@ export default function ExamPackageDetailPage() {
   }
 
   const title = data?.title ?? t("exam_packages_page_title");
+  const materialConflicts = (data?.format_version === 2 ? attachedIds : []).flatMap((testId, idx) => {
+    const entry = data?.tests.find((e) => e.test_id === testId);
+    return entry?.material_question_positions?.length && presentations[testId] === "all_on_page"
+      ? [
+          t("exam_admin_material_conflict")
+            .replace("{section}", `#${idx + 1} · ${entry.test.title}`)
+            .replace("{positions}", entry.material_question_positions.join(", ")),
+        ]
+      : [];
+  });
+
+  const sectionMeta = (testId: string) =>
+    data?.tests.find((e) => e.test_id === testId)?.test ?? addedTests[testId] ?? testEntries.find((test) => test.id === testId);
+  const sectionMetas = attachedIds.map(sectionMeta);
+  const totalQuestions = sectionMetas.reduce((sum, meta) => sum + (meta?.question_count ?? 0), 0);
+  const totalMinutes = sectionMetas.reduce((sum, meta) => sum + (meta?.duration_minutes ?? 0), 0);
+  const sectionsDirty =
+    data != null &&
+    (attachedIds.length !== data.tests.length ||
+      attachedIds.some(
+        (testId, idx) =>
+          testId !== data.tests[idx].test_id ||
+          (presentations[testId] ?? "one_per_page") !== (data.tests[idx].question_presentation ?? "one_per_page"),
+      ));
+  const resultKey = resultConfigKey(data?.result_config);
+  const activeLabel = (on?: boolean) => t(on ? "status_label_active" : "status_label_inactive");
 
   const gradingColumns: DataTableColumn<GradingSessionItem>[] = [
     { key: "student", header: t("grading_col_student"), className: "font-medium", cell: (session) => session.student_name },
@@ -374,20 +435,36 @@ export default function ExamPackageDetailPage() {
         icon={Calendar}
         title={title}
         description={
-          data ? `${formatMode(data.mode)} · ${formatScheduled(data.scheduled_at)}` : undefined
+          data
+            ? [
+                registeredCount != null ? t("exam_packages_registered_count").replace("{n}", String(registeredCount)) : null,
+                t(data.has_sessions ? "exam_admin_meta_has_sessions" : "exam_admin_meta_no_sessions"),
+              ]
+                .filter(Boolean)
+                .join(" · ")
+            : undefined
         }
         actions={
-          data ? (
-            <Badge variant={data.status === "published" ? "default" : "secondary"}>
-              {data.status ?? "draft"}
-            </Badge>
+          data && (canPreviewStudent || !isSchoolScoped) ? (
+            <>
+              {canPreviewStudent && (
+                <Button asChild variant="outline" className="rounded-full">
+                  <Link href={`/admin/exam/packages/${id}/preview`}>
+                    <Eye className="size-4" />
+                    {t("admin_exam_preview_student")}
+                  </Link>
+                </Button>
+              )}
+              {!isSchoolScoped && (
+                <Button variant="outline" className="rounded-full" onClick={() => setEditOpen(true)}>
+                  <SlidersHorizontal className="size-4" />
+                  {t("exam_admin_settings")}
+                </Button>
+              )}
+            </>
           ) : undefined
         }
       />
-
-      {data && data.status !== "published" && (
-        <p className="text-sm text-ink-500">{t("admin_exam_detail_draft_notice")}</p>
-      )}
 
       {isLoading && (
         <div className="space-y-2">
@@ -418,294 +495,396 @@ export default function ExamPackageDetailPage() {
                 }
               >
                 {t(`admin_exam_detail_tab_${key}` as const)}
+                {key === "tests" && ` (${attachedIds.length})`}
               </button>
             ))}
           </div>
 
           {tab === "overview" && (
-            <div className="md-card-outlined space-y-4 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-title-large font-semibold">
-                  {t("admin_exam_detail_tab_overview")}
-                </h2>
-                {!isSchoolScoped && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="rounded-full"
-                    onClick={() => setEditOpen(true)}
-                  >
-                    <Pencil className="mr-1 size-4" />
-                    {t("admin_exam_detail_edit")}
-                  </Button>
-                )}
-              </div>
-              <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-                <OverviewRow label="Title" value={data.title} />
-                <OverviewRow
-                  label="Scheduled"
-                  value={
-                    data.scheduled_end_at
-                      ? `${formatScheduled(data.scheduled_at)} – ${formatScheduled(data.scheduled_end_at)}`
-                      : formatScheduled(data.scheduled_at)
-                  }
-                />
-                <OverviewRow label="Mode" value={formatMode(data.mode)} />
-                <OverviewRow label="Timer mode" value={data.timer_mode ?? "—"} />
-                <OverviewRow
-                  label="Duration"
-                  value={
-                    data.duration_minutes != null
-                      ? `${data.duration_minutes} ${t("minutes")}`
-                      : "—"
-                  }
-                />
-                <OverviewRow
-                  label="Free"
-                  value={data.is_free ? t("status_label_active") : t("status_label_inactive")}
-                />
-                <OverviewRow
-                  label="Requires check-in"
-                  value={
-                    data.requires_checkin
-                      ? t("status_label_active")
-                      : t("status_label_inactive")
-                  }
-                />
-                <OverviewRow
-                  label="Leaderboard"
-                  value={
-                    data.allow_leaderboard
-                      ? t("status_label_active")
-                      : t("status_label_inactive")
-                  }
-                />
-                <OverviewRow
-                  label="Randomize"
-                  value={
-                    data.randomize
-                      ? t("status_label_active")
-                      : t("status_label_inactive")
-                  }
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_result_config")}
-                  value={data.result_config ?? "—"}
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_result_release_at")}
-                  value={formatScheduled(data.result_release_at)}
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_check_in_window")}
-                  value={
-                    data.check_in_window_minutes != null
-                      ? `${data.check_in_window_minutes} ${t("minutes")}`
-                      : "—"
-                  }
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_grace_window")}
-                  value={
-                    data.grace_window_minutes != null
-                      ? `${data.grace_window_minutes} ${t("minutes")}`
-                      : "—"
-                  }
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_max_attempts")}
-                  value={
-                    data.max_attempts == null
-                      ? t("unlimited")
-                      : data.max_attempts <= 1
-                        ? t("exam_packages_overview_no_retake")
-                        : String(data.max_attempts)
-                  }
-                />
-                <OverviewRow
-                  label={t("exam_packages_overview_certificate_template")}
-                  value={data.certificate_template ?? "—"}
-                />
-                <OverviewRow label="Status" value={data.status ?? "—"} />
-              </dl>
-
-              {!isSchoolScoped && (
-                <div className="rounded-lg border p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium">{t("exam_card_enabled_label")}</p>
-                      <p className="text-sm text-ink-500">
-                        {t("exam_card_enabled_hint")}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant={data.card_enabled ? "outline" : "default"}
-                      size="sm"
-                      className="rounded-full"
-                      disabled={setCardEnabled.isPending}
-                      onClick={async () => {
-                        try {
-                          await setCardEnabled.mutateAsync(!data.card_enabled);
-                          toast.success(t("exam_card_enabled_saved"));
-                        } catch (err) {
-                          toast.error(err instanceof Error ? err.message : t("error_generic"));
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <div className="min-w-0 space-y-4">
+                <AdminCard id="exam-info-title" title={t("exam_admin_overview_title")}>
+                  <div className="divide-y divide-line">
+                    <OverviewGroup icon={Calendar} title={t("exam_admin_overview_group_schedule")}>
+                      <OverviewRow label={t("exam_admin_overview_start")} value={formatScheduled(data.scheduled_at)} />
+                      <OverviewRow label={t("exam_admin_overview_end")} value={formatScheduled(data.scheduled_end_at)} />
+                    </OverviewGroup>
+                    <OverviewGroup icon={Users} title={t("exam_admin_overview_group_access")}>
+                      <OverviewRow label={t("exam_admin_overview_free")} value={activeLabel(data.is_free)} />
+                      <OverviewRow
+                        label={t("exam_packages_overview_max_attempts")}
+                        value={
+                          data.max_attempts == null
+                            ? t("unlimited")
+                            : data.max_attempts <= 1
+                              ? t("exam_packages_overview_no_retake")
+                              : t("exam_admin_overview_attempts_count").replace("{n}", String(data.max_attempts))
                         }
-                      }}
-                    >
-                      {data.card_enabled
-                        ? t("exam_card_enabled_on")
-                        : t("exam_card_enabled_off")}
-                    </Button>
+                      />
+                      <OverviewRow
+                        label={t("exam_admin_overview_checkin")}
+                        value={
+                          data.requires_checkin
+                            ? t("exam_admin_overview_checkin_required")
+                            : t("exam_admin_overview_checkin_not_required")
+                        }
+                      />
+                      {data.requires_checkin && (
+                        <>
+                          <OverviewRow
+                            label={t("exam_packages_overview_check_in_window")}
+                            value={
+                              data.check_in_window_minutes != null
+                                ? `${data.check_in_window_minutes} ${t("minutes")}`
+                                : "—"
+                            }
+                          />
+                          <OverviewRow
+                            label={t("exam_packages_overview_grace_window")}
+                            value={
+                              data.grace_window_minutes != null
+                                ? `${data.grace_window_minutes} ${t("minutes")}`
+                                : "—"
+                            }
+                          />
+                        </>
+                      )}
+                    </OverviewGroup>
+                    <OverviewGroup icon={Eye} title={t("exam_admin_overview_group_results")}>
+                      <OverviewRow
+                        label={t("exam_packages_overview_result_config")}
+                        value={resultKey ? t(resultKey) : "—"}
+                      />
+                      {data.result_config !== "hidden" && (
+                        <OverviewRow
+                          label={t("exam_packages_overview_result_release_at")}
+                          value={formatScheduled(data.result_release_at)}
+                        />
+                      )}
+                      <OverviewRow label={t("exam_admin_overview_leaderboard")} value={activeLabel(data.allow_leaderboard)} />
+                      <OverviewRow
+                        label={t("exam_admin_overview_rules")}
+                        value={
+                          data.additional_rules_url && isHttpUrl(data.additional_rules_url) ? (
+                            <a
+                              href={data.additional_rules_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium [overflow-wrap:anywhere] text-brand-700 hover:underline"
+                            >
+                              {t("exam_admin_overview_rules_link")}
+                            </a>
+                          ) : data.additional_rules_note ? (
+                            t("exam_admin_overview_rules_note")
+                          ) : (
+                            t("exam_admin_overview_rules_none")
+                          )
+                        }
+                      />
+                    </OverviewGroup>
                   </div>
-                </div>
-              )}
+                </AdminCard>
 
-              {!isSchoolScoped && (
-                <div className="rounded-lg border p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-medium">
-                        {t("admin_exam_detail_certificate_status_label")}
-                      </p>
-                      <p className="text-sm text-ink-500">
-                        {data.certificate_enabled
-                          ? t("admin_exam_detail_certificate_enabled_desc")
-                          : t("admin_exam_detail_certificate_disabled_desc")}
-                      </p>
-                    </div>
-                    {data.certificate_enabled ? (
+                <AdminCard
+                  id="exam-sections-title"
+                  title={t("exam_admin_overview_sections_title")}
+                  actions={
+                    !isSchoolScoped && (
+                      <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setTab("tests")}>
+                        {t("exam_admin_overview_sections_manage")}
+                      </Button>
+                    )
+                  }
+                >
+                  {data.tests.length === 0 ? (
+                    <p className="text-sm text-ink-500">{t("exam_admin_overview_sections_empty")}</p>
+                  ) : (
+                    <ol className="divide-y divide-line">
+                      {data.tests.map((entry, idx) => (
+                        <li key={entry.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <NumberChip n={idx + 1} />
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium">{entry.test.title}</div>
+                              {data.format_version === 2 && (
+                                <div className="text-xs text-ink-500">
+                                  {t(entry.question_presentation === "all_on_page" ? "format_all_on_page" : "format_one_per_page")}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <span className="shrink-0 text-xs text-ink-500">
+                            {data.timer_mode === "per_test"
+                              ? `${entry.test.duration_minutes ?? 0} ${t("minutes")}`
+                              : t("exam_admin_overview_section_timer")}
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </AdminCard>
+
+                {!isSchoolScoped && (
+                  <AdminCard
+                    id="exam-card-title"
+                    title={t("exam_card_enabled_label")}
+                    description={t("exam_card_enabled_hint")}
+                    actions={
                       <Button
                         type="button"
-                        variant="outline"
+                        variant={data.card_enabled ? "outline" : "default"}
                         size="sm"
                         className="rounded-full"
-                        disabled={setCertificateEnabled.isPending}
-                        onClick={() => setConfirmDisableCertificate(true)}
+                        disabled={setCardEnabled.isPending}
+                        onClick={async () => {
+                          try {
+                            await setCardEnabled.mutateAsync(!data.card_enabled);
+                            toast.success(t("exam_card_enabled_saved"));
+                          } catch (err) {
+                            toast.error(err instanceof Error ? err.message : t("error_generic"));
+                          }
+                        }}
                       >
-                        {t("admin_exam_detail_certificate_disable")}
+                        {data.card_enabled ? t("exam_card_enabled_on") : t("exam_card_enabled_off")}
                       </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="rounded-full"
-                        disabled={setCertificateEnabled.isPending}
-                        onClick={handleEnableCertificate}
-                      >
-                        {t("admin_exam_detail_certificate_enable")}
-                      </Button>
-                    )}
-                  </div>
+                    }
+                  />
+                )}
 
-                  {confirmDisableCertificate && (
-                    <div className="mt-3 rounded-lg border border-danger/20 bg-danger/10 p-4 text-sm">
-                      <p className="font-medium">
-                        {t("admin_exam_detail_certificate_disable_confirm_title")}
-                      </p>
-                      <p className="mt-1 text-ink-500">
-                        {t("admin_exam_detail_certificate_disable_confirm_desc")}
-                      </p>
-                      <div className="mt-3 flex gap-2">
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          size="sm"
-                          className="rounded-full"
-                          disabled={setCertificateEnabled.isPending}
-                          onClick={handleConfirmDisableCertificate}
-                        >
-                          {t("admin_exam_detail_certificate_disable_confirm_action")}
-                        </Button>
+                {!isSchoolScoped && (
+                  <AdminCard
+                    id="exam-certificate-title"
+                    title={t("admin_exam_detail_certificate_status_label")}
+                    description={
+                      (data.certificate_enabled
+                        ? t("admin_exam_detail_certificate_enabled_desc")
+                        : t("admin_exam_detail_certificate_disabled_desc")) +
+                      (data.certificate_enabled && data.certificate_template
+                        ? ` ${t("exam_admin_certificate_template")}: ${data.certificate_template}`
+                        : "")
+                    }
+                    actions={
+                      data.certificate_enabled ? (
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
                           className="rounded-full"
-                          onClick={() => setConfirmDisableCertificate(false)}
+                          disabled={setCertificateEnabled.isPending}
+                          onClick={() => setConfirmDisableCertificate(true)}
                         >
-                          {t("cancel")}
+                          {t("admin_exam_detail_certificate_disable")}
                         </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="rounded-full"
+                          disabled={setCertificateEnabled.isPending}
+                          onClick={handleEnableCertificate}
+                        >
+                          {t("admin_exam_detail_certificate_enable")}
+                        </Button>
+                      )
+                    }
+                  >
+                    {confirmDisableCertificate && (
+                      <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-sm">
+                        <p className="font-medium">
+                          {t("admin_exam_detail_certificate_disable_confirm_title")}
+                        </p>
+                        <p className="mt-1 text-ink-500">
+                          {t("admin_exam_detail_certificate_disable_confirm_desc")}
+                        </p>
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="sm"
+                            className="rounded-full"
+                            disabled={setCertificateEnabled.isPending}
+                            onClick={handleConfirmDisableCertificate}
+                          >
+                            {t("admin_exam_detail_certificate_disable_confirm_action")}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full"
+                            onClick={() => setConfirmDisableCertificate(false)}
+                          >
+                            {t("cancel")}
+                          </Button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
+                    )}
+                  </AdminCard>
+                )}
+              </div>
+              <div className="min-w-0 lg:sticky lg:top-4 lg:self-start">
+                <ExamWhatsAppCard url={data.whatsapp_group_url} canManage={!isSchoolScoped} />
+              </div>
             </div>
           )}
 
           {tab === "tests" && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div className="md-card-outlined p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-title-medium font-semibold">
-                    {t("admin_exam_detail_tests_attached")}
-                  </h3>
-                  <span className="text-label text-ink-500">
-                    {attachedIds.length + pendingSections.length}
-                  </span>
-                </div>
-                {data.mode && data.mode !== "standard" && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <AdminCard
+                id="exam-sections-title"
+                title={t("exam_admin_overview_sections_title")}
+                description={t("exam_admin_sections_desc")}
+                actions={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full"
+                    onClick={() => setAddOpen(true)}
+                    disabled={policyLocked}
+                  >
+                    <Plus className="size-3.5" />
+                    {t("exam_admin_sections_add")}
+                  </Button>
+                }
+                footer={
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-sm text-ink-500">
+                      {t(sectionsDirty ? "exam_admin_sections_status_dirty" : "exam_admin_sections_status_clean")}
+                    </span>
+                    <Button
+                      type="button"
+                      className="rounded-full"
+                      onClick={handleSaveTests}
+                      disabled={replaceTests.isPending || policyLocked}
+                    >
+                      {replaceTests.isPending ? t("saving") : t("admin_exam_detail_tests_save")}
+                    </Button>
+                  </div>
+                }
+              >
+                {data.format_version !== 2 && data.mode && data.mode !== "standard" && (
                   <div className="mb-3 flex flex-wrap gap-2">
                     {data.mode === "utbk" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full"
-                        onClick={handleUtbkPreset}
-                      >
+                      <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={handleUtbkPreset}>
                         {t("tests_preset_utbk")}
                       </Button>
                     )}
                     {data.mode === "ielts" && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="rounded-full"
-                        onClick={handleIeltsPreset}
-                      >
+                      <Button type="button" size="sm" variant="outline" className="rounded-full" onClick={handleIeltsPreset}>
                         {t("tests_preset_ielts")}
                       </Button>
                     )}
                   </div>
                 )}
+                {policyLocked && <p className="mb-3 text-sm text-ink-600">{t("exam_admin_policy_locked")}</p>}
                 {attachedIds.length === 0 && pendingSections.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center text-sm text-ink-500">
-                    —
+                    {t("exam_admin_sections_empty")}
                   </div>
                 ) : (
-                  <ul className="space-y-2">
+                  <ul className="space-y-3">
                     {attachedIds.map((testId, idx) => {
-                      const meta = data.tests.find((e) => e.test_id === testId)?.test;
+                      const meta = sectionMeta(testId);
+                      const entry = data.tests.find((e) => e.test_id === testId);
+                      const presentation = presentations[testId] ?? "one_per_page";
+                      const materialCount = entry?.material_question_positions?.length ?? 0;
+                      const title = meta?.title ?? testId;
                       return (
-                        <li
-                          key={`${testId}-${idx}`}
-                          className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm"
-                        >
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">
-                              #{idx + 1} · {meta?.title ?? testId}
+                        <li key={`${testId}-${idx}`} className="rounded-lg border border-line p-3 sm:p-4">
+                          <div className="flex items-start gap-3">
+                            <NumberChip n={idx + 1} />
+                            <div className="min-w-0 flex-1">
+                              <h3 className="text-sm font-semibold [overflow-wrap:anywhere]">
+                                <Link href={`/admin/exam/tests/${testId}`} className="hover:underline">{title}</Link>
+                              </h3>
+                              {meta && (
+                                <p className="text-xs text-ink-500">
+                                  {meta.subject} · {t("exam_admin_section_questions").replace("{n}", String(meta.question_count ?? 0))}
+                                </p>
+                              )}
                             </div>
-                            {meta && (
-                              <div className="text-label text-ink-500">
-                                {meta.subject} · {meta.topic ?? "—"} ·{" "}
-                                {meta.question_count ?? 0} soal ·{" "}
-                                {meta.duration_minutes ?? 0} {t("minutes")}
-                              </div>
-                            )}
+                            <div className="flex shrink-0 items-center gap-1">
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                className="rounded-full"
+                                onClick={() => handleMoveTest(idx, -1)}
+                                disabled={policyLocked || idx === 0}
+                                aria-label={`${t("exam_admin_section_move_up")} ${title}`}
+                              >
+                                <ArrowUp className="size-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                className="rounded-full"
+                                onClick={() => handleMoveTest(idx, 1)}
+                                disabled={policyLocked || idx === attachedIds.length - 1}
+                                aria-label={`${t("exam_admin_section_move_down")} ${title}`}
+                              >
+                                <ArrowDown className="size-3" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="icon-xs"
+                                variant="ghost"
+                                className="rounded-full"
+                                onClick={() => handleRemoveTest(testId)}
+                                disabled={policyLocked}
+                                aria-label={`${t("admin_exam_detail_tests_remove")} ${title}`}
+                              >
+                                <Trash2 className="size-3" />
+                              </Button>
+                            </div>
                           </div>
-                          <Button
-                            type="button"
-                            size="icon-xs"
-                            variant="ghost"
-                            className="rounded-full"
-                            onClick={() => handleRemoveTest(testId)}
-                            aria-label={t("admin_exam_detail_tests_remove")}
-                          >
-                            <Trash2 className="size-3" />
-                          </Button>
+                          {data.format_version === 2 && (
+                            <>
+                              <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_160px]">
+                                <div className="grid content-start gap-1.5">
+                                  <span className="text-xs text-ink-500">{t("format_presentation")}</span>
+                                  <select
+                                    aria-label={`${t("format_presentation")} ${title}`}
+                                    aria-describedby={`presentation-hint-${testId}`}
+                                    className="w-full rounded-md border border-line bg-surface p-2 text-sm"
+                                    value={presentation}
+                                    onChange={(e) => setPresentations((prev) => ({ ...prev, [testId]: e.target.value as "one_per_page" | "all_on_page" }))}
+                                    disabled={replaceTests.isPending || policyLocked}
+                                  >
+                                    <option value="one_per_page">{t("format_one_per_page")}</option>
+                                    <option value="all_on_page">{t("format_all_on_page")}</option>
+                                  </select>
+                                  <small id={`presentation-hint-${testId}`} className="text-xs text-ink-500">
+                                    {t(presentation === "one_per_page" ? "exam_admin_presentation_one_hint" : "exam_admin_presentation_all_hint")}
+                                  </small>
+                                </div>
+                                <div className="grid content-start gap-1.5">
+                                  <span className="text-xs text-ink-500">{t("exam_admin_section_time")}</span>
+                                  <strong className="text-sm">
+                                    {data.timer_mode === "per_test"
+                                      ? `${meta?.duration_minutes ?? 0} ${t("minutes")}`
+                                      : t("exam_admin_section_time_overall")}
+                                  </strong>
+                                  <small className="text-xs text-ink-500">
+                                    {data.timer_mode === "per_test"
+                                      ? t("exam_admin_section_time_from_test")
+                                      : t("exam_admin_section_time_overall_note").replace("{n}", String(data.duration_minutes ?? 0))}
+                                  </small>
+                                </div>
+                              </div>
+                              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3 text-xs text-ink-500">
+                                <span>
+                                  {entry && t(entry.test.has_shared_material ? "exam_admin_section_material" : "exam_admin_section_no_material")}
+                                  {materialCount > 0 && ` · ${t("exam_admin_section_material_per_question").replace("{n}", String(materialCount))}`}
+                                </span>
+                                <Link href={`/admin/exam/tests/${testId}`} className="font-medium text-brand-700 hover:underline">
+                                  {t("exam_admin_section_source")}
+                                </Link>
+                              </div>
+                            </>
+                          )}
                         </li>
                       );
                     })}
@@ -746,93 +925,61 @@ export default function ExamPackageDetailPage() {
                     </ul>
                   </div>
                 )}
-                <div className="mt-4 flex justify-end">
-                  <Button
-                    type="button"
-                    className="rounded-full"
-                    onClick={handleSaveTests}
-                    disabled={replaceTests.isPending}
-                  >
-                    {replaceTests.isPending
-                      ? t("saving")
-                      : t("admin_exam_detail_tests_save")}
-                  </Button>
-                </div>
-              </div>
+              </AdminCard>
 
-              <div className="md-card-outlined p-4">
-                <h3 className="text-title-medium mb-3 font-semibold">
-                  {t("admin_exam_detail_tests_available")}
-                </h3>
-                <div className="relative mb-3">
-                  <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-                  <Input
-                    value={testSearch}
-                    onChange={(e) => setTestSearch(e.target.value)}
-                    placeholder={t("search")}
-                    className="pl-9"
-                  />
-                </div>
-                {availableLoading && testEntries.length === 0 ? (
-                  <div className="space-y-2">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                      <Skeleton key={i} className="h-10 w-full" />
-                    ))}
-                  </div>
-                ) : availableToAdd.length === 0 ? (
-                  <div className="rounded-md border border-dashed p-6 text-center text-sm text-ink-500">
-                    —
-                  </div>
-                ) : (
-                  <ul className="space-y-2">
-                    {availableToAdd.map((test) => (
-                      <li
-                        key={test.id}
-                        className="flex items-center justify-between gap-2 rounded-md border p-3 text-sm"
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate font-medium">{test.title}</div>
-                          <div className="text-label text-ink-500">
-                            {test.subject} · {test.topic} · {test.duration_minutes}{" "}
-                            {t("minutes")}
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          size="icon-xs"
-                          variant="outline"
-                          className="rounded-full"
-                          onClick={() => handleAddTest(test.id)}
-                          aria-label={t("admin_exam_detail_tests_add")}
-                        >
-                          <Plus className="size-3" />
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <div className="mt-3 text-label text-sm text-ink-500">
-                  {t("tests_shown_of_total")
-                    .replace("{shown}", String(availableToAdd.length))
-                    .replace(
-                      "{total}",
-                      String(availableResp?.total ?? availableToAdd.length),
-                    )}
-                </div>
-                {availableResp?.next_cursor && (
-                  <div className="mt-3 flex justify-end">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="rounded-full"
-                      onClick={handleLoadMoreTests}
-                      disabled={availableFetching}
-                    >
-                      {availableFetching ? t("sys_loading") : t("sys_load_more")}
-                    </Button>
-                  </div>
-                )}
+              <div className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
+                <ExamAdditionalRulesCard
+                  exam={data}
+                  summary={
+                    data.format_version === 2 && (
+                      <div className="space-y-3">
+                        <RuleLine
+                          icon={ArrowRight}
+                          title={t(data.navigation_policy === "sequential" ? "format_navigation_sequential" : "format_navigation_free")}
+                          body={t(data.navigation_policy === "sequential" ? "exam_admin_rules_nav_sequential" : "exam_admin_rules_nav_free")}
+                        />
+                        <RuleLine
+                          icon={Clock}
+                          title={t(data.timer_mode === "per_test" ? "format_timer_section" : "format_timer_overall")}
+                          body={
+                            data.timer_mode === "per_test"
+                              ? t("exam_admin_rules_timer_per_test")
+                                  .replace("{minutes}", String(totalMinutes))
+                                  .replace("{sections}", String(attachedIds.length))
+                              : t("exam_admin_rules_timer_overall").replace("{n}", String(data.duration_minutes ?? 0))
+                          }
+                        />
+                        <RuleLine
+                          icon={ListChecks}
+                          title={t("exam_admin_rules_counts")
+                            .replace("{questions}", String(totalQuestions))
+                            .replace("{sections}", String(attachedIds.length))}
+                          body={`${t(data.randomize ? "exam_admin_rules_randomized" : "exam_admin_rules_in_order")} ${t("exam_admin_rules_presentation_per_section")}`}
+                        />
+                      </div>
+                    )
+                  }
+                  footnote={t("exam_admin_rules_footnote")}
+                />
+                {data.format_version === 2 &&
+                  (materialConflicts.length > 0 ? (
+                    <div role="alert" className="rounded-lg border border-danger/20 bg-danger-bg p-4 text-sm text-danger">
+                      <strong className="block">{t("exam_admin_valid_conflict_title")}</strong>
+                      {materialConflicts.map((message) => (
+                        <p key={message} className="mt-1">{message}</p>
+                      ))}
+                    </div>
+                  ) : attachedIds.length > 0 ? (
+                    <div className="rounded-lg border border-success/20 bg-success-bg p-4 text-sm text-success">
+                      <strong className="block">{t("exam_admin_valid_title")}</strong>
+                      {t("exam_admin_valid_body")}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border border-warn/20 bg-warn-bg p-4 text-sm text-warn">
+                      <strong className="block">{t("exam_admin_valid_empty_title")}</strong>
+                      {t("exam_admin_valid_empty_body")}
+                    </div>
+                  ))}
               </div>
             </div>
           )}
@@ -1029,15 +1176,94 @@ export default function ExamPackageDetailPage() {
         </>
       )}
 
+      <ExamAddTestDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        tests={testEntries}
+        attachedIds={attachedIds}
+        search={testSearch}
+        onSearch={setTestSearch}
+        loading={availableLoading}
+        fetching={availableFetching}
+        total={availableResp?.total}
+        hasMore={Boolean(availableResp?.next_cursor)}
+        onLoadMore={handleLoadMoreTests}
+        onAdd={handleAddTest}
+      />
+
       <ExamModal
         open={editOpen}
         exam={data ?? null}
+        policyLocked={policyLocked}
+        onSessionsConflict={() => refetch()}
         onClose={() => setEditOpen(false)}
         onSaved={() => {
           setEditOpen(false);
           refetch();
         }}
       />
+    </div>
+  );
+}
+
+function AdminCard({
+  id,
+  title,
+  description,
+  actions,
+  footer,
+  children,
+}: {
+  id: string;
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+  footer?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section aria-labelledby={id} className="min-w-0 rounded-[20px] border border-line bg-surface text-foreground">
+      <div className="flex flex-wrap items-start justify-between gap-3 px-4 py-5 sm:px-6">
+        <div className="min-w-0">
+          <h2 id={id} className="text-title-medium font-semibold">{title}</h2>
+          {description && <p className="mt-1 text-sm text-ink-500">{description}</p>}
+        </div>
+        {actions}
+      </div>
+      {children && <div className="border-t border-line p-4 sm:p-6">{children}</div>}
+      {footer && <div className="border-t border-line px-4 py-4 sm:px-6">{footer}</div>}
+    </section>
+  );
+}
+
+function OverviewGroup({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: React.ReactNode }) {
+  return (
+    <section className="py-5 first:pt-0 last:pb-0">
+      <div className="mb-3 flex items-center gap-2">
+        <Icon className="size-[18px] text-brand-600" />
+        <h3 className="text-sm font-semibold">{title}</h3>
+      </div>
+      <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">{children}</dl>
+    </section>
+  );
+}
+
+function NumberChip({ n }: { n: number }) {
+  return (
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-xs font-semibold text-brand-700">
+      {n}
+    </span>
+  );
+}
+
+function RuleLine({ icon: Icon, title, body }: { icon: LucideIcon; title: string; body: string }) {
+  return (
+    <div className="flex items-start gap-3 text-sm">
+      <Icon className="mt-0.5 size-4 shrink-0 text-ink-500" />
+      <div className="min-w-0">
+        <strong className="block">{title}</strong>
+        <p className="text-ink-500">{body}</p>
+      </div>
     </div>
   );
 }

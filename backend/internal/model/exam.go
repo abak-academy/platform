@@ -30,10 +30,15 @@ type Test struct {
 	// SectionType identities an IELTS section (listening|reading|writing); NULL for
 	// standard tests and UTBK subtests. Pointer so "not set" is distinct from "".
 	SectionType *string `json:"section_type,omitempty"`
+	// SharedMaterialHTML is the section-wide context; sanitized like the question body.
+	SharedMaterialHTML *string `json:"shared_material_html"`
+	InstructionsHTML   *string `json:"instructions_html"`
 	// QuestionCount is only populated by list-style reads (e.g. ListTests LEFT JOIN).
 	// It is zero on freshly created tests and on direct GetByID reads.
-	QuestionCount int       `json:"question_count"`
-	CreatedAt     time.Time `json:"created_at"`
+	QuestionCount int `json:"question_count"`
+	// ExamCount is the number of exams this test is attached to; populated by GetTestDetail and ListTests only.
+	ExamCount int       `json:"exam_count"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Question is a reusable bank item. `Format` is one of: mcq, multi_answer, short,
@@ -41,17 +46,19 @@ type Test struct {
 // and surfaced via QuestionWithOptions for read paths. topic_id links to the curated
 // exam_topic list; it is nullable for questions created before topics were assigned.
 type Question struct {
-	ID             uuid.UUID  `json:"id"`
-	QuestionNumber int        `json:"question_number"`
-	Format         string     `json:"format"`
-	Body           string     `json:"body"`
-	CorrectAnswer  *string    `json:"correct_answer"`
-	Explanation    *string    `json:"explanation"`
-	Difficulty     *string    `json:"difficulty"`
-	ImageURL       *string    `json:"image_url"`
-	AudioURL       *string    `json:"audio_url"`
-	TopicID        *uuid.UUID `json:"topic_id"`
-	Topic          *string    `json:"topic"`
+	ID             uuid.UUID `json:"id"`
+	QuestionNumber int       `json:"question_number"`
+	Format         string    `json:"format"`
+	Body           string    `json:"body"`
+	CorrectAnswer  *string   `json:"correct_answer"`
+	Explanation    *string   `json:"explanation"`
+	Difficulty     *string   `json:"difficulty"`
+	ImageURL       *string   `json:"image_url"`
+	AudioURL       *string   `json:"audio_url"`
+	// MaterialHTML is per-question material; it replaces shared material under one_per_page.
+	MaterialHTML *string    `json:"material_html"`
+	TopicID      *uuid.UUID `json:"topic_id"`
+	Topic        *string    `json:"topic"`
 	// PointCorrect and PointWrong are positive magnitudes (fractional allowed) authored
 	// per question; the scoring engine (not the author) applies the sign for wrong answers.
 	PointCorrect float64 `json:"point_correct"`
@@ -175,6 +182,15 @@ type Exam struct {
 	// both nil until an admin sets them. No templating — plain values only.
 	EndScreenImageURL  *string `json:"end_screen_image_url"`
 	EndScreenPromoText *string `json:"end_screen_promo_text"`
+	// FormatVersion selects the runtime path: 1 legacy, 2 composable; never admin-mutable.
+	FormatVersion int `json:"format_version"`
+	// NavigationPolicy governs cross-section movement for format 2 (free|sequential).
+	NavigationPolicy string `json:"navigation_policy"`
+	// WhatsAppGroupURL, AdditionalRulesNote and AdditionalRulesURL are optional
+	// event info shown to students on the exam briefing; never an exam gate.
+	WhatsAppGroupURL    *string `json:"whatsapp_group_url"`
+	AdditionalRulesNote *string `json:"additional_rules_note"`
+	AdditionalRulesURL  *string `json:"additional_rules_url"`
 }
 
 // ExamTest is the M:N join between Exam and Test with sort order.
@@ -183,6 +199,8 @@ type ExamTest struct {
 	ExamID    uuid.UUID `json:"exam_id"`
 	TestID    uuid.UUID `json:"test_id"`
 	SortOrder int       `json:"sort_order"`
+	// QuestionPresentation is how the section renders its questions (one_per_page|all_on_page).
+	QuestionPresentation string `json:"question_presentation"`
 }
 
 // ExamRegistration enrolls a student in an exam; (student_id, exam_id) is unique.
@@ -265,8 +283,9 @@ type SessionViolationLog struct {
 // TestDetail is a composite read shape used by the authoring API for a single test page:
 // the parent Test and its full ordered question list with inline options.
 type TestDetail struct {
-	Test      Test                  `json:"test"`
-	Questions []QuestionWithOptions `json:"questions"`
+	QuestionPresentation string                `json:"-"`
+	Test                 Test                  `json:"test"`
+	Questions            []QuestionWithOptions `json:"questions"`
 }
 
 // QuestionWithOptions is a composite read shape: a Question plus its inline option list and blanks.
@@ -304,6 +323,11 @@ type ExamListItem struct {
 	Exam                `json:",inline"`
 	HasPublishedProduct bool `json:"has_published_product"`
 	RegistrationCount   int  `json:"registration_count"`
+	SectionCount        int  `json:"section_count"`
+	QuestionCount       int  `json:"question_count"`
+	SessionCount        int  `json:"session_count"`
+	// SectionsDurationMinutes is nil only when no Test is attached.
+	SectionsDurationMinutes *int `json:"sections_duration_minutes"`
 }
 
 // ExamTestEntry is the read shape for an exam_test row plus the inline Test metadata
@@ -312,21 +336,26 @@ type ExamListItem struct {
 type ExamTestEntry struct {
 	ExamTest `json:",inline"`
 	Test     struct {
-		ID              uuid.UUID `json:"id"`
-		Title           string    `json:"title"`
-		Subject         string    `json:"subject"`
-		Topic           *string   `json:"topic"`
-		DurationMinutes *int      `json:"duration_minutes"`
-		SectionType     *string   `json:"section_type,omitempty"`
-		QuestionCount   int       `json:"question_count"`
+		ID                uuid.UUID `json:"id"`
+		Title             string    `json:"title"`
+		Subject           string    `json:"subject"`
+		Topic             *string   `json:"topic"`
+		DurationMinutes   *int      `json:"duration_minutes"`
+		SectionType       *string   `json:"section_type,omitempty"`
+		QuestionCount     int       `json:"question_count"`
+		HasSharedMaterial bool      `json:"has_shared_material"`
 	} `json:"test"`
+	// MaterialQuestionPositions are 1-based positions (by test_question.sort_order) of
+	// questions carrying their own material; positions only, never the material itself.
+	MaterialQuestionPositions []int `json:"material_question_positions"`
 }
 
 // ExamDetail is the read shape returned by GET /admin/exams/:id — full Exam config
 // plus an ordered list of attached tests. Price/status live on the attached Product(s).
 type ExamDetail struct {
-	Exam  `json:",inline"`
-	Tests []ExamTestEntry `json:"tests"`
+	Exam        `json:",inline"`
+	Tests       []ExamTestEntry `json:"tests"`
+	HasSessions bool            `json:"has_sessions"`
 }
 
 // RegistrationListItem is the read shape returned by GET /api/v1/exam/registrations:
@@ -345,6 +374,63 @@ type RegistrationListItem struct {
 	// retake, 0 or 1 means a single sitting. Carried so the card can compute
 	// whether a submitted registration still has attempts left (FR20/FR21).
 	MaxAttempts *int `json:"max_attempts"`
+	// NavigationPolicy and TimerMode are the effective rules, filled by the
+	// service from RawRules; SectionCount/QuestionCount/SectionsDurationMinutes
+	// aggregate the exam's Tests (null duration means the exam has no Test).
+	NavigationPolicy        string          `json:"navigation_policy"`
+	TimerMode               string          `json:"timer_mode"`
+	SectionCount            int             `json:"section_count"`
+	QuestionCount           int             `json:"question_count"`
+	SectionsDurationMinutes *int            `json:"sections_duration_minutes"`
+	RawRules                ExamRuleColumns `json:"-"`
+}
+
+// ExamRuleColumns carries the raw exam columns the service resolves into the
+// effective navigation policy and timer mode.
+type ExamRuleColumns struct {
+	FormatVersion    int
+	Mode             string
+	NavigationPolicy string
+	TimerMode        string
+}
+
+// ExamPreviewSection is one Test of an exam as the student sees it before
+// starting: counts and metadata only, never question content.
+type ExamPreviewSection struct {
+	TestID               uuid.UUID `json:"test_id"`
+	Title                string    `json:"title"`
+	DurationMinutes      int       `json:"duration_minutes"`
+	QuestionCount        int       `json:"question_count"`
+	QuestionPresentation string    `json:"question_presentation"`
+}
+
+// RegistrationExam is the nested exam config of RegistrationDetail and the body
+// of the admin student-preview endpoint.
+type RegistrationExam struct {
+	ID                   uuid.UUID  `json:"id"`
+	Title                string     `json:"title"`
+	ScheduledAt          *time.Time `json:"scheduled_at"`
+	ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
+	RequiresCheckin      bool       `json:"requires_checkin"`
+	CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
+	// TimerMode and NavigationPolicy are the effective rules (see RawRules).
+	TimerMode        string `json:"timer_mode"`
+	NavigationPolicy string `json:"navigation_policy"`
+	MaxAttempts      *int   `json:"max_attempts"`
+	DurationMinutes  *int   `json:"duration_minutes"`
+	ResultConfig     string `json:"result_config"`
+	// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
+	ExamNumber              *int                 `json:"exam_number"`
+	CardEnabled             bool                 `json:"card_enabled"`
+	CardNotes               []string             `json:"card_notes"`
+	SectionCount            int                  `json:"section_count"`
+	QuestionCount           int                  `json:"question_count"`
+	SectionsDurationMinutes *int                 `json:"sections_duration_minutes"`
+	Sections                []ExamPreviewSection `json:"sections"`
+	WhatsAppGroupURL        *string              `json:"whatsapp_group_url"`
+	AdditionalRulesNote     *string              `json:"additional_rules_note"`
+	AdditionalRulesURL      *string              `json:"additional_rules_url"`
+	RawRules                ExamRuleColumns      `json:"-"`
 }
 
 // RegistrationDetail is the read shape returned by GET /api/v1/exam/registrations/:id:
@@ -372,21 +458,7 @@ type RegistrationDetail struct {
 		HelpURL      string `json:"help_url"`
 		SocialHandle string `json:"social_handle"`
 	} `json:"contact"`
-	Exam struct {
-		ID                   uuid.UUID  `json:"id"`
-		Title                string     `json:"title"`
-		ScheduledAt          *time.Time `json:"scheduled_at"`
-		ScheduledEndAt       *time.Time `json:"scheduled_end_at"`
-		RequiresCheckin      bool       `json:"requires_checkin"`
-		CheckInWindowMinutes *int       `json:"check_in_window_minutes"`
-		TimerMode            string     `json:"timer_mode"`
-		DurationMinutes      *int       `json:"duration_minutes"`
-		ResultConfig         string     `json:"result_config"`
-		// ExamNumber is joined in for the participant-number display format (FR-24, Task 5).
-		ExamNumber  *int     `json:"exam_number"`
-		CardEnabled bool     `json:"card_enabled"`
-		CardNotes   []string `json:"card_notes"`
-	} `json:"exam"`
+	Exam RegistrationExam `json:"exam"`
 }
 
 // ExamRosterEntry is one row of the admin participant roster for an exam

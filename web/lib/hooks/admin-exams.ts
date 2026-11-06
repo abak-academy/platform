@@ -210,7 +210,7 @@ export function usePresignCertificateAsset(examId: string) {
 export function useReplaceExamTests(id: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (testIds: string[]) =>
+    mutationFn: (testIds: string[] | { test_id: string; question_presentation: "one_per_page" | "all_on_page" }[]) =>
       authFetch<void>(`/admin/exams/${encodeURIComponent(id)}/tests`, {
         method: "PUT",
         body: JSON.stringify(testIds),

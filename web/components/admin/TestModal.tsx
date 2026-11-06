@@ -12,7 +12,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
 import { AudioUploadInput } from "@/components/admin/AudioUploadInput";
+import { materialHTMLOrNull } from "@/lib/rich-text";
+import { useTopics } from "@/lib/hooks/admin-topics";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
 
@@ -27,6 +30,8 @@ interface TestModalProps {
 export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: TestModalProps) {
   const { t } = useTranslation();
   const isEdit = Boolean(test);
+  const [sharedMaterial, setSharedMaterial] = useState("");
+  const [instructions, setInstructions] = useState("");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
@@ -34,10 +39,15 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
   const [audioUrl, setAudioUrl] = useState("");
   const [audioPlayLimit, setAudioPlayLimit] = useState("");
   const [sectionType, setSectionType] = useState<string | null>(null);
+  const catalog = useTopics().data?.data ?? [];
+  const subjectOptions = Array.from(new Set(catalog.map((tp) => tp.subject))).sort();
+  const topicOptions = catalog.filter((tp) => tp.subject === subject);
 
   useEffect(() => {
     if (!open) return;
     if (test) {
+      setSharedMaterial(test.shared_material_html ?? "");
+      setInstructions(test.instructions_html ?? "");
       setTitle(test.title ?? "");
       setSubject(test.subject ?? "");
       setTopic(test.topic ?? "");
@@ -46,6 +56,8 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       setAudioPlayLimit(test.audio_play_limit != null ? String(test.audio_play_limit) : "");
       setSectionType(test.section_type ?? null);
     } else {
+      setSharedMaterial("");
+      setInstructions("");
       setTitle("");
       setSubject("");
       setTopic("");
@@ -81,6 +93,8 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
         ...(audioUrl.trim() ? { audio_url: audioUrl.trim() } : {}),
         ...(audioPlayLimit !== "" ? { audio_play_limit: Number(audioPlayLimit) } : {}),
         ...sectionTypePayload,
+        shared_material_html: materialHTMLOrNull(sharedMaterial),
+        instructions_html: materialHTMLOrNull(instructions),
       };
       onSubmit(input);
       return;
@@ -94,13 +108,15 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
       ...(audioUrl.trim() ? { audio_url: audioUrl.trim() } : {}),
       ...(audioPlayLimit !== "" ? { audio_play_limit: Number(audioPlayLimit) } : {}),
       ...sectionTypePayload,
+        shared_material_html: materialHTMLOrNull(sharedMaterial),
+        instructions_html: materialHTMLOrNull(instructions),
     };
     onSubmit(input);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? t("tests_edit") : t("tests_new")}</DialogTitle>
@@ -123,29 +139,72 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="test-subject">{t("tests_field_subject")}</Label>
-                <Input
-                  id="test-subject"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder={t("tests_field_subject")}
-                  disabled={isPending}
-                />
-              </div>
+            {isEdit ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="test-subject">{t("tests_field_subject")}</Label>
+                  <Input
+                    id="test-subject"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder={t("tests_field_subject")}
+                    disabled={isPending}
+                  />
+                </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="test-topic">{t("tests_field_topic")}</Label>
-                <Input
-                  id="test-topic"
-                  value={topic}
-                  onChange={(e) => setTopic(e.target.value)}
-                  placeholder={t("tests_field_topic")}
-                  disabled={isPending}
-                />
+                <div className="grid gap-2">
+                  <Label htmlFor="test-topic">{t("tests_field_topic")}</Label>
+                  <Input
+                    id="test-topic"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    placeholder={t("tests_field_topic")}
+                    disabled={isPending}
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="test-subject">{t("tests_field_subject")}</Label>
+                  <select
+                    id="test-subject"
+                    value={subject}
+                    onChange={(e) => {
+                      setSubject(e.target.value);
+                      setTopic("");
+                    }}
+                    disabled={isPending}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                  >
+                    <option value="" />
+                    {subjectOptions.map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="test-topic">{t("tests_field_topic")}</Label>
+                  <select
+                    id="test-topic"
+                    value={topic}
+                    onChange={(e) => setTopic(e.target.value)}
+                    disabled={isPending || subject === ""}
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                  >
+                    <option value="" />
+                    {topicOptions.map((tp) => (
+                      <option key={tp.id} value={tp.name}>
+                        {tp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
 
             <div className="grid gap-2">
               <Label htmlFor="test-duration">{t("tests_field_duration")}</Label>
@@ -160,86 +219,99 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
               />
             </div>
 
-            <div className="grid gap-2">
-              <Label>{t("tests_field_section_type")}</Label>
-              <div className="grid grid-cols-4 gap-2">
-                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
-                  <input
-                    type="radio"
-                    name="section_type"
-                    value=""
-                    checked={sectionType === null}
-                    onChange={() => setSectionType(null)}
-                    disabled={isPending}
-                  />
-                  <span>{t("tests_field_section_type_none")}</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
-                  <input
-                    type="radio"
-                    name="section_type"
-                    value="listening"
-                    checked={sectionType === "listening"}
-                    onChange={() => setSectionType("listening")}
-                    disabled={isPending}
-                  />
-                  <span>{t("tests_field_section_type_listening")}</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
-                  <input
-                    type="radio"
-                    name="section_type"
-                    value="reading"
-                    checked={sectionType === "reading"}
-                    onChange={() => setSectionType("reading")}
-                    disabled={isPending}
-                  />
-                  <span>{t("tests_field_section_type_reading")}</span>
-                </label>
-                <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
-                  <input
-                    type="radio"
-                    name="section_type"
-                    value="writing"
-                    checked={sectionType === "writing"}
-                    onChange={() => setSectionType("writing")}
-                    disabled={isPending}
-                  />
-                  <span>{t("tests_field_section_type_writing")}</span>
-                </label>
-              </div>
-              {sectionType === "listening" && (
-                <p className="text-xs text-muted-foreground">
-                  URL audio wajib diisi untuk sesi Listening.
-                </p>
-              )}
-            </div>
+            {isEdit && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="test-shared-material">{t("format_shared_material")}</Label>
+                  <RichTextEditor id="test-shared-material" aria-label={t("format_shared_material")} value={sharedMaterial} onChange={setSharedMaterial} disabled={isPending} />
+                  <p className="text-xs text-ink-500">{t("format_reusable_material_hint")}</p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="test-instructions">{t("format_instructions")}</Label>
+                  <RichTextEditor id="test-instructions" aria-label={t("format_instructions")} value={instructions} onChange={setInstructions} disabled={isPending} />
+                </div>
+                <div className="grid gap-2">
+                  <Label>{t("tests_field_section_type")}</Label>
+                  <div className="grid grid-cols-4 gap-2">
+                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                      <input
+                        type="radio"
+                        name="section_type"
+                        value=""
+                        checked={sectionType === null}
+                        onChange={() => setSectionType(null)}
+                        disabled={isPending}
+                      />
+                      <span>{t("tests_field_section_type_none")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                      <input
+                        type="radio"
+                        name="section_type"
+                        value="listening"
+                        checked={sectionType === "listening"}
+                        onChange={() => setSectionType("listening")}
+                        disabled={isPending}
+                      />
+                      <span>{t("tests_field_section_type_listening")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                      <input
+                        type="radio"
+                        name="section_type"
+                        value="reading"
+                        checked={sectionType === "reading"}
+                        onChange={() => setSectionType("reading")}
+                        disabled={isPending}
+                      />
+                      <span>{t("tests_field_section_type_reading")}</span>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                      <input
+                        type="radio"
+                        name="section_type"
+                        value="writing"
+                        checked={sectionType === "writing"}
+                        onChange={() => setSectionType("writing")}
+                        disabled={isPending}
+                      />
+                      <span>{t("tests_field_section_type_writing")}</span>
+                    </label>
+                  </div>
+                  {sectionType === "listening" && (
+                    <p className="text-xs text-muted-foreground">
+                      URL audio wajib diisi untuk sesi Listening.
+                    </p>
+                  )}
+                </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
-                <AudioUploadInput
-                  id="test-audio-url"
-                  value={audioUrl}
-                  onChange={setAudioUrl}
-                  placeholder="https://..."
-                  disabled={isPending}
-                />
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
+                    <AudioUploadInput
+                      id="test-audio-url"
+                      value={audioUrl}
+                      onChange={setAudioUrl}
+                      placeholder="https://..."
+                      disabled={isPending}
+                    />
+                  </div>
 
-              <div className="grid gap-2">
-                <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
-                <Input
-                  id="test-audio-play-limit"
-                  type="number"
-                  min={0}
-                  value={audioPlayLimit}
-                  onChange={(e) => setAudioPlayLimit(e.target.value)}
-                  placeholder="0"
-                  disabled={isPending}
-                />
-              </div>
-            </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="test-audio-play-limit">{t("tests_field_audio_play_limit")}</Label>
+                    <Input
+                      id="test-audio-play-limit"
+                      type="number"
+                      min={0}
+                      value={audioPlayLimit}
+                      onChange={(e) => setAudioPlayLimit(e.target.value)}
+                      placeholder="0"
+                      disabled={isPending}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           <DialogFooter>

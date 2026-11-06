@@ -166,6 +166,26 @@ func TestExam_AdminValidation_rejects(t *testing.T) {
 			})
 		}
 	})
+	t.Run("exam format policy", func(t *testing.T) {
+		createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+			map[string]any{"title": "Policy Validation", "timer_mode": "per_test", "is_free": true}, token)
+		require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+		examID := createOut["id"].(string)
+
+		for _, tc := range []struct {
+			name, method, suffix string
+			body                 any
+		}{
+			{"patch unknown navigation_policy", http.MethodPatch, "", map[string]any{"navigation_policy": "bogus"}},
+			{"replace tests unknown question_presentation", http.MethodPut, "/tests", []map[string]any{{"test_id": testID, "question_presentation": "side_by_side"}}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				resp, out := doJSONBody(t, env, tc.method, "/api/v1/admin/exams/"+examID+tc.suffix, tc.body, token)
+				assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode, "body=%v", out)
+				assert.Equal(t, "validation_failed", out["code"])
+			})
+		}
+	})
 }
 
 func TestExam_AdminListTests_returns_data_and_cursor(t *testing.T) {
@@ -548,6 +568,49 @@ func TestExam_AdminUpdateQuestion_replaces_options_atomically(t *testing.T) {
 	assert.Contains(t, keys, "x")
 	assert.Contains(t, keys, "y")
 	assert.NotContains(t, keys, "a")
+}
+
+func TestExam_AdminUpdateQuestion_keeps_material_html_when_omitted(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+	testID := seedTest(t, env, "X", "math", "algebra", 60)
+	for _, tc := range []struct {
+		name  string
+		clear bool
+		want  any
+	}{
+		{"omitted preserves material", false, "<p>shared passage</p>"},
+		{"explicit null clears material", true, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/tests/"+testID+"/questions",
+				map[string]any{"format": "essay", "body": "explain gravity", "sort_order": 1, "material_html": "<p>shared passage</p>"}, token)
+			require.Equal(t, http.StatusCreated, createResp.StatusCode, "body=%v", createOut)
+			created := createOut["question"].(map[string]any)
+			qID := created["id"].(string)
+			require.Equal(t, "<p>shared passage</p>", created["material_html"])
+			assertBankMaterial := func(want any) {
+				t.Helper()
+				resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/questions?search="+qID, nil, token)
+				require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+				rows := out["data"].([]any)
+				require.Len(t, rows, 1)
+				question := rows[0].(map[string]any)["question"].(map[string]any)
+				require.Equal(t, qID, question["id"])
+				assert.Equal(t, want, question["material_html"])
+			}
+			assertBankMaterial("<p>shared passage</p>")
+			body := map[string]any{"format": "essay", "body": "explain gravity again", "sort_order": 1}
+			if tc.clear {
+				body["material_html"] = nil
+			}
+			resp, out := doJSONBody(t, env, http.MethodPatch, "/api/v1/admin/questions/"+qID, body, token)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+			assert.Equal(t, tc.want, out["question"].(map[string]any)["material_html"])
+			assertBankMaterial(tc.want)
+		})
+	}
 }
 
 // Task 6 relaxed the old "attached to any test" refusal: a question attached
@@ -1002,6 +1065,43 @@ func TestExam_AdminReplaceExamTests_declarative_and_bad_id_leaves_rows_intact(t 
 	assert.Equal(t, t3, curAfter[0].(map[string]any)["test"].(map[string]any)["id"])
 }
 
+func TestExam_AdminReplaceExamTests_rich_form_sets_question_presentation(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	createResp, createOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams",
+		map[string]any{"title": "Rich Form", "timer_mode": "per_test", "is_free": true}, token)
+	require.Equal(t, http.StatusCreated, createResp.StatusCode)
+	examID := createOut["id"].(string)
+
+	t1 := seedTest(t, env, "RF1", "math", "algebra", 30)
+	t2 := seedTest(t, env, "RF2", "math", "algebra", 30)
+
+	putResp := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests",
+		[]map[string]any{
+			{"test_id": t1, "question_presentation": "all_on_page"},
+			{"test_id": t2},
+		}, token)
+	require.Equal(t, http.StatusNoContent, putResp.StatusCode)
+	putResp.Body.Close()
+
+	resp, detail := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/exams/"+examID, nil, token)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	entries := detail["tests"].([]any)
+	require.Len(t, entries, 2)
+	for i, tc := range []struct{ name, testID, presentation string }{
+		{"explicit presentation", t1, "all_on_page"},
+		{"omitted presentation", t2, "one_per_page"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entry := entries[i].(map[string]any)
+			assert.Equal(t, tc.testID, entry["test"].(map[string]any)["id"])
+			assert.Equal(t, tc.presentation, entry["question_presentation"])
+		})
+	}
+}
+
 func TestExam_Product_UpdatePriceViaGenericProductEndpoint(t *testing.T) {
 	env := newTestEnv(t)
 	examAdminID := seedUser(t, env, "admin_exam", "active", false)
@@ -1080,6 +1180,11 @@ func TestExam_Product_PublishViaGenericProductEndpoint(t *testing.T) {
 		map[string]any{"title": "Publishable", "timer_mode": "overall", "duration_minutes": 90, "is_free": false}, examToken)
 	require.Equal(t, http.StatusCreated, createExamResp.StatusCode)
 	examID := createExamOut["id"].(string)
+	testID := seedTest(t, env, "Publish Section", "math", "topic", 30)
+	seedQuestion(t, env, testID, "essay", "Explain", 1)
+	attachResp := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+examID+"/tests", []string{testID}, examToken)
+	require.Equal(t, http.StatusNoContent, attachResp.StatusCode)
+	attachResp.Body.Close()
 
 	createProductResp, createProductOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/products",
 		map[string]any{"type": "exam", "name": "Publishable", "price": 25000, "exam_ids": []string{examID}}, storeToken)
@@ -1996,4 +2101,74 @@ func findExamRow(t *testing.T, out map[string]any, examID string) map[string]any
 		}
 	}
 	return nil
+}
+
+func TestExam_ComposableFormat_HTTPPublishAndAttempt(t *testing.T) {
+	env := newTestEnv(t)
+	admin := authToken(t, env, seedUser(t, env, "super_admin", "active", false), "super_admin")
+	for _, tc := range []struct{ name, navigation, presentation string }{
+		{"free all questions", "free", "all_on_page"},
+		{"sequential single question", "sequential", "one_per_page"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, exam := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/exams", map[string]any{"title": "Composable HTTP", "timer_mode": "overall", "duration_minutes": 60, "navigation_policy": tc.navigation, "randomize": true, "result_config": "score_only"}, admin)
+			require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", exam)
+			require.Equal(t, float64(2), exam["format_version"])
+			eid := exam["id"].(string)
+			tid := seedTest(t, env, "HTTP Section", "math", "topic", 30)
+			first := seedQuestion(t, env, tid, "essay", "Question one", 1)
+			second := seedQuestion(t, env, tid, "essay", "Question two", 2)
+			put := env.doJSON(t, http.MethodPut, "/api/v1/admin/exams/"+eid+"/tests", []map[string]any{{"test_id": tid, "question_presentation": tc.presentation}}, admin)
+			require.Equal(t, http.StatusNoContent, put.StatusCode)
+			put.Body.Close()
+			resp, product := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/products", map[string]any{"type": "exam", "name": "HTTP Runtime", "price": 0, "exam_ids": []string{eid}}, admin)
+			require.Equal(t, http.StatusCreated, resp.StatusCode, "body=%v", product)
+			pid := product["id"].(string)
+			if tc.presentation == "all_on_page" {
+				_, err := env.pool.Exec(t.Context(), `UPDATE question SET material_html='<p>Own context</p>' WHERE id=$1`, first)
+				require.NoError(t, err)
+				rejected, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/products/"+pid+"/publish", nil, admin)
+				require.Equal(t, http.StatusUnprocessableEntity, rejected.StatusCode, "body=%v", out)
+				require.Contains(t, out["message"], first)
+				var status string
+				require.NoError(t, env.pool.QueryRow(t.Context(), `SELECT status FROM product WHERE id=$1`, pid).Scan(&status))
+				require.Equal(t, "draft", status)
+				_, err = env.pool.Exec(t.Context(), `UPDATE question SET material_html=NULL WHERE id=$1`, first)
+				require.NoError(t, err)
+			}
+			published, out := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/products/"+pid+"/publish", nil, admin)
+			require.Equal(t, http.StatusOK, published.StatusCode, "body=%v", out)
+			studentID := seedUser(t, env, "student", "active", false)
+			student := authToken(t, env, studentID, "student")
+			reg := seedExamRegistration(t, env, studentID, eid)
+			resp, start := doJSONBody(t, env, http.MethodPost, "/api/v1/exam/sessions", map[string]any{"registration_id": reg}, student)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", start)
+			require.Equal(t, tc.navigation, start["navigation_policy"])
+			sid := start["session_id"].(string)
+			section := start["tests"].([]any)[0].(map[string]any)
+			require.Equal(t, tc.presentation, section["question_presentation"])
+			questions := section["questions"].([]any)
+			require.Len(t, questions, 2)
+			require.ElementsMatch(t, []string{first, second}, []string{questions[0].(map[string]any)["id"].(string), questions[1].(map[string]any)["id"].(string)})
+			save := env.doJSON(t, http.MethodPatch, "/api/v1/exam/sessions/"+sid+"/answers", map[string]any{"answers": []map[string]any{{"question_id": first, "answer": "Response"}}}, student)
+			require.Equal(t, http.StatusOK, save.StatusCode)
+			save.Body.Close()
+			resp, resumed := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sid, nil, student)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Equal(t, questions, resumed["tests"].([]any)[0].(map[string]any)["questions"])
+			require.Len(t, resumed["answers"], 1)
+			extended, extensionOut := doJSONBody(t, env, http.MethodPost, "/api/v1/admin/sessions/"+sid+"/reopen", map[string]any{"extend_minutes": 15}, admin)
+			require.Equal(t, http.StatusOK, extended.StatusCode, "body=%v", extensionOut)
+			resp, compensated := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sid, nil, student)
+			require.Equal(t, http.StatusOK, resp.StatusCode)
+			require.Greater(t, compensated["remaining_seconds"].(float64), float64(4400))
+			require.NotEmpty(t, compensated["extended_until"])
+			require.Equal(t, resumed["answers"], compensated["answers"])
+
+			resp, submitted := doJSONBody(t, env, http.MethodPost, "/api/v1/exam/sessions/"+sid+"/submit", nil, student)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", submitted)
+			resp, result := doJSONBody(t, env, http.MethodGet, "/api/v1/exam/sessions/"+sid+"/result", nil, student)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", result)
+		})
+	}
 }

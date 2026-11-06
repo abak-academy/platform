@@ -219,7 +219,8 @@ var (
 	ErrCertificateDisabled = errors.New("certificate disabled for this exam")
 	// ErrCardDisabled is returned when the participant card is disabled for an
 	// exam (card_enabled = false).
-	ErrCardDisabled = errors.New("card disabled for this exam")
+	ErrCardDisabled    = errors.New("card disabled for this exam")
+	ErrExamHasSessions = errors.New("exam already has attempts; navigation, randomization, timer defaults and attached tests are frozen")
 )
 
 // --- from exam_grant.go ---

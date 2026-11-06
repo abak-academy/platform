@@ -328,6 +328,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminResultsWorkspace.GET("/:id/results-workspace/:registration_id/attempts", h.AdminGetResultsWorkspaceAttempts)
 	adminResultsWorkspace.GET("/:id/results-workspace/sessions/:session_id", h.AdminGetResultsWorkspaceResultDetail)
 
+	// Admin student-view preview of an exam — super_admin and admin_exam via
+	// their own capability so it does not move with results-workspace:read.
+	adminExamPreview := admin.Group("/exams")
+	adminExamPreview.Use(handler.RBACMiddleware("exam-preview:read"))
+	adminExamPreview.GET("/:id/preview", h.AdminPreviewExam)
+
 	// Admin upload routes (image + audio presigning)
 	adminUploads := admin.Group("/uploads")
 	adminUploads.Use(handler.RBACMiddleware("uploads:write"))

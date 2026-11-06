@@ -1311,4 +1311,11 @@ describe("QuestionEditor", () => {
       );
     });
   });
+  it.each([null, "<p>Question passage</p>"])("preserves material %s while updating an existing question", async material => {
+    renderWithClient(<QuestionEditor testId="test-1" question={makeQuestionWithOptions({material_html:material})} onCancel={vi.fn()} />);
+    expect(screen.getByLabelText("Materi khusus soal").textContent).toBe(material ? "Question passage" : "");
+    fireEvent.click(screen.getByRole("button",{name:/simpan soal/i}));
+    await waitFor(() => expect(mockTestSaveAsync).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({material_html:material})})));
+  });
+
 });

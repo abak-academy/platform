@@ -23,6 +23,7 @@ import {
   useUpdateBankQuestion,
 } from "@/lib/hooks/admin-bank-questions";
 import { useTopics } from "@/lib/hooks/admin-topics";
+import { materialHTMLOrNull } from "@/lib/rich-text";
 import { useTranslation } from "@/lib/i18n";
 import type {
   AdminQuestionInput,
@@ -758,6 +759,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
   const formatOptions: QuestionFormat[] = CREATABLE_FORMATS.includes(format)
     ? CREATABLE_FORMATS
     : [format, ...CREATABLE_FORMATS];
+  const [material, setMaterial] = useState(question?.question.material_html ?? "");
   const [body, setBody] = useState(question?.question.body ?? "");
   const [difficulty, setDifficulty] = useState<string>(question?.question.difficulty ?? "");
   const [explanation, setExplanation] = useState(question?.question.explanation ?? "");
@@ -793,6 +795,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
     if (!question) {
       setFormat("mcq");
       setBody("");
+      setMaterial("");
       setDifficulty("");
       setExplanation("");
       setImageUrl("");
@@ -852,6 +855,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
       pointWrong,
       topicId
     );
+    input.material_html = materialHTMLOrNull(material);
     try {
       if (isTestScoped) {
         await testSave.mutateAsync({ question: question?.question.id, input });
@@ -931,6 +935,10 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
               </div>
             </div>
 
+            <div className="grid gap-2">
+              <Label htmlFor="question-material">{t("format_question_material")}</Label>
+              <RichTextEditor id="question-material" aria-label={t("format_question_material")} value={material} onChange={setMaterial} disabled={savePending} />
+            </div>
             <div className="grid gap-2">
               <Label htmlFor="question-body">{t("tests_field_body")}</Label>
               <RichTextEditor
