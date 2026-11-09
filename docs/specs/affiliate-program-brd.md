@@ -11,7 +11,7 @@
 | Platform | Aplikasi web ujian online dan marketplace (Backend Golang, Frontend Next.js) |
 | Persetujuan formal | Tidak diperlukan (dokumen internal) |
 | Perubahan v0.2 | Fase 1 tanpa pajak, status penerimaan barang fisik sudah ada, admin adalah super admin. Q-02, Q-09, dan Q-13 dipindah ke daftar terjawab, Q-19 ditambahkan |
-| Perubahan v0.3 | Order manual dihapus dari lingkup (BR-KOM-07 dan FR-KOM-06). Ambang persetujuan kedua penyesuaian nonaktif Fase 1 (satu akun super admin). Masa tunggu digital default 7 hari. Representasi uang mengikuti konvensi repo. A-04 dan A-10 terjawab; Q-08, Q-14, Q-15, dan Q-19 pindah ke daftar terjawab. Diskusi admin dashboard: komisi persen atau nominal (per unit, dibatasi harga item), masa tunggu fisik satu parameter 14 hari, durasi ikatan per level, jadwal pencairan hanya informasi, batas pendaftaran harian untuk affiliator, semua job aman di-rerun. TRD: `docs/specs/affiliate-program.md` |
+| Perubahan v0.3 | Order manual dihapus dari lingkup (BR-KOM-07 dan FR-KOM-06). Ambang persetujuan kedua penyesuaian nonaktif Fase 1 (satu akun super admin). Masa tunggu digital default 7 hari. Representasi uang mengikuti konvensi repo. A-04 dan A-10 terjawab; Q-08, Q-14, Q-15, dan Q-19 pindah ke daftar terjawab. Diskusi admin dashboard: komisi persen atau nominal (per unit, dibatasi harga item), masa tunggu fisik satu parameter 14 hari, durasi ikatan per level, jadwal pencairan hanya informasi, batas pendaftaran harian untuk affiliator (dihapus kemudian, lihat `partner-program-brd.md`), semua job aman di-rerun. TRD: `docs/specs/affiliate-program.md` |
 | Perubahan v0.4 | Penyederhanaan skema dan lingkup. Komisi, penarikan, dan ledger digabung menjadi satu buku **transaksi**: nominal, tipe, dan waktu efektif tidak berubah, hanya status alur kerja yang berpindah, dan saldo dapat direkonstruksi untuk tanggal mana pun (BR-KOM-08, BR-KOM-11, BR-KOM-12, BR-PCR-01, NFR-02). Ditunda dari Fase 1: sistem pelanggaran dan banding, penandaan kasus mencurigakan, statistik klik link, pembekuan saldo, kunci level, skors berjangka, dan riwayat level terstruktur (riwayat manual tetap di audit log). Ambang naik dan ambang bertahan menjadi pengaturan per level. Dokumen dipindah dari root repo ke `docs/specs/affiliate-program-brd.md` |
 
 ---
@@ -204,13 +204,13 @@ Status komisi hanya Menunggu, Tersedia, dan Dibatalkan. Komisi tidak punya statu
 
 | ID | Aturan |
 |---|---|
-| BR-ATR-01 | Mengklik link referral menyimpan kode di cookie selama masa berlaku yang diatur admin (default 30 hari). Cookie hanya menjembatani jarak antara klik dan pendaftaran. |
+| BR-ATR-01 | Mengklik link referral menyimpan kode di cookie selama masa berlaku yang diatur admin (wajib diisi, tanpa default). Cookie hanya menjembatani jarak antara klik dan pendaftaran. |
 | BR-ATR-02 | Saat siswa baru mendaftar, siswa terikat ke affiliator jika ada kode yang diisi manual atau cookie yang masih valid. Jika keduanya ada dan berbeda, **kode manual didahulukan** (asumsi A-03). |
 | BR-ATR-03 | Jika sebelum mendaftar calon siswa mengklik link beberapa affiliator berbeda, yang berlaku adalah **klik terakhir** (asumsi A-02). |
 | BR-ATR-04 | Satu siswa hanya terikat ke satu affiliator pada satu waktu. Selama ikatan aktif, klik link atau kode affiliator lain tidak mengubah ikatan. |
 | BR-ATR-05 | **Kode di checkout** hanya dapat dipakai siswa yang saat ini tidak terikat dan terdaftar setelah tanggal peluncuran. Ikatan dan komisi terjadi ketika order tersebut berstatus lunas. |
 | BR-ATR-06 | Akun yang terdaftar sebelum tanggal peluncuran fitur **tidak dapat diikat** ke affiliator. |
-| BR-ATR-07 | Durasi ikatan default **3 bulan** sejak ikatan dibuat. Setiap pembelian lunas dengan nilai bersih minimal sebesar nilai yang diatur admin memperpanjang ikatan 3 bulan terhitung dari tanggal pembayaran. **Tidak ada batas maksimal** total durasi. |
+| BR-ATR-07 | Durasi ikatan diatur admin (wajib diisi, tanpa default) sejak ikatan dibuat. Setiap pembelian lunas dengan nilai bersih minimal sebesar nilai yang diatur admin memperpanjang ikatan sepanjang durasi ikatan terhitung dari tanggal pembayaran. **Tidak ada batas maksimal** total durasi. |
 | BR-ATR-08 | Setelah ikatan berakhir, siswa bebas. Riwayat ikatan **tidak mengunci**: affiliator mana pun, termasuk affiliator sebelumnya, dapat mengikatnya kembali lewat kode di checkout (selama memenuhi BR-ATR-05). |
 | BR-ATR-09 | Komisi tidak diberikan atas pembelian milik affiliator sendiri. Sistem menolak pemakaian kode sendiri: ikatan tidak dibuat bila email atau nomor HP siswa identik dengan affiliator. |
 | BR-ATR-10 | Perubahan durasi ikatan oleh admin hanya berlaku untuk ikatan yang dibuat atau diperpanjang setelah perubahan. |
