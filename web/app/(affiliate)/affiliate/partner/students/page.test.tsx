@@ -10,10 +10,18 @@ const hook = vi.hoisted(() => ({
   refetch: vi.fn(),
   registerMutate: vi.fn(),
   reissueMutate: vi.fn(),
+  studentParams: vi.fn(),
+  fetchAll: vi.fn(),
+  downloadCsv: vi.fn(),
 }));
 
 vi.mock("@/lib/hooks/partner", () => ({
-  usePartnerStudents: () => ({ ...hook.state, fetchNextPage: hook.fetchNextPage, refetch: hook.refetch }),
+  usePartnerStudents: (params: unknown) => {
+    hook.studentParams(params);
+    return { ...hook.state, fetchNextPage: hook.fetchNextPage, refetch: hook.refetch };
+  },
+  usePartnerSchools: () => ({ data: { data: [{ id: "sch-1", name: "SMA Pilihan", code: "P1", npsn: "123", status: "active" }] } }),
+  fetchAllPartnerPages: (...a: unknown[]) => hook.fetchAll(...a),
   useRegisterPartnerStudent: () => ({ mutate: hook.registerMutate, isPending: false }),
   useReissuePartnerCredentials: () => ({ mutate: hook.reissueMutate, isPending: false, data: undefined, reset: vi.fn() }),
 }));
@@ -21,6 +29,7 @@ vi.mock("@/components/admin/BulkImportModal", () => ({
   BulkImportModal: ({ open, partner }: { open: boolean; partner?: boolean }) => (open ? <div data-testid="bulk-modal" data-partner={String(partner)} /> : null),
 }));
 vi.mock("@/components/SchoolPicker", () => ({ SchoolPicker: () => <div /> }));
+vi.mock("@/lib/csv", () => ({ downloadCsv: (...a: unknown[]) => hook.downloadCsv(...a) }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 function student(over: Partial<PartnerStudent>): PartnerStudent {
@@ -67,6 +76,39 @@ describe("PartnerStudentsPage", () => {
     expect(screen.getAllByText("Belum ganti kata sandi")).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Kata sandi baru" })).toHaveLength(1);
     expect(screen.queryByText(/@/)).toBeNull();
+  });
+
+  it("says who registered each student", () => {
+    setPages([{ data: [student({ id: "a", name: "Ani Aktif", registered_by_me: true }), student({ id: "c", name: "Cici Sekolah", registered_by_me: false })] }]);
+    render(<PartnerStudentsPage />);
+    expect(screen.getByText("Anda")).toBeInTheDocument();
+    expect(screen.getByText("Bukan Anda")).toBeInTheDocument();
+  });
+
+  it("filters by who registered, school and account status", () => {
+    setPages([{ data: [student({})] }]);
+    render(<PartnerStudentsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hanya yang saya daftarkan" }));
+    fireEvent.change(screen.getByLabelText("Sekolah"), { target: { value: "sch-1" } });
+    fireEvent.change(screen.getByLabelText("Status akun"), { target: { value: "deactivated" } });
+
+    expect(hook.studentParams).toHaveBeenLastCalledWith(expect.objectContaining({ registeredByMe: true, schoolId: "sch-1", status: "deactivated" }));
+  });
+
+  it("downloads every student that matches the filters, not only the loaded page", async () => {
+    setPages([{ data: [student({})] }]);
+    hook.fetchAll.mockResolvedValue([student({ name: "Ani A" }), student({ id: "s2", name: "Budi B", registered_by_me: true })]);
+    render(<PartnerStudentsPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hanya yang saya daftarkan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Unduh CSV" }));
+
+    await waitFor(() => expect(hook.downloadCsv).toHaveBeenCalled());
+    expect(hook.fetchAll).toHaveBeenCalledWith("/partners/me/students", expect.objectContaining({ registered_by_me: "true" }));
+    const [, , rows] = hook.downloadCsv.mock.calls[0];
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toContain("Budi B");
   });
 
   it("explains an empty list that is empty because no school is assigned", () => {

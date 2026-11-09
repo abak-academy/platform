@@ -26,6 +26,7 @@ import {
   FileBarChart,
   HandCoins,
   GraduationCap,
+  School,
   ShoppingCart,
   Ticket,
 } from "lucide-react";
@@ -214,6 +215,7 @@ const AFFILIATOR_NAV: RoleNavConfig = [
     titleKey: "aff_nav_group_partner",
     items: [
       { labelKey: "partner_nav_dashboard", href: "/affiliate/partner", icon: LayoutDashboard, exact: true },
+      { labelKey: "partner_nav_schools", href: "/affiliate/partner/schools", icon: School },
       { labelKey: "partner_nav_students", href: "/affiliate/partner/students", icon: GraduationCap },
       { labelKey: "partner_nav_orders", href: "/affiliate/partner/orders", icon: ShoppingCart },
       { labelKey: "partner_nav_vouchers", href: "/affiliate/partner/vouchers", icon: Ticket },

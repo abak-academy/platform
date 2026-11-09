@@ -11,6 +11,7 @@ import type {
   PartnerOrderPage,
   PartnerOrderPreview,
   PartnerProduct,
+  PartnerSchool,
   PartnerStudentPage,
   PartnerStudentRegistration,
   PartnerVoucher,
@@ -38,12 +39,16 @@ export function usePartnerDashboard() {
 export interface PartnerStudentParams {
   q?: string;
   registeredByMe?: boolean;
+  schoolId?: string;
+  status?: string;
 }
 
 function studentQuery(p: PartnerStudentParams, cursor: string): string {
   const qs = new URLSearchParams();
   if (p.q) qs.set("q", p.q);
   if (p.registeredByMe) qs.set("registered_by_me", "true");
+  if (p.schoolId) qs.set("school_id", p.schoolId);
+  if (p.status) qs.set("status", p.status);
   if (cursor) qs.set("cursor", cursor);
   qs.set("limit", "50");
   return `?${qs.toString()}`;
@@ -118,11 +123,46 @@ export function useCreatePartnerOrder() {
   });
 }
 
-export function usePartnerOrders() {
-  return useQuery({
-    queryKey: partnerKeys.orders(),
-    queryFn: () => authFetch<PartnerOrderPage>("/partners/me/orders"),
+export function usePartnerOrders(status = "") {
+  return useInfiniteQuery({
+    queryKey: [...partnerKeys.orders(), status],
+    initialPageParam: "",
+    queryFn: ({ pageParam }) => {
+      const qs = new URLSearchParams({ limit: "20" });
+      if (status) qs.set("status", status);
+      if (pageParam) qs.set("cursor", pageParam);
+      return authFetch<PartnerOrderPage>(`/partners/me/orders?${qs.toString()}`);
+    },
+    getNextPageParam: (last) => last.next_cursor || undefined,
+    placeholderData: keepPreviousData,
   });
+}
+
+export function usePartnerOrder(id: string) {
+  return useQuery({
+    queryKey: partnerKeys.order(id),
+    queryFn: () => authFetch<PartnerOrder>(`/partners/me/orders/${encodeURIComponent(id)}`),
+  });
+}
+
+export function usePartnerSchools() {
+  return useQuery({
+    queryKey: [...partnerKeys.all, "schools"],
+    queryFn: () => authFetch<{ data: PartnerSchool[] }>("/partners/me/schools"),
+  });
+}
+
+export async function fetchAllPartnerPages<T>(path: string, params: Record<string, string> = {}): Promise<T[]> {
+  const rows: T[] = [];
+  let cursor = "";
+  do {
+    const qs = new URLSearchParams({ ...params, limit: "100" });
+    if (cursor) qs.set("cursor", cursor);
+    const page = await authFetch<{ data: T[]; next_cursor?: string }>(`${path}?${qs.toString()}`);
+    rows.push(...page.data);
+    cursor = page.next_cursor ?? "";
+  } while (cursor);
+  return rows;
 }
 
 export function usePartnerProductAccess(productId: string | null) {

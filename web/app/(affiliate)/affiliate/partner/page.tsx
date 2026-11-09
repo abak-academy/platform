@@ -4,10 +4,15 @@ import Link from "next/link";
 import { GraduationCap, ShoppingCart, Ticket, Package } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { StatCard } from "@/components/admin/StatCard";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePartnerDashboard } from "@/lib/hooks/partner";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
+
+const SHORTCUTS: { href: string; icon: typeof GraduationCap; title: I18nKey; desc: I18nKey }[] = [
+  { href: "/affiliate/partner/orders/new", icon: ShoppingCart, title: "partner_dash_shortcut_orders", desc: "partner_dash_shortcut_orders_desc" },
+  { href: "/affiliate/partner/students", icon: GraduationCap, title: "partner_dash_shortcut_students", desc: "partner_dash_shortcut_students_desc" },
+  { href: "/affiliate/partner/orders", icon: Package, title: "partner_dash_shortcut_history", desc: "partner_dash_shortcut_history_desc" },
+];
 
 export default function PartnerDashboardPage() {
   const { t } = useTranslation();
@@ -32,14 +37,20 @@ export default function PartnerDashboardPage() {
           <StatCard label={t("partner_stat_products")} value={String(d?.products_open ?? 0)} icon={Package} accent="secondary" />
         </div>
       )}
-      <div className="flex flex-wrap gap-3">
-        <Button asChild>
-          <Link href="/affiliate/partner/orders/new">{t("partner_dash_cta_order")}</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/affiliate/partner/students">{t("partner_dash_cta_students")}</Link>
-        </Button>
-      </div>
+      <section aria-label={t("partner_dash_shortcuts")} className="space-y-3">
+        <h2 className="font-semibold text-ink-900">{t("partner_dash_shortcuts")}</h2>
+        <div className="grid gap-3 sm:grid-cols-3">
+          {SHORTCUTS.map((s) => (
+            <Link key={s.href} href={s.href} className="md-card-outlined flex items-start gap-3 p-4 transition-colors hover:bg-surface-2">
+              <s.icon className="mt-0.5 size-5 shrink-0 text-primary" aria-hidden />
+              <span>
+                <span className="block font-medium text-ink-900">{t(s.title)}</span>
+                <span className="block text-xs text-ink-500">{t(s.desc)}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

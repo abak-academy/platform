@@ -2038,6 +2038,14 @@ export interface PartnerVoucher {
   partner?: PartnerVoucherInfo;
 }
 
+export interface PartnerSchool {
+  id: string;
+  name: string;
+  code: string;
+  npsn: string | null;
+  status: string;
+}
+
 export interface PartnerOrderStudent {
   id: string;
   name: string;
@@ -2064,6 +2072,7 @@ export interface PartnerOrder {
   created_at: string;
   items: { product_id: string; name: string; qty: number; unit_price: number }[];
   students?: PartnerOrderStudent[];
+  promo_code?: string;
 }
 
 export interface PartnerOrderPage {

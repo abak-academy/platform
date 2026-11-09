@@ -43,11 +43,39 @@ export default function PartnerVouchersPage() {
     },
     { key: "discount", header: t("partner_voucher_col_discount"), cell: discount },
     {
+      key: "cap",
+      header: t("partner_voucher_col_cap"),
+      cell: (v) => (v.max_discount_amount ? formatRupiah(v.max_discount_amount) : t("partner_voucher_none")),
+    },
+    {
+      key: "min_order",
+      header: t("partner_voucher_col_min_order"),
+      cell: (v) => (v.min_order_amount ? formatRupiah(v.min_order_amount) : t("partner_voucher_none")),
+    },
+    {
+      key: "min_students",
+      header: t("partner_voucher_col_min_students"),
+      cell: (v) => (v.partner?.min_students ? String(v.partner.min_students) : t("partner_voucher_none")),
+    },
+    {
       key: "unit",
       header: t("partner_voucher_col_unit"),
-      cell: (v) => t(v.partner?.quota_unit === "student" ? "partner_unit_student" : "partner_unit_order"),
+      cell: (v) => {
+        const student = v.partner?.quota_unit === "student";
+        return (
+          <div>
+            <div>{t(student ? "partner_unit_student" : "partner_unit_order")}</div>
+            <div className="max-w-[16rem] text-xs text-ink-500">{t(student ? "partner_voucher_unit_hint_student" : "partner_voucher_unit_hint_order")}</div>
+          </div>
+        );
+      },
     },
     { key: "remaining", header: t("partner_voucher_col_remaining"), cell: remaining },
+    {
+      key: "scope",
+      header: t("partner_voucher_col_scope"),
+      cell: (v) => t((v.partner?.ids ?? []).length === 0 ? "partner_voucher_scope_all" : "partner_voucher_scope_you"),
+    },
     {
       key: "expires",
       header: t("partner_voucher_col_expires"),
