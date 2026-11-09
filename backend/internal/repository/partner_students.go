@@ -160,3 +160,58 @@ func (r *Repository) ReissueStudentCredentialsByRegistrar(ctx context.Context, i
 	}
 	return tag.RowsAffected() > 0, nil
 }
+
+// PartnerOrderStudent is a student named on a Mitra order.
+type PartnerOrderStudent struct {
+	ID         uuid.UUID `json:"id"`
+	Name       string    `json:"name"`
+	SchoolName *string   `json:"school_name"`
+}
+
+// ListPartnerOrderStudents returns, of the given students, those a Mitra may
+// order for: active students of an allowed school, or registered by the Mitra.
+func (r *Repository) ListPartnerOrderStudents(ctx context.Context, ids []uuid.UUID, allowedSchoolIDs []string, partnerID string) ([]PartnerOrderStudent, error) {
+	if allowedSchoolIDs == nil {
+		allowedSchoolIDs = []string{}
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT u.id, u.name, s.name
+		 FROM users u LEFT JOIN school s ON s.id = u.school_id
+		 WHERE u.id = ANY($1) AND u.role = 'student' AND u.status = 'active'
+		   AND (u.school_id = ANY($2::uuid[]) OR u.registered_by = $3::uuid)`,
+		ids, allowedSchoolIDs, partnerID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return scanPartnerOrderStudents(rows)
+}
+
+// ListOrderParticipantStudents names the students an order grants access to.
+func (r *Repository) ListOrderParticipantStudents(ctx context.Context, orderID uuid.UUID) ([]PartnerOrderStudent, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT u.id, u.name, s.name
+		 FROM order_participant op
+		 JOIN users u ON u.id = op.student_id
+		 LEFT JOIN school s ON s.id = u.school_id
+		 WHERE op.order_id = $1 ORDER BY u.name`,
+		orderID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return scanPartnerOrderStudents(rows)
+}
+
+func scanPartnerOrderStudents(rows pgx.Rows) ([]PartnerOrderStudent, error) {
+	defer rows.Close()
+	out := []PartnerOrderStudent{}
+	for rows.Next() {
+		var s PartnerOrderStudent
+		if err := rows.Scan(&s.ID, &s.Name, &s.SchoolName); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}

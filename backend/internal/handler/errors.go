@@ -112,6 +112,20 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "validation_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPromo):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_promo", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerStudentNotAllowed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "student_not_allowed", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerProductNotAllowed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "product_not_allowed", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerProductType):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "partner_product_type", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerProgramOff):
+		status, apiErr = http.StatusForbidden, APIError{Code: "partner_program_off", Message: err.Error()}
+	case errors.Is(err, service.ErrParticipantAlreadyOwns):
+		status, apiErr = http.StatusConflict, APIError{Code: "participant_already_owns", Message: err.Error()}
+		var ownsErr *service.ParticipantAlreadyOwnsError
+		if errors.As(err, &ownsErr) {
+			apiErr.Details = map[string]any{"students": ownsErr.Students}
+		}
 	case errors.Is(err, service.ErrPromoQuotaInsufficient):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_quota_insufficient", Message: err.Error()}
 		var quotaErr *service.PromoQuotaInsufficientError

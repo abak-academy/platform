@@ -336,6 +336,32 @@ func (r *Repository) CreateCourseSession(ctx context.Context, tx pgx.Tx, s model
 	return err
 }
 
+// FilterAlreadyEnrolled returns the students who hold an active enrollment in
+// the course; a revoked enrollment does not count, so a student refunded earlier
+// can be enrolled again.
+func (r *Repository) FilterAlreadyEnrolled(ctx context.Context, courseID uuid.UUID, studentIDs []uuid.UUID) ([]uuid.UUID, error) {
+	ids := make([]uuid.UUID, 0)
+	if len(studentIDs) == 0 {
+		return ids, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT student_id FROM course_session WHERE course_id = $1 AND student_id = ANY($2) AND status = 'active'`,
+		courseID, studentIDs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (r *Repository) RevokeEnrollmentsByOrder(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
 	_, err := tx.Exec(ctx,
 		`UPDATE course_session SET status = 'revoked', revoked_at = now()
