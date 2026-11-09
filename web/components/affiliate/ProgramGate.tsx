@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
-import { AlertTriangle, Info } from "lucide-react";
+import { AlertTriangle, Clock, Info, XCircle } from "lucide-react";
 import { useMe } from "@/lib/hooks/auth";
 import { usePartnerMe } from "@/lib/hooks/partner";
 import { useTranslation } from "@/lib/i18n";
@@ -19,11 +19,21 @@ export function programForPath(pathname: string): Program | null {
   return null;
 }
 
-function Notice({ title, description }: { title: string; description: string }) {
+type Tone = "info" | "warn" | "danger";
+
+const TONES: Record<Tone, { box: string; text: string; Icon: typeof Info }> = {
+  info: { box: "border-info/30 bg-info-bg", text: "text-info", Icon: Info },
+  warn: { box: "border-warn/30 bg-warn-bg", text: "text-warn", Icon: Clock },
+  danger: { box: "border-danger/30 bg-danger-bg", text: "text-danger", Icon: XCircle },
+};
+
+function Notice({ title, description, tone }: { title: string; description: string; tone: Tone }) {
+  const { box, text, Icon } = TONES[tone];
   return (
-    <div role="status" className="md-card-outlined mx-auto mt-10 max-w-xl space-y-2 p-8 text-center">
-      <h1 className="font-serif text-xl font-bold text-ink-900">{title}</h1>
-      <p className="text-sm leading-relaxed text-ink-600">{description}</p>
+    <div role="status" data-tone={tone} className={`mx-auto mt-10 max-w-xl space-y-3 rounded-xl border p-8 text-center ${box}`}>
+      <Icon className={`mx-auto size-8 ${text}`} aria-hidden />
+      <h1 className={`font-serif text-xl font-bold ${text}`}>{title}</h1>
+      <p className="text-sm leading-relaxed text-ink-700">{description}</p>
     </div>
   );
 }
@@ -45,14 +55,14 @@ export function ProgramGate({ program, children }: { program: Program; children:
   if (!states || !state) return <>{children}</>;
 
   if (state === "not_enrolled") {
-    return <Notice title={t("prog_not_enrolled_title")} description={t("prog_not_enrolled_desc")} />;
+    return <Notice title={t("prog_not_enrolled_title")} description={t("prog_not_enrolled_desc")} tone="info" />;
   }
   if (state === "pending") {
-    return <Notice title={t("prog_pending_title")} description={t("prog_pending_desc")} />;
+    return <Notice title={t("prog_pending_title")} description={t("prog_pending_desc")} tone="warn" />;
   }
   if (state === "rejected") {
     const reason = states.rejection_reason ? ` ${t("prog_rejected_reason").replace("{reason}", states.rejection_reason)}` : "";
-    return <Notice title={t("prog_rejected_title")} description={`${t("prog_rejected_desc")}${reason}`} />;
+    return <Notice title={t("prog_rejected_title")} description={`${t("prog_rejected_desc")}${reason}`} tone="danger" />;
   }
 
   const programOff = program === "partner" && partnerMe.data?.program_enabled === false;

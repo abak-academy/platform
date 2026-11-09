@@ -47,6 +47,7 @@ describe("ProgramGate", () => {
     render(<ProgramGate program="partner">halaman mitra</ProgramGate>);
     expect(screen.getByText("Anda belum terdaftar di program ini")).toBeInTheDocument();
     expect(screen.getByText(/hubungi admin/i)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("data-tone", "info");
     expect(screen.queryByText("halaman mitra")).toBeNull();
   });
 
@@ -55,6 +56,7 @@ describe("ProgramGate", () => {
     render(<ProgramGate program="partner">halaman mitra</ProgramGate>);
     expect(screen.getByText("Pendaftaran menunggu persetujuan")).toBeInTheDocument();
     expect(screen.queryByText("Anda belum terdaftar di program ini")).toBeNull();
+    expect(screen.getByRole("status")).toHaveAttribute("data-tone", "warn");
   });
 
   it("shows why an application was rejected", () => {
@@ -62,6 +64,7 @@ describe("ProgramGate", () => {
     render(<ProgramGate program="partner">halaman mitra</ProgramGate>);
     expect(screen.getByText("Pendaftaran ditolak")).toBeInTheDocument();
     expect(screen.getByText(/dokumen kurang/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveAttribute("data-tone", "danger");
   });
 
   it("judges each program on its own state", () => {
