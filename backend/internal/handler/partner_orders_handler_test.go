@@ -170,3 +170,69 @@ func TestPartnerOrderRoutes(t *testing.T) {
 		}
 	})
 }
+
+func TestPartnerCatalogRoutes(t *testing.T) {
+	env := newAffiliateJobsEnv(t)
+	env.setPartnerFlag(t, "true")
+	school, otherSchool := seedSchool(t, env.pool), seedSchool(t, env.pool)
+	programs := `{"affiliate": false, "partner": {"school_ids": ["` + school + `"]}}`
+	partner := seedProgramAccount(t, env.pool, "active", "active", "", programs, "")
+	token := env.tokenForUser(t, partner, service.RoleAffiliator)
+	base := "/api/v1/partners/me"
+
+	voucher := "SCH" + strings.ToUpper(uniqueHandlerSuffix()[:6])
+	if _, err := env.pool.Exec(context.Background(),
+		`INSERT INTO promo_code (code, discount_percent, partner) VALUES ($1, 10, '{"ids":[],"quota_unit":"order"}')`, voucher); err != nil {
+		t.Fatalf("seed voucher: %v", err)
+	}
+	product := seedOpenCourseProduct(t, env, 100000)
+
+	t.Run("schools lists only the allowed ones", func(t *testing.T) {
+		rec := getWithToken(t, env.e, base+"/schools", token)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), school) || strings.Contains(rec.Body.String(), otherSchool) {
+			t.Errorf("want only the allowed school in a 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("an unknown order status is a bad request, a known one filters", func(t *testing.T) {
+		if rec := getWithToken(t, env.e, base+"/orders?status=nope", token); rec.Code != http.StatusBadRequest {
+			t.Errorf("want 400, got %d", rec.Code)
+		}
+		if rec := getWithToken(t, env.e, base+"/orders?status=paid", token); rec.Code != http.StatusOK {
+			t.Errorf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("an active Mitra sees the voucher and the product", func(t *testing.T) {
+		if rec := getWithToken(t, env.e, base+"/vouchers", token); !strings.Contains(rec.Body.String(), voucher) {
+			t.Errorf("voucher missing: %s", rec.Body.String())
+		}
+		if rec := getWithToken(t, env.e, base+"/products", token); !strings.Contains(rec.Body.String(), product) {
+			t.Errorf("product missing: %s", rec.Body.String())
+		}
+	})
+
+	t.Run("a suspended Mitra sees neither, and the dashboard counts them as zero", func(t *testing.T) {
+		suspended := seedProgramAccount(t, env.pool, "deactivated", "suspended", "", programs, "")
+		sToken := env.tokenForUser(t, suspended, service.RoleAffiliator)
+		for _, path := range []string{"/vouchers", "/products"} {
+			rec := getWithToken(t, env.e, base+path, sToken)
+			if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), voucher) || strings.Contains(rec.Body.String(), product) {
+				t.Errorf("%s: want an empty 200, got %d: %s", path, rec.Code, rec.Body.String())
+			}
+		}
+		body := decodeBody(t, getWithToken(t, env.e, base+"/dashboard", sToken))
+		if body["vouchers_available"] != float64(0) || body["products_open"] != float64(0) {
+			t.Errorf("dashboard = %v, want zero vouchers and products", body)
+		}
+	})
+
+	t.Run("nothing is listed while the Mitra program is off", func(t *testing.T) {
+		env.setPartnerFlag(t, "false")
+		defer env.setPartnerFlag(t, "true")
+		rec := getWithToken(t, env.e, base+"/vouchers", token)
+		if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), voucher) {
+			t.Errorf("want an empty 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+	})
+}

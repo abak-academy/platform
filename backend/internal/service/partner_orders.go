@@ -42,7 +42,8 @@ type PartnerOrderPreview struct {
 // PartnerOrderDetail is an order with the students it grants access to.
 type PartnerOrderDetail struct {
 	model.Order
-	Students []repository.PartnerOrderStudent `json:"students"`
+	PromoCode string                           `json:"promo_code,omitempty"`
+	Students  []repository.PartnerOrderStudent `json:"students"`
 }
 
 type partnerOrderPlan struct {
@@ -409,13 +410,14 @@ func (s *Service) RetryPartnerOrder(ctx context.Context, partnerID, orderID, key
 	return s.RetryPayment(ctx, partnerID, orderID, key)
 }
 
-// ListPartnerOrders lists the Mitra's orders, unpaid ones included.
-func (s *Service) ListPartnerOrders(ctx context.Context, partnerID, cursor string, limit int) ([]model.Order, string, error) {
+// ListPartnerOrders lists the Mitra's orders, unpaid ones included, optionally
+// of one status.
+func (s *Service) ListPartnerOrders(ctx context.Context, partnerID, status, cursor string, limit int) ([]model.Order, string, error) {
 	pID, err := parseUUID(partnerID)
 	if err != nil {
 		return nil, "", ErrInvalidUUID
 	}
-	return s.storeRepo.ListOrders(ctx, repository.OrderFilter{StudentID: &pID, Cursor: cursor, Limit: limit})
+	return s.storeRepo.ListOrders(ctx, repository.OrderFilter{StudentID: &pID, Status: status, Cursor: cursor, Limit: limit})
 }
 
 // GetPartnerOrder returns one of the Mitra's orders with the students it covers.
@@ -428,7 +430,15 @@ func (s *Service) GetPartnerOrder(ctx context.Context, partnerID, orderID string
 	if err != nil {
 		return nil, fmt.Errorf("list order participants: %w", err)
 	}
-	return &PartnerOrderDetail{Order: order, Students: students}, nil
+	detail := &PartnerOrderDetail{Order: order, Students: students}
+	if order.PromoCodeID != nil {
+		promo, err := s.storeRepo.GetPromoByID(ctx, *order.PromoCodeID)
+		if err != nil {
+			return nil, fmt.Errorf("get order promo: %w", err)
+		}
+		detail.PromoCode = promo.Code
+	}
+	return detail, nil
 }
 
 // PartnerDashboard is the home page of a Mitra: its counts and what it can buy with.
@@ -447,7 +457,7 @@ func (s *Service) GetPartnerDashboard(ctx context.Context, partnerID string) (*P
 	if err != nil {
 		return nil, fmt.Errorf("get partner dashboard counts: %w", err)
 	}
-	vouchers, err := s.storeRepo.ListPartnerPromos(ctx, partnerID)
+	vouchers, err := s.ListPartnerVouchers(ctx, partnerID)
 	if err != nil {
 		return nil, fmt.Errorf("list partner promos: %w", err)
 	}

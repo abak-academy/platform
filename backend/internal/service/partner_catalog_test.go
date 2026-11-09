@@ -14,6 +14,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func enablePartnerProgram(t *testing.T, repo *repository.Repository) {
+	t.Helper()
+	ctx := context.Background()
+	_, err := repo.Pool().Exec(ctx, `INSERT INTO system_config (key, value, is_secret) VALUES ('partner_enabled', 'true', false) ON CONFLICT (key) DO UPDATE SET value = 'true'`)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key = 'partner_enabled'`) })
+}
+
 func f(v float64) *float64 { return &v }
 func i(v int) *int         { return &v }
 
@@ -133,6 +141,7 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 
 func TestPartnerVoucherAdmin(t *testing.T) {
 	svc, repo := newRealDBService(t)
+	enablePartnerProgram(t, repo)
 	ctx := context.Background()
 	mitra := seedProgramAccount(t, repo, "active", "active", "", partnerOnlyPrograms).String()
 	plain := seedProgramAccount(t, repo, "active", "active", "AFV"+uniqueSuffix()[:5], "").String()
@@ -266,6 +275,7 @@ func TestPartnerVoucherAdmin(t *testing.T) {
 
 func TestPartnerProductAccess(t *testing.T) {
 	svc, repo := newRealDBService(t)
+	enablePartnerProgram(t, repo)
 	ctx := context.Background()
 	actor := seedAffiliateAdminActor(t, repo, "pa-actor-"+uniqueSuffix()+"@test.local")
 	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM users WHERE id = $1`, actor) })

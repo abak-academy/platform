@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"akademi-bimbel/internal/model"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -159,6 +161,32 @@ func (r *Repository) ReissueStudentCredentialsByRegistrar(ctx context.Context, i
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+// ListSchoolsByIDs returns the schools with the given ids, by name.
+func (r *Repository) ListSchoolsByIDs(ctx context.Context, ids []string) ([]model.School, error) {
+	schools := []model.School{}
+	if len(ids) == 0 {
+		return schools, nil
+	}
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, name, code, npsn, school_types, alamat, provinsi_id, kota_id, status, created_at, updated_at
+		FROM school WHERE id = ANY($1::uuid[]) ORDER BY name`,
+		ids,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s model.School
+		if err := rows.Scan(&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
+			&s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		schools = append(schools, s)
+	}
+	return schools, rows.Err()
 }
 
 // PartnerOrderStudent is a student named on a Mitra order.

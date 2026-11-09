@@ -219,8 +219,28 @@ func (s *Service) consumePromoTx(ctx context.Context, tx pgx.Tx, order model.Ord
 	return nil
 }
 
-// ListPartnerVouchers lists the Mitra vouchers a Mitra can use now.
+// partnerCanOrder reports whether the Mitra may buy right now. A suspended
+// account, a program that is off, or a registration not yet approved shows no
+// vouchers or products; any other failure is an error, never "cannot".
+func (s *Service) partnerCanOrder(ctx context.Context, partnerID string) (bool, error) {
+	_, err := s.requirePartnerCanBuy(ctx, partnerID)
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, ErrAffiliatorNotPartner), errors.Is(err, ErrAccountDeactivated), errors.Is(err, ErrPartnerProgramOff):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
+// ListPartnerVouchers lists the Mitra vouchers a Mitra can use now: none while
+// the account cannot buy.
 func (s *Service) ListPartnerVouchers(ctx context.Context, partnerID string) ([]model.PromoCode, error) {
+	ok, err := s.partnerCanOrder(ctx, partnerID)
+	if err != nil || !ok {
+		return []model.PromoCode{}, err
+	}
 	return s.storeRepo.ListPartnerPromos(ctx, partnerID)
 }
 
@@ -305,6 +325,9 @@ func (s *Service) AdminSetProductPartnerAccess(ctx context.Context, actorID, pro
 // and opened to this Mitra by the admin.
 func (s *Service) ListPartnerProducts(ctx context.Context, partnerID string) ([]model.Product, error) {
 	out := []model.Product{}
+	if ok, err := s.partnerCanOrder(ctx, partnerID); err != nil || !ok {
+		return out, err
+	}
 	for _, typ := range []string{"exam", "course"} {
 		cursor := ""
 		for {

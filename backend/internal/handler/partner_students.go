@@ -158,6 +158,15 @@ func (h *Handler) PartnerGetJob(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
+// PartnerListSchools backs GET /partners/me/schools: the schools the admin allowed this Mitra.
+func (h *Handler) PartnerListSchools(c echo.Context) error {
+	schools, err := h.svc.ListPartnerSchools(c.Request().Context(), partnerStatesFromContext(c).PartnerSchools)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": schools})
+}
+
 // PartnerListProducts backs GET /partners/me/products: what the admin opened to this Mitra.
 func (h *Handler) PartnerListProducts(c echo.Context) error {
 	claims := ClaimsFromContext(c)

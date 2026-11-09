@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
 )
 
@@ -59,6 +60,16 @@ func (s *Service) PartnerRegisterStudent(ctx context.Context, partnerID string, 
 	}
 	return s.registerStudent(ctx, partnerID, in.SchoolID, nil, in.Name, in.Jenjang, in.Email, in.DOB, in.Gender, in.Grade,
 		in.AlamatDomisili, in.TargetExam, in.ProvinsiID, in.KotaID, in.KecamatanID, in.KodePos, nil, false, &partnerID)
+}
+
+// ListPartnerSchools lists the schools the admin allowed this Mitra, which a CSV
+// import names by NPSN or code.
+func (s *Service) ListPartnerSchools(ctx context.Context, schoolIDs []string) ([]model.School, error) {
+	schools, err := s.storeRepo.ListSchoolsByIDs(ctx, schoolIDs)
+	if err != nil {
+		return nil, fmt.Errorf("list partner schools: %w", err)
+	}
+	return schools, nil
 }
 
 // ListPartnerStudents lists the students of the Mitra's allowed schools plus

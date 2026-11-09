@@ -424,6 +424,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	partnersMe.POST("/orders/:id/retry", h.PartnerRetryOrder)
 	partnersMe.GET("/products", h.PartnerListProducts)
 	partnersMe.GET("/vouchers", h.PartnerListVouchers)
+	partnersMe.GET("/schools", h.PartnerListSchools)
 	partnersMe.GET("/students", h.PartnerListStudents)
 	partnersMe.POST("/students", h.PartnerRegisterStudent)
 	partnersMe.POST("/students/bulk/presign", h.PartnerPresignStudentBulkUpload)

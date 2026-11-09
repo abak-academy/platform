@@ -312,8 +312,9 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 		detail, err := env.svc.GetPartnerOrder(ctx, env.partner, withVoucher.ID.String())
 		require.NoError(t, err)
 		require.Len(t, detail.Students, 2)
+		require.Equal(t, full.Code, detail.PromoCode, "the detail names the voucher the order used")
 
-		list, _, err := env.svc.ListPartnerOrders(ctx, env.partner, "", 20)
+		list, _, err := env.svc.ListPartnerOrders(ctx, env.partner, "", "", 20)
 		require.NoError(t, err)
 		require.NotEmpty(t, list)
 	})

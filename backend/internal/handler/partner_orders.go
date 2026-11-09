@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"slices"
 
 	"github.com/labstack/echo/v4"
 )
@@ -51,10 +52,16 @@ func (h *Handler) PartnerCreateOrder(c echo.Context) error {
 	return c.JSON(http.StatusCreated, order)
 }
 
+var partnerOrderStatuses = []string{"cart", "payment_pending", "paid", "processing", "shipped", "completed", "payment_expired", "cancelled"}
+
 // PartnerListOrders backs GET /partners/me/orders.
 func (h *Handler) PartnerListOrders(c echo.Context) error {
 	claims := ClaimsFromContext(c)
-	orders, next, err := h.svc.ListPartnerOrders(c.Request().Context(), claims.Sub, c.QueryParam("cursor"), parseLimit(c.QueryParam("limit"), 20, 100))
+	status := c.QueryParam("status")
+	if status != "" && !slices.Contains(partnerOrderStatuses, status) {
+		return badRequest(c, "unknown order status")
+	}
+	orders, next, err := h.svc.ListPartnerOrders(c.Request().Context(), claims.Sub, status, c.QueryParam("cursor"), parseLimit(c.QueryParam("limit"), 20, 100))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
