@@ -274,6 +274,9 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
               />
               Tampilkan di checkout
             </label>
+            <p className="-mt-2 pl-6 text-xs text-ink-500">
+              Voucher muncul sebagai saran di halaman checkout siswa. Bila tidak dicentang, siswa harus mengetik kodenya sendiri.
+            </p>
             <label htmlFor="promo-affiliator-only" className="flex items-center gap-2 text-sm text-ink-900">
               <input
                 id="promo-affiliator-only"
@@ -284,6 +287,9 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
               />
               Khusus affiliator (tidak tampil ke siswa)
             </label>
+            <p className="-mt-2 pl-6 text-xs text-ink-500">
+              Promo yang dibagikan Affiliator kepada siswanya. Tidak tampil di checkout dan tidak bisa digabung dengan Voucher Mitra.
+            </p>
 
             {canManagePartners && (
               <fieldset className="grid gap-3 rounded-lg border border-line p-3" aria-label="Voucher Mitra">
@@ -297,6 +303,9 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                   />
                   Voucher Mitra (hanya untuk pembelian Mitra)
                 </label>
+                <p className="-mt-1 pl-6 text-xs text-ink-500">
+                  Dipakai Mitra saat membelikan produk untuk siswa. Siswa tidak bisa memakainya sendiri dan voucher ini tidak tampil di checkout. Tidak bisa digabung dengan pilihan di atas.
+                </p>
                 {partnerOn && (
                   <>
                     <div className="grid gap-1.5">
