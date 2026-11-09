@@ -183,6 +183,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     titleKey: "nav_group_affiliate",
     items: [
       { labelKey: "admin_aff_nav_list", href: "/admin/affiliates", icon: HandCoins, exact: true },
+      { labelKey: "admin_partner_nav_list", href: "/admin/affiliates/partners", icon: School },
       { labelKey: "admin_aff_nav_payouts", href: "/admin/affiliates/payouts", icon: Wallet },
       { labelKey: "admin_aff_nav_reports", href: "/admin/affiliates/reports", icon: FileBarChart },
       { labelKey: "admin_aff_nav_settings", href: "/admin/affiliates/settings", icon: Settings },
@@ -207,6 +208,7 @@ const AFFILIATOR_NAV: RoleNavConfig = [
       { labelKey: "aff_nav_dashboard", href: "/affiliate/overview", icon: LayoutDashboard, exact: true },
       { labelKey: "aff_nav_students", href: "/affiliate/students", icon: Users },
       { labelKey: "aff_nav_commissions", href: "/affiliate/commissions", icon: Link2 },
+      { labelKey: "aff_nav_vouchers", href: "/affiliate/vouchers", icon: Ticket },
       { labelKey: "aff_nav_wallet", href: "/affiliate/wallet", icon: Wallet },
       { labelKey: "aff_nav_adjustments", href: "/affiliate/adjustments", icon: SlidersHorizontal },
     ],

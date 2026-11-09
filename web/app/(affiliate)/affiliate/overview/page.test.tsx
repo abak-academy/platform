@@ -22,7 +22,6 @@ vi.mock("@/lib/hooks/affiliate", () => ({
       commission_earned: 90000,
     },
   }),
-  useAffiliatePromos: () => ({ data: { data: [] } }),
   useAffiliateLedger: () => ({ data: { saldo: 150000, data: [], page: 1, per_page: 1, total: 0 } }),
 }));
 

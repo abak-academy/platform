@@ -7,7 +7,6 @@ import { DashboardHero } from "@/components/admin/DashboardHero";
 import { PeriodBar, presetRange, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
 import { QuickActionTiles } from "@/components/admin/QuickActionTiles";
 import { StatCard } from "@/components/admin/StatCard";
-import { AffiliatePromos } from "@/components/affiliate/AffiliatePromos";
 import { LevelBadge } from "@/components/affiliate/LevelBadge";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -158,7 +157,6 @@ export default function AffiliateDashboardPage() {
         </div>
       )}
 
-      {active && <AffiliatePromos />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="md-card-outlined space-y-1 p-5 text-sm text-ink-700">

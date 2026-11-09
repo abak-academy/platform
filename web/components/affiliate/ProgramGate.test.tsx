@@ -25,6 +25,8 @@ describe("programForPath", () => {
     expect(programForPath("/affiliate/overview")).toBe("affiliate");
     expect(programForPath("/affiliate/wallet")).toBe("affiliate");
     expect(programForPath("/affiliate/students")).toBe("affiliate");
+    expect(programForPath("/affiliate/vouchers")).toBe("affiliate");
+    expect(programForPath("/affiliate/partner/vouchers")).toBe("partner");
     expect(programForPath("/affiliate/account")).toBeNull();
     expect(programForPath("/affiliate")).toBeNull();
   });

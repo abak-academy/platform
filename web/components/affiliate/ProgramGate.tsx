@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export type Program = "affiliate" | "partner";
 
-const AFFILIATE_PATHS = ["/affiliate/overview", "/affiliate/students", "/affiliate/commissions", "/affiliate/wallet", "/affiliate/adjustments"];
+const AFFILIATE_PATHS = ["/affiliate/overview", "/affiliate/students", "/affiliate/commissions", "/affiliate/vouchers", "/affiliate/wallet", "/affiliate/adjustments"];
 
 // Which program a portal page belongs to; null for the pages both programs share.
 export function programForPath(pathname: string): Program | null {
