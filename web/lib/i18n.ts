@@ -2490,6 +2490,10 @@ export const DICT = {
       "Khusus super admin. Isi `school_npsn` atau `school_code`. NPSN harus tepat 8 huruf atau angka dan milik sekolah aktif yang sudah ada. Jika keduanya diisi, `school_npsn` digunakan.",
     bulk_format_student_school_code:
       "Khusus super admin. Gunakan kode internal sekolah untuk yayasan atau sekolah tanpa NPSN. Kode harus cocok persis dengan sekolah aktif yang sudah ada.",
+    bulk_format_student_school_npsn_partner:
+      "Opsional. Isi `school_npsn` atau `school_code` untuk menempatkan siswa di sekolah aktif yang sudah ada. Kosongkan bila siswa tidak terkait sekolah. Jika keduanya diisi, `school_npsn` digunakan.",
+    bulk_format_student_school_code_partner:
+      "Opsional. Kode internal sekolah untuk yayasan atau sekolah tanpa NPSN. Kode harus cocok persis dengan sekolah aktif yang sudah ada.",
     bulk_format_student_jenjang:
       "Wajib. Isi dengan nilai jenjang, disarankan huruf besar: TK, SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S3. Jika sekolah punya school_types, jenjang harus cocok dengan salah satu jenis itu.",
     bulk_format_student_email: "Opsional. Jika diisi, tidak boleh sudah terdaftar di sistem.",
@@ -5272,6 +5276,10 @@ export const DICT = {
       "Super admin only. Provide either `school_npsn` or `school_code`. NPSN must be exactly 8 letters or digits and belong to an existing active school. When both are set, `school_npsn` is used.",
     bulk_format_student_school_code:
       "Super admin only. Use the internal school code for a foundation or school without an NPSN. The code must exactly match an existing active school.",
+    bulk_format_student_school_npsn_partner:
+      "Optional. Fill `school_npsn` or `school_code` to place the student in an existing active school. Leave blank if the student has no school. If both are filled, `school_npsn` is used.",
+    bulk_format_student_school_code_partner:
+      "Optional. Internal school code for a foundation or school without an NPSN. The code must exactly match an existing active school.",
     bulk_format_student_jenjang:
       "Required. Use a jenjang value, preferably uppercase: TK, SD, SMP, SMA, MA, SMK, PKBM, LKP, Kursus, D1–S3. If the school has school_types, jenjang must match one of them.",
     bulk_format_student_email: "Optional. If set, must not already be registered.",

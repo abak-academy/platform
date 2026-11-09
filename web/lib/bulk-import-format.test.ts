@@ -86,3 +86,14 @@ describe("bulk-import-format templates", () => {
     expect(buildStudentGuideText(t, true)).toContain("bulk_format_student_password");
   });
 });
+
+describe("bulk-import-format partner variant", () => {
+  it("lists optional school columns and no password column", () => {
+    const csv = buildStudentTemplateCSV(false, true);
+    const header = csv.split("\n")[0];
+    expect(header).toContain("school_npsn");
+    expect(header).toContain("school_code");
+    expect(header).not.toContain("password");
+    expect(buildStudentGuideText((k) => k, false, true)).toContain("bulk_format_student_school_npsn_partner");
+  });
+});
