@@ -18,6 +18,8 @@ type User struct {
 	// true while the password in place was created or reset by an admin and
 	// the user has not set their own password since.
 	PasswordTemporary bool `json:"password_temporary"`
+	// RegisteredBy is the Mitra who registered this student, if one did.
+	RegisteredBy *string `json:"registered_by"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 	// student-only

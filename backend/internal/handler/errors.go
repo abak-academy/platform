@@ -348,6 +348,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusForbidden, APIError{Code: "partner_registration_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateInvalidProgram):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrStudentAlreadyActivated):
+		status, apiErr = http.StatusConflict, APIError{Code: "student_already_activated", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliatorNotApproved):
 		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliatorNotPartner):

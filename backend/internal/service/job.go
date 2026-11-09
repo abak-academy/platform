@@ -113,6 +113,10 @@ func (s *Service) enqueueStudentBulkJobFromData(ctx context.Context, createdBy, 
 	parseCSV := ParseStudentBulkCSV
 	if actorRole == RoleAdminSchool {
 		parseCSV = ParseSchoolBoundStudentBulkCSV
+	} else if actorRole == RoleAffiliator {
+		parseCSV = func(data []byte) ([]StudentBulkRow, error) {
+			return ParseStudentBulkCSVForWorker(data, false)
+		}
 	} else if s.cfg == nil || !s.cfg.EnforceSchoolNPSNRegistration {
 		parseCSV = func(data []byte) ([]StudentBulkRow, error) {
 			return ParseStudentBulkCSVForWorker(data, true)
