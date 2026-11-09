@@ -430,3 +430,30 @@ func (s *Service) GetPartnerOrder(ctx context.Context, partnerID, orderID string
 	}
 	return &PartnerOrderDetail{Order: order, Students: students}, nil
 }
+
+// PartnerDashboard is the home page of a Mitra: its counts and what it can buy with.
+type PartnerDashboard struct {
+	repository.PartnerDashboardCounts
+	VouchersAvailable int `json:"vouchers_available"`
+	ProductsOpen      int `json:"products_open"`
+}
+
+// GetPartnerDashboard gathers the counts of a Mitra's home page.
+func (s *Service) GetPartnerDashboard(ctx context.Context, partnerID string) (*PartnerDashboard, error) {
+	if _, err := parseUUID(partnerID); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	counts, err := s.storeRepo.GetPartnerDashboardCounts(ctx, partnerID)
+	if err != nil {
+		return nil, fmt.Errorf("get partner dashboard counts: %w", err)
+	}
+	vouchers, err := s.storeRepo.ListPartnerPromos(ctx, partnerID)
+	if err != nil {
+		return nil, fmt.Errorf("list partner promos: %w", err)
+	}
+	products, err := s.ListPartnerProducts(ctx, partnerID)
+	if err != nil {
+		return nil, err
+	}
+	return &PartnerDashboard{PartnerDashboardCounts: counts, VouchersAvailable: len(vouchers), ProductsOpen: len(products)}, nil
+}

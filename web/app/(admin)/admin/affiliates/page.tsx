@@ -10,7 +10,10 @@ import { AffiliateList } from "@/components/affiliate/AffiliateList";
 import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { AddAffiliatorDialog } from "@/components/affiliate/AddAffiliatorDialog";
+import { ApproveProgramDialog } from "@/components/affiliate/ApproveProgramDialog";
 import { LevelBadge } from "@/components/affiliate/LevelBadge";
+import { PartnerSwitchCard } from "@/components/affiliate/PartnerSwitchCard";
+import { ProgramBadges } from "@/components/affiliate/ProgramBadges";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
@@ -39,18 +42,28 @@ function AffiliatesContent() {
   const { params, update, reset, hasFilters } = useListParams();
   const [rejecting, setRejecting] = useState<AffiliateAdminRow | null>(null);
   const [adding, setAdding] = useState(false);
-  const query = useAdminAffiliates({ status: params.status, level: params.type, q: params.q, page: params.page, per_page: params.per_page });
+  const [approving, setApproving] = useState<AffiliateAdminRow | null>(null);
+  const [program, setProgram] = useState<"" | "affiliate" | "partner">("");
+  const query = useAdminAffiliates({ status: params.status, level: params.type, program: program || undefined, q: params.q, page: params.page, per_page: params.per_page });
   const decide = useDecideAffiliateApproval();
 
   if (!canManage) return <NoAccess />;
 
   const fail = (err: unknown) => toast.error(err instanceof ApiError ? err.message : t("aff_action_failed"));
 
-  const approve = (row: AffiliateAdminRow) =>
+  const approve = (programs: ("affiliate" | "partner")[]) => {
+    if (!approving) return;
     decide.mutate(
-      { id: row.id, decision: "approve" },
-      { onSuccess: () => toast.success(t("admin_aff_approved")), onError: fail },
+      { id: approving.id, decision: "approve", programs },
+      {
+        onSuccess: () => {
+          toast.success(t("admin_aff_approved"));
+          setApproving(null);
+        },
+        onError: fail,
+      },
     );
+  };
 
   const exportCsv = async () => {
     try {
@@ -91,6 +104,7 @@ function AffiliatesContent() {
         </div>
       ),
     },
+    { key: "programs", header: t("admin_aff_col_programs"), cell: (r) => <ProgramBadges programs={r.programs} /> },
     { key: "code", header: t("admin_aff_col_code"), cell: (r) => r.code || "—" },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
     { key: "level", header: t("admin_aff_col_level"), cell: (r) => <LevelBadge level={r.level} /> },
@@ -102,7 +116,7 @@ function AffiliatesContent() {
         <div className="flex flex-wrap gap-2">
           {r.status === "pending_approval" && (
             <>
-              <Button size="sm" onClick={() => approve(r)} disabled={decide.isPending}>
+              <Button size="sm" onClick={() => setApproving(r)} disabled={decide.isPending}>
                 {t("admin_aff_approve")}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setRejecting(r)} disabled={decide.isPending}>
@@ -126,6 +140,7 @@ function AffiliatesContent() {
   return (
     <div className="space-y-4">
       <AdminPageHeader icon={HandCoins} title={t("admin_aff_title")} description={t("admin_aff_desc")} />
+      <PartnerSwitchCard />
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="outline" onClick={exportCsv}>
           <Download className="size-4" aria-hidden />
@@ -134,6 +149,13 @@ function AffiliatesContent() {
         <Button onClick={() => setAdding(true)}>{t("admin_aff_add")}</Button>
       </div>
       <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />
+      <div className="flex gap-2" role="group" aria-label={t("admin_aff_col_programs")}>
+        {(["", "affiliate", "partner"] as const).map((value) => (
+          <Button key={value || "all"} size="sm" variant={program === value ? "default" : "outline"} aria-pressed={program === value} onClick={() => setProgram(value)}>
+            {t(value === "" ? "admin_aff_filter_all_programs" : value === "affiliate" ? "admin_aff_program_affiliate" : "admin_aff_program_partner")}
+          </Button>
+        ))}
+      </div>
       <ListToolbar
         params={params}
         onChange={update}
@@ -153,6 +175,7 @@ function AffiliatesContent() {
         empty={t("admin_aff_empty")}
         filtered={hasFilters}
       />
+      <ApproveProgramDialog row={approving} isPending={decide.isPending} onConfirm={approve} onClose={() => setApproving(null)} />
       <ReasonDialog
         open={rejecting !== null}
         onOpenChange={(open) => !open && setRejecting(null)}

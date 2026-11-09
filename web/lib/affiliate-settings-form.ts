@@ -19,7 +19,18 @@ export const GLOBAL_NUMBER_FIELDS = [
   "eval_day",
 ] as const;
 
-export const GLOBAL_OPTIONAL_FIELDS = ["payout_day_of_month", "daily_registration_cap"] as const;
+export const GLOBAL_OPTIONAL_FIELDS = ["payout_day_of_month"] as const;
+
+// Settings the program cannot run without. They start empty and the program
+// cannot be switched on until each one has a value.
+export const REQUIRED_SETTING_FIELDS = [
+  "cookie_days",
+  "binding_months",
+  "digital_wait_days",
+  "physical_wait_days",
+  "min_payout",
+  "eval_day",
+] as const;
 
 export const LEVEL_FIELDS = [
   "binding_months",
@@ -81,10 +92,6 @@ export function settingsToForm(settings: AffiliateSettings, levels: AffiliateLev
   };
 }
 
-function parse(value: string): number {
-  return value.trim() === "" ? NaN : Number(value);
-}
-
 function parseOptional(value: string): number | null {
   return value.trim() === "" ? null : Number(value);
 }
@@ -98,8 +105,10 @@ export function formToInput(form: SettingsForm): AffiliateSettingsInput | null {
     return n;
   };
 
-  const numbers = {} as Record<GlobalNumberField, number>;
-  for (const key of GLOBAL_NUMBER_FIELDS) numbers[key] = check(parse(form.numbers[key])) as number;
+  const numbers = {} as Record<GlobalNumberField, number | null>;
+  for (const key of GLOBAL_NUMBER_FIELDS) numbers[key] = check(parseOptional(form.numbers[key]));
+  // min_extend_amount always has a value: empty means 0, every purchase extends.
+  const minExtendAmount = numbers.min_extend_amount ?? 0;
 
   const levels: AffiliateLevelSettings[] = AFFILIATE_LEVELS.map((level) => {
     const lf = form.levels[level];
@@ -122,13 +131,12 @@ export function formToInput(form: SettingsForm): AffiliateSettingsInput | null {
   });
 
   const payoutDay = check(parseOptional(form.optional.payout_day_of_month));
-  const cap = check(parseOptional(form.optional.daily_registration_cap));
   if (!valid) return null;
 
   return {
     ...numbers,
+    min_extend_amount: minExtendAmount,
     payout_day_of_month: payoutDay,
-    daily_registration_cap: cap,
     launch_date: form.launchDate || null,
     levels,
   };

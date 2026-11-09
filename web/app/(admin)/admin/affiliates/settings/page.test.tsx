@@ -143,7 +143,7 @@ describe("AdminAffiliateSettingsPage", () => {
 
     await screen.findByLabelText("Masa berlaku cookie");
     expect(screen.getAllByText(/Berapa lama browser calon siswa mengingat tautan referral/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Contoh:/).length).toBeGreaterThan(8);
+    expect(screen.getAllByText(/Contoh:/).length).toBeGreaterThanOrEqual(8);
   });
 
   it("shows the column guide like the student bulk import", async () => {

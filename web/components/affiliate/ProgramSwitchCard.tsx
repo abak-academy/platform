@@ -6,19 +6,25 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { useSetAffiliateProgram } from "@/lib/hooks/admin-affiliates";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 
 interface Props {
   enabled: boolean;
-  launchDateSet: boolean;
+  /** Required settings still empty: the program cannot be switched on while any is left. */
+  missing: string[];
+  /** No level has a commission rule: switching on creates no commission. */
+  commissionUnset: boolean;
 }
 
 // Master switch of the affiliate program; asks for confirmation because it
 // closes sign-up and freezes new commissions for everyone.
-export function ProgramSwitchCard({ enabled, launchDateSet }: Props) {
+export function ProgramSwitchCard({ enabled, missing, commissionUnset }: Props) {
   const { t } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const setProgram = useSetAffiliateProgram();
+
+  const blocked = !enabled && missing.length > 0;
+  const missingLabels = missing.map((key) => t(`admin_aff_f_${key}` as I18nKey)).join(", ");
 
   const confirm = () =>
     setProgram.mutate(!enabled, {
@@ -41,9 +47,10 @@ export function ProgramSwitchCard({ enabled, launchDateSet }: Props) {
           </span>
         </div>
         <p className="text-sm text-ink-600">{t(enabled ? "admin_aff_prog_desc_on" : "admin_aff_prog_desc_off")}</p>
-        {enabled && !launchDateSet && <p className="text-sm text-warn">{t("admin_aff_prog_no_launch")}</p>}
+        {blocked && <p className="text-sm text-warn">{t("admin_aff_prog_missing").replace("{fields}", missingLabels)}</p>}
+        {!blocked && commissionUnset && <p className="text-sm text-warn">{t("admin_aff_prog_commission_unset")}</p>}
       </div>
-      <Button variant={enabled ? "outline" : "default"} onClick={() => setConfirming(true)}>
+      <Button variant={enabled ? "outline" : "default"} disabled={blocked} onClick={() => setConfirming(true)}>
         {t(enabled ? "admin_aff_prog_turn_off" : "admin_aff_prog_turn_on")}
       </Button>
 
@@ -53,7 +60,7 @@ export function ProgramSwitchCard({ enabled, launchDateSet }: Props) {
             <DialogTitle>{t(enabled ? "admin_aff_prog_confirm_off_title" : "admin_aff_prog_confirm_on_title")}</DialogTitle>
             <DialogDescription>{t(enabled ? "admin_aff_prog_confirm_off" : "admin_aff_prog_confirm_on")}</DialogDescription>
           </DialogHeader>
-          {!enabled && !launchDateSet && <p className="text-sm text-warn">{t("admin_aff_prog_no_launch")}</p>}
+          {!enabled && commissionUnset && <p className="text-sm text-warn">{t("admin_aff_prog_commission_unset")}</p>}
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirming(false)} disabled={setProgram.isPending}>
               {t("aff_cancel_btn")}

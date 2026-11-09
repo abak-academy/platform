@@ -25,6 +25,9 @@ import {
   SlidersHorizontal,
   FileBarChart,
   HandCoins,
+  GraduationCap,
+  ShoppingCart,
+  Ticket,
 } from "lucide-react";
 
 export type UserRole =
@@ -194,16 +197,30 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   },
 ];
 
+// Both program groups are always listed: a group the account does not belong
+// to opens a notice instead of data, so the menu never hides what exists.
 const AFFILIATOR_NAV: RoleNavConfig = [
   {
+    titleKey: "aff_nav_group_affiliator",
     items: [
-      { labelKey: "aff_nav_dashboard", href: "/affiliate", icon: LayoutDashboard, exact: true },
+      { labelKey: "aff_nav_dashboard", href: "/affiliate/overview", icon: LayoutDashboard, exact: true },
       { labelKey: "aff_nav_students", href: "/affiliate/students", icon: Users },
       { labelKey: "aff_nav_commissions", href: "/affiliate/commissions", icon: Link2 },
       { labelKey: "aff_nav_wallet", href: "/affiliate/wallet", icon: Wallet },
       { labelKey: "aff_nav_adjustments", href: "/affiliate/adjustments", icon: SlidersHorizontal },
-      { labelKey: "aff_nav_account", href: "/affiliate/account", icon: UserCog },
     ],
+  },
+  {
+    titleKey: "aff_nav_group_partner",
+    items: [
+      { labelKey: "partner_nav_dashboard", href: "/affiliate/partner", icon: LayoutDashboard, exact: true },
+      { labelKey: "partner_nav_students", href: "/affiliate/partner/students", icon: GraduationCap },
+      { labelKey: "partner_nav_orders", href: "/affiliate/partner/orders", icon: ShoppingCart },
+      { labelKey: "partner_nav_vouchers", href: "/affiliate/partner/vouchers", icon: Ticket },
+    ],
+  },
+  {
+    items: [{ labelKey: "aff_nav_account", href: "/affiliate/account", icon: UserCog }],
   },
 ];
 

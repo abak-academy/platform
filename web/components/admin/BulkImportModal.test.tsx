@@ -17,20 +17,29 @@ const jobStatusState: {
 
 let pollTick = 0;
 
+const hookBases = vi.hoisted(() => ({ presign: [] as (string | undefined)[], enqueue: [] as (string | undefined)[], job: [] as unknown[] }));
+
 vi.mock("@/lib/hooks/admin-students-bulk", () => ({
-  usePresignStudentBulkUpload: () => ({
-    mutateAsync: presignMutateAsync,
-    isPending: false,
-  }),
+  usePresignStudentBulkUpload: (base?: string) => {
+    hookBases.presign.push(base);
+    return {
+      mutateAsync: presignMutateAsync,
+      isPending: false,
+    };
+  },
   putFileToPresignedURL: (...args: Parameters<typeof putFile>) => putFile(...args),
-  useEnqueueStudentBulkImport: () => ({
-    mutateAsync: enqueueMutateAsync,
-    isPending: false,
-  }),
+  useEnqueueStudentBulkImport: (base?: string) => {
+    hookBases.enqueue.push(base);
+    return {
+      mutateAsync: enqueueMutateAsync,
+      isPending: false,
+    };
+  },
 }));
 
 vi.mock("@/lib/hooks/jobs", () => ({
-  useJobStatus: () => {
+  useJobStatus: (_id: unknown, opts?: unknown) => {
+    hookBases.job.push(opts);
     void pollTick;
     return {
       data: jobStatusState.data,
@@ -366,5 +375,22 @@ describe("BulkImportModal", () => {
     const src = fs.readFileSync(path.join(__dirname, "BulkImportModal.tsx"), "utf8");
     expect(src).not.toMatch(/ParseStudentBulkCSV/);
     expect(src).not.toMatch(/ProcessStudentBulkRows/);
+  });
+
+  it("imports through the admin routes by default, and through the Mitra routes in partner mode", () => {
+    hookBases.presign.length = 0;
+    hookBases.enqueue.length = 0;
+    hookBases.job.length = 0;
+    const Wrapper = wrapperFactory();
+    const admin = render(<BulkImportModal open onOpenChange={() => {}} allowExplicitPassword={false} />, { wrapper: Wrapper });
+    expect(hookBases.presign.at(-1)).toBe("/admin/students");
+    expect(hookBases.enqueue.at(-1)).toBe("/admin/students");
+    expect(hookBases.job.at(-1)).toBeUndefined();
+    admin.unmount();
+
+    render(<BulkImportModal open onOpenChange={() => {}} allowExplicitPassword={false} partner />, { wrapper: Wrapper });
+    expect(hookBases.presign.at(-1)).toBe("/partners/me/students");
+    expect(hookBases.enqueue.at(-1)).toBe("/partners/me/students");
+    expect(hookBases.job.at(-1)).toEqual({ basePath: "/partners/me/jobs" });
   });
 });

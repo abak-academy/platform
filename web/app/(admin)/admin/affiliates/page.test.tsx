@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import AdminAffiliatesPage from "./page";
 
@@ -29,6 +29,7 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
 vi.mock("@/lib/hooks/use-capability", () => ({
   useHasCapability: h.capability,
 }));
+vi.mock("@/components/affiliate/PartnerSwitchCard", () => ({ PartnerSwitchCard: () => <div data-testid="partner-switch" /> }));
 
 vi.mock("sonner", () => ({ toast: h.toast }));
 
@@ -104,12 +105,58 @@ describe("AdminAffiliatesPage", () => {
     expect(screen.getByRole("button", { name: "Unggah CSV" })).toBeInTheDocument();
   });
 
-  it("approves without a reason", () => {
+  it("approves without a reason, after the admin confirms the program", async () => {
     render(<AdminAffiliatesPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Setujui" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(h.decide).not.toHaveBeenCalled();
 
-    expect(h.decide).toHaveBeenCalledWith({ id: "a1", decision: "approve" }, expect.anything());
+    fireEvent.click(within(dialog).getByRole("button", { name: "Setujui" }));
+
+    expect(h.decide).toHaveBeenCalledWith({ id: "a1", decision: "approve", programs: ["affiliate"] }, expect.anything());
+  });
+
+  it("lets the admin approve an application for the other program, or both", async () => {
+    h.list.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { data: [{ ...pending, programs: { affiliate: false, partner: { school_ids: [] } } }], page: 1, per_page: 20, total: 1 },
+    });
+    render(<AdminAffiliatesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Setujui" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("checkbox", { name: "Mitra" })).toBeChecked();
+    expect(within(dialog).getByRole("checkbox", { name: "Affiliator" })).not.toBeChecked();
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Affiliator" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Setujui" }));
+    expect(h.decide).toHaveBeenCalledWith({ id: "a1", decision: "approve", programs: ["affiliate", "partner"] }, expect.anything());
+  });
+
+  it("will not approve with no program chosen", async () => {
+    render(<AdminAffiliatesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Setujui" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Affiliator" }));
+    expect(within(dialog).getByRole("button", { name: "Setujui" })).toBeDisabled();
+  });
+
+  it("shows each account's programs and filters the list by program", () => {
+    h.list.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { data: [{ ...active, programs: { affiliate: true, partner: { school_ids: [] } } }], page: 1, per_page: 20, total: 1 },
+    });
+    render(<AdminAffiliatesPage />);
+
+    const row = screen.getByText("Sari").closest("tr") as HTMLElement;
+    expect(within(row).getByText("Affiliator")).toBeInTheDocument();
+    expect(within(row).getByText("Mitra")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Mitra", pressed: false }));
+    expect(h.list).toHaveBeenLastCalledWith(expect.objectContaining({ program: "partner" }));
   });
 
   it("will not reject without a reason, then rejects with it", async () => {

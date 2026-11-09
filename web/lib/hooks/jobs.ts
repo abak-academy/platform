@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 2000;
 
 export function useJobStatus(
   jobId: string | null | undefined,
-  opts?: { enabled?: boolean },
+  opts?: { enabled?: boolean; basePath?: string },
 ) {
   const enabled = (opts?.enabled ?? true) && Boolean(jobId);
   return useQuery({
@@ -21,6 +21,6 @@ export function useJobStatus(
       if (data && TERMINAL_STATUSES.has(data.status)) return false;
       return POLL_INTERVAL_MS;
     },
-    queryFn: () => authFetch<JobStatus>(`/admin/jobs/${jobId}`),
+    queryFn: () => authFetch<JobStatus>(`${opts?.basePath ?? "/admin/jobs"}/${jobId}`),
   });
 }

@@ -7,6 +7,7 @@ import { NoAccess } from "@/components/admin/NoAccess";
 import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
 import { LevelBadge } from "@/components/affiliate/LevelBadge";
+import { PartnerProgramPanel } from "@/components/affiliate/PartnerProgramPanel";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -99,6 +100,8 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
         <Card label={t("admin_aff_detail_bindings")} value={`${d.bindings.active} / ${d.bindings.ended}`} />
         <Card label={t("admin_aff_detail_commissions")} value={formatRupiah(d.commissions.total_amount)} />
       </div>
+
+      <PartnerProgramPanel id={aff.id} programs={aff.programs} status={aff.status} />
 
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_actions")}</h2>

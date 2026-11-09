@@ -47,6 +47,8 @@ export const adminAffiliateKeys = {
 export interface AdminAffiliateListParams {
   status?: string;
   level?: string;
+  /** Narrow the list to one program. */
+  program?: "affiliate" | "partner";
   q?: string;
   page?: number;
   per_page?: number;
@@ -83,7 +85,7 @@ export function useAdminAffiliates(params: AdminAffiliateListParams) {
     queryKey: adminAffiliateKeys.list(params),
     queryFn: () =>
       authFetch<AffiliateAdminListPage>(
-        `/admin/affiliates${qs({ status: params.status, level: params.level, q: params.q, page: params.page, per_page: params.per_page })}`,
+        `/admin/affiliates${qs({ status: params.status, level: params.level, program: params.program, q: params.q, page: params.page, per_page: params.per_page })}`,
       ),
   });
 }
@@ -106,9 +108,9 @@ function useAffiliateAction<TInput, TResult = unknown>(path: (input: TInput) => 
 }
 
 export function useDecideAffiliateApproval() {
-  return useAffiliateAction<{ id: string; decision: "approve" | "reject" | "reopen"; reason?: string }>(
+  return useAffiliateAction<{ id: string; decision: "approve" | "reject" | "reopen"; reason?: string; programs?: string[] }>(
     ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/approval`,
-    ({ decision, reason }) => post({ decision, reason: reason ?? "" }),
+    ({ decision, reason, programs }) => post({ decision, reason: reason ?? "", ...(programs ? { programs } : {}) }),
   );
 }
 
@@ -341,4 +343,33 @@ export function useBulkCreateAffiliators() {
     () => "/admin/affiliates/bulk",
     (rows) => post({ rows }),
   );
+}
+
+export function useAddAffiliatorProgram() {
+  return useAffiliateAction<{ id: string; program: "affiliate" | "partner" }>(
+    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/programs`,
+    ({ program }) => post({ program }),
+  );
+}
+
+export function useSetPartnerSchools() {
+  return useAffiliateAction<{ id: string; school_ids: string[] }>(
+    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/partner/schools`,
+    ({ school_ids }) => ({ method: "PUT", body: JSON.stringify({ school_ids }) }),
+  );
+}
+
+export function useSetPartnerProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      authFetch<{ program_enabled: boolean }>("/admin/partner-settings/program", {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["affiliate", "program-status"] });
+      qc.invalidateQueries({ queryKey: ["admin", "config"] });
+    },
+  });
 }

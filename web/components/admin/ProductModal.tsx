@@ -18,6 +18,7 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { usePresignUpload } from "@/lib/hooks/students";
 import { ApiError, fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
+import { PartnerAccessSection } from "@/components/admin/PartnerAccessSection";
 import type { Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { useAdminProduct, useUpdateProductRelations } from "@/lib/hooks/admin-products";
@@ -605,6 +606,9 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                 </div>
               </div>
             </Section>
+            {isEdit && product && (product.type === "exam" || product.type === "course") && hasCapability(role, "affiliates:*") && (
+              <PartnerAccessSection productId={product.id} disabled={isPending} />
+            )}
           </div>
 
           <DialogFooter className="shrink-0 border-t px-6 py-4">

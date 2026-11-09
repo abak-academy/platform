@@ -29,6 +29,12 @@ export default function AffiliateRegisterPage() {
   const { t } = useTranslation();
   const register = useRegisterAffiliator();
   const programStatus = useAffiliateProgramStatus();
+  const [program, setProgram] = React.useState<"affiliate" | "partner" | null>(null);
+  const affiliateOpen = programStatus.data?.enabled !== false;
+  const partnerOpen = programStatus.data?.partner_enabled === true;
+  // Only programs that are switched on are offered; one open program is chosen for the applicant.
+  const available: ("affiliate" | "partner")[] = [...(affiliateOpen ? (["affiliate"] as const) : []), ...(partnerOpen ? (["partner"] as const) : [])];
+  const chosen = program && available.includes(program) ? program : available.length === 1 ? available[0] : null;
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [phone, setPhone] = React.useState("");
@@ -53,7 +59,7 @@ export default function AffiliateRegisterPage() {
 
   const onSubmit = async (ev: React.FormEvent) => {
     ev.preventDefault();
-    if (!terms) return;
+    if (!terms || !chosen) return;
     const errs = validate();
     setErrors(errs);
     if (Object.keys(errs).length > 0) return;
@@ -65,6 +71,7 @@ export default function AffiliateRegisterPage() {
         phone: phone.trim(),
         password,
         terms_version: AFFILIATE_TERMS_VERSION,
+        program: chosen,
       });
       if (res.otp_required && res.pending_token) {
         sessionStorage.setItem("abak-pending-token", res.pending_token);
@@ -81,8 +88,8 @@ export default function AffiliateRegisterPage() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "affiliate_registration_closed") {
         toast.error(t("aff_reg_closed"));
-      } else if (err instanceof ApiError && err.code === "affiliate_registration_cap") {
-        toast.error(t("aff_reg_cap"));
+      } else if (err instanceof ApiError && err.code === "partner_registration_closed") {
+        toast.error(t("aff_reg_closed"));
       } else {
         toast.error(err instanceof ApiError ? err.message : t("register_failed"));
       }
@@ -102,7 +109,7 @@ export default function AffiliateRegisterPage() {
     </div>
   );
 
-  if (programStatus.data?.enabled === false) {
+  if (programStatus.data && available.length === 0) {
     return (
       <div className="w-full max-w-[372px]" role="status">
         <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">{t("aff_reg_title")}</h2>
@@ -123,6 +130,30 @@ export default function AffiliateRegisterPage() {
       </div>
 
       <form onSubmit={onSubmit} noValidate>
+        {available.length > 1 && (
+          <fieldset className="mb-5" aria-label={t("aff_reg_choose_program")}>
+            <legend className="mb-2 text-[12.5px] font-semibold text-ink-600">{t("aff_reg_choose_program")}</legend>
+            <div className="grid gap-2">
+              {available.map((value) => (
+                <label
+                  key={value}
+                  className={`cursor-pointer rounded-lg border p-3 text-[13px] ${chosen === value ? "border-success bg-success/5" : "border-line"}`}
+                >
+                  <input
+                    type="radio"
+                    name="program"
+                    value={value}
+                    checked={chosen === value}
+                    onChange={() => setProgram(value)}
+                    className="mr-2 accent-success"
+                  />
+                  <span className="font-bold text-ink-900">{t(value === "affiliate" ? "aff_reg_program_affiliate_title" : "aff_reg_program_partner_title")}</span>
+                  <span className="mt-1 block pl-6 text-ink-600">{t(value === "affiliate" ? "aff_reg_program_affiliate_desc" : "aff_reg_program_partner_desc")}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
         {field(
           "name",
           "register_full_name_label",
@@ -270,7 +301,7 @@ export default function AffiliateRegisterPage() {
           {!terms && <div className="mt-1.5 text-[11.5px] text-ink-500">{t("aff_reg_terms_hint")}</div>}
         </div>
 
-        <Button type="submit" disabled={loading || !terms} className="h-12 w-full text-[15px]">
+        <Button type="submit" disabled={loading || !terms || !chosen} className="h-12 w-full text-[15px]">
           {loading ? (
             <span className="flex items-center gap-2">
               <Loader2 size={16} className="animate-spin" />

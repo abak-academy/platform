@@ -415,6 +415,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	partnersMe.Use(handler.JWTMiddleware(svc, jwtSigner))
 	partnersMe.Use(handler.PartnerGate(svc))
 	partnersMe.GET("", h.PartnerMe)
+	partnersMe.GET("/dashboard", h.PartnerDashboard)
 	partnersMe.GET("/orders", h.PartnerListOrders)
 	partnersMe.POST("/orders", h.PartnerCreateOrder)
 	partnersMe.POST("/orders/preview", h.PartnerPreviewOrder)

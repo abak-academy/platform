@@ -109,3 +109,13 @@ func (h *Handler) PartnerRetryOrder(c echo.Context) error {
 		"payment_expires_at": result.PaymentExpiresAt,
 	})
 }
+
+// PartnerDashboard backs GET /partners/me/dashboard.
+func (h *Handler) PartnerDashboard(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	dashboard, err := h.svc.GetPartnerDashboard(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, dashboard)
+}

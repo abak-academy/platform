@@ -23,6 +23,9 @@ let examsState: { data: { data: typeof sampleExams } | undefined };
 const mockPresign = vi.fn();
 const mockUseExams = vi.fn();
 
+vi.mock("@/components/admin/PartnerAccessSection", () => ({
+  PartnerAccessSection: ({ productId }: { productId: string }) => <div data-testid="partner-access">akses-{productId}</div>,
+}));
 vi.mock("@/lib/hooks/admin-courses", () => ({
   useAdminCourses: () => coursesState,
 }));

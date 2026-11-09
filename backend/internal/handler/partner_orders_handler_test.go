@@ -142,6 +142,25 @@ func TestPartnerOrderRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("the dashboard counts what the Mitra did", func(t *testing.T) {
+		rec := getWithToken(t, env.e, "/api/v1/partners/me/dashboard", token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		body := decodeBody(t, rec)
+		if body["students_registered"] != float64(1) {
+			t.Errorf("students_registered = %v, want 1 (only the student this Mitra registered)", body["students_registered"])
+		}
+		if body["orders_paid"] != float64(1) {
+			t.Errorf("orders_paid = %v, want the one paid above", body["orders_paid"])
+		}
+		for _, key := range []string{"orders_unpaid", "vouchers_available", "products_open"} {
+			if _, ok := body[key]; !ok {
+				t.Errorf("%s is missing: %s", key, rec.Body.String())
+			}
+		}
+	})
+
 	t.Run("a suspended Mitra cannot start an order", func(t *testing.T) {
 		suspended := seedProgramAccount(t, env.pool, "deactivated", "suspended", "", partnerOnlyJSON, "")
 		rec := postJSONWithToken(t, env.e, order, env.tokenForUser(t, suspended, service.RoleAffiliator),

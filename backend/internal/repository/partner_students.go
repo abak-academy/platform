@@ -215,3 +215,24 @@ func scanPartnerOrderStudents(rows pgx.Rows) ([]PartnerOrderStudent, error) {
 	}
 	return out, rows.Err()
 }
+
+// PartnerDashboardCounts are the figures on a Mitra's home page.
+type PartnerDashboardCounts struct {
+	StudentsRegistered int `json:"students_registered"`
+	OrdersPaid         int `json:"orders_paid"`
+	OrdersUnpaid       int `json:"orders_unpaid"`
+}
+
+// GetPartnerDashboardCounts counts the students the Mitra registered and its
+// orders: paid ones, and ones still waiting for payment.
+func (r *Repository) GetPartnerDashboardCounts(ctx context.Context, partnerID string) (PartnerDashboardCounts, error) {
+	var c PartnerDashboardCounts
+	err := r.pool.QueryRow(ctx,
+		`SELECT
+		   (SELECT count(*) FROM users WHERE registered_by = $1::uuid AND role = 'student' AND status != 'deleted'),
+		   (SELECT count(*) FROM orders WHERE student_id = $1::uuid AND status IN ('paid', 'processing', 'shipped', 'completed')),
+		   (SELECT count(*) FROM orders WHERE student_id = $1::uuid AND status IN ('cart', 'payment_pending'))`,
+		partnerID,
+	).Scan(&c.StudentsRegistered, &c.OrdersPaid, &c.OrdersUnpaid)
+	return c, err
+}

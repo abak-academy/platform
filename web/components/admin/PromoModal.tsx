@@ -12,7 +12,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput } from "@/lib/types";
+import { PartnerPicker } from "@/components/admin/PartnerPicker";
+import { useHasCapability } from "@/lib/hooks/use-capability";
+import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput, PartnerQuotaUnit } from "@/lib/types";
 
 type DiscountType = "percent" | "fixed";
 
@@ -47,6 +49,11 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
   const [expiresAt, setExpiresAt] = useState("");
   const [isPublic, setIsPublic] = useState(false);
   const [affiliatorOnly, setAffiliatorOnly] = useState(false);
+  const canManagePartners = useHasCapability("affiliates:*");
+  const [partnerOn, setPartnerOn] = useState(false);
+  const [partnerIds, setPartnerIds] = useState<string[]>([]);
+  // The quota unit has no default: the admin has to choose what max_uses counts.
+  const [partnerUnit, setPartnerUnit] = useState<PartnerQuotaUnit | "">("");
 
   useEffect(() => {
     if (!open) return;
@@ -65,6 +72,9 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setExpiresAt(dateInputValue(promo.expires_at));
       setIsPublic(Boolean(promo.is_public));
       setAffiliatorOnly(Boolean(promo.affiliator_only));
+      setPartnerOn(Boolean(promo.partner));
+      setPartnerIds(promo.partner?.ids ?? []);
+      setPartnerUnit(promo.partner?.quota_unit ?? "");
     } else {
       setCode("");
       setDiscountType("percent");
@@ -74,6 +84,10 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setMaxUses("");
       setExpiresAt("");
       setIsPublic(false);
+      setAffiliatorOnly(false);
+      setPartnerOn(false);
+      setPartnerIds([]);
+      setPartnerUnit("");
     }
   }, [open, promo]);
 
@@ -81,7 +95,17 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
     code.trim() !== "" &&
     discountValue !== "" &&
     Number(discountValue) >= 0 &&
+    (!partnerOn || partnerUnit !== "") &&
     !isPending;
+
+  // The Mitra section is sent only to an admin who can manage Mitra; on an edit it
+  // is also left out when the promo was never a Mitra voucher and still is not.
+  function partnerVoucher(): { partner_voucher?: { enabled: boolean; ids?: string[]; quota_unit?: PartnerQuotaUnit } } {
+    if (!canManagePartners) return {};
+    if (partnerOn && partnerUnit !== "") return { partner_voucher: { enabled: true, ids: partnerIds, quota_unit: partnerUnit } };
+    if (isEdit && promo?.partner) return { partner_voucher: { enabled: false } };
+    return {};
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -93,8 +117,9 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       const input: AdminUpdatePromoCodeInput = {
         ...(maxUses !== "" ? { max_uses: Number(maxUses) } : {}),
         ...(expiresAt ? { expires_at: expiryIso(expiresAt) } : {}),
-        is_public: isPublic && !affiliatorOnly,
+        is_public: isPublic && !affiliatorOnly && !partnerOn,
         affiliator_only: affiliatorOnly,
+        ...partnerVoucher(),
       };
       onSubmit(input);
       return;
@@ -105,8 +130,9 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       ...(maxUses !== "" ? { max_uses: Number(maxUses) } : {}),
       ...(minOrderAmount !== "" ? { min_order_amount: Number(minOrderAmount) } : {}),
       ...(expiresAt ? { expires_at: expiryIso(expiresAt) } : {}),
-      is_public: isPublic && !affiliatorOnly,
+      is_public: isPublic && !affiliatorOnly && !partnerOn,
       affiliator_only: affiliatorOnly,
+      ...partnerVoucher(),
     };
 
     if (discountType === "percent") {
@@ -238,7 +264,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                 type="checkbox"
                 checked={isPublic}
                 onChange={(e) => setIsPublic(e.target.checked)}
-                disabled={isPending || affiliatorOnly}
+                disabled={isPending || affiliatorOnly || partnerOn}
               />
               Tampilkan di checkout
             </label>
@@ -248,10 +274,59 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                 type="checkbox"
                 checked={affiliatorOnly}
                 onChange={(e) => setAffiliatorOnly(e.target.checked)}
-                disabled={isPending}
+                disabled={isPending || partnerOn}
               />
               Khusus affiliator (tidak tampil ke siswa)
             </label>
+
+            {canManagePartners && (
+              <fieldset className="grid gap-3 rounded-lg border border-line p-3" aria-label="Voucher Mitra">
+                <label htmlFor="promo-partner" className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                  <input
+                    id="promo-partner"
+                    type="checkbox"
+                    checked={partnerOn}
+                    onChange={(e) => setPartnerOn(e.target.checked)}
+                    disabled={isPending || affiliatorOnly}
+                  />
+                  Voucher Mitra (hanya untuk pembelian Mitra)
+                </label>
+                {partnerOn && (
+                  <>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="promo-partner-unit">Kuota dihitung</Label>
+                      <select
+                        id="promo-partner-unit"
+                        value={partnerUnit}
+                        onChange={(e) => setPartnerUnit(e.target.value as PartnerQuotaUnit | "")}
+                        disabled={isPending}
+                        className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
+                      >
+                        <option value="">Pilih satuan kuota</option>
+                        <option value="order">Per order: satu order memakai satu kuota</option>
+                        <option value="student">Per siswa: tiap siswa memakai satu kuota</option>
+                      </select>
+                      <p className="text-xs text-ink-500">
+                        Per siswa juga membuat maksimal potongan berlaku untuk tiap siswa. Per order menerapkannya sekali untuk seluruh order.
+                      </p>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label>Mitra yang boleh memakai</Label>
+                      <PartnerPicker
+                        value={partnerIds}
+                        onChange={setPartnerIds}
+                        disabled={isPending}
+                        emptyLabel="Semua Mitra"
+                        searchLabel="Cari Mitra"
+                      />
+                    </div>
+                    <p className="text-xs text-warn">
+                      Voucher hanya bisa dipakai pada produk yang dibuka untuk Mitra itu. Atur di form produk.
+                    </p>
+                  </>
+                )}
+              </fieldset>
+            )}
           </div>
 
           <DialogFooter>

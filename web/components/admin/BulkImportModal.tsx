@@ -38,18 +38,21 @@ interface BulkImportModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   allowExplicitPassword: boolean;
+  /** A Mitra imports through its own routes; the school column is optional for it. */
+  partner?: boolean;
 }
 
-export function BulkImportModal({ open, onOpenChange, allowExplicitPassword }: BulkImportModalProps) {
+export function BulkImportModal({ open, onOpenChange, allowExplicitPassword, partner = false }: BulkImportModalProps) {
   const { t } = useTranslation();
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 
-  const presign = usePresignStudentBulkUpload();
-  const enqueue = useEnqueueStudentBulkImport();
-  const job = useJobStatus(jobId);
+  const studentsBase = partner ? "/partners/me/students" : "/admin/students";
+  const presign = usePresignStudentBulkUpload(studentsBase);
+  const enqueue = useEnqueueStudentBulkImport(studentsBase);
+  const job = useJobStatus(jobId, partner ? { basePath: "/partners/me/jobs" } : undefined);
 
   const isUploading = presign.isPending || enqueue.isPending;
 

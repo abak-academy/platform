@@ -22,6 +22,9 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
 vi.mock("@/components/affiliate/AdminCommissionsPanel", () => ({
   AdminCommissionsPanel: ({ affiliatorId }: { affiliatorId: string }) => <div>orders-panel-{affiliatorId}</div>,
 }));
+vi.mock("@/components/affiliate/PartnerProgramPanel", () => ({
+  PartnerProgramPanel: ({ id }: { id: string }) => <div>programs-panel-{id}</div>,
+}));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability }));
 vi.mock("sonner", () => ({ toast: h.toast }));
 
