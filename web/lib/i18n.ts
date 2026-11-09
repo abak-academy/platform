@@ -2855,6 +2855,13 @@ export const DICT = {
     admin_aff_add_program_confirm_title: "Tambah program {program}?",
     admin_aff_add_program_confirm_desc: "Program yang sudah ditambahkan tidak bisa dicabut. Untuk menghentikan akses akun, ubah statusnya menjadi ditangguhkan atau nonaktif.",
     admin_aff_add_program_confirm: "Ya, tambahkan",
+    partner_schools_search: "Cari nama, NPSN, atau kode sekolah",
+    partner_students_filter_registered: "Didaftarkan oleh",
+    partner_students_filter_account: "Status akun",
+    partner_students_filter_school_label: "Sekolah",
+    partner_orders_search: "Cari produk, siswa, atau nomor pesanan",
+    partner_orders_filter_status_label: "Status pesanan",
+    partner_orders_filter_date: "Tanggal pembelian",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -5702,6 +5709,13 @@ export const DICT = {
     admin_aff_add_program_confirm_title: "Add the {program} program?",
     admin_aff_add_program_confirm_desc: "A program cannot be removed once added. To stop an account's access, suspend or deactivate it instead.",
     admin_aff_add_program_confirm: "Yes, add it",
+    partner_schools_search: "Search school name, NPSN or code",
+    partner_students_filter_registered: "Registered by",
+    partner_students_filter_account: "Account status",
+    partner_students_filter_school_label: "School",
+    partner_orders_search: "Search product, student or order number",
+    partner_orders_filter_status_label: "Order status",
+    partner_orders_filter_date: "Purchase date",
   },
 };
 

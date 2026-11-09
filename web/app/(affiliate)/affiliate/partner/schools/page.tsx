@@ -1,24 +1,36 @@
 "use client";
 
+import { Suspense } from "react";
 import { Download, School } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Skeleton } from "@/components/ui/skeleton";
+import type { DataTableColumn } from "@/components/ui/data-table";
 import { downloadCsv } from "@/lib/csv";
-import { usePartnerSchools } from "@/lib/hooks/partner";
+import { fetchAllPartnerPages, usePartnerSchools } from "@/lib/hooks/partner";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation } from "@/lib/i18n";
 import type { PartnerSchool } from "@/lib/types";
 
 export default function PartnerSchoolsPage() {
-  const { t } = useTranslation();
-  const query = usePartnerSchools();
-  const rows = query.data?.data ?? [];
+  return (
+    <Suspense fallback={null}>
+      <SchoolsContent />
+    </Suspense>
+  );
+}
 
-  const exportCsv = () => {
+function SchoolsContent() {
+  const { t } = useTranslation();
+  const { params, update, reset, hasFilters } = useListParams();
+  const query = usePartnerSchools({ q: params.q, status: params.status, page: params.page, per_page: params.per_page });
+
+  const exportCsv = async () => {
     try {
-      downloadCsv("sekolah-mitra.csv", ["name", "npsn", "code", "status"], rows.map((s) => [s.name, s.npsn, s.code, s.status]));
+      const all = await fetchAllPartnerPages<PartnerSchool>("/partners/me/schools", { q: params.q, status: params.status });
+      downloadCsv("sekolah-mitra.csv", ["name", "npsn", "code", "status"], all.map((s) => [s.name, s.npsn, s.code, s.status]));
     } catch {
       toast.error(t("partner_csv_failed"));
     }
@@ -37,25 +49,42 @@ export default function PartnerSchoolsPage() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader icon={School} title={t("partner_schools_title")} description={t("partner_schools_desc")} />
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={exportCsv} disabled={rows.length === 0}>
-          <Download className="mr-2 size-4" />
-          {t("partner_csv_download")}
-        </Button>
-      </div>
-      {query.isLoading ? (
-        <Skeleton className="h-32 w-full" />
-      ) : query.isError ? (
-        <div role="alert" className="space-y-2 text-sm text-danger">
-          <p>{t("partner_load_failed")}</p>
-          <Button size="sm" variant="outline" onClick={() => query.refetch()}>
-            {t("partner_retry")}
+      <AdminPageHeader
+        icon={School}
+        title={t("partner_schools_title")}
+        description={t("partner_schools_desc")}
+        actions={
+          <Button variant="outline" onClick={exportCsv}>
+            <Download className="mr-2 size-4" />
+            {t("partner_csv_download")}
           </Button>
-        </div>
-      ) : (
-        <DataTable columns={columns} rows={rows} rowKey={(s) => s.id} empty={t("partner_schools_empty")} />
-      )}
+        }
+      />
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("partner_schools_search")}
+        filters={[
+          {
+            key: "status",
+            label: t("partner_schools_col_status"),
+            options: [
+              { value: "active", label: "active" },
+              { value: "inactive", label: "inactive" },
+            ],
+          },
+        ]}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(s) => s.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("partner_schools_empty")}
+        filtered={hasFilters}
+      />
     </div>
   );
 }

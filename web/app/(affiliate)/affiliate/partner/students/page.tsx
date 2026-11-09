@@ -1,46 +1,49 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { Download, GraduationCap, Upload, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { RegisterStudentDialog } from "@/components/partner/RegisterStudentDialog";
 import { ReissueCredentialsDialog } from "@/components/partner/ReissueCredentialsDialog";
+import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import type { DataTableColumn } from "@/components/ui/data-table";
 import { downloadCsv } from "@/lib/csv";
-import { fetchAllPartnerPages, usePartnerSchools, usePartnerStudents } from "@/lib/hooks/partner";
+import { fetchAllPartnerPages, usePartnerSchools, usePartnerStudentsPage } from "@/lib/hooks/partner";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { useTranslation } from "@/lib/i18n";
 import type { PartnerStudent } from "@/lib/types";
 
 export default function PartnerStudentsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentsContent />
+    </Suspense>
+  );
+}
+
+function StudentsContent() {
   const { t } = useTranslation();
-  const [q, setQ] = useState("");
-  const [mine, setMine] = useState(false);
-  const [schoolId, setSchoolId] = useState("");
-  const [status, setStatus] = useState("");
-  const schools = usePartnerSchools();
+  const { params, update, reset, hasFilters } = useListParams();
   const [registering, setRegistering] = useState(false);
   const [importing, setImporting] = useState(false);
   const [reissuing, setReissuing] = useState<PartnerStudent | null>(null);
-  const debounced = useDebouncedValue(q, 300);
-  const query = usePartnerStudents({ q: debounced, registeredByMe: mine, schoolId, status });
-
-  const rows = query.data?.pages.flatMap((p) => p.data) ?? [];
-  const noSchools = rows.length === 0 && query.data?.pages[0]?.hint === "no_schools";
+  const schools = usePartnerSchools();
+  const filter = {
+    q: params.q,
+    status: params.status,
+    school_id: params.school,
+    registered_by_me: params.type === "mine",
+  };
+  const query = usePartnerStudentsPage({ ...filter, page: params.page, per_page: params.per_page });
+  const noSchools = query.data?.hint === "no_schools";
 
   const exportCsv = async () => {
     try {
-      const params: Record<string, string> = {};
-      if (debounced) params.q = debounced;
-      if (mine) params.registered_by_me = "true";
-      if (schoolId) params.school_id = schoolId;
-      if (status) params.status = status;
-      const all = await fetchAllPartnerPages<PartnerStudent>("/partners/me/students", params);
+      const all = await fetchAllPartnerPages<PartnerStudent>("/partners/me/students", filter);
       downloadCsv(
         "siswa-mitra.csv",
         ["name", "username", "school", "grade", "jenjang", "status", "activated", "registered_by_me"],
@@ -85,77 +88,58 @@ export default function PartnerStudentsPage() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader icon={GraduationCap} title={t("partner_students_title")} description={t("partner_students_desc")} />
-      <div className="flex flex-wrap items-center gap-3">
-        <Input className="max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("partner_students_search")} aria-label={t("partner_students_search")} />
-        <div className="flex gap-1" role="group" aria-label={t("partner_students_col_source")}>
-          <Button size="sm" variant={mine ? "outline" : "default"} aria-pressed={!mine} onClick={() => setMine(false)}>
-            {t("partner_students_filter_all")}
-          </Button>
-          <Button size="sm" variant={mine ? "default" : "outline"} aria-pressed={mine} onClick={() => setMine(true)}>
-            {t("partner_students_filter_mine")}
-          </Button>
-        </div>
-        <select
-          aria-label={t("partner_col_school")}
-          value={schoolId}
-          onChange={(e) => setSchoolId(e.target.value)}
-          className="h-9 max-w-[14rem] rounded-md border border-input bg-transparent px-2 text-sm"
-        >
-          <option value="">{t("partner_students_filter_school")}</option>
-          {(schools.data?.data ?? []).map((sc) => (
-            <option key={sc.id} value={sc.id}>
-              {sc.name}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label={t("partner_students_status_label")}
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
-        >
-          <option value="">{t("partner_students_filter_status_all")}</option>
-          <option value="active">{t("partner_students_status_active")}</option>
-          <option value="deactivated">{t("partner_students_status_deactivated")}</option>
-        </select>
-        <div className="ml-auto flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>
-            <Download className="mr-2 size-4" />
-            {t("partner_csv_download")}
-          </Button>
-          <Button variant="outline" onClick={() => setImporting(true)}>
-            <Upload className="mr-2 size-4" />
-            {t("partner_students_import")}
-          </Button>
-          <Button onClick={() => setRegistering(true)}>
-            <UserPlus className="mr-2 size-4" />
-            {t("partner_students_register")}
-          </Button>
-        </div>
-      </div>
-
-      {query.isLoading ? (
-        <Skeleton className="h-40 w-full" />
-      ) : query.isError ? (
-        <div role="alert" className="space-y-2 text-sm text-danger">
-          <p>{t("partner_load_failed")}</p>
-          <Button size="sm" variant="outline" onClick={() => query.refetch()}>
-            {t("partner_retry")}
-          </Button>
-        </div>
-      ) : (
-        <>
-          <DataTable columns={columns} rows={rows} rowKey={(s) => s.id} empty={noSchools ? t("partner_students_no_schools") : t("partner_students_empty")} />
-          {query.hasNextPage && (
-            <div className="flex justify-center">
-              <Button variant="outline" onClick={() => query.fetchNextPage()} disabled={query.isFetchingNextPage}>
-                {t("partner_load_more")}
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+      <AdminPageHeader
+        icon={GraduationCap}
+        title={t("partner_students_title")}
+        description={t("partner_students_desc")}
+        actions={
+          <>
+            <Button variant="outline" onClick={exportCsv}>
+              <Download className="mr-2 size-4" />
+              {t("partner_csv_download")}
+            </Button>
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              <Upload className="mr-2 size-4" />
+              {t("partner_students_import")}
+            </Button>
+            <Button onClick={() => setRegistering(true)}>
+              <UserPlus className="mr-2 size-4" />
+              {t("partner_students_register")}
+            </Button>
+          </>
+        }
+      />
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("partner_students_search")}
+        filters={[
+          { key: "type", label: t("partner_students_filter_registered"), options: [{ value: "mine", label: t("partner_students_source_me") }] },
+          {
+            key: "school",
+            label: t("partner_students_filter_school_label"),
+            options: (schools.data?.data ?? []).map((sc) => ({ value: sc.id, label: sc.name })),
+          },
+          {
+            key: "status",
+            label: t("partner_students_filter_account"),
+            options: [
+              { value: "active", label: t("partner_students_status_active") },
+              { value: "deactivated", label: t("partner_students_status_deactivated") },
+            ],
+          },
+        ]}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(s) => s.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={noSchools ? t("partner_students_no_schools") : t("partner_students_empty")}
+        filtered={hasFilters}
+      />
 
       <RegisterStudentDialog open={registering} onOpenChange={setRegistering} />
       <BulkImportModal open={importing} onOpenChange={setImporting} allowExplicitPassword={false} partner />

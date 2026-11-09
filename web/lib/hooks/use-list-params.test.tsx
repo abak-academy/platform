@@ -21,7 +21,7 @@ describe("useListParams", () => {
     search = "q=sari&status=pending&page=3&per_page=50&from=2026-10-01";
     const { result } = renderHook(() => useListParams());
 
-    expect(result.current.params).toEqual({ q: "sari", status: "pending", type: "", from: "2026-10-01", to: "", page: 3, per_page: 50 });
+    expect(result.current.params).toEqual({ q: "sari", status: "pending", type: "", school: "", from: "2026-10-01", to: "", page: 3, per_page: 50 });
     expect(result.current.hasFilters).toBe(true);
   });
 

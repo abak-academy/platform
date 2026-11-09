@@ -2038,6 +2038,21 @@ export interface PartnerVoucher {
   partner?: PartnerVoucherInfo;
 }
 
+export interface PartnerSchoolPage {
+  data: PartnerSchool[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface PartnerStudentPageNumbered {
+  data: PartnerStudent[];
+  page: number;
+  per_page: number;
+  total: number;
+  hint?: string;
+}
+
 export interface PartnerSchool {
   id: string;
   name: string;
@@ -2077,7 +2092,9 @@ export interface PartnerOrder {
 
 export interface PartnerOrderPage {
   data: PartnerOrder[];
-  next_cursor: string;
+  page: number;
+  per_page: number;
+  total: number;
 }
 
 export interface PartnerDashboard {

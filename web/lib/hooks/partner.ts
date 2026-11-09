@@ -11,7 +11,8 @@ import type {
   PartnerOrderPage,
   PartnerOrderPreview,
   PartnerProduct,
-  PartnerSchool,
+  PartnerSchoolPage,
+  PartnerStudentPageNumbered,
   PartnerStudentPage,
   PartnerStudentRegistration,
   PartnerVoucher,
@@ -123,17 +124,30 @@ export function useCreatePartnerOrder() {
   });
 }
 
-export function usePartnerOrders(status = "") {
-  return useInfiniteQuery({
-    queryKey: [...partnerKeys.orders(), status],
-    initialPageParam: "",
-    queryFn: ({ pageParam }) => {
-      const qs = new URLSearchParams({ limit: "20" });
-      if (status) qs.set("status", status);
-      if (pageParam) qs.set("cursor", pageParam);
-      return authFetch<PartnerOrderPage>(`/partners/me/orders?${qs.toString()}`);
-    },
-    getNextPageParam: (last) => last.next_cursor || undefined,
+export interface PartnerListParams {
+  q?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  school_id?: string;
+  registered_by_me?: boolean;
+  page?: number;
+  per_page?: number;
+}
+
+function pageQuery(p: PartnerListParams): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(p)) {
+    if (value !== undefined && value !== "" && value !== false) qs.set(key, String(value));
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+}
+
+export function usePartnerOrders(params: PartnerListParams) {
+  return useQuery({
+    queryKey: [...partnerKeys.orders(), params],
+    queryFn: () => authFetch<PartnerOrderPage>(`/partners/me/orders${pageQuery(params)}`),
     placeholderData: keepPreviousData,
   });
 }
@@ -145,24 +159,32 @@ export function usePartnerOrder(id: string) {
   });
 }
 
-export function usePartnerSchools() {
+export function usePartnerSchools(params: PartnerListParams = { per_page: 100 }) {
   return useQuery({
-    queryKey: [...partnerKeys.all, "schools"],
-    queryFn: () => authFetch<{ data: PartnerSchool[] }>("/partners/me/schools"),
+    queryKey: [...partnerKeys.all, "schools", params],
+    queryFn: () => authFetch<PartnerSchoolPage>(`/partners/me/schools${pageQuery(params)}`),
+    placeholderData: keepPreviousData,
   });
 }
 
-export async function fetchAllPartnerPages<T>(path: string, params: Record<string, string> = {}): Promise<T[]> {
+export function usePartnerStudentsPage(params: PartnerListParams) {
+  return useQuery({
+    queryKey: [...partnerKeys.all, "students-page", params],
+    queryFn: () => authFetch<PartnerStudentPageNumbered>(`/partners/me/students${pageQuery(params)}`),
+    placeholderData: keepPreviousData,
+  });
+}
+
+// fetchAllPartnerPages walks every page a list answers, for a CSV of everything
+// the filters match rather than of the page on screen.
+export async function fetchAllPartnerPages<T>(path: string, params: PartnerListParams = {}): Promise<T[]> {
   const rows: T[] = [];
-  let cursor = "";
-  do {
-    const qs = new URLSearchParams({ ...params, limit: "100" });
-    if (cursor) qs.set("cursor", cursor);
-    const page = await authFetch<{ data: T[]; next_cursor?: string }>(`${path}?${qs.toString()}`);
-    rows.push(...page.data);
-    cursor = page.next_cursor ?? "";
-  } while (cursor);
-  return rows;
+  for (let page = 1; ; page++) {
+    const result = await authFetch<{ data: T[] | null; total?: number }>(`${path}${pageQuery({ ...params, page, per_page: 100 })}`);
+    const data = result.data ?? [];
+    rows.push(...data);
+    if (data.length === 0 || rows.length >= (result.total ?? 0)) return rows;
+  }
 }
 
 export function usePartnerProductAccess(productId: string | null) {

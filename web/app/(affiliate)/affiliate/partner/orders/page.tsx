@@ -1,17 +1,19 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { Download, ShoppingCart } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { RetryPaymentButton } from "@/components/partner/RetryPaymentButton";
+import { AffiliateList } from "@/components/affiliate/AffiliateList";
+import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
+import { RetryPaymentButton } from "@/components/partner/RetryPaymentButton";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Skeleton } from "@/components/ui/skeleton";
+import type { DataTableColumn } from "@/components/ui/data-table";
 import { downloadCsv } from "@/lib/csv";
 import { fetchAllPartnerPages, partnerKeys, usePartnerOrders } from "@/lib/hooks/partner";
+import { useListParams } from "@/lib/hooks/use-list-params";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import type { PartnerOrder } from "@/lib/types";
@@ -36,14 +38,22 @@ const FILTER_STATUSES: Record<string, I18nKey> = {
 };
 
 export default function PartnerOrdersPage() {
+  return (
+    <Suspense fallback={null}>
+      <OrdersContent />
+    </Suspense>
+  );
+}
+
+function OrdersContent() {
   const { t } = useTranslation();
-  const [status, setStatus] = useState("");
-  const query = usePartnerOrders(status);
-  const rows = query.data?.pages.flatMap((p) => p.data) ?? [];
+  const { params, update, reset, hasFilters } = useListParams();
+  const filter = { q: params.q, status: params.status, from: params.from, to: params.to };
+  const query = usePartnerOrders({ ...filter, page: params.page, per_page: params.per_page });
 
   const exportCsv = async () => {
     try {
-      const all = await fetchAllPartnerPages<PartnerOrder>("/partners/me/orders", status ? { status } : {});
+      const all = await fetchAllPartnerPages<PartnerOrder>("/partners/me/orders", filter);
       downloadCsv(
         "pembelian-mitra.csv",
         ["order_id", "created_at", "status", "products", "seats", "subtotal", "discount", "total"],
@@ -93,52 +103,45 @@ export default function PartnerOrdersPage() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader icon={ShoppingCart} title={t("partner_orders_title")} description={t("partner_orders_desc")} />
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          aria-label={t("partner_orders_col_status")}
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className="h-9 rounded-md border border-input bg-transparent px-2 text-sm"
-        >
-          <option value="">{t("partner_orders_filter_all")}</option>
-          {Object.entries(FILTER_STATUSES).map(([value, key]) => (
-            <option key={value} value={value}>
-              {t(key)}
-            </option>
-          ))}
-        </select>
-        <div className="ml-auto flex gap-2">
-          <Button variant="outline" onClick={exportCsv}>
-            <Download className="mr-2 size-4" />
-            {t("partner_csv_download")}
-          </Button>
-          <Button asChild>
-            <Link href="/affiliate/partner/orders/new">{t("partner_orders_new")}</Link>
-          </Button>
-        </div>
-      </div>
-      {query.isLoading ? (
-        <Skeleton className="h-32 w-full" />
-      ) : query.isError ? (
-        <div role="alert" className="space-y-2 text-sm text-danger">
-          <p>{t("partner_load_failed")}</p>
-          <Button size="sm" variant="outline" onClick={() => query.refetch()}>
-            {t("partner_retry")}
-          </Button>
-        </div>
-      ) : (
-        <>
-          <DataTable columns={columns} rows={rows} rowKey={(o) => o.id} empty={t("partner_orders_empty")} />
-          {query.hasNextPage && (
-            <div className="flex justify-center">
-              <Button variant="outline" onClick={() => query.fetchNextPage()} disabled={query.isFetchingNextPage}>
-                {t("partner_load_more")}
-              </Button>
-            </div>
-          )}
-        </>
-      )}
+      <AdminPageHeader
+        icon={ShoppingCart}
+        title={t("partner_orders_title")}
+        description={t("partner_orders_desc")}
+        actions={
+          <>
+            <Button variant="outline" onClick={exportCsv}>
+              <Download className="mr-2 size-4" />
+              {t("partner_csv_download")}
+            </Button>
+            <Button asChild>
+              <Link href="/affiliate/partner/orders/new">{t("partner_orders_new")}</Link>
+            </Button>
+          </>
+        }
+      />
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("partner_orders_search")}
+        filters={[
+          {
+            key: "status",
+            label: t("partner_orders_filter_status_label"),
+            options: Object.entries(FILTER_STATUSES).map(([value, key]) => ({ value, label: t(key) })),
+          },
+        ]}
+        dateLabel={t("partner_orders_filter_date")}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(o) => o.id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("partner_orders_empty")}
+        filtered={hasFilters}
+      />
     </div>
   );
 }

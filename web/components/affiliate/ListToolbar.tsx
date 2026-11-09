@@ -12,7 +12,7 @@ import { formatAffDate } from "@/lib/affiliate-labels";
 import { useTranslation } from "@/lib/i18n";
 
 export interface ToolbarFilter {
-  key: "status" | "type";
+  key: "status" | "type" | "school";
   label: string;
   options: { value: string; label: string }[];
 }
