@@ -16,6 +16,11 @@ vi.mock("@/components/admin/PartnerPicker", () => ({
   ),
 }));
 
+async function choose(trigger: HTMLElement, option: string | RegExp) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
+
 describe("PromoModal", () => {
   beforeEach(() => {
     mockOnSubmit.mockReset();
@@ -35,7 +40,7 @@ describe("PromoModal", () => {
 
     expect(screen.getByRole("dialog", { name: /buat kode promo/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/contoh: diskon10/i)).toHaveValue("");
-    expect(screen.getByLabelText(/jenis diskon/i)).toHaveValue("percent");
+    expect(screen.getByRole("combobox", { name: /jenis diskon/i })).toHaveTextContent("Persen");
   });
 
   it("renders edit modal prefilled with promo data", () => {
@@ -105,8 +110,7 @@ describe("PromoModal", () => {
 
     fireEvent.input(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "CASHBACK20K" } });
 
-    const typeSelect = screen.getByLabelText(/jenis diskon/i);
-    fireEvent.change(typeSelect, { target: { value: "fixed" } });
+    await choose(screen.getByRole("combobox", { name: /jenis diskon/i }), "Nominal tetap");
 
     fireEvent.input(screen.getByLabelText(/nilai diskon/i), { target: { value: "20000" } });
     fireEvent.input(screen.getByLabelText(/minimal pembelian/i), { target: { value: "50000" } });
@@ -236,24 +240,24 @@ describe("PromoModal", () => {
       expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("partner_voucher");
     });
 
-    it("needs a quota unit before it can be saved, with no unit preselected", () => {
+    it("needs a quota unit before it can be saved, with no unit preselected", async () => {
       capability.value = true;
       renderCreate();
       fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
 
-      expect(screen.getByLabelText("Kuota dihitung")).toHaveValue("");
+      expect(screen.getByRole("combobox", { name: "Kuota dihitung" })).toHaveTextContent("Pilih satuan kuota");
       expect(screen.getByRole("button", { name: /simpan/i })).toBeDisabled();
 
-      fireEvent.change(screen.getByLabelText("Kuota dihitung"), { target: { value: "student" } });
+      await choose(screen.getByRole("combobox", { name: "Kuota dihitung" }), /per siswa/i);
       expect(screen.getByRole("button", { name: /simpan/i })).toBeEnabled();
     });
 
-    it("sends the unit and the chosen Mitra, and is never public", () => {
+    it("sends the unit and the chosen Mitra, and is never public", async () => {
       capability.value = true;
       renderCreate();
       fireEvent.click(screen.getByRole("checkbox", { name: /tampilkan di checkout/i }));
       fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
-      fireEvent.change(screen.getByLabelText("Kuota dihitung"), { target: { value: "order" } });
+      await choose(screen.getByRole("combobox", { name: "Kuota dihitung" }), /per order/i);
       fireEvent.click(screen.getByRole("button", { name: /pilih mitra/i }));
       fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
 
@@ -263,11 +267,11 @@ describe("PromoModal", () => {
       });
     });
 
-    it("sends the minimum students, 0 when left empty, and refuses a negative one", () => {
+    it("sends the minimum students, 0 when left empty, and refuses a negative one", async () => {
       capability.value = true;
       renderCreate();
       fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
-      fireEvent.change(screen.getByLabelText("Kuota dihitung"), { target: { value: "order" } });
+      await choose(screen.getByRole("combobox", { name: "Kuota dihitung" }), /per order/i);
 
       fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "-2" } });
       expect(screen.getByRole("button", { name: /simpan/i })).toBeDisabled();

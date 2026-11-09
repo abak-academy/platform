@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PartnerPicker } from "@/components/admin/PartnerPicker";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput, PartnerQuotaUnit, PartnerVoucherInput } from "@/lib/types";
@@ -181,16 +182,15 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="promo-discount-type">Jenis diskon</Label>
-                <select
-                  id="promo-discount-type"
-                  value={discountType}
-                  onChange={(e) => setDiscountType(e.target.value as DiscountType)}
-                  disabled={isEdit || isPending}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                >
-                  <option value="percent">Persen</option>
-                  <option value="fixed">Nominal tetap</option>
-                </select>
+                <Select value={discountType} onValueChange={(v) => setDiscountType(v as DiscountType)} disabled={isEdit || isPending}>
+                  <SelectTrigger id="promo-discount-type" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="percent">Persen</SelectItem>
+                    <SelectItem value="fixed">Nominal tetap</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-2">
@@ -264,32 +264,36 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
               </div>
             </div>
 
-            <label htmlFor="promo-is-public" className="flex items-center gap-2 text-sm text-ink-900">
-              <input
-                id="promo-is-public"
-                type="checkbox"
-                checked={isPublic}
-                onChange={(e) => setIsPublic(e.target.checked)}
-                disabled={isPending || affiliatorOnly || partnerOn}
-              />
-              Tampilkan di checkout
-            </label>
-            <p className="-mt-2 pl-6 text-xs text-ink-500">
-              Voucher muncul sebagai saran di halaman checkout siswa. Bila tidak dicentang, siswa harus mengetik kodenya sendiri.
-            </p>
-            <label htmlFor="promo-affiliator-only" className="flex items-center gap-2 text-sm text-ink-900">
-              <input
-                id="promo-affiliator-only"
-                type="checkbox"
-                checked={affiliatorOnly}
-                onChange={(e) => setAffiliatorOnly(e.target.checked)}
-                disabled={isPending || partnerOn}
-              />
-              Khusus affiliator (tidak tampil ke siswa)
-            </label>
-            <p className="-mt-2 pl-6 text-xs text-ink-500">
-              Promo yang dibagikan Affiliator kepada siswanya. Tidak tampil di checkout dan tidak bisa digabung dengan Voucher Mitra.
-            </p>
+            <div className="grid gap-1.5 rounded-lg border border-line p-3">
+              <label htmlFor="promo-is-public" className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <input
+                  id="promo-is-public"
+                  type="checkbox"
+                  checked={isPublic}
+                  onChange={(e) => setIsPublic(e.target.checked)}
+                  disabled={isPending || affiliatorOnly || partnerOn}
+                />
+                Tampilkan di checkout
+              </label>
+              <p className="pl-6 text-xs text-ink-500">
+                Voucher muncul sebagai saran di halaman checkout siswa. Bila tidak dicentang, siswa harus mengetik kodenya sendiri.
+              </p>
+            </div>
+            <div className="grid gap-1.5 rounded-lg border border-line p-3">
+              <label htmlFor="promo-affiliator-only" className="flex items-center gap-2 text-sm font-semibold text-ink-900">
+                <input
+                  id="promo-affiliator-only"
+                  type="checkbox"
+                  checked={affiliatorOnly}
+                  onChange={(e) => setAffiliatorOnly(e.target.checked)}
+                  disabled={isPending || partnerOn}
+                />
+                Khusus affiliator (tidak tampil ke siswa)
+              </label>
+              <p className="pl-6 text-xs text-ink-500">
+                Promo yang dibagikan Affiliator kepada siswanya. Tidak tampil di checkout dan tidak bisa digabung dengan Voucher Mitra.
+              </p>
+            </div>
 
             {canManagePartners && (
               <fieldset className="grid gap-3 rounded-lg border border-line p-3" aria-label="Voucher Mitra">
@@ -310,17 +314,15 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                   <>
                     <div className="grid gap-1.5">
                       <Label htmlFor="promo-partner-unit">Kuota dihitung</Label>
-                      <select
-                        id="promo-partner-unit"
-                        value={partnerUnit}
-                        onChange={(e) => setPartnerUnit(e.target.value as PartnerQuotaUnit | "")}
-                        disabled={isPending}
-                        className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50"
-                      >
-                        <option value="">Pilih satuan kuota</option>
-                        <option value="order">Per order: satu order memakai satu kuota</option>
-                        <option value="student">Per siswa: tiap siswa memakai satu kuota</option>
-                      </select>
+                      <Select value={partnerUnit} onValueChange={(v) => setPartnerUnit(v as PartnerQuotaUnit)} disabled={isPending}>
+                        <SelectTrigger id="promo-partner-unit" className="w-full">
+                          <SelectValue placeholder="Pilih satuan kuota" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="order">Per order: satu order memakai satu kuota</SelectItem>
+                          <SelectItem value="student">Per siswa: tiap siswa memakai satu kuota</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <p className="text-xs text-ink-500">
                         Per siswa juga membuat maksimal potongan berlaku untuk tiap siswa. Per order menerapkannya sekali untuk seluruh order.
                       </p>
