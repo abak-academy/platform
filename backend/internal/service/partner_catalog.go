@@ -19,9 +19,24 @@ const productAuditPartnerAccess = "product.partner_access_set"
 
 // PartnerVoucherInput is the partner_voucher object of the promo admin API.
 type PartnerVoucherInput struct {
-	Enabled   bool     `json:"enabled"`
-	IDs       []string `json:"ids"`
-	QuotaUnit string   `json:"quota_unit"`
+	Enabled     bool     `json:"enabled"`
+	IDs         []string `json:"ids"`
+	QuotaUnit   string   `json:"quota_unit"`
+	MinStudents int      `json:"min_students"`
+}
+
+// PromoMinStudentsError carries how many students a voucher needs in one order.
+// It satisfies errors.Is(err, ErrPromoMinStudents).
+type PromoMinStudentsError struct {
+	Min int
+}
+
+func (e *PromoMinStudentsError) Error() string {
+	return fmt.Sprintf("promo needs at least %d students in one order", e.Min)
+}
+
+func (e *PromoMinStudentsError) Is(target error) bool {
+	return target == ErrPromoMinStudents
 }
 
 // PromoQuotaInsufficientError carries how many uses a promo has left. It
@@ -69,6 +84,9 @@ func (s *Service) validatePartnerVoucher(ctx context.Context, v *model.PartnerVo
 	if v.QuotaUnit != model.PartnerQuotaPerOrder && v.QuotaUnit != model.PartnerQuotaPerStudent {
 		return fmt.Errorf("%w: quota_unit must be order or student", ErrValidation)
 	}
+	if v.MinStudents < 0 {
+		return fmt.Errorf("%w: min_students cannot be negative", ErrValidation)
+	}
 	ids, err := s.validatePartnerIDs(ctx, v.IDs)
 	if err != nil {
 		return err
@@ -105,6 +123,10 @@ func evaluatePartnerPromo(promo model.PromoCode, partnerID string, unitPrice flo
 	}
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(now) {
 		return PartnerPromoResult{}, ErrInvalidPromo
+	}
+
+	if seats < promo.Partner.MinStudents {
+		return PartnerPromoResult{}, &PromoMinStudentsError{Min: promo.Partner.MinStudents}
 	}
 
 	perStudent := promo.Partner.QuotaUnit == model.PartnerQuotaPerStudent

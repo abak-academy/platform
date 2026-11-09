@@ -41,6 +41,24 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 		require.NoError(t, err, "a voucher with no Mitra named is for every Mitra")
 	})
 
+	t.Run("minimum students in one order", func(t *testing.T) {
+		v := voucher("order")
+		v.Partner.MinStudents = 5
+
+		_, err := evaluatePartnerPromo(v, mitra, 100000, 4, now)
+		var minErr *PromoMinStudentsError
+		require.ErrorIs(t, err, ErrPromoMinStudents)
+		require.ErrorAs(t, err, &minErr)
+		require.Equal(t, 5, minErr.Min)
+
+		_, err = evaluatePartnerPromo(v, mitra, 100000, 5, now)
+		require.NoError(t, err, "exactly the minimum is enough")
+
+		v.Partner.MinStudents = 0
+		_, err = evaluatePartnerPromo(v, mitra, 100000, 1, now)
+		require.NoError(t, err, "zero means no minimum")
+	})
+
 	t.Run("expiry and quota", func(t *testing.T) {
 		expired := voucher("order")
 		past := now.Add(-time.Hour)
@@ -138,6 +156,26 @@ func TestPartnerVoucherAdmin(t *testing.T) {
 		again, err := repo.GetPromoByCode(ctx, created.Code)
 		require.NoError(t, err)
 		require.Equal(t, created.Partner, again.Partner)
+	})
+
+	t.Run("the minimum students is stored, and cannot be negative", func(t *testing.T) {
+		created, err := svc.AdminCreatePromoCode(ctx, model.PromoCode{
+			Code: code(), DiscountPercent: f(10),
+			Partner: &model.PartnerVoucher{QuotaUnit: "order", MinStudents: 5},
+		})
+		require.NoError(t, err)
+		cleanup(created.ID)
+		again, err := repo.GetPromoByCode(ctx, created.Code)
+		require.NoError(t, err)
+		require.Equal(t, 5, again.Partner.MinStudents)
+
+		_, err = svc.AdminCreatePromoCode(ctx, model.PromoCode{Code: code(), DiscountPercent: f(10), Partner: &model.PartnerVoucher{QuotaUnit: "order", MinStudents: -1}})
+		require.ErrorIs(t, err, ErrValidation)
+
+		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: true, QuotaUnit: "order", MinStudents: 8}))
+		again, err = repo.GetPromoByCode(ctx, created.Code)
+		require.NoError(t, err)
+		require.Equal(t, 8, again.Partner.MinStudents)
 	})
 
 	t.Run("the quota unit has no default", func(t *testing.T) {

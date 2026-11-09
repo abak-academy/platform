@@ -53,7 +53,7 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		AffiliatorOnly:    req.AffiliatorOnly,
 	}
 	if req.PartnerVoucher != nil && req.PartnerVoucher.Enabled {
-		promo.Partner = &model.PartnerVoucher{IDs: req.PartnerVoucher.IDs, QuotaUnit: req.PartnerVoucher.QuotaUnit}
+		promo.Partner = &model.PartnerVoucher{IDs: req.PartnerVoucher.IDs, QuotaUnit: req.PartnerVoucher.QuotaUnit, MinStudents: req.PartnerVoucher.MinStudents}
 	}
 
 	created, err := h.svc.AdminCreatePromoCode(c.Request().Context(), promo)

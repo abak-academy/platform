@@ -8,7 +8,7 @@ type Translate = (key: I18nKey) => string;
 // product, how much voucher quota is left.
 export function partnerOrderErrorMessage(err: unknown, t: Translate): string {
   if (!(err instanceof ApiError)) return t("partner_err_generic");
-  const details = err.body?.details as { students?: { name?: string }[]; remaining?: number } | undefined;
+  const details = err.body?.details as { students?: { name?: string }[]; remaining?: number; min?: number } | undefined;
   switch (err.code) {
     case "student_not_allowed":
       return t("partner_err_student_not_allowed");
@@ -20,6 +20,8 @@ export function partnerOrderErrorMessage(err: unknown, t: Translate): string {
     }
     case "promo_quota_insufficient":
       return t("partner_err_quota").replace("{n}", String(details?.remaining ?? 0));
+    case "promo_min_students":
+      return t("partner_err_min_students").replace("{n}", String(details?.min ?? 0));
     case "invalid_promo":
       return t("partner_err_voucher");
     case "zero_net_new_participants":

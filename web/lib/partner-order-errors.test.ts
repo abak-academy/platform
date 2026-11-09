@@ -16,6 +16,11 @@ describe("partnerOrderErrorMessage", () => {
     expect(partnerOrderErrorMessage(err, tr)).toBe("Sisa kuota voucher 4, tidak cukup untuk pesanan ini.");
   });
 
+  it("says how many students the voucher needs in one order", () => {
+    const err = new ApiError("promo_min_students", "x", 422, { details: { min: 5 } });
+    expect(partnerOrderErrorMessage(err, tr)).toBe("Voucher ini butuh minimal 5 siswa dalam satu order.");
+  });
+
   it("explains scope and product refusals", () => {
     expect(partnerOrderErrorMessage(new ApiError("student_not_allowed", "x", 403), tr)).toMatch(/di luar sekolah/);
     expect(partnerOrderErrorMessage(new ApiError("product_not_allowed", "x", 403), tr)).toMatch(/tidak dibuka untuk Anda/);

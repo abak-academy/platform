@@ -416,6 +416,7 @@ export interface PartnerVoucherInput {
   enabled: boolean;
   ids?: string[];
   quota_unit?: PartnerQuotaUnit;
+  min_students?: number;
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -2021,6 +2022,7 @@ export type PartnerQuotaUnit = "order" | "student";
 export interface PartnerVoucherInfo {
   ids: string[];
   quota_unit: PartnerQuotaUnit;
+  min_students?: number;
 }
 
 export interface PartnerVoucher {

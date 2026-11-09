@@ -2145,7 +2145,7 @@ func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *
 			if affiliatorOnly {
 				return fmt.Errorf("%w: a promo cannot be both affiliator-only and a Mitra voucher", ErrValidation)
 			}
-			voucher := &model.PartnerVoucher{IDs: partner.IDs, QuotaUnit: partner.QuotaUnit}
+			voucher := &model.PartnerVoucher{IDs: partner.IDs, QuotaUnit: partner.QuotaUnit, MinStudents: partner.MinStudents}
 			if err := s.validatePartnerVoucher(ctx, voucher); err != nil {
 				return err
 			}

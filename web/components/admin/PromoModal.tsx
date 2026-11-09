@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PartnerPicker } from "@/components/admin/PartnerPicker";
 import { useHasCapability } from "@/lib/hooks/use-capability";
-import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput, PartnerQuotaUnit } from "@/lib/types";
+import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput, PartnerQuotaUnit, PartnerVoucherInput } from "@/lib/types";
 
 type DiscountType = "percent" | "fixed";
 
@@ -54,6 +54,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
   const [partnerIds, setPartnerIds] = useState<string[]>([]);
   // The quota unit has no default: the admin has to choose what max_uses counts.
   const [partnerUnit, setPartnerUnit] = useState<PartnerQuotaUnit | "">("");
+  const [partnerMinStudents, setPartnerMinStudents] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -75,6 +76,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setPartnerOn(Boolean(promo.partner));
       setPartnerIds(promo.partner?.ids ?? []);
       setPartnerUnit(promo.partner?.quota_unit ?? "");
+      setPartnerMinStudents(promo.partner?.min_students ? String(promo.partner.min_students) : "");
     } else {
       setCode("");
       setDiscountType("percent");
@@ -88,21 +90,25 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       setPartnerOn(false);
       setPartnerIds([]);
       setPartnerUnit("");
+      setPartnerMinStudents("");
     }
   }, [open, promo]);
+
+  const minStudents = partnerMinStudents === "" ? 0 : Number(partnerMinStudents);
+  const minStudentsValid = Number.isInteger(minStudents) && minStudents >= 0;
 
   const canSubmit =
     code.trim() !== "" &&
     discountValue !== "" &&
     Number(discountValue) >= 0 &&
-    (!partnerOn || partnerUnit !== "") &&
+    (!partnerOn || (partnerUnit !== "" && minStudentsValid)) &&
     !isPending;
 
   // The Mitra section is sent only to an admin who can manage Mitra; on an edit it
   // is also left out when the promo was never a Mitra voucher and still is not.
-  function partnerVoucher(): { partner_voucher?: { enabled: boolean; ids?: string[]; quota_unit?: PartnerQuotaUnit } } {
+  function partnerVoucher(): { partner_voucher?: PartnerVoucherInput } {
     if (!canManagePartners) return {};
-    if (partnerOn && partnerUnit !== "") return { partner_voucher: { enabled: true, ids: partnerIds, quota_unit: partnerUnit } };
+    if (partnerOn && partnerUnit !== "") return { partner_voucher: { enabled: true, ids: partnerIds, quota_unit: partnerUnit, min_students: minStudents } };
     if (isEdit && promo?.partner) return { partner_voucher: { enabled: false } };
     return {};
   }
@@ -308,6 +314,22 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
                       </select>
                       <p className="text-xs text-ink-500">
                         Per siswa juga membuat maksimal potongan berlaku untuk tiap siswa. Per order menerapkannya sekali untuk seluruh order.
+                      </p>
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor="promo-partner-min-students">Minimal siswa per order (opsional)</Label>
+                      <Input
+                        id="promo-partner-min-students"
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="Kosong = tanpa minimal"
+                        value={partnerMinStudents}
+                        onChange={(e) => setPartnerMinStudents(e.target.value)}
+                        disabled={isPending}
+                      />
+                      <p className="text-xs text-ink-500">
+                        Order dengan siswa lebih sedikit dari angka ini tidak bisa memakai voucher. Dihitung per order, bukan per siswa.
                       </p>
                     </div>
                     <div className="grid gap-1.5">

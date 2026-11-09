@@ -30,8 +30,10 @@ const (
 )
 
 // PartnerVoucher is promo_code.partner: the Mitra the voucher is for (empty IDs
-// means every Mitra) and what max_uses counts.
+// means every Mitra), what max_uses counts, and the fewest students an order
+// needs to use it (0 means no minimum).
 type PartnerVoucher struct {
-	IDs       []string `json:"ids"`
-	QuotaUnit string   `json:"quota_unit"`
+	IDs         []string `json:"ids"`
+	QuotaUnit   string   `json:"quota_unit"`
+	MinStudents int      `json:"min_students,omitempty"`
 }

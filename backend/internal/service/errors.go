@@ -341,6 +341,7 @@ var (
 	ErrInvalidPromo            = errors.New("invalid or expired promo code")
 	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
 	ErrPromoQuotaInsufficient  = errors.New("promo does not have enough uses left for this order")
+	ErrPromoMinStudents        = errors.New("order has fewer students than the promo minimum")
 
 	// Mitra orders.
 	ErrPartnerStudentNotAllowed = errors.New("a student is outside the schools assigned to this partner")

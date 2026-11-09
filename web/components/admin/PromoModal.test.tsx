@@ -263,6 +263,24 @@ describe("PromoModal", () => {
       });
     });
 
+    it("sends the minimum students, 0 when left empty, and refuses a negative one", () => {
+      capability.value = true;
+      renderCreate();
+      fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
+      fireEvent.change(screen.getByLabelText("Kuota dihitung"), { target: { value: "order" } });
+
+      fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "-2" } });
+      expect(screen.getByRole("button", { name: /simpan/i })).toBeDisabled();
+
+      fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "5" } });
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[0][0].partner_voucher).toMatchObject({ min_students: 5 });
+
+      fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "" } });
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[1][0].partner_voucher).toMatchObject({ min_students: 0 });
+    });
+
     it("cannot be combined with the promo shared by Affiliators", () => {
       capability.value = true;
       renderCreate();

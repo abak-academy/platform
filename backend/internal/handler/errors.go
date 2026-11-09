@@ -132,6 +132,12 @@ func mapServiceError(c echo.Context, err error) error {
 		if errors.As(err, &quotaErr) {
 			apiErr.Details = map[string]any{"remaining": quotaErr.Remaining}
 		}
+	case errors.Is(err, service.ErrPromoMinStudents):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_students", Message: err.Error()}
+		var minErr *service.PromoMinStudentsError
+		if errors.As(err, &minErr) {
+			apiErr.Details = map[string]any{"min": minErr.Min}
+		}
 	case errors.Is(err, service.ErrPromoMinOrder):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_order", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidSignature):
