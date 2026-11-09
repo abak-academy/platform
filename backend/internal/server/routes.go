@@ -70,6 +70,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	// Student order routes
 	orders := v1.Group("/orders")
 	orders.Use(handler.JWTMiddleware(svc, jwtSigner))
+	orders.Use(handler.ForbidRoles(service.RoleAffiliator))
 	orders.POST("", h.MintCart)
 	orders.GET("", h.GetOrders)
 	orders.GET("/:id", h.GetOrder)
@@ -398,6 +399,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	affiliatesMe := v1.Group("/affiliates/me")
 	affiliatesMe.Use(handler.JWTMiddleware(svc, jwtSigner))
 	affiliatesMe.Use(handler.AffiliatorOnlyMiddleware())
+	affiliatesMe.Use(handler.AffiliateGate(svc))
 	affiliatesMe.GET("", h.AffiliateMe)
 	affiliatesMe.PATCH("/bank", h.AffiliateMeUpdateBank)
 	affiliatesMe.GET("/bindings", h.AffiliateMeBindings)
@@ -409,6 +411,15 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	affiliatesMe.GET("/stats", h.AffiliateMeStats)
 	affiliatesMe.GET("/promos", h.AffiliateMePromos)
 
+	partnersMe := v1.Group("/partners/me")
+	partnersMe.Use(handler.JWTMiddleware(svc, jwtSigner))
+	partnersMe.Use(handler.PartnerGate(svc))
+	partnersMe.GET("", h.PartnerMe)
+
+	adminPartnerSettings := admin.Group("/partner-settings")
+	adminPartnerSettings.Use(handler.RBACMiddleware("affiliates:*"))
+	adminPartnerSettings.PUT("/program", h.AdminSetPartnerProgram)
+
 	adminAffiliates := admin.Group("/affiliates")
 	adminAffiliates.Use(handler.RBACMiddleware("affiliates:*"))
 	adminAffiliates.GET("", h.AdminListAffiliates)
@@ -417,6 +428,8 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliates.POST("/bulk", h.AdminBulkCreateAffiliators)
 	adminAffiliates.GET("/:id", h.AdminGetAffiliate)
 	adminAffiliates.POST("/:id/approval", h.AdminDecideAffiliateApproval)
+	adminAffiliates.POST("/:id/programs", h.AdminAddAffiliatorProgram)
+	adminAffiliates.PUT("/:id/partner/schools", h.AdminSetPartnerSchools)
 	adminAffiliates.PATCH("/:id/status", h.AdminChangeAffiliateStatus)
 	adminAffiliates.POST("/:id/level", h.AdminChangeAffiliateLevel)
 	adminAffiliates.POST("/:id/adjustments", h.AdminCreateAffiliateAdjustment)

@@ -17,8 +17,10 @@ type AffiliateAdminFilter struct {
 	Status string
 	Level  string
 	Query  string
-	Offset int
-	Limit  int
+	// Program narrows the list to one program: "affiliate" or "partner".
+	Program string
+	Offset  int
+	Limit   int
 }
 
 // AffiliateAdminListRow is one admin list row: the affiliator profile joined
@@ -44,6 +46,12 @@ func affiliateAdminFilterSQL(filter AffiliateAdminFilter, argIdx int) (string, [
 		query += fmt.Sprintf(` AND a.level = $%d`, argIdx)
 		args = append(args, filter.Level)
 		argIdx++
+	}
+	switch filter.Program {
+	case "affiliate":
+		query += ` AND ` + affiliateMembershipSQL
+	case "partner":
+		query += ` AND ` + partnerMembershipSQL
 	}
 	if filter.Query != "" {
 		query += fmt.Sprintf(` AND (LOWER(u.name) LIKE LOWER($%d) OR LOWER(u.email) LIKE LOWER($%d) OR LOWER(a.referral_code) LIKE LOWER($%d))`, argIdx, argIdx, argIdx)
@@ -149,11 +157,24 @@ func (r *Repository) SumAffiliateCommissionsByStatus(ctx context.Context, affili
 	return out, rows.Err()
 }
 
-// SetAffiliateStatusTx writes the affiliator status.
+// SetAffiliateStatusTx writes the affiliator status. The user's login status
+// follows in the same transaction: a suspended or deactivated account is a
+// deactivated user (read-only in both programs), and reactivating it restores
+// the user. program_status stays mirrored for the Affiliator money paths.
 func (r *Repository) SetAffiliateStatusTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, status string) error {
-	_, err := tx.Exec(ctx,
+	if _, err := tx.Exec(ctx,
 		`UPDATE affiliators SET program_status = $2 WHERE user_id = $1`,
 		id, status,
+	); err != nil {
+		return err
+	}
+	userStatus, from := "deactivated", "active"
+	if status == "active" {
+		userStatus, from = "active", "deactivated"
+	}
+	_, err := tx.Exec(ctx,
+		`UPDATE users SET status = $2, updated_at = now() WHERE id = $1 AND role = 'affiliator' AND status = $3`,
+		id, userStatus, from,
 	)
 	return err
 }
@@ -174,7 +195,7 @@ func (r *Repository) AffiliateCodeExists(ctx context.Context, code string) (bool
 // was already handed out.
 func (r *Repository) ApproveAffiliatorTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, code string) (bool, error) {
 	tag, err := tx.Exec(ctx,
-		`UPDATE affiliators SET program_status = 'active', referral_code = $2
+		`UPDATE affiliators SET program_status = 'active', referral_code = NULLIF($2, '')
 		 WHERE user_id = $1 AND program_status = 'pending_approval'`,
 		id, code,
 	)

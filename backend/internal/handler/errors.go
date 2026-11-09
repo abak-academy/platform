@@ -344,6 +344,14 @@ func mapServiceError(c echo.Context, err error) error {
 		if errors.As(err, &incompleteErr) {
 			apiErr.Details = map[string]any{"missing": incompleteErr.Missing}
 		}
+	case errors.Is(err, service.ErrPartnerRegistrationClosed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "partner_registration_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateInvalidProgram):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorNotApproved):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorNotPartner):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliator_not_partner", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired), errors.Is(err, service.ErrAffiliateBulkTooLarge):

@@ -69,12 +69,12 @@ func TestDecideAffiliateApproval_reopenRejected(t *testing.T) {
 	actor := seedAffiliateAdminActor(t, repo, "admin-reopen-"+uniqueSuffix()+"@test.local")
 	rejected := seedAffiliatorOwner(t, repo, "reopen-"+uniqueSuffix()+"@test.local", "", "rejected")
 
-	aff, err := svc.DecideAffiliateApproval(ctx, actor, rejected.affiliatorID.String(), "reopen", "")
+	aff, err := svc.DecideAffiliateApproval(ctx, actor, rejected.affiliatorID.String(), "reopen", "", nil)
 	require.NoError(t, err)
 	require.Equal(t, "pending_approval", aff.Status)
 	require.Nil(t, aff.RejectionReason)
 
-	_, err = svc.DecideAffiliateApproval(ctx, actor, rejected.affiliatorID.String(), "reopen", "")
+	_, err = svc.DecideAffiliateApproval(ctx, actor, rejected.affiliatorID.String(), "reopen", "", nil)
 	require.ErrorIs(t, err, ErrAffiliateInvalidTransition, "only a rejected profile can be reopened")
 }
 

@@ -54,6 +54,7 @@ type AffiliateAdminListFilter struct {
 	Status  string
 	Level   string
 	Query   string
+	Program string
 	Page    int
 	PerPage int
 }
@@ -114,12 +115,16 @@ func (s *Service) ListAffiliateAdmin(ctx context.Context, filter AffiliateAdminL
 		filter.PerPage = 50
 	}
 
+	if filter.Program != "" && filter.Program != programAffiliate && filter.Program != programPartner {
+		return nil, ErrAffiliateInvalidProgram
+	}
 	rows, total, err := s.storeRepo.ListAffiliateAdmins(ctx, repository.AffiliateAdminFilter{
-		Status: filter.Status,
-		Level:  filter.Level,
-		Query:  filter.Query,
-		Offset: (filter.Page - 1) * filter.PerPage,
-		Limit:  filter.PerPage,
+		Status:  filter.Status,
+		Level:   filter.Level,
+		Query:   filter.Query,
+		Program: filter.Program,
+		Offset:  (filter.Page - 1) * filter.PerPage,
+		Limit:   filter.PerPage,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list affiliators: %w", err)
@@ -172,7 +177,7 @@ func (s *Service) AdminAffiliatorsCSV(ctx context.Context, filter AffiliateAdmin
 // and rejection both start from pending_approval and run once: an
 // already-approved profile is an invalid transition, so the referral code is
 // never regenerated.
-func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, decision, reason string) (*model.Affiliator, error) {
+func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, decision, reason string, programs []string) (*model.Affiliator, error) {
 	affID, err := parseUUID(id)
 	if err != nil {
 		return nil, ErrInvalidUUID
@@ -196,6 +201,13 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 	}
 
 	meta := map[string]any{"decision": decision}
+	effective := aff.Programs
+	if decision == "approve" && len(programs) > 0 {
+		if effective, err = affiliatorProgramsFrom(programs); err != nil {
+			return nil, err
+		}
+		meta["programs"] = programs
+	}
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -204,9 +216,11 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 
 	switch decision {
 	case "approve":
-		code, err := s.generateUniqueAffiliateCode(ctx)
-		if err != nil {
-			return nil, err
+		code := ""
+		if effective.HasAffiliate() {
+			if code, err = s.generateUniqueAffiliateCode(ctx); err != nil {
+				return nil, err
+			}
 		}
 		approved, err := s.storeRepo.ApproveAffiliatorTx(ctx, tx, affID, code)
 		if err != nil {
@@ -214,6 +228,11 @@ func (s *Service) DecideAffiliateApproval(ctx context.Context, actorID, id, deci
 		}
 		if !approved {
 			return nil, ErrAffiliateNotPending
+		}
+		if len(programs) > 0 {
+			if err := s.storeRepo.SetAffiliatorProgramsTx(ctx, tx, affID, effective); err != nil {
+				return nil, fmt.Errorf("set affiliator programs: %w", err)
+			}
 		}
 		meta["code"] = code
 	case "reopen":

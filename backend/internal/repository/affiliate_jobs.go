@@ -125,7 +125,7 @@ func (r *Repository) SetAffiliateCommissionWaitUntil(ctx context.Context, id uui
 func (r *Repository) ListAffiliatorsForLevelEval(ctx context.Context) ([]model.Affiliator, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+affiliatorColumns+` `+affiliatorFrom+`
-		 WHERE a.program_status IN ('active', 'suspended')
+		 WHERE a.program_status IN ('active', 'suspended') AND `+affiliateMembershipSQL+`
 		 ORDER BY u.created_at`)
 	if err != nil {
 		return nil, err
