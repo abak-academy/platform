@@ -12,10 +12,10 @@ import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { AddAffiliatorDialog } from "@/components/affiliate/AddAffiliatorDialog";
 import { ApproveProgramDialog } from "@/components/affiliate/ApproveProgramDialog";
 import { LevelBadge } from "@/components/affiliate/LevelBadge";
-import { PartnerSwitchCard } from "@/components/affiliate/PartnerSwitchCard";
-import { ProgramBadges } from "@/components/affiliate/ProgramBadges";
+import { inAffiliate, ProgramBadges } from "@/components/affiliate/ProgramBadges";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
@@ -107,7 +107,7 @@ function AffiliatesContent() {
     { key: "programs", header: t("admin_aff_col_programs"), cell: (r) => <ProgramBadges programs={r.programs} /> },
     { key: "code", header: t("admin_aff_col_code"), cell: (r) => r.code || "—" },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
-    { key: "level", header: t("admin_aff_col_level"), cell: (r) => <LevelBadge level={r.level} /> },
+    { key: "level", header: t("admin_aff_col_level"), cell: (r) => (inAffiliate(r.programs) ? <LevelBadge level={r.level} /> : <span className="text-ink-400">—</span>) },
     { key: "joined", header: t("admin_aff_col_joined"), cell: (r) => formatAffDate(r.created_at) },
     {
       key: "actions",
@@ -140,22 +140,23 @@ function AffiliatesContent() {
   return (
     <div className="space-y-4">
       <AdminPageHeader icon={HandCoins} title={t("admin_aff_title")} description={t("admin_aff_desc")} />
-      <PartnerSwitchCard />
-      <div className="flex flex-wrap justify-end gap-2">
-        <Button variant="outline" onClick={exportCsv}>
-          <Download className="size-4" aria-hidden />
-          {t("admin_aff_export_csv")}
-        </Button>
-        <Button onClick={() => setAdding(true)}>{t("admin_aff_add")}</Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={program || "all"} onValueChange={(value) => setProgram(value === "all" ? "" : (value as "affiliate" | "partner"))}>
+          <TabsList aria-label={t("admin_aff_col_programs")}>
+            <TabsTrigger value="all">{t("admin_aff_filter_all_programs")}</TabsTrigger>
+            <TabsTrigger value="affiliate">{t("admin_aff_program_affiliate")}</TabsTrigger>
+            <TabsTrigger value="partner">{t("admin_aff_program_partner")}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={exportCsv}>
+            <Download className="size-4" aria-hidden />
+            {t("admin_aff_export_csv")}
+          </Button>
+          <Button onClick={() => setAdding(true)}>{t("admin_aff_add")}</Button>
+        </div>
       </div>
       <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />
-      <div className="flex gap-2" role="group" aria-label={t("admin_aff_col_programs")}>
-        {(["", "affiliate", "partner"] as const).map((value) => (
-          <Button key={value || "all"} size="sm" variant={program === value ? "default" : "outline"} aria-pressed={program === value} onClick={() => setProgram(value)}>
-            {t(value === "" ? "admin_aff_filter_all_programs" : value === "affiliate" ? "admin_aff_program_affiliate" : "admin_aff_program_partner")}
-          </Button>
-        ))}
-      </div>
       <ListToolbar
         params={params}
         onChange={update}

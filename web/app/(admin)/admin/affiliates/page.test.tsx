@@ -29,7 +29,6 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
 vi.mock("@/lib/hooks/use-capability", () => ({
   useHasCapability: h.capability,
 }));
-vi.mock("@/components/affiliate/PartnerSwitchCard", () => ({ PartnerSwitchCard: () => <div data-testid="partner-switch" /> }));
 
 vi.mock("sonner", () => ({ toast: h.toast }));
 
@@ -155,7 +154,7 @@ describe("AdminAffiliatesPage", () => {
     expect(within(row).getByText("Affiliator")).toBeInTheDocument();
     expect(within(row).getByText("Mitra")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Mitra", pressed: false }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Mitra" }));
     expect(h.list).toHaveBeenLastCalledWith(expect.objectContaining({ program: "partner" }));
   });
 

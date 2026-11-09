@@ -34,6 +34,7 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
 }));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability }));
 vi.mock("sonner", () => ({ toast: h.toast }));
+vi.mock("@/components/affiliate/PartnerSwitchCard", () => ({ PartnerSwitchCard: () => <div data-testid="partner-switch" /> }));
 
 const view = {
   program_enabled: false,
@@ -106,6 +107,11 @@ describe("AdminAffiliateSettingsPage", () => {
 
     expect(screen.getByText("Aktif")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Nonaktifkan program" })).toBeInTheDocument();
+  });
+
+  it("carries the Mitra program switch beside the Affiliator one", () => {
+    render(<SettingsPage />);
+    expect(screen.getByTestId("partner-switch")).toBeInTheDocument();
   });
 
   it("loads the current values into the form", async () => {

@@ -67,6 +67,24 @@ describe("AdminAffiliateDetailPage", () => {
     h.detail.mockReturnValue({ isLoading: false, isError: false, data: detail });
   });
 
+  it("shows a Mitra-only account without level, balance, bindings, commissions or adjustments", async () => {
+    h.detail.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { ...detail, affiliate: { ...detail.affiliate, programs: { affiliate: false, partner: { school_ids: [] } } } },
+    });
+    await renderPage();
+
+    expect(screen.getByRole("heading", { name: "Budi Santoso" })).toBeInTheDocument();
+    expect(screen.getByText("programs-panel-a1")).toBeInTheDocument();
+    expect(screen.queryByText("2 / 1")).toBeNull();
+    expect(screen.queryByText("Sari W.")).toBeNull();
+    expect(screen.queryByText("orders-panel-a1")).toBeNull();
+    expect(screen.queryByRole("button", { name: /level/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /penyesuaian/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /status/i })).toBeInTheDocument();
+  });
+
   it("shows the profile summary and privacy-safe student names", async () => {
     await renderPage();
 

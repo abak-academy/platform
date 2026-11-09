@@ -34,6 +34,8 @@ interface Props {
   id: string;
   currentStatus: string;
   currentLevel: string;
+  /** Level and balance adjustments belong to the Affiliator program only. */
+  affiliate?: boolean;
 }
 
 function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
@@ -45,7 +47,7 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props) {
+export function AffiliateAdminActions({ id, currentStatus, currentLevel, affiliate = true }: Props) {
   const { t } = useTranslation();
   const [action, setAction] = useState<Action>(null);
   const [status, setStatus] = useState<string>(STATUS_TARGETS[0]);
@@ -104,12 +106,16 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel }: Props
             {t("admin_aff_act_status")}
           </Button>
         )}
-        <Button variant="outline" size="sm" className="border-brand-700/30 bg-brand-50 text-brand-700 hover:bg-brand-100" onClick={() => setAction("level")}>
-          {t("admin_aff_act_level")}
-        </Button>
-        <Button variant="outline" size="sm" className="border-success/40 bg-success/10 text-success hover:bg-success/20" onClick={() => setAction("adjust")}>
-          {t("admin_aff_act_adjust")}
-        </Button>
+        {affiliate && (
+          <>
+            <Button variant="outline" size="sm" className="border-brand-700/30 bg-brand-50 text-brand-700 hover:bg-brand-100" onClick={() => setAction("level")}>
+              {t("admin_aff_act_level")}
+            </Button>
+            <Button variant="outline" size="sm" className="border-success/40 bg-success/10 text-success hover:bg-success/20" onClick={() => setAction("adjust")}>
+              {t("admin_aff_act_adjust")}
+            </Button>
+          </>
+        )}
       </div>
 
       <Dialog open={action !== null} onOpenChange={(open) => !open && close()}>

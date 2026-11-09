@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Settings } from "lucide-react";
 import { toast } from "sonner";
+import { PartnerSwitchCard } from "@/components/affiliate/PartnerSwitchCard";
 import { ProgramSwitchCard } from "@/components/affiliate/ProgramSwitchCard";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { BulkFormatGuide } from "@/components/admin/BulkFormatGuide";
@@ -183,6 +184,7 @@ function SettingsContent() {
         missing={loaded?.missing ?? []}
         commissionUnset={loaded?.commission_unset ?? false}
       />
+      <PartnerSwitchCard />
 
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList>
