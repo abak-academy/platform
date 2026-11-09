@@ -92,7 +92,7 @@ test.describe("admin Mitra tab", () => {
     await page.goto("/admin/affiliates");
     await page.getByRole("tab", { name: "Mitra" }).click();
 
-    await expect(page.getByRole("heading", { name: "Affiliator", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Affiliator/Mitra", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Affiliator/Mitra" })).toBeVisible();
   });
 });

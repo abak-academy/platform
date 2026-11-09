@@ -57,6 +57,12 @@ describe("AdminAffiliatesPage", () => {
     });
   });
 
+  it("names both programs in its title and description", () => {
+    render(<AdminAffiliatesPage />);
+    expect(screen.getByRole("heading", { name: "Affiliator/Mitra" })).toBeInTheDocument();
+    expect(screen.getByText(/affiliator dan mitra/i)).toBeInTheDocument();
+  });
+
   it("is blocked without the affiliates capability", () => {
     h.capability.mockReturnValue(false);
     render(<AdminAffiliatesPage />);

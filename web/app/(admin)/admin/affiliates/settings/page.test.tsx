@@ -109,6 +109,11 @@ describe("AdminAffiliateSettingsPage", () => {
     expect(screen.getByRole("button", { name: "Nonaktifkan program" })).toBeInTheDocument();
   });
 
+  it("names both programs in its title", () => {
+    render(<SettingsPage />);
+    expect(screen.getByRole("heading", { name: "Pengaturan Affiliator/Mitra" })).toBeInTheDocument();
+  });
+
   it("carries the Mitra program switch beside the Affiliator one", () => {
     render(<SettingsPage />);
     expect(screen.getByTestId("partner-switch")).toBeInTheDocument();

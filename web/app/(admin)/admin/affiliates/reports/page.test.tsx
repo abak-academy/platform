@@ -215,6 +215,11 @@ describe("AdminAffiliateReportsPage", () => {
     });
   });
 
+  it("names both programs in its title", () => {
+    render(<ReportsPage />);
+    expect(screen.getByRole("heading", { name: "Laporan Affiliator/Mitra" })).toBeInTheDocument();
+  });
+
   it("is blocked without the capability", () => {
     h.capability.mockReturnValue(false);
     render(<ReportsPage />);
