@@ -159,11 +159,11 @@ export function useCheckout(basePath?: string, affiliateCode?: string) {
   });
 }
 
-export function useRetryPayment() {
+export function useRetryPayment(basePath = "/orders") {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (orderId: string) =>
-      authFetch<CheckoutResult>(`/orders/${encodeURIComponent(orderId)}/retry`, {
+      authFetch<CheckoutResult>(`${basePath}/${encodeURIComponent(orderId)}/retry`, {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
       }),

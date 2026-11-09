@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { RetryPaymentButton } from "@/components/partner/RetryPaymentButton";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -37,7 +38,11 @@ export default function PartnerOrdersPage() {
       key: "pay",
       header: "",
       align: "right",
-      cell: (o) => (o.status === "cart" ? <SnapCheckout orderId={o.id} basePath="/partners/me/orders" /> : null),
+      cell: (o) => {
+        if (o.status === "cart") return <SnapCheckout orderId={o.id} basePath="/partners/me/orders" />;
+        if (o.status === "payment_pending") return <RetryPaymentButton orderId={o.id} />;
+        return null;
+      },
     },
   ];
 
