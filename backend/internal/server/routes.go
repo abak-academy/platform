@@ -483,6 +483,11 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminAffiliateReports.GET("/orders", h.AdminListAffiliateReportOrders)
 	adminAffiliateReports.GET("/orders/export", h.AdminAffiliateReportOrdersExport)
 
+	adminPartnerReports := admin.Group("/partner-reports")
+	adminPartnerReports.Use(handler.RBACMiddleware("affiliates:*"))
+	adminPartnerReports.GET("/orders", h.AdminPartnerReport)
+	adminPartnerReports.GET("/orders/export", h.AdminPartnerReportExport)
+
 	adminAffiliateJobs := admin.Group("/affiliate-jobs")
 	adminAffiliateJobs.Use(handler.RBACMiddleware("affiliates:*"))
 	adminAffiliateJobs.POST("/run", h.AdminRunAffiliateJobs)

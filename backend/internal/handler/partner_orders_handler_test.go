@@ -268,3 +268,73 @@ func TestPartnerCatalogRoutes(t *testing.T) {
 		}
 	})
 }
+
+func TestAdminPartnerReport(t *testing.T) {
+	env := newAffiliateJobsEnv(t)
+	env.setPartnerFlag(t, "true")
+	partner := seedProgramAccount(t, env.pool, "active", "active", "", partnerOnlyJSON, "")
+	token := env.tokenForUser(t, partner, service.RoleAffiliator)
+	admin := env.tokenFor(t, service.RoleSuperAdmin)
+	product := seedOpenCourseProduct(t, env, 100000)
+	student := seedStudentRegisteredBy(t, env, partner)
+	code := "RPT" + strings.ToUpper(uniqueHandlerSuffix()[:6])
+	if rec := postJSONWithToken(t, env.e, "/api/v1/admin/promo-codes", admin,
+		`{"code":"`+code+`","discount_percent":100,"partner_voucher":{"enabled":true,"quota_unit":"student"}}`); rec.Code != http.StatusCreated {
+		t.Fatalf("create voucher: %d %s", rec.Code, rec.Body.String())
+	}
+	rec := postJSONWithToken(t, env.e, "/api/v1/partners/me/orders", token, `{"product_id":"`+product+`","student_ids":["`+student+`"],"promo_code":"`+code+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create order: %d %s", rec.Code, rec.Body.String())
+	}
+	orderID, _ := decodeBody(t, rec)["id"].(string)
+	if rec := postJSONWithKey(t, env, "/api/v1/partners/me/orders/"+orderID+"/checkout", token, `{}`, "key-"+uniqueHandlerSuffix()); rec.Code != http.StatusOK {
+		t.Fatalf("checkout: %d %s", rec.Code, rec.Body.String())
+	}
+	base := "/api/v1/admin/partner-reports/orders"
+
+	t.Run("a purchase shows its Mitra, voucher and students, with totals", func(t *testing.T) {
+		rec := getWithToken(t, env.e, base+"?partner_id="+partner, admin)
+		body := decodeBody(t, rec)
+		if rec.Code != http.StatusOK || body["total"] != float64(1) {
+			t.Fatalf("want one order, got %d %v", rec.Code, body)
+		}
+		if !strings.Contains(rec.Body.String(), code) || !strings.Contains(rec.Body.String(), orderID) {
+			t.Errorf("want the voucher and order in the row: %s", rec.Body.String())
+		}
+		summary, _ := body["summary"].(map[string]any)
+		if summary["orders"] != float64(1) || summary["paid_orders"] != float64(1) || summary["seats"] != float64(1) {
+			t.Errorf("summary = %v, want 1 paid order of 1 seat", summary)
+		}
+	})
+
+	t.Run("search, status and another Mitra narrow it", func(t *testing.T) {
+		for path, want := range map[string]float64{
+			base + "?partner_id=" + partner + "&q=" + code:        1,
+			base + "?partner_id=" + partner + "&status=cancelled": 0,
+			base + "?partner_id=" + uuid.NewString():              0,
+		} {
+			if body := decodeBody(t, getWithToken(t, env.e, path, admin)); body["total"] != want {
+				t.Errorf("%s: total = %v, want %v", path, body["total"], want)
+			}
+		}
+	})
+
+	t.Run("the export carries the same purchase as CSV", func(t *testing.T) {
+		rec := getWithToken(t, env.e, base+"/export?partner_id="+partner, admin)
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Header().Get("Content-Type"), "text/csv") {
+			t.Fatalf("want a CSV, got %d %s", rec.Code, rec.Header().Get("Content-Type"))
+		}
+		if !strings.Contains(rec.Body.String(), "voucher_code") || !strings.Contains(rec.Body.String(), code) {
+			t.Errorf("csv = %s", rec.Body.String())
+		}
+	})
+
+	t.Run("only an admin with the affiliates capability may read it", func(t *testing.T) {
+		if rec := getWithToken(t, env.e, base, token); rec.Code != http.StatusForbidden && rec.Code != http.StatusUnauthorized {
+			t.Errorf("a Mitra: want 403, got %d", rec.Code)
+		}
+		if rec := getWithToken(t, env.e, base+"?from=nope", admin); rec.Code != http.StatusBadRequest {
+			t.Errorf("bad date: want 400, got %d", rec.Code)
+		}
+	})
+}
