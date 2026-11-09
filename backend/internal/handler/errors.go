@@ -338,8 +338,12 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateInvalidTransition):
 		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
-	case errors.Is(err, service.ErrAffiliateRegistrationCap):
-		status, apiErr = http.StatusTooManyRequests, APIError{Code: "affiliate_registration_cap", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateSettingsIncomplete):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "affiliate_settings_incomplete", Message: err.Error()}
+		var incompleteErr *service.AffiliateSettingsIncompleteError
+		if errors.As(err, &incompleteErr) {
+			apiErr.Details = map[string]any{"missing": incompleteErr.Missing}
+		}
 	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired), errors.Is(err, service.ErrAffiliateBulkTooLarge):

@@ -109,12 +109,15 @@ func (s *Service) affiliateBindingMonths(ctx context.Context, tx pgx.Tx, affilia
 	if err != nil {
 		return 0, fmt.Errorf("get affiliator: %w", err)
 	}
+	if settings.BindingMonths == nil {
+		return 0, &AffiliateSettingsIncompleteError{Missing: []string{"binding_months"}}
+	}
 	if aff != nil {
 		if rule, ok := rules[aff.Level]; ok {
 			return rule.BindingMonths, nil
 		}
 	}
-	return settings.BindingMonths, nil
+	return *settings.BindingMonths, nil
 }
 
 // CreateBinding inserts one active binding inside the caller's transaction,

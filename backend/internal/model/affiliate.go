@@ -115,20 +115,20 @@ type AffiliateLevelHistory struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
-// Singleton settings row: the DB pins the primary key to 1 (0070).
+// Singleton settings row: the DB pins the primary key to 1 (0070). The required
+// settings are nil until an admin sets them; nothing falls back to a default.
 type AffiliateSettings struct {
-	ID                   int        `json:"id"`
-	CookieDays           int        `json:"cookie_days"`
-	BindingMonths        int        `json:"binding_months"`
-	MinExtendAmount      float64    `json:"min_extend_amount"`
-	DigitalWaitDays      int        `json:"digital_wait_days"`
-	PhysicalWaitDays     int        `json:"physical_wait_days"`
-	MinPayout            float64    `json:"min_payout"`
-	PayoutDayOfMonth     *int       `json:"payout_day_of_month"`
-	LaunchDate           *time.Time `json:"launch_date"`
-	EvalDay              int        `json:"eval_day"`
-	DailyRegistrationCap *int       `json:"daily_registration_cap"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	ID               int        `json:"id"`
+	CookieDays       *int       `json:"cookie_days"`
+	BindingMonths    *int       `json:"binding_months"`
+	MinExtendAmount  float64    `json:"min_extend_amount"`
+	DigitalWaitDays  *int       `json:"digital_wait_days"`
+	PhysicalWaitDays *int       `json:"physical_wait_days"`
+	MinPayout        *float64   `json:"min_payout"`
+	PayoutDayOfMonth *int       `json:"payout_day_of_month"`
+	LaunchDate       *time.Time `json:"launch_date"`
+	EvalDay          *int       `json:"eval_day"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type AffiliateLevelSettings struct {

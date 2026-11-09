@@ -148,8 +148,8 @@ func TestAffiliateLevelPlanFor_matrix(t *testing.T) {
 		{"gold miss drops to silver", tuned, "gold", 1, 8999999, "drop", "silver"},
 		{"gold top never rises", tuned, "gold", 0, 99999999, "hold", "gold"},
 		{"default silver holds at any net", defaults, "silver", 0, 0, "hold", "silver"},
-		{"built-in default lifts bronze to silver at 5M", defaults, "bronze", 0, 5000000, "rise", "silver"},
-		{"built-in default lifts bronze straight to gold at 15M", defaults, "bronze", 0, 15000000, "rise", "gold"},
+		{"no rise threshold set: bronze never rises at 5M", defaults, "bronze", 0, 5000000, "hold", "bronze"},
+		{"no rise threshold set: bronze never rises at 15M", defaults, "bronze", 0, 15000000, "hold", "bronze"},
 		{"rise threshold override gates the rise", buildAffiliateEffectiveRules(settings, []model.AffiliateLevelSettings{
 			{Level: "silver", RiseThreshold: f64Ptr(20000000)},
 		}), "bronze", 0, 15000000, "hold", "bronze"},

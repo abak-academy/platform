@@ -21,13 +21,13 @@ func affRules(category, ruleType string, value float64) map[string]model.Affilia
 
 func validAffiliateConfigSettingsInput() AffiliateAdminSettingsInput {
 	return AffiliateAdminSettingsInput{
-		CookieDays:       30,
-		BindingMonths:    3,
+		CookieDays:       intPtr(30),
+		BindingMonths:    intPtr(3),
 		MinExtendAmount:  0,
-		DigitalWaitDays:  7,
-		PhysicalWaitDays: 14,
-		MinPayout:        100000,
-		EvalDay:          8,
+		DigitalWaitDays:  intPtr(7),
+		PhysicalWaitDays: intPtr(14),
+		MinPayout:        f64Ptr(100000),
+		EvalDay:          intPtr(8),
 	}
 }
 
@@ -36,21 +36,20 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 		name   string
 		mutate func(in *AffiliateAdminSettingsInput)
 	}{
-		{"cookie_days below 1", func(in *AffiliateAdminSettingsInput) { in.CookieDays = 0 }},
-		{"cookie_days above 180", func(in *AffiliateAdminSettingsInput) { in.CookieDays = 181 }},
-		{"binding_months below 1", func(in *AffiliateAdminSettingsInput) { in.BindingMonths = 0 }},
-		{"binding_months above 12", func(in *AffiliateAdminSettingsInput) { in.BindingMonths = 13 }},
-		{"digital_wait_days below 0", func(in *AffiliateAdminSettingsInput) { in.DigitalWaitDays = -1 }},
-		{"digital_wait_days above 90", func(in *AffiliateAdminSettingsInput) { in.DigitalWaitDays = 91 }},
-		{"physical_wait_days below 0", func(in *AffiliateAdminSettingsInput) { in.PhysicalWaitDays = -1 }},
-		{"physical_wait_days above 90", func(in *AffiliateAdminSettingsInput) { in.PhysicalWaitDays = 91 }},
-		{"min_payout zero", func(in *AffiliateAdminSettingsInput) { in.MinPayout = 0 }},
-		{"min_payout negative", func(in *AffiliateAdminSettingsInput) { in.MinPayout = -1 }},
+		{"cookie_days below 1", func(in *AffiliateAdminSettingsInput) { in.CookieDays = intPtr(0) }},
+		{"cookie_days above 180", func(in *AffiliateAdminSettingsInput) { in.CookieDays = intPtr(181) }},
+		{"binding_months below 1", func(in *AffiliateAdminSettingsInput) { in.BindingMonths = intPtr(0) }},
+		{"binding_months above 12", func(in *AffiliateAdminSettingsInput) { in.BindingMonths = intPtr(13) }},
+		{"digital_wait_days below 0", func(in *AffiliateAdminSettingsInput) { in.DigitalWaitDays = intPtr(-1) }},
+		{"digital_wait_days above 90", func(in *AffiliateAdminSettingsInput) { in.DigitalWaitDays = intPtr(91) }},
+		{"physical_wait_days below 0", func(in *AffiliateAdminSettingsInput) { in.PhysicalWaitDays = intPtr(-1) }},
+		{"physical_wait_days above 90", func(in *AffiliateAdminSettingsInput) { in.PhysicalWaitDays = intPtr(91) }},
+		{"min_payout zero", func(in *AffiliateAdminSettingsInput) { in.MinPayout = f64Ptr(0) }},
+		{"min_payout negative", func(in *AffiliateAdminSettingsInput) { in.MinPayout = f64Ptr(-1) }},
 		{"payout_day_of_month below 1", func(in *AffiliateAdminSettingsInput) { in.PayoutDayOfMonth = intPtr(0) }},
 		{"payout_day_of_month above 28", func(in *AffiliateAdminSettingsInput) { in.PayoutDayOfMonth = intPtr(29) }},
-		{"eval_day below 1", func(in *AffiliateAdminSettingsInput) { in.EvalDay = 0 }},
-		{"eval_day above 28", func(in *AffiliateAdminSettingsInput) { in.EvalDay = 29 }},
-		{"daily_registration_cap zero", func(in *AffiliateAdminSettingsInput) { in.DailyRegistrationCap = intPtr(0) }},
+		{"eval_day below 1", func(in *AffiliateAdminSettingsInput) { in.EvalDay = intPtr(0) }},
+		{"eval_day above 28", func(in *AffiliateAdminSettingsInput) { in.EvalDay = intPtr(29) }},
 		{"launch_date bad format", func(in *AffiliateAdminSettingsInput) { in.LaunchDate = strPtr("tomorrow") }},
 		{"level unknown", func(in *AffiliateAdminSettingsInput) {
 			in.Levels = append(in.Levels, AffiliateAdminLevelInput{Level: "platinum"})
@@ -114,14 +113,13 @@ func TestAffiliateConfigSettingsPUTValidation(t *testing.T) {
 
 	t.Run("boundaries and nullables are accepted", func(t *testing.T) {
 		in := validAffiliateConfigSettingsInput()
-		in.CookieDays = 180
-		in.BindingMonths = 12
-		in.DigitalWaitDays = 90
-		in.PhysicalWaitDays = 90
+		in.CookieDays = intPtr(180)
+		in.BindingMonths = intPtr(12)
+		in.DigitalWaitDays = intPtr(90)
+		in.PhysicalWaitDays = intPtr(90)
 		in.PayoutDayOfMonth = intPtr(28)
-		in.EvalDay = 28
+		in.EvalDay = intPtr(28)
 		in.LaunchDate = strPtr("2026-11-01")
-		in.DailyRegistrationCap = intPtr(1)
 		in.Levels = []AffiliateAdminLevelInput{
 			{
 				Level: "bronze",
@@ -156,12 +154,16 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, actor) })
 	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`) })
 
-	_, err := pool.Exec(ctx, `UPDATE affiliate_settings SET levels = '{}'`)
+	_, err := pool.Exec(ctx,
+		`INSERT INTO affiliate_settings (id, cookie_days, binding_months, digital_wait_days, physical_wait_days, min_payout, eval_day, levels)
+		 VALUES (1, 30, 3, 7, 14, 100000, 8, '{}')
+		 ON CONFLICT (id) DO UPDATE SET cookie_days = 30, binding_months = 3, digital_wait_days = 7,
+		     physical_wait_days = 14, min_payout = 100000, eval_day = 8, levels = '{}'`)
 	require.NoError(t, err)
 
 	input := validAffiliateConfigSettingsInput()
-	input.CookieDays = 45
-	input.MinPayout = 250000
+	input.CookieDays = intPtr(45)
+	input.MinPayout = f64Ptr(250000)
 	input.LaunchDate = strPtr("2026-11-01")
 	input.Levels = []AffiliateAdminLevelInput{
 		{Level: "silver", CommissionRule: affRules("exam", "percent", 12), BindingMonths: intPtr(6), DigitalWaitDays: intPtr(3), MinPayout: f64Ptr(50000)},
@@ -170,8 +172,8 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	got, err := svc.UpdateAffiliateAdminSettings(ctx, actor, input)
 	require.NoError(t, err)
 
-	if got.Settings.CookieDays != 45 || got.Settings.MinPayout != 250000 {
-		t.Errorf("readback settings = %d %v, want 45 250000", got.Settings.CookieDays, got.Settings.MinPayout)
+	if got.Settings.CookieDays == nil || *got.Settings.CookieDays != 45 || got.Settings.MinPayout == nil || *got.Settings.MinPayout != 250000 {
+		t.Errorf("readback settings = %v %v, want 45 250000", got.Settings.CookieDays, got.Settings.MinPayout)
 	}
 	if got.Settings.LaunchDate == nil || !got.Settings.LaunchDate.Equal(time.Date(2026, 11, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Errorf("readback LaunchDate = %v, want 2026-11-01", got.Settings.LaunchDate)
@@ -241,7 +243,7 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	}
 
 	// A second PUT that changes only one field records only that field.
-	input.EvalDay = 12
+	input.EvalDay = intPtr(12)
 	_, err = svc.UpdateAffiliateAdminSettings(ctx, actor, input)
 	require.NoError(t, err)
 
@@ -359,6 +361,7 @@ func TestAffiliateConfigOverridesUpsertDeleteFallback(t *testing.T) {
 
 func TestAffiliateConfigReportSummary(t *testing.T) {
 	svc, repo := newRealDBService(t)
+	seedAffiliateProgramSettings(t, repo)
 	ctx := context.Background()
 	pool := repo.Pool()
 
@@ -568,10 +571,13 @@ func TestSetAffiliateProgramEnabled_switchesTheFlagAndShowsInTheSettingsView(t *
 		_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key IN ('affiliate_enabled', $1)`, affiliateEnabledSinceKey)
 	})
 	setAffiliateFlagForCommission(t, repo, "false")
+	_, err := repo.Pool().Exec(ctx, `UPDATE affiliate_settings SET launch_date = '2000-01-01' WHERE id = 1`)
+	require.NoError(t, err)
 
 	view, err := svc.GetAffiliateAdminSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, view.ProgramEnabled)
+	require.Empty(t, view.Missing)
 
 	require.NoError(t, svc.SetAffiliateProgramEnabled(ctx, actor.String(), true))
 	view, err = svc.GetAffiliateAdminSettings(ctx)
@@ -585,4 +591,53 @@ func TestSetAffiliateProgramEnabled_switchesTheFlagAndShowsInTheSettingsView(t *
 	view, err = svc.GetAffiliateAdminSettings(ctx)
 	require.NoError(t, err)
 	require.False(t, view.ProgramEnabled)
+}
+
+func TestSetAffiliateProgramEnabled_refusesWhileRequiredSettingsAreMissing(t *testing.T) {
+	svc, repo := newShippingWebhookTestService(t, nil)
+	ctx := context.Background()
+	actor := seedRevokeActor(t, repo)
+	t.Cleanup(func() {
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key IN ('affiliate_enabled', $1)`, affiliateEnabledSinceKey)
+		_, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`)
+	})
+	setAffiliateFlagForCommission(t, repo, "false")
+	_, err := repo.Pool().Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`)
+	require.NoError(t, err)
+
+	err = svc.SetAffiliateProgramEnabled(ctx, actor.String(), true)
+	var incomplete *AffiliateSettingsIncompleteError
+	require.ErrorAs(t, err, &incomplete)
+	require.ErrorIs(t, err, ErrAffiliateSettingsIncomplete)
+	require.Equal(t, []string{"launch_date", "cookie_days", "binding_months", "digital_wait_days", "physical_wait_days", "min_payout", "eval_day"}, incomplete.Missing)
+	require.False(t, svc.affiliateEnabled(ctx), "the flag must stay off")
+
+	view, err := svc.GetAffiliateAdminSettings(ctx)
+	require.NoError(t, err)
+	require.Equal(t, incomplete.Missing, view.Missing)
+	require.True(t, view.CommissionUnset)
+}
+
+func TestUpdateAffiliateAdminSettings_refusesToClearRequiredSettingsWhileProgramIsOn(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	actor := seedAffiliateAdminActor(t, repo, "affcfg-clear-"+uniqueSuffix()+"@test.local")
+	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM users WHERE id = $1`, actor) })
+	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`) })
+	setAffiliateFlagForCommission(t, repo, "true")
+
+	input := validAffiliateConfigSettingsInput()
+	input.LaunchDate = strPtr("2026-11-01")
+	_, err := svc.UpdateAffiliateAdminSettings(ctx, actor, input)
+	require.NoError(t, err, "a complete save is accepted while the program is on")
+
+	input.CookieDays = nil
+	_, err = svc.UpdateAffiliateAdminSettings(ctx, actor, input)
+	var incomplete *AffiliateSettingsIncompleteError
+	require.ErrorAs(t, err, &incomplete)
+	require.Equal(t, []string{"cookie_days"}, incomplete.Missing)
+
+	setAffiliateFlagForCommission(t, repo, "false")
+	_, err = svc.UpdateAffiliateAdminSettings(ctx, actor, input)
+	require.NoError(t, err, "with the program off, a required setting can be cleared")
 }

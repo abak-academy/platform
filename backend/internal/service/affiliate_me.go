@@ -225,9 +225,8 @@ func (s *Service) GetMyAffiliateProfile(ctx context.Context, userID string) (Aff
 		HoldThreshold: rules[aff.Level].HoldThreshold,
 	}
 	if next, ok := affiliateNextLevel(aff.Level); ok {
-		rise := affiliateRiseThreshold(next, rules)
 		progress.NextLevel = next
-		progress.RiseThreshold = &rise
+		progress.RiseThreshold = rules[next].RiseThreshold
 	}
 	profile.LevelProgress = progress
 	return profile, nil

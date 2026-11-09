@@ -48,17 +48,17 @@ func (r *Repository) UpsertAffiliateSettingsTx(ctx context.Context, tx pgx.Tx, s
 		`INSERT INTO affiliate_settings
 		     (id, cookie_days, binding_months, min_extend_amount, digital_wait_days,
 		      physical_wait_days, min_payout, payout_day_of_month,
-		      launch_date, eval_day, daily_registration_cap, updated_at)
-		 VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+		      launch_date, eval_day, updated_at)
+		 VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 		 ON CONFLICT (id) DO UPDATE SET
 		     cookie_days = $1, binding_months = $2, min_extend_amount = $3,
 		     digital_wait_days = $4, physical_wait_days = $5,
 		     min_payout = $6, payout_day_of_month = $7,
-		     launch_date = $8, eval_day = $9, daily_registration_cap = $10,
+		     launch_date = $8, eval_day = $9,
 		     updated_at = now()`,
 		s.CookieDays, s.BindingMonths, s.MinExtendAmount, s.DigitalWaitDays,
 		s.PhysicalWaitDays, s.MinPayout, s.PayoutDayOfMonth,
-		s.LaunchDate, s.EvalDay, s.DailyRegistrationCap,
+		s.LaunchDate, s.EvalDay,
 	)
 	return err
 }

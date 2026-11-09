@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,20 +16,80 @@ const (
 	affiliateCommissionFixed   = "fixed"
 )
 
-// affiliateDefaultCommissionRule holds the TRD example's per-category commission rules; affiliate_settings has no per-category columns, so these live only here.
+// affiliateDefaultCommissionRule lists the commission categories with no commission until an admin sets a rule.
 var affiliateDefaultCommissionRule = map[string]model.AffiliateCommissionRule{
-	"exam":        {Type: affiliateCommissionPercent, Value: 10},
-	"course":      {Type: affiliateCommissionPercent, Value: 10},
-	"book":        {Type: affiliateCommissionPercent, Value: 3},
-	"merchandise": {Type: affiliateCommissionPercent, Value: 3},
+	"exam":        {Type: affiliateCommissionPercent, Value: 0},
+	"course":      {Type: affiliateCommissionPercent, Value: 0},
+	"book":        {Type: affiliateCommissionPercent, Value: 0},
+	"merchandise": {Type: affiliateCommissionPercent, Value: 0},
 	"medal":       {Type: affiliateCommissionPercent, Value: 0},
 }
 
-// affiliateDefaultRiseThreshold is the quarterly revenue that rises into a
-// level while the admin leaves that level's rise_threshold empty.
-var affiliateDefaultRiseThreshold = map[string]float64{
-	"silver": 5000000,
-	"gold":   15000000,
+// ErrAffiliateSettingsIncomplete reports required settings the admin has not set.
+var ErrAffiliateSettingsIncomplete = errors.New("affiliate settings are incomplete")
+
+// AffiliateSettingsIncompleteError names the required settings still empty. It
+// satisfies errors.Is(err, ErrAffiliateSettingsIncomplete).
+type AffiliateSettingsIncompleteError struct {
+	Missing []string
+}
+
+func (e *AffiliateSettingsIncompleteError) Error() string {
+	return "affiliate settings are incomplete: " + strings.Join(e.Missing, ", ")
+}
+
+func (e *AffiliateSettingsIncompleteError) Is(target error) bool {
+	return target == ErrAffiliateSettingsIncomplete
+}
+
+// affiliateMissingSettings lists, in a stable order, the settings that must be
+// set before the program may be switched on.
+func affiliateMissingSettings(s *model.AffiliateSettings) []string {
+	var missing []string
+	if s.LaunchDate == nil {
+		missing = append(missing, "launch_date")
+	}
+	if s.CookieDays == nil {
+		missing = append(missing, "cookie_days")
+	}
+	missing = append(missing, affiliateMissingRuleSettings(s)...)
+	if s.EvalDay == nil {
+		missing = append(missing, "eval_day")
+	}
+	return missing
+}
+
+// affiliateMissingRuleSettings lists the unset settings the money paths
+// (commission wait, binding length, payout minimum) cannot run without.
+func affiliateMissingRuleSettings(s *model.AffiliateSettings) []string {
+	var missing []string
+	if s.BindingMonths == nil {
+		missing = append(missing, "binding_months")
+	}
+	if s.DigitalWaitDays == nil {
+		missing = append(missing, "digital_wait_days")
+	}
+	if s.PhysicalWaitDays == nil {
+		missing = append(missing, "physical_wait_days")
+	}
+	if s.MinPayout == nil {
+		missing = append(missing, "min_payout")
+	}
+	return missing
+}
+
+func affiliateIntOrZero(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
+}
+
+func affiliateFloatOrZero(v *float64) float64 {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 var affiliateLevels = []string{"bronze", "silver", "gold"}
@@ -56,22 +117,10 @@ type AffiliateCodeValidation struct {
 	CookieDays int `json:"cookie_days,omitempty"`
 }
 
-// defaultAffiliateSettings mirrors the 0070 column defaults so a missing
-// singleton row behaves as an unconfigured-but-valid install.
+// defaultAffiliateSettings is the install nobody has configured: every
+// required setting is unset, so the program cannot be switched on.
 func defaultAffiliateSettings() *model.AffiliateSettings {
-	return &model.AffiliateSettings{
-		ID:                   1,
-		CookieDays:           30,
-		BindingMonths:        3,
-		MinExtendAmount:      0,
-		DigitalWaitDays:      7,
-		PhysicalWaitDays:     14,
-		MinPayout:            100000,
-		PayoutDayOfMonth:     nil,
-		LaunchDate:           nil,
-		EvalDay:              8,
-		DailyRegistrationCap: nil,
-	}
+	return &model.AffiliateSettings{ID: 1}
 }
 
 // affiliateLevelCommissionRule overlays a level row's commission_rule jsonb onto
@@ -110,10 +159,10 @@ func buildAffiliateEffectiveRules(settings *model.AffiliateSettings, levels []mo
 		rule := AffiliateEffectiveRule{
 			Level:            level,
 			CommissionRule:   affiliateLevelCommissionRule(rows[level].CommissionRule),
-			BindingMonths:    settings.BindingMonths,
-			DigitalWaitDays:  settings.DigitalWaitDays,
-			PhysicalWaitDays: settings.PhysicalWaitDays,
-			MinPayout:        settings.MinPayout,
+			BindingMonths:    affiliateIntOrZero(settings.BindingMonths),
+			DigitalWaitDays:  affiliateIntOrZero(settings.DigitalWaitDays),
+			PhysicalWaitDays: affiliateIntOrZero(settings.PhysicalWaitDays),
+			MinPayout:        affiliateFloatOrZero(settings.MinPayout),
 			PayoutDayOfMonth: settings.PayoutDayOfMonth,
 		}
 		if row, ok := rows[level]; ok {
@@ -134,11 +183,6 @@ func buildAffiliateEffectiveRules(settings *model.AffiliateSettings, levels []mo
 			}
 			rule.RiseThreshold = row.RiseThreshold
 			rule.HoldThreshold = row.HoldThreshold
-		}
-		if rule.RiseThreshold == nil {
-			if def, ok := affiliateDefaultRiseThreshold[level]; ok {
-				rule.RiseThreshold = &def
-			}
 		}
 		rules[level] = rule
 	}
@@ -223,7 +267,7 @@ func (s *Service) ValidateAffiliateCode(ctx context.Context, code string) (Affil
 	if err != nil {
 		return res, fmt.Errorf("load affiliate settings: %w", err)
 	}
-	res.CookieDays = settings.CookieDays
+	res.CookieDays = affiliateIntOrZero(settings.CookieDays)
 	aff, err := s.storeRepo.FindAffiliatorByCode(ctx, code)
 	if err != nil {
 		return res, fmt.Errorf("find affiliator: %w", err)

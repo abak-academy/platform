@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -14,7 +15,21 @@ import (
 func intPtr(i int) *int         { return &i }
 func f64Ptr(f float64) *float64 { return &f }
 
-func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
+// configuredAffiliateSettings is a fully configured install, since the program
+// has no built-in defaults to fall back on.
+func configuredAffiliateSettings() *model.AffiliateSettings {
+	return &model.AffiliateSettings{
+		ID:               1,
+		CookieDays:       intPtr(30),
+		BindingMonths:    intPtr(3),
+		DigitalWaitDays:  intPtr(7),
+		PhysicalWaitDays: intPtr(14),
+		MinPayout:        f64Ptr(100000),
+		EvalDay:          intPtr(8),
+	}
+}
+
+func TestAffiliateSettingsDefaults_haveNoRequiredSettings(t *testing.T) {
 	s := defaultAffiliateSettings()
 	if s == nil {
 		t.Fatal("defaultAffiliateSettings() = nil, want settings")
@@ -22,35 +37,12 @@ func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
 	if s.ID != 1 {
 		t.Errorf("ID = %d, want 1", s.ID)
 	}
-	if s.CookieDays != 30 {
-		t.Errorf("CookieDays = %d, want 30", s.CookieDays)
-	}
-	if s.BindingMonths != 3 {
-		t.Errorf("BindingMonths = %d, want 3", s.BindingMonths)
-	}
 	if s.MinExtendAmount != 0 {
 		t.Errorf("MinExtendAmount = %v, want 0", s.MinExtendAmount)
 	}
-	if s.DigitalWaitDays != 7 {
-		t.Errorf("DigitalWaitDays = %d, want 7", s.DigitalWaitDays)
-	}
-	if s.PhysicalWaitDays != 14 {
-		t.Errorf("PhysicalWaitDays = %d, want 14", s.PhysicalWaitDays)
-	}
-	if s.MinPayout != 100000 {
-		t.Errorf("MinPayout = %v, want 100000", s.MinPayout)
-	}
-	if s.PayoutDayOfMonth != nil {
-		t.Errorf("PayoutDayOfMonth = %v, want nil", *s.PayoutDayOfMonth)
-	}
-	if s.LaunchDate != nil {
-		t.Errorf("LaunchDate = %v, want nil", s.LaunchDate)
-	}
-	if s.EvalDay != 8 {
-		t.Errorf("EvalDay = %d, want 8", s.EvalDay)
-	}
-	if s.DailyRegistrationCap != nil {
-		t.Errorf("DailyRegistrationCap = %v, want nil", *s.DailyRegistrationCap)
+	want := []string{"launch_date", "cookie_days", "binding_months", "digital_wait_days", "physical_wait_days", "min_payout", "eval_day"}
+	if got := affiliateMissingSettings(s); !slices.Equal(got, want) {
+		t.Errorf("affiliateMissingSettings(defaults) = %v, want %v", got, want)
 	}
 }
 
@@ -59,7 +51,7 @@ func TestAffiliateSettingsDefaults_matchMigrationDefaults(t *testing.T) {
 // fields it sets; absent levels and absent fields fall back to global
 // (defaults when the singleton row is missing).
 func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
-	settings := defaultAffiliateSettings()
+	settings := configuredAffiliateSettings()
 	levels := []model.AffiliateLevelSettings{
 		{
 			Level:            "silver",
@@ -108,11 +100,11 @@ func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
 	if got := silver.CommissionRule["book"]; got != (model.AffiliateCommissionRule{Type: "fixed", Value: 5000}) {
 		t.Errorf("silver book rule = %+v, want fixed 5000 (level override)", got)
 	}
-	if got := silver.CommissionRule["course"]; got != (model.AffiliateCommissionRule{Type: "percent", Value: 10}) {
-		t.Errorf("silver course rule = %+v, want default percent 10", got)
+	if got := silver.CommissionRule["course"]; got != (model.AffiliateCommissionRule{Type: "percent", Value: 0}) {
+		t.Errorf("silver course rule = %+v, want no commission until set", got)
 	}
 	if got := silver.CommissionRule["medal"]; got.Value != 0 {
-		t.Errorf("silver medal rule = %+v, want default 0", got)
+		t.Errorf("silver medal rule = %+v, want 0", got)
 	}
 
 	gold := rules["gold"]
@@ -137,27 +129,29 @@ func TestAffiliateEffectiveRules_levelOverridesGlobal(t *testing.T) {
 
 	bronze := rules["bronze"]
 	if bronze.MinPayout != 100000 || bronze.PayoutDayOfMonth != nil {
-		t.Errorf("bronze payout fields = %v %v, want global defaults 100000 nil", bronze.MinPayout, bronze.PayoutDayOfMonth)
+		t.Errorf("bronze payout fields = %v %v, want the global values 100000 nil", bronze.MinPayout, bronze.PayoutDayOfMonth)
 	}
 	if bronze.RiseThreshold != nil || bronze.HoldThreshold != nil {
 		t.Errorf("bronze thresholds = %v %v, want nil nil (bronze has no level row)", bronze.RiseThreshold, bronze.HoldThreshold)
 	}
-	if bronze.CommissionRule["exam"].Value != 10 || bronze.CommissionRule["book"].Value != 3 {
-		t.Errorf("bronze.CommissionRule = %v, want defaults exam 10 book 3", bronze.CommissionRule)
+	for category, rule := range bronze.CommissionRule {
+		if rule.Value != 0 {
+			t.Errorf("bronze.CommissionRule[%s] = %v, want no commission until set", category, rule)
+		}
 	}
 }
 
-func TestAffiliateEffectiveRules_nilSettingsFallsBackToDefaults(t *testing.T) {
+func TestAffiliateEffectiveRules_nilSettingsHasNoWaitsOrCommission(t *testing.T) {
 	rules := buildAffiliateEffectiveRules(nil, nil)
 	if len(rules) != 3 {
 		t.Fatalf("len(rules) = %d, want 3", len(rules))
 	}
 	silver := rules["silver"]
-	if silver.DigitalWaitDays != 7 || silver.MinPayout != 100000 {
-		t.Errorf("silver wait/payout = %d %v, want defaults 7 100000", silver.DigitalWaitDays, silver.MinPayout)
+	if silver.DigitalWaitDays != 0 || silver.MinPayout != 0 {
+		t.Errorf("silver wait/payout = %d %v, want 0 0 (nothing configured)", silver.DigitalWaitDays, silver.MinPayout)
 	}
-	if silver.CommissionRule["exam"].Value != 10 {
-		t.Errorf("silver.CommissionRule[exam] = %v, want default 10", silver.CommissionRule["exam"])
+	if silver.CommissionRule["exam"].Value != 0 {
+		t.Errorf("silver.CommissionRule[exam] = %v, want no commission until set", silver.CommissionRule["exam"])
 	}
 }
 
@@ -179,9 +173,9 @@ func TestResolveAffiliateCommissionRule_precedence(t *testing.T) {
 		{"override wins even for defaulted category", &model.AffiliateProductOverride{Type: "percent", Value: 1}, levelRules["silver"], "course", model.AffiliateCommissionRule{Type: "percent", Value: 1}},
 		{"level value beats default", nil, levelRules["silver"], "exam", model.AffiliateCommissionRule{Type: "percent", Value: 12}},
 		{"level fixed value set", nil, levelRules["silver"], "book", model.AffiliateCommissionRule{Type: "fixed", Value: 5000}},
-		{"default when level omits category", nil, levelRules["silver"], "merchandise", model.AffiliateCommissionRule{Type: "percent", Value: 3}},
-		{"default when level has no rule", nil, defaultRules["bronze"], "exam", model.AffiliateCommissionRule{Type: "percent", Value: 10}},
-		{"medal defaults to zero", nil, defaultRules["bronze"], "medal", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
+		{"no commission when level omits category", nil, levelRules["silver"], "merchandise", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
+		{"no commission when level has no rule", nil, defaultRules["bronze"], "exam", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
+		{"medal is zero", nil, defaultRules["bronze"], "medal", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
 		{"unknown product type has no commission", nil, defaultRules["bronze"], "webinar", model.AffiliateCommissionRule{Type: "percent", Value: 0}},
 	}
 	for _, tt := range tests {
@@ -223,6 +217,10 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	var productID uuid.UUID
 	var affID uuid.UUID
 
+	_, err := pool.Exec(ctx, `DELETE FROM affiliate_settings WHERE id = 1`)
+	if err != nil {
+		t.Fatalf("clear affiliate settings: %v", err)
+	}
 	st, err := svc.LoadAffiliateSettings(ctx)
 	if err != nil {
 		t.Fatalf("LoadAffiliateSettings (no row): %v", err)
@@ -230,8 +228,8 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	if st == nil {
 		t.Fatal("LoadAffiliateSettings() = nil with no row, want defaults")
 	}
-	if st.CookieDays != 30 {
-		t.Errorf("no-row CookieDays = %d, want default 30", st.CookieDays)
+	if st.CookieDays != nil {
+		t.Errorf("no-row CookieDays = %d, want unset", *st.CookieDays)
 	}
 
 	// Cleanup is registered in FK-dependency order: t.Cleanup runs LIFO, so
@@ -283,7 +281,7 @@ func TestAffiliateSettingsLoadIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadAffiliateEffectiveRules: %v", err)
 	}
-	if settings == nil || settings.CookieDays != 45 || settings.DigitalWaitDays != 3 || settings.MinPayout != 250000 {
+	if settings == nil || settings.CookieDays == nil || *settings.CookieDays != 45 || settings.DigitalWaitDays == nil || *settings.DigitalWaitDays != 3 || settings.MinPayout == nil || *settings.MinPayout != 250000 {
 		t.Errorf("LoadAffiliateEffectiveRules settings = %+v, want row values 45/3/250000", settings)
 	}
 	silver := rules["silver"]
