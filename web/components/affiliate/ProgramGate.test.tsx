@@ -1,6 +1,7 @@
+import { createElement } from "react";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { ProgramGate, programForPath } from "./ProgramGate";
+import { ProgramGate, RouteProgramGate, programForPath } from "./ProgramGate";
 import type { AffiliatorProgramStates } from "@/lib/types";
 
 const me = vi.hoisted(() => ({ value: { data: undefined, isLoading: false } as { data?: { affiliator_programs?: AffiliatorProgramStates }; isLoading: boolean } }));
@@ -106,5 +107,19 @@ describe("ProgramGate", () => {
     setStates(undefined);
     render(<ProgramGate program="partner">halaman mitra</ProgramGate>);
     expect(screen.getByText("halaman mitra")).toBeInTheDocument();
+  });
+});
+
+describe("RouteProgramGate", () => {
+  it("does not warn about missing keys when the router hands over several elements", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Passed as a prop, so the warning can only come from RouteProgramGate itself.
+    const pieces = [<p>satu</p>, <p>dua</p>];
+
+    render(createElement(RouteProgramGate, { children: pieces }));
+
+    expect(screen.getByText("satu")).toBeInTheDocument();
+    expect(error.mock.calls.filter((c) => String(c[0]).includes("unique \"key\""))).toHaveLength(0);
+    error.mockRestore();
   });
 });

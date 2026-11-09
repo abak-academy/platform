@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AlertTriangle, Clock, Info, XCircle } from "lucide-react";
 import { useMe } from "@/lib/hooks/auth";
@@ -89,6 +89,9 @@ export function ProgramGate({ program, children }: { program: Program; children:
 // layout covers every page of both programs.
 export function RouteProgramGate({ children }: { children: ReactNode }) {
   const program = programForPath(usePathname());
-  if (!program) return <>{children}</>;
-  return <ProgramGate program={program}>{children}</ProgramGate>;
+  // The router can hand over its page as several elements without keys, which React
+  // warns about even after Children.toArray; an explicit key on each one does not.
+  const content = Children.toArray(children).map((child, i) => (isValidElement(child) ? cloneElement(child, { key: `route-${i}` }) : child));
+  if (!program) return <>{content}</>;
+  return <ProgramGate program={program}>{content}</ProgramGate>;
 }
