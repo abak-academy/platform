@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { toast } from "sonner";
 import { SchoolPicker } from "@/components/SchoolPicker";
-import { ProgramBadges, inAffiliate, inPartner } from "@/components/affiliate/ProgramBadges";
+import { ProgramBadges, inPartner } from "@/components/affiliate/ProgramBadges";
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api";
-import { useAddAffiliatorProgram, useSetPartnerSchools } from "@/lib/hooks/admin-affiliates";
+import { useSetPartnerSchools } from "@/lib/hooks/admin-affiliates";
 import { useSchoolById } from "@/lib/hooks/students";
 import { useTranslation } from "@/lib/i18n";
 import type { AffiliatorPrograms, SchoolOption } from "@/lib/types";
@@ -25,14 +25,12 @@ function SchoolChip({ id, onRemove, disabled }: { id: string; onRemove: () => vo
 }
 
 // PartnerProgramPanel is the admin's view of an account's programs: which it
-// belongs to, adding the other one (programs are never removed, suspending the
-// account is how access stops), and the schools a Mitra may buy for.
-export function PartnerProgramPanel({ id, programs, status }: { id: string; programs?: AffiliatorPrograms; status: string }) {
+// belongs to and the schools a Mitra may buy for. Adding a program lives with the
+// other actions; programs are never removed, suspending the account stops access.
+export function PartnerProgramPanel({ id, programs }: { id: string; programs?: AffiliatorPrograms }) {
   const { t } = useTranslation();
-  const add = useAddAffiliatorProgram();
   const setSchools = useSetPartnerSchools();
   const [schoolIds, setSchoolIds] = useState<string[]>(programs?.partner?.school_ids ?? []);
-  const approved = status !== "pending_approval" && status !== "rejected";
   const fail = (err: unknown) => toast.error(err instanceof ApiError ? err.message : t("aff_action_failed"));
 
   useEffect(() => {
@@ -44,24 +42,12 @@ export function PartnerProgramPanel({ id, programs, status }: { id: string; prog
   };
   const saveSchools = () =>
     setSchools.mutate({ id, school_ids: schoolIds }, { onSuccess: () => toast.success(t("admin_aff_schools_saved")), onError: fail });
-  const addProgram = (program: "affiliate" | "partner") =>
-    add.mutate({ id, program }, { onSuccess: () => toast.success(t("admin_aff_programs_added")), onError: fail });
 
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_col_programs")}</h2>
         <ProgramBadges programs={programs} />
-        {approved && !inAffiliate(programs) && (
-          <Button size="sm" variant="outline" onClick={() => addProgram("affiliate")} disabled={add.isPending}>
-            {t("admin_aff_add_program_affiliate")}
-          </Button>
-        )}
-        {approved && !inPartner(programs) && (
-          <Button size="sm" variant="outline" onClick={() => addProgram("partner")} disabled={add.isPending}>
-            {t("admin_aff_add_program_partner")}
-          </Button>
-        )}
       </div>
 
       {inPartner(programs) && (

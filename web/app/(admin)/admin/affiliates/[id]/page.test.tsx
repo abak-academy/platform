@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   status: vi.fn(),
   level: vi.fn(),
   adjust: vi.fn(),
+  addProgram: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
@@ -18,6 +19,7 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useChangeAffiliateStatus: () => ({ mutate: h.status, isPending: false }),
   useChangeAffiliateLevel: () => ({ mutate: h.level, isPending: false }),
   useCreateAffiliateAdjustment: () => ({ mutate: h.adjust, isPending: false }),
+  useAddAffiliatorProgram: () => ({ mutate: h.addProgram, isPending: false }),
 }));
 vi.mock("@/components/affiliate/AdminCommissionsPanel", () => ({
   AdminCommissionsPanel: ({ affiliatorId }: { affiliatorId: string }) => <div>orders-panel-{affiliatorId}</div>,

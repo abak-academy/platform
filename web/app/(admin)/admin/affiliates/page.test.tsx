@@ -1,7 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import AdminAffiliatesPage from "./page";
-import AdminPartnersPage from "./partners/page";
 
 const h = vi.hoisted(() => ({
   list: vi.fn(),
@@ -56,14 +55,6 @@ describe("AdminAffiliatesPage", () => {
       isError: false,
       data: { data: [pending, active], page: 1, per_page: 20, total: 2 },
     });
-  });
-
-  it("the Mitra sub menu lists only Mitra, without the program tabs", () => {
-    render(<AdminPartnersPage />);
-
-    expect(h.list).toHaveBeenLastCalledWith(expect.objectContaining({ program: "partner" }));
-    expect(screen.queryByRole("tab", { name: "Affiliator" })).toBeNull();
-    expect(screen.getByRole("heading", { name: "Mitra" })).toBeInTheDocument();
   });
 
   it("is blocked without the affiliates capability", () => {

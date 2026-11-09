@@ -83,16 +83,17 @@ test.describe("mitra portal pages", () => {
   });
 });
 
-test.describe("admin Mitra sub menu", () => {
+test.describe("admin Mitra tab", () => {
   test.skip(!process.env.E2E_ADMIN_IDENTIFIER, "set E2E_ADMIN_IDENTIFIER / E2E_ADMIN_PASSWORD");
 
-  test("lists only Mitra accounts", async ({ page, context, request }) => {
+  test("the affiliate list separates Mitra accounts by tab", async ({ page, context, request }) => {
     await loginRealAdmin(context, request);
 
-    await page.goto("/admin/affiliates/partners");
+    await page.goto("/admin/affiliates");
+    await page.getByRole("tab", { name: "Mitra" }).click();
 
-    await expect(page.getByRole("heading", { name: "Mitra", exact: true })).toBeVisible();
-    await expect(page.getByRole("tab", { name: "Affiliator" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Affiliator", exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Affiliator/Mitra" })).toBeVisible();
   });
 });
 

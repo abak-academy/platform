@@ -106,11 +106,11 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
         </div>
       )}
 
-      <PartnerProgramPanel id={aff.id} programs={aff.programs} status={aff.status} />
+      <PartnerProgramPanel id={aff.id} programs={aff.programs} />
 
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_actions")}</h2>
-        <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} affiliate={inV1} />
+        <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} affiliate={inV1} programs={aff.programs} />
       </section>
 
       {inV1 && (

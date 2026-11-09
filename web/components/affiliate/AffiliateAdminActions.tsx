@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { inAffiliate, inPartner } from "@/components/affiliate/ProgramBadges";
 import { OptionSelect } from "@/components/affiliate/OptionSelect";
 import { LEVEL_TONE } from "@/components/affiliate/LevelBadge";
 import { STATUS_TONE } from "@/components/affiliate/StatusBadge";
@@ -18,11 +19,13 @@ import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import { affLabel } from "@/lib/affiliate-labels";
 import {
+  useAddAffiliatorProgram,
   useChangeAffiliateLevel,
   useChangeAffiliateStatus,
   useCreateAffiliateAdjustment,
 } from "@/lib/hooks/admin-affiliates";
 import { useTranslation } from "@/lib/i18n";
+import type { AffiliatorPrograms } from "@/lib/types";
 
 const STATUS_TARGETS = ["active", "suspended", "deactivated"] as const;
 const LEVELS = ["bronze", "silver", "gold"] as const;
@@ -36,6 +39,8 @@ interface Props {
   currentLevel: string;
   /** Level and balance adjustments belong to the Affiliator program only. */
   affiliate?: boolean;
+  /** Which programs the account is in; the other one can be added from here. */
+  programs?: AffiliatorPrograms;
 }
 
 function Field({ id, label, children }: { id: string; label: string; children: React.ReactNode }) {
@@ -47,7 +52,7 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   );
 }
 
-export function AffiliateAdminActions({ id, currentStatus, currentLevel, affiliate = true }: Props) {
+export function AffiliateAdminActions({ id, currentStatus, currentLevel, affiliate = true, programs }: Props) {
   const { t } = useTranslation();
   const [action, setAction] = useState<Action>(null);
   const [status, setStatus] = useState<string>(STATUS_TARGETS[0]);
@@ -56,6 +61,9 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, affilia
   const [amount, setAmount] = useState("");
   const [deduct, setDeduct] = useState(false);
   const [reason, setReason] = useState("");
+  const [adding, setAdding] = useState<"affiliate" | "partner" | null>(null);
+  const addProgram = useAddAffiliatorProgram();
+  const approved = currentStatus !== "pending_approval" && currentStatus !== "rejected";
 
   const changeStatus = useChangeAffiliateStatus();
   const changeLevel = useChangeAffiliateLevel();
@@ -106,6 +114,16 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, affilia
             {t("admin_aff_act_status")}
           </Button>
         )}
+        {approved && !inAffiliate(programs) && (
+          <Button variant="outline" size="sm" onClick={() => setAdding("affiliate")}>
+            {t("admin_aff_add_program_affiliate")}
+          </Button>
+        )}
+        {approved && !inPartner(programs) && (
+          <Button variant="outline" size="sm" onClick={() => setAdding("partner")}>
+            {t("admin_aff_add_program_partner")}
+          </Button>
+        )}
         {affiliate && (
           <>
             <Button variant="outline" size="sm" className="border-brand-700/30 bg-brand-50 text-brand-700 hover:bg-brand-100" onClick={() => setAction("level")}>
@@ -117,6 +135,40 @@ export function AffiliateAdminActions({ id, currentStatus, currentLevel, affilia
           </>
         )}
       </div>
+
+      <Dialog open={adding !== null} onOpenChange={(open) => !open && setAdding(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("admin_aff_add_program_confirm_title").replace("{program}", adding ? t(adding === "partner" ? "admin_aff_program_partner" : "admin_aff_program_affiliate") : "")}
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-ink-600">{t("admin_aff_add_program_confirm_desc")}</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdding(null)} disabled={addProgram.isPending}>
+              {t("aff_cancel_btn")}
+            </Button>
+            <Button
+              disabled={addProgram.isPending}
+              onClick={() =>
+                adding &&
+                addProgram.mutate(
+                  { id, program: adding },
+                  {
+                    onSuccess: () => {
+                      toast.success(t("admin_aff_programs_added"));
+                      setAdding(null);
+                    },
+                    onError: fail,
+                  },
+                )
+              }
+            >
+              {t("admin_aff_add_program_confirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={action !== null} onOpenChange={(open) => !open && close()}>
         <DialogContent className="sm:max-w-md">
