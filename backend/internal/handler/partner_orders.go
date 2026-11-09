@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"slices"
 
+	"akademi-bimbel/internal/repository"
+
 	"github.com/labstack/echo/v4"
 )
 
@@ -61,11 +63,20 @@ func (h *Handler) PartnerListOrders(c echo.Context) error {
 	if status != "" && !slices.Contains(partnerOrderStatuses, status) {
 		return badRequest(c, "unknown order status")
 	}
-	orders, next, err := h.svc.ListPartnerOrders(c.Request().Context(), claims.Sub, status, c.QueryParam("cursor"), parseLimit(c.QueryParam("limit"), 20, 100))
+	page, perPage, err := adminQueuePaging(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	from, to, err := parseDayRange(c.QueryParam("from"), c.QueryParam("to"))
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	orders, total, err := h.svc.ListPartnerOrders(c.Request().Context(), claims.Sub,
+		repository.PartnerOrderFilter{Status: status, Q: c.QueryParam("q"), From: from, To: to}, page, perPage)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": orders, "next_cursor": next})
+	return c.JSON(http.StatusOK, queuePage(orders, total, page, perPage))
 }
 
 // PartnerGetOrder backs GET /partners/me/orders/:id.

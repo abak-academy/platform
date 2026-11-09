@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"akademi-bimbel/internal/model"
@@ -410,14 +411,19 @@ func (s *Service) RetryPartnerOrder(ctx context.Context, partnerID, orderID, key
 	return s.RetryPayment(ctx, partnerID, orderID, key)
 }
 
-// ListPartnerOrders lists the Mitra's orders, unpaid ones included, optionally
-// of one status.
-func (s *Service) ListPartnerOrders(ctx context.Context, partnerID, status, cursor string, limit int) ([]model.Order, string, error) {
+// ListPartnerOrders lists one page of the Mitra's orders, unpaid ones included,
+// narrowed by status, a search and a date range.
+func (s *Service) ListPartnerOrders(ctx context.Context, partnerID string, filter repository.PartnerOrderFilter, page, perPage int) ([]model.Order, int, error) {
 	pID, err := parseUUID(partnerID)
 	if err != nil {
-		return nil, "", ErrInvalidUUID
+		return nil, 0, ErrInvalidUUID
 	}
-	return s.storeRepo.ListOrders(ctx, repository.OrderFilter{StudentID: &pID, Status: status, Cursor: cursor, Limit: limit})
+	filter.Q = strings.TrimSpace(filter.Q)
+	orders, total, err := s.storeRepo.ListPartnerOrdersPage(ctx, pID, filter, page, perPage)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list partner orders: %w", err)
+	}
+	return orders, total, nil
 }
 
 // GetPartnerOrder returns one of the Mitra's orders with the students it covers.

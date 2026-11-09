@@ -62,14 +62,54 @@ func (s *Service) PartnerRegisterStudent(ctx context.Context, partnerID string, 
 		in.AlamatDomisili, in.TargetExam, in.ProvinsiID, in.KotaID, in.KecamatanID, in.KodePos, nil, false, &partnerID)
 }
 
-// ListPartnerSchools lists the schools the admin allowed this Mitra, which a CSV
-// import names by NPSN or code.
-func (s *Service) ListPartnerSchools(ctx context.Context, schoolIDs []string) ([]model.School, error) {
-	schools, err := s.storeRepo.ListSchoolsByIDs(ctx, schoolIDs)
+// ListPartnerSchools lists one page of the schools the admin allowed this Mitra,
+// which a CSV import names by NPSN or code.
+func (s *Service) ListPartnerSchools(ctx context.Context, schoolIDs []string, q, status string, page, perPage int) ([]model.School, int, error) {
+	schools, total, err := s.storeRepo.ListSchoolsByIDsPage(ctx, schoolIDs,
+		repository.PartnerSchoolFilter{Q: strings.TrimSpace(q), Status: status}, page, perPage)
 	if err != nil {
-		return nil, fmt.Errorf("list partner schools: %w", err)
+		return nil, 0, fmt.Errorf("list partner schools: %w", err)
 	}
-	return schools, nil
+	return schools, total, nil
+}
+
+// PartnerStudentsNumberedPage is one numbered page of the Mitra's students.
+type PartnerStudentsNumberedPage struct {
+	Data    []repository.PartnerStudentRow `json:"data"`
+	Page    int                            `json:"page"`
+	PerPage int                            `json:"per_page"`
+	Total   int                            `json:"total"`
+	Hint    string                         `json:"hint,omitempty"`
+}
+
+// ListPartnerStudentsPage is ListPartnerStudents by page number, with a total.
+func (s *Service) ListPartnerStudentsPage(ctx context.Context, partnerID string, allowedSchoolIDs []string, filter PartnerStudentListFilter, page, perPage int) (*PartnerStudentsNumberedPage, error) {
+	if _, err := parseUUID(partnerID); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	if filter.SchoolID != "" {
+		id, err := parseUUID(filter.SchoolID)
+		if err != nil {
+			return nil, ErrInvalidUUID
+		}
+		filter.SchoolID = id.String()
+	}
+	filter.Q = strings.TrimSpace(filter.Q)
+
+	rows, total, err := s.storeRepo.ListPartnerStudentsPage(ctx, partnerID, allowedSchoolIDs, repository.PartnerStudentFilter{
+		SchoolID:       filter.SchoolID,
+		Status:         filter.Status,
+		Q:              filter.Q,
+		RegisteredByMe: filter.RegisteredByMe,
+	}, page, perPage)
+	if err != nil {
+		return nil, fmt.Errorf("list partner students: %w", err)
+	}
+	out := &PartnerStudentsNumberedPage{Data: rows, Page: page, PerPage: perPage, Total: total}
+	if total == 0 && len(allowedSchoolIDs) == 0 && filter.Q == "" && filter.SchoolID == "" {
+		out.Hint = "no_schools"
+	}
+	return out, nil
 }
 
 // ListPartnerStudents lists the students of the Mitra's allowed schools plus

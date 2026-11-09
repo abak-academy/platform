@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -314,7 +315,7 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 		require.Len(t, detail.Students, 2)
 		require.Equal(t, full.Code, detail.PromoCode, "the detail names the voucher the order used")
 
-		list, _, err := env.svc.ListPartnerOrders(ctx, env.partner, "", "", 20)
+		list, _, err := env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{}, 1, 20)
 		require.NoError(t, err)
 		require.NotEmpty(t, list)
 	})
@@ -425,4 +426,63 @@ func TestCheckout_aParticipantOrderMayHaveManySeatsButASelfOrderMayNot(t *testin
 	res, err := env.svc.Checkout(ctx, buyer, seats.String(), "key-"+uniqueSuffix(), "")
 	require.NoError(t, err, "with participants qty is the seat count")
 	require.True(t, res.Free)
+}
+
+func TestListPartnerOrders_pagesAndFilters(t *testing.T) {
+	env := newPartnerOrderEnv(t)
+	ctx := context.Background()
+	first, _ := env.courseProduct(t, 100000)
+	second, _ := env.courseProduct(t, 50000)
+	env.open(t, first)
+	env.open(t, second)
+	ani := env.student(t, "Ani", env.schoolA, "")
+	budi := env.student(t, "Budi", env.schoolA, "")
+
+	one, err := env.svc.CreatePartnerOrder(ctx, env.partner, first.String(), []string{ani}, "")
+	require.NoError(t, err)
+	two, err := env.svc.CreatePartnerOrder(ctx, env.partner, second.String(), []string{budi}, "")
+	require.NoError(t, err)
+	var firstName string
+	require.NoError(t, env.repo.Pool().QueryRow(ctx, `SELECT name FROM product WHERE id = $1`, first).Scan(&firstName))
+
+	t.Run("a page carries the total the filters match", func(t *testing.T) {
+		list, total, err := env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{}, 1, 1)
+		require.NoError(t, err)
+		require.Equal(t, 2, total)
+		require.Len(t, list, 1)
+		require.Equal(t, two.ID, list[0].ID, "newest first")
+		require.NotEmpty(t, list[0].Items)
+
+		list, _, err = env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{}, 2, 1)
+		require.NoError(t, err)
+		require.Equal(t, one.ID, list[0].ID)
+	})
+
+	t.Run("a search finds a product on the order or a student it covers", func(t *testing.T) {
+		list, total, err := env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{Q: firstName}, 1, 20)
+		require.NoError(t, err)
+		require.Equal(t, 1, total)
+		require.Equal(t, one.ID, list[0].ID)
+
+		list, total, err = env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{Q: "Budi"}, 1, 20)
+		require.NoError(t, err)
+		require.Equal(t, 1, total)
+		require.Equal(t, two.ID, list[0].ID)
+	})
+
+	t.Run("status and date narrow the list, and another Mitra's orders never show", func(t *testing.T) {
+		_, total, err := env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{Status: "paid"}, 1, 20)
+		require.NoError(t, err)
+		require.Zero(t, total)
+
+		tomorrow := time.Now().Add(24 * time.Hour)
+		_, total, err = env.svc.ListPartnerOrders(ctx, env.partner, repository.PartnerOrderFilter{From: &tomorrow}, 1, 20)
+		require.NoError(t, err)
+		require.Zero(t, total)
+
+		other := seedProgramAccount(t, env.repo, "active", "active", "", partnerOnlyPrograms).String()
+		_, total, err = env.svc.ListPartnerOrders(ctx, other, repository.PartnerOrderFilter{}, 1, 20)
+		require.NoError(t, err)
+		require.Zero(t, total)
+	})
 }

@@ -28,6 +28,22 @@ func (h *Handler) PartnerListStudents(c echo.Context) error {
 		}
 		registeredByMe = parsed
 	}
+	if c.QueryParam("page") != "" || c.QueryParam("per_page") != "" {
+		page, perPage, err := adminQueuePaging(c)
+		if err != nil {
+			return badRequest(c, err.Error())
+		}
+		numbered, err := h.svc.ListPartnerStudentsPage(c.Request().Context(), claims.Sub, states.PartnerSchools, service.PartnerStudentListFilter{
+			SchoolID:       strings.ToLower(c.QueryParam("school_id")),
+			Status:         status,
+			Q:              c.QueryParam("q"),
+			RegisteredByMe: registeredByMe,
+		}, page, perPage)
+		if err != nil {
+			return mapServiceError(c, err)
+		}
+		return c.JSON(http.StatusOK, numbered)
+	}
 	page, err := h.svc.ListPartnerStudents(c.Request().Context(), claims.Sub, states.PartnerSchools, service.PartnerStudentListFilter{
 		SchoolID:       strings.ToLower(c.QueryParam("school_id")),
 		Status:         status,
@@ -160,11 +176,16 @@ func (h *Handler) PartnerGetJob(c echo.Context) error {
 
 // PartnerListSchools backs GET /partners/me/schools: the schools the admin allowed this Mitra.
 func (h *Handler) PartnerListSchools(c echo.Context) error {
-	schools, err := h.svc.ListPartnerSchools(c.Request().Context(), partnerStatesFromContext(c).PartnerSchools)
+	page, perPage, err := adminQueuePaging(c)
+	if err != nil {
+		return badRequest(c, err.Error())
+	}
+	schools, total, err := h.svc.ListPartnerSchools(c.Request().Context(), partnerStatesFromContext(c).PartnerSchools,
+		c.QueryParam("q"), c.QueryParam("status"), page, perPage)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": schools})
+	return c.JSON(http.StatusOK, queuePage(schools, total, page, perPage))
 }
 
 // PartnerListProducts backs GET /partners/me/products: what the admin opened to this Mitra.

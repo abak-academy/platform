@@ -40,6 +40,59 @@ type PartnerStudentFilter struct {
 	Limit          int
 }
 
+// partnerStudentSelect and partnerStudentWhere are shared by the cursor list
+// (the order picker) and the numbered-page list.
+const partnerStudentSelect = `SELECT u.id, u.name, u.username, COALESCE(s.name, u.unlisted_school_name), u.grade,
+			COALESCE(u.jenjang, ''), u.status, NOT u.password_temporary, (u.registered_by = $1::uuid), u.created_at
+		FROM users u
+		LEFT JOIN school s ON s.id = u.school_id`
+
+func partnerStudentWhere(partnerID string, schoolIDs []string, filter PartnerStudentFilter) (string, []any, int) {
+	if schoolIDs == nil {
+		schoolIDs = []string{}
+	}
+	where := ` WHERE u.role = 'student' AND u.status != 'deleted'
+		  AND (u.school_id = ANY($2::uuid[]) OR u.registered_by = $1::uuid)`
+	args := []any{partnerID, schoolIDs}
+	argNum := 3
+
+	if filter.RegisteredByMe {
+		where += ` AND u.registered_by = $1::uuid`
+	}
+	if filter.SchoolID != "" {
+		where += fmt.Sprintf(` AND u.school_id = $%d::uuid`, argNum)
+		args = append(args, filter.SchoolID)
+		argNum++
+	}
+	if filter.Status != "" {
+		where += fmt.Sprintf(` AND u.status = $%d`, argNum)
+		args = append(args, filter.Status)
+		argNum++
+	}
+	if filter.Q != "" {
+		where += fmt.Sprintf(` AND u.name ILIKE $%d`, argNum)
+		args = append(args, "%"+filter.Q+"%")
+		argNum++
+	}
+	return where, args, argNum
+}
+
+func scanPartnerStudents(rows pgx.Rows) ([]PartnerStudentRow, error) {
+	defer rows.Close()
+	students := []PartnerStudentRow{}
+	for rows.Next() {
+		var s PartnerStudentRow
+		var registeredByMe *bool
+		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.SchoolName, &s.Grade, &s.Jenjang,
+			&s.Status, &s.Activated, &registeredByMe, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		s.RegisteredByMe = registeredByMe != nil && *registeredByMe
+		students = append(students, s)
+	}
+	return students, rows.Err()
+}
+
 // ListPartnerStudents returns the students of the allowed schools together with
 // the students the Mitra registered, newest first. An empty school list leaves
 // only the registered ones.
@@ -50,67 +103,26 @@ func (r *Repository) ListPartnerStudents(ctx context.Context, partnerID string, 
 	if filter.Limit > 100 {
 		filter.Limit = 100
 	}
-	if schoolIDs == nil {
-		schoolIDs = []string{}
-	}
 
-	query := `SELECT u.id, u.name, u.username, COALESCE(s.name, u.unlisted_school_name), u.grade,
-			COALESCE(u.jenjang, ''), u.status, NOT u.password_temporary, (u.registered_by = $1::uuid), u.created_at
-		FROM users u
-		LEFT JOIN school s ON s.id = u.school_id
-		WHERE u.role = 'student' AND u.status != 'deleted'
-		  AND (u.school_id = ANY($2::uuid[]) OR u.registered_by = $1::uuid)`
-	args := []any{partnerID, schoolIDs}
-	argNum := 3
-
-	if filter.RegisteredByMe {
-		query += ` AND u.registered_by = $1::uuid`
-	}
-	if filter.SchoolID != "" {
-		query += fmt.Sprintf(` AND u.school_id = $%d::uuid`, argNum)
-		args = append(args, filter.SchoolID)
-		argNum++
-	}
-	if filter.Status != "" {
-		query += fmt.Sprintf(` AND u.status = $%d`, argNum)
-		args = append(args, filter.Status)
-		argNum++
-	}
-	if filter.Q != "" {
-		query += fmt.Sprintf(` AND u.name ILIKE $%d`, argNum)
-		args = append(args, "%"+filter.Q+"%")
-		argNum++
-	}
+	where, args, argNum := partnerStudentWhere(partnerID, schoolIDs, filter)
 	if filter.Cursor != "" {
 		at, id, err := DecodeOrderCursor(filter.Cursor)
 		if err != nil {
 			return nil, "", err
 		}
-		query += fmt.Sprintf(` AND (u.created_at < $%d OR (u.created_at = $%d AND u.id < $%d::uuid))`, argNum, argNum, argNum+1)
+		where += fmt.Sprintf(` AND (u.created_at < $%d OR (u.created_at = $%d AND u.id < $%d::uuid))`, argNum, argNum, argNum+1)
 		args = append(args, at, id)
 		argNum += 2
 	}
-	query += fmt.Sprintf(` ORDER BY u.created_at DESC, u.id DESC LIMIT $%d`, argNum)
+	query := partnerStudentSelect + where + fmt.Sprintf(` ORDER BY u.created_at DESC, u.id DESC LIMIT $%d`, argNum)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, "", err
 	}
-	defer rows.Close()
-
-	students := []PartnerStudentRow{}
-	for rows.Next() {
-		var s PartnerStudentRow
-		var registeredByMe *bool
-		if err := rows.Scan(&s.ID, &s.Name, &s.Username, &s.SchoolName, &s.Grade, &s.Jenjang,
-			&s.Status, &s.Activated, &registeredByMe, &s.CreatedAt); err != nil {
-			return nil, "", err
-		}
-		s.RegisteredByMe = registeredByMe != nil && *registeredByMe
-		students = append(students, s)
-	}
-	if err := rows.Err(); err != nil {
+	students, err := scanPartnerStudents(rows)
+	if err != nil {
 		return nil, "", err
 	}
 
@@ -121,6 +133,25 @@ func (r *Repository) ListPartnerStudents(ctx context.Context, partnerID string, 
 		nextCursor = EncodeOrderCursor(last.CreatedAt, uuid.MustParse(last.ID))
 	}
 	return students, nextCursor, nil
+}
+
+// ListPartnerStudentsPage is the same list by page number, with the total the
+// filters match.
+func (r *Repository) ListPartnerStudentsPage(ctx context.Context, partnerID string, schoolIDs []string, filter PartnerStudentFilter, page, perPage int) ([]PartnerStudentRow, int, error) {
+	where, args, argNum := partnerStudentWhere(partnerID, schoolIDs, filter)
+
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM users u`+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	query := partnerStudentSelect + where + fmt.Sprintf(` ORDER BY u.created_at DESC, u.id DESC LIMIT $%d OFFSET $%d`, argNum, argNum+1)
+	args = append(args, perPage, (page-1)*perPage)
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	students, err := scanPartnerStudents(rows)
+	return students, total, err
 }
 
 // StudentRegistration is who registered a student and whether the student has
@@ -163,30 +194,55 @@ func (r *Repository) ReissueStudentCredentialsByRegistrar(ctx context.Context, i
 	return tag.RowsAffected() > 0, nil
 }
 
-// ListSchoolsByIDs returns the schools with the given ids, by name.
-func (r *Repository) ListSchoolsByIDs(ctx context.Context, ids []string) ([]model.School, error) {
+// PartnerSchoolFilter narrows the schools list of a Mitra.
+type PartnerSchoolFilter struct {
+	Q      string
+	Status string
+}
+
+// ListSchoolsByIDsPage returns one page of the schools with the given ids, by
+// name, with the total the filters match.
+func (r *Repository) ListSchoolsByIDsPage(ctx context.Context, ids []string, filter PartnerSchoolFilter, page, perPage int) ([]model.School, int, error) {
 	schools := []model.School{}
 	if len(ids) == 0 {
-		return schools, nil
+		return schools, 0, nil
+	}
+	where := ` WHERE id = ANY($1::uuid[])`
+	args := []any{ids}
+	argNum := 2
+	if filter.Status != "" {
+		where += fmt.Sprintf(` AND status = $%d`, argNum)
+		args = append(args, filter.Status)
+		argNum++
+	}
+	if filter.Q != "" {
+		where += fmt.Sprintf(` AND (name ILIKE $%d OR code ILIKE $%d OR npsn ILIKE $%d)`, argNum, argNum, argNum)
+		args = append(args, "%"+filter.Q+"%")
+		argNum++
+	}
+
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT count(*) FROM school`+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, name, code, npsn, school_types, alamat, provinsi_id, kota_id, status, created_at, updated_at
-		FROM school WHERE id = ANY($1::uuid[]) ORDER BY name`,
-		ids,
+		FROM school`+where+fmt.Sprintf(` ORDER BY name, id LIMIT $%d OFFSET $%d`, argNum, argNum+1),
+		append(args, perPage, (page-1)*perPage)...,
 	)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var s model.School
 		if err := rows.Scan(&s.ID, &s.Name, &s.Code, &s.NPSN, &s.SchoolTypes, &s.Alamat,
 			&s.ProvinsiID, &s.KotaID, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		schools = append(schools, s)
 	}
-	return schools, rows.Err()
+	return schools, total, rows.Err()
 }
 
 // PartnerOrderStudent is a student named on a Mitra order.

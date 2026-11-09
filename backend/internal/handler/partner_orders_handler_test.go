@@ -194,6 +194,38 @@ func TestPartnerCatalogRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("schools are searched and paged with a total", func(t *testing.T) {
+		rec := getWithToken(t, env.e, base+"/schools?page=1&per_page=1&q=zzz-no-such", token)
+		body := decodeBody(t, rec)
+		if rec.Code != http.StatusOK || body["total"] != float64(0) || body["page"] != float64(1) || body["per_page"] != float64(1) {
+			t.Errorf("want an empty page with total 0, got %d %v", rec.Code, body)
+		}
+		if rec := getWithToken(t, env.e, base+"/schools?page=0", token); rec.Code != http.StatusBadRequest {
+			t.Errorf("page 0: want 400, got %d", rec.Code)
+		}
+	})
+
+	t.Run("students answer by page number when asked, with a total", func(t *testing.T) {
+		rec := getWithToken(t, env.e, base+"/students?page=1&per_page=5", token)
+		body := decodeBody(t, rec)
+		if rec.Code != http.StatusOK || body["page"] != float64(1) || body["per_page"] != float64(5) {
+			t.Errorf("want a numbered page, got %d %v", rec.Code, body)
+		}
+		if _, ok := body["total"]; !ok {
+			t.Errorf("want a total, got %v", body)
+		}
+	})
+
+	t.Run("orders are searched and filtered by date", func(t *testing.T) {
+		if rec := getWithToken(t, env.e, base+"/orders?from=nope", token); rec.Code != http.StatusBadRequest {
+			t.Errorf("bad date: want 400, got %d", rec.Code)
+		}
+		rec := getWithToken(t, env.e, base+"/orders?q=anything&from=2026-01-01&to=2026-12-31&page=1&per_page=5", token)
+		if body := decodeBody(t, rec); rec.Code != http.StatusOK || body["total"] != float64(0) {
+			t.Errorf("want an empty page, got %d %v", rec.Code, body)
+		}
+	})
+
 	t.Run("an unknown order status is a bad request, a known one filters", func(t *testing.T) {
 		if rec := getWithToken(t, env.e, base+"/orders?status=nope", token); rec.Code != http.StatusBadRequest {
 			t.Errorf("want 400, got %d", rec.Code)
