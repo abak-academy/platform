@@ -1,11 +1,10 @@
 ---
 title: Program Mitra (Affiliator v2) dan perubahan Program Affiliator
-issue: none (BRD internal)
+issue: none
 status: draft
 created: 2026-11-09
-updated: 2026-11-09
+updated: 2026-11-10
 sources:
-  - docs/specs/partner-program-brd.md (v0.4)
   - docs/specs/affiliate-program.md
   - docs/standards/go-patterns.md
   - docs/standards/go-style-and-tests.md
@@ -34,7 +33,7 @@ sources:
 
 Perantara (Mitra) perlu cara resmi untuk mendaftarkan siswa dan membelikan produk digital atas nama siswa dengan harga khusus, di bawah kendali admin. Outcome: peran `affiliator` yang sudah ada dapat mengikuti program **Mitra** selain (atau sebagai ganti) program **Affiliator**; Mitra mendaftarkan siswa, membeli `exam` dan `course` untuk siswa dari sekolah yang di-allow atau yang ia daftarkan, memakai voucher khusus Mitra, dan membayar lewat Snap sebagai pembeli. Tidak ada komisi, saldo, atau pencairan untuk Mitra. Program Affiliator juga dirapikan: default kosong dan saklar yang butuh pengaturan wajib terisi.
 
-Aturan bisnis ada di BRD v0.4 (`docs/specs/partner-program-brd.md`: BR-REG, BR-STS, BR-SIS, BR-BLI, BR-VCH, BR-AKP, BR-REF, BR-HUB, BR-AFF). Dokumen ini hanya kontrak teknis.
+Dokumen ini memegang aturan bisnis dan kontrak teknis; tidak ada BRD terpisah (BRD v0.5 dihapus, riwayatnya ada di git).
 
 ## Agreed behavior
 
@@ -48,14 +47,13 @@ Aturan bisnis ada di BRD v0.4 (`docs/specs/partner-program-brd.md`: BR-REG, BR-S
 6. `OrderPaid` memberi akses ke setiap peserta (ujian: sudah ada; kelas: ditambah).
 7. Refund per order penuh mencabut akses semua peserta.
 
-### Keputusan teknis yang menyimpang dari BRD v0.1 (temuan saat membaca kode)
+### Keputusan teknis (temuan saat membaca kode)
 
-| # | Temuan di `main` | Keputusan | Dampak ke BRD |
-|---|---|---|---|
-| 1 | `promo_code.affiliator_only` sudah dipakai Program Affiliator dengan arti "promo non-publik yang ditampilkan ke affiliator untuk dibagikan ke siswa" (`ListAffiliatorOnlyPromos`, `AffiliateMePromos`). Siswa memakainya di checkout dengan kodenya. `ValidatePromo` tidak memeriksa role | Voucher Mitra **tidak** memakai `affiliator_only`. Penandanya `promo_code.partner IS NOT NULL`. `affiliator_only` tidak berubah | BRD Lampiran A dan BR-VCH-01: kolom `partner` berdiri sendiri; `affiliator_only` tidak dipakai |
-| 2 | Keikutsertaan program butuh dua penanda (Affiliator dan Mitra) plus sekolah. Satu kolom `partner` tidak cukup menandai "bukan Affiliator" | Satu kolom `affiliators.programs` JSONB: NULL berarti Affiliator saja (kompatibel dengan data yang ada, tanpa backfill) | BRD Lampiran A: `affiliators.partner` diganti `affiliators.programs` |
-
-Keduanya perlu dikoreksi di BRD (v0.2) saat TRD ini disetujui.
+| # | Temuan di `main` | Keputusan |
+|---|---|---|
+| 1 | `promo_code.affiliator_only` sudah dipakai Program Affiliator dengan arti "promo non-publik yang ditampilkan ke affiliator untuk dibagikan ke siswa" (`ListAffiliatorOnlyPromos`, `AffiliateMePromos`). Siswa memakainya di checkout dengan kodenya. `ValidatePromo` tidak memeriksa role | Voucher Mitra **tidak** memakai `affiliator_only`. Penandanya `promo_code.partner IS NOT NULL`. `affiliator_only` tidak berubah |
+| 2 | Keikutsertaan program butuh dua penanda (Affiliator dan Mitra) plus sekolah. Satu kolom `partner` tidak cukup menandai "bukan Affiliator" | Satu kolom `affiliators.programs` JSONB: NULL berarti Affiliator saja (kompatibel dengan data yang ada, tanpa backfill) |
+| 3 | Program tidak dicabut dari akun | Hanya penambahan program; menghentikan akses lewat status akun (ditangguhkan atau nonaktif). Penambahan dikonfirmasi admin dan UI menyatakan program tidak bisa dicabut |
 
 ### Failure behavior
 
@@ -68,6 +66,8 @@ Keduanya perlu dikoreksi di BRD (v0.2) saat TRD ini disetujui.
 - Baris CSV siswa yang gagal (email sudah dipakai, sekolah tidak ditemukan, data tidak valid) tidak menggagalkan baris lain; kegagalan per baris tercatat di laporan hasil. Job berstatus `failed` hanya bila semua baris gagal (perilaku yang ada).
 - Kuota voucher habis tepat saat checkout bersamaan → satu checkout menang, yang lain 422 `invalid_promo` dan transaksinya dibatalkan seluruhnya.
 - Semua siswa permintaan sudah memiliki produk → 422 `zero_net_new_participants`. Sebagian sudah memiliki → dikeluarkan dan dilaporkan di pratinjau.
+- Order di bawah `min_students` siswa pada voucher yang mensyaratkannya → 422 `promo_min_students` dengan `min`.
+- Akun ditangguhkan, program Mitra mati, atau pendaftaran belum disetujui → `GET /partners/me/vouchers` dan `/products` mengembalikan daftar kosong (bukan voucher yang tidak bisa dipakai), dan hitungan dashboard ikut nol.
 - Saklar Affiliator dinyalakan dengan pengaturan wajib kosong → 422 `affiliate_settings_incomplete` dengan daftar `missing`.
 - Email pendaftar sudah terdaftar → `email_taken` (kecuali akun affiliator `pending_verification`, yang dilanjutkan ke OTP seperti sekarang).
 - Refund order Mitra → status `cancelled`/`refunded`, akses semua peserta `revoked`; tidak ada transaksi komisi yang dibuat atau diubah.
@@ -92,7 +92,7 @@ Tidak ada tabel baru. Kolom baru:
 | `users.registered_by` | `UUID NULL REFERENCES users(id)` | Mitra yang mendaftarkan siswa |
 | `affiliators.programs` | `JSONB NULL` | NULL = `{"affiliate": true}`. Bentuk: `{"affiliate": bool, "partner": {"school_ids": [uuid]}}`. Kunci `partner` ada berarti Mitra. `affiliate` yang `false` berarti bukan Affiliator |
 | `product.partner_access` | `JSONB NULL` | NULL = `none`. Bentuk: `{"scope": "all"}` atau `{"scope": "selected", "ids": [uuid]}` |
-| `promo_code.partner` | `JSONB NULL` | NULL = bukan voucher Mitra. Bentuk: `{"ids": [uuid], "quota_unit": "order" \| "student"}`. `ids` kosong = semua Mitra; berisi id = Mitra terpilih. `quota_unit` wajib, tanpa nilai bawaan |
+| `promo_code.partner` | `JSONB NULL` | NULL = bukan voucher Mitra. Bentuk: `{"ids": [uuid], "quota_unit": "order" \| "student", "min_students": int}`. `ids` kosong = semua Mitra; berisi id = Mitra terpilih. `quota_unit` wajib, tanpa nilai bawaan. `min_students` opsional (0 atau tidak ada = tanpa minimum): jumlah siswa minimum dalam satu order untuk memakai voucher |
 
 Indeks: `CREATE INDEX IF NOT EXISTS idx_users_registered_by ON users (registered_by) WHERE registered_by IS NOT NULL` (biasa, bukan `CONCURRENTLY`, karena runner membungkus tiap migrasi dalam transaksi). Indeks parsial membuat pembuatannya murah selama hampir semua baris `users` bernilai NULL.
 
@@ -123,7 +123,7 @@ Tidak ada FK pada elemen array/JSONB; id sekolah, Mitra, dan produk divalidasi d
 - `GET /affiliates/public/status`: respons `{enabled, partner_enabled}` (`enabled` tetap untuk klien lama).
 - `POST /admin/affiliates/:id/approval` (approve): body menambah opsional `programs` untuk mengubah pilihan pendaftar. Kode referral dibuat hanya bila `affiliate` true; `ApproveAffiliatorTx` menerima kode kosong untuk Mitra saja (`referral_code` sudah nullable dan `UNIQUE`).
 - `POST /admin/affiliates`: body menambah `programs`; akun aktif tanpa persetujuan. Pembuatan massal (`/bulk`) tidak berubah dan membuat Affiliator saja.
-- `POST /admin/affiliates/:id/programs` `{program: "affiliate" | "partner"}`: **menambah** program ke akun aktif. Tidak ada pencabutan (BR-REG-06); program yang sudah ada diabaikan (idempoten). Menambah `affiliate` ke akun yang belum punya kode referral membuat kodenya (`generateUniqueAffiliateCode`) dan menyetel `programs.affiliate = true`. Menambah `partner` membuat kunci `partner` dengan `school_ids` kosong. Penghentian akses dilakukan dengan penangguhan akun.
+- `POST /admin/affiliates/:id/programs` `{program: "affiliate" | "partner"}`: **menambah** program ke akun aktif. Tidak ada pencabutan; program yang sudah ada diabaikan (idempoten). Menambah `affiliate` ke akun yang belum punya kode referral membuat kodenya (`generateUniqueAffiliateCode`) dan menyetel `programs.affiliate = true`. Menambah `partner` membuat kunci `partner` dengan `school_ids` kosong. Penghentian akses dilakukan dengan penangguhan akun.
 - `PUT /admin/affiliates/:id/partner/schools` `{school_ids: []}`: mengganti daftar sekolah. Validasi: sekolah ada dan `active`; akun memiliki kunci `partner`.
 - `GET /admin/affiliates?program=affiliate|partner` memfilter; baris daftar membawa `programs`.
 - Semua rute admin di atas di bawah `affiliates:*` (hanya `super_admin`) dan menulis audit log: `affiliate.approval` (meta menambah `programs`), `affiliate.status_change`, `affiliate.programs_change`, `partner.schools_set`.
@@ -132,19 +132,20 @@ Tidak ada FK pada elemen array/JSONB; id sekolah, Mitra, dan produk divalidasi d
 ### Siswa (Mitra)
 
 - `POST /partners/me/students` memanggil `registerStudent` (kode yang sudah ada) dengan `actorID` Mitra, sekolah opsional dan bebas (sekolah harus ada dan `active` bila diisi), dan `registeredBy`. `registerStudent` mendapat parameter `registeredBy *string` yang diteruskan ke `CreateStudent` (kolom `registered_by`). Mitra tidak menentukan kata sandi: tanpa kata sandi dari klien, `registerStudent` membuat kata sandi sementara yang dikembalikan sekali di `temp_password` dan akun dibuat dengan `password_temporary = true` (perilaku yang ada; `RegisterStudentWithPassword` tetap hanya untuk `CanManageAllStudents`). Permintaan Mitra yang membawa `password` ditolak 400.
-- `GET /partners/me/students`: filter `q`, `school_id`, `registered_by_me`, kursor. `StudentFilter` menambah `PartnerScope{SchoolIDs []string, RegisteredBy string}`; SQL: `(school_id = ANY($1) OR registered_by = $2)`. Mitra tanpa sekolah dan tanpa siswa terdaftar-oleh-dia menerima daftar kosong dan `hint: "no_schools"` untuk pesan UI.
-- Kolom daftar (BR-SIS-03) lewat DTO sendiri `PartnerStudentResponse` (bukan `StudentResponse`, yang memuat email): `id`, `name`, `username`, `school_name`, `grade`, `jenjang`, `status`, `activated` (= `NOT password_temporary`), `registered_by_me`. Tidak ada email, HP, tanggal lahir, alamat, nilai, atau kredensial. Rute `/admin/students/*` tidak dibuka untuk Mitra.
-- `POST /partners/me/students/:id/credentials` (BR-SIS-06): menerbitkan ulang kata sandi sementara. Tidak memakai `ReissueStudentCredentials` yang ada karena pembatasannya hanya `school_id` (siswa yang didaftarkan Mitra bisa tanpa sekolah) dan tidak memeriksa apakah siswa sudah mengganti kata sandi. Metode repo baru `ReissueStudentCredentialsByRegistrar(id, partnerID, hash)`: `UPDATE users SET password_hash = $1, password_temporary = true, updated_at = now() WHERE id = $2 AND role = 'student' AND status = 'active' AND registered_by = $3 AND password_temporary = true` dan periksa `RowsAffected`, sehingga cek dan tulis atomik (tanpa jendela balapan dengan siswa yang sedang mengganti kata sandi). 0 baris: siswa tidak ada atau bukan milik Mitra → 404 `student_not_found`; siswa milik Mitra tetapi sudah mengganti kata sandi → 409 `student_already_activated` (dibedakan lewat satu SELECT sebelum UPDATE). Sukses: `revokeRefreshSessions`, audit `student.reissue_credentials` dengan meta `{"by": "partner"}`, respons `{username, temp_password}`.
-- Impor CSV (BR-SIS-07), memakai job `student_bulk` yang ada:
+- `GET /partners/me/students`: filter `q`, `school_id`, `status`, `registered_by_me`. Dua mode: tanpa `page`/`per_page` memakai kursor (pemilih siswa di halaman beli); dengan `page`/`per_page` mengembalikan `{data, page, per_page, total, hint?}` (tabel siswa). `StudentFilter` menambah `PartnerScope{SchoolIDs []string, RegisteredBy string}`; SQL: `(school_id = ANY($1) OR registered_by = $2)`. Mitra tanpa sekolah dan tanpa siswa terdaftar-oleh-dia menerima daftar kosong dan `hint: "no_schools"` untuk pesan UI.
+- Kolom daftar lewat DTO sendiri `PartnerStudentResponse` (bukan `StudentResponse`, yang memuat email): `id`, `name`, `username`, `school_name`, `grade`, `jenjang`, `status`, `activated` (= `NOT password_temporary`), `registered_by_me`. Tidak ada email, HP, tanggal lahir, alamat, nilai, atau kredensial. Rute `/admin/students/*` tidak dibuka untuk Mitra.
+- `POST /partners/me/students/:id/credentials`: menerbitkan ulang kata sandi sementara. Tidak memakai `ReissueStudentCredentials` yang ada karena pembatasannya hanya `school_id` (siswa yang didaftarkan Mitra bisa tanpa sekolah) dan tidak memeriksa apakah siswa sudah mengganti kata sandi. Metode repo baru `ReissueStudentCredentialsByRegistrar(id, partnerID, hash)`: `UPDATE users SET password_hash = $1, password_temporary = true, updated_at = now() WHERE id = $2 AND role = 'student' AND status = 'active' AND registered_by = $3 AND password_temporary = true` dan periksa `RowsAffected`, sehingga cek dan tulis atomik (tanpa jendela balapan dengan siswa yang sedang mengganti kata sandi). 0 baris: siswa tidak ada atau bukan milik Mitra → 404 `student_not_found`; siswa milik Mitra tetapi sudah mengganti kata sandi → 409 `student_already_activated` (dibedakan lewat satu SELECT sebelum UPDATE). Sukses: `revokeRefreshSessions`, audit `student.reissue_credentials` dengan meta `{"by": "partner"}`, respons `{username, temp_password}`.
+- Impor CSV, memakai job `student_bulk` yang ada:
   - `GET /partners/me/students/bulk/presign` dan `POST /partners/me/students/bulk` meniru `AdminPresignStudentBulkUpload`/`AdminBulkImportStudents`. Folder penyimpanan = id Mitra (`student-bulk/{partnerID}/...`), bukan UUID acak seperti admin global, sehingga `EnqueueStudentBulkJob` (yang memeriksa awalan `student-bulk/{schoolID}/`) hanya menerima berkas dari folder Mitra itu sendiri.
   - Parser: `enqueueStudentBulkJobFromData` dan worker (`runStudentBulkJob`) saat ini mewajibkan identitas sekolah per baris bila pengunggah tidak terikat sekolah (`ParseStudentBulkCSVForWorker(data, schoolBound == nil)`). Untuk Mitra identitas sekolah opsional: parser dipanggil dengan `requireSchoolIdentity = false`, dan baris tanpa sekolah memanggil `registerStudent` dengan sekolah kosong. Baris dengan NPSN/kode sekolah diselesaikan seperti jalur role global (sekolah mana pun, tidak dibatasi).
-  - `ProcessStudentBulkRows` menerima `registeredBy *string`, diisi id Mitra dan diteruskan ke `registerStudent`. Kolom `password` di CSV sudah ditolak untuk role non-global (`r.Password != nil && !CanManageAllStudents(actorRole)`), jadi Mitra otomatis tidak bisa menentukan kata sandi (BR-SIS-05). Templat CSV di `web/lib/bulk-import-format.ts` untuk Mitra tanpa kolom `password`.
+  - `ProcessStudentBulkRows` menerima `registeredBy *string`, diisi id Mitra dan diteruskan ke `registerStudent`. Kolom `password` di CSV sudah ditolak untuk role non-global (`r.Password != nil && !CanManageAllStudents(actorRole)`), jadi Mitra otomatis tidak bisa menentukan kata sandi. Templat CSV di `web/lib/bulk-import-format.ts` untuk Mitra tanpa kolom `password`.
   - Laporan hasil (`BuildStudentBulkResultCSV`) memuat `temp_password` per baris berhasil. Tautan unduhan diperoleh dari `GET /partners/me/jobs/:id` (membungkus `GetJobStatus(jobID, claims.Sub)`, yang hanya mengembalikan job milik pemanggil dan menandatangani URL 15 menit). `PartnerGate` melindungi rute itu; `/admin/jobs/:id` tidak dibuka untuk alur Mitra di UI.
   - Residual: berkas hasil CSV berisi kata sandi sementara tetap tersimpan di bucket privat setelah dibuat (hanya berkas masukan yang dihapus worker). Ini perilaku yang sudah ada untuk admin; tidak diubah di sini, dicatat sebagai risiko sisa.
 
 ### Produk dan akses (Mitra)
 
 - `PUT /admin/products/:id/partner-access` `{scope: "none|all|selected", ids: []}` (gerbang `affiliates:*`). Endpoint tersendiri agar `UpdateProduct` (daftar kolom eksplisit) tidak menimpa `partner_access` dan sebaliknya. `none` menyimpan NULL. `ids` divalidasi (akun Mitra); `selected` wajib `ids` tidak kosong. Audit: `product.partner_access_set`.
+- `GET /partners/me/schools?q=&status=&page=&per_page=`: sekolah yang di-allow admin untuk Mitra (`{data, page, per_page, total}`; pencarian nama, NPSN, atau kode). Dipakai halaman Sekolah dan menjadi acuan NPSN/kode di impor CSV.
 - `GET /partners/me/products`: `exam` dan `course` terbit, terlihat siswa (ujian memakai `OrderableExamOnly`, yaitu ujian yang jendelanya masih terbuka), dan lolos akses (`scope = 'all'` atau `scope = 'selected'` dan `ids @> to_jsonb(<partnerID>::text)`). Memakai `ProductFilter` yang ada ditambah kondisi `PartnerID`.
 - Cek akses yang sama dijalankan di `planPartnerOrder` (pratinjau dan pembuatan) dan `CheckoutPartnerOrder`.
 
@@ -152,10 +153,10 @@ Tidak ada FK pada elemen array/JSONB; id sekolah, Mitra, dan produk divalidasi d
 
 - `AdminCreatePromoCode` dan `AdminUpdatePromoCode`: body menambah `partner_voucher` (objek opsional `{enabled: bool, ids: [], quota_unit: "order"|"student"}`; tidak dikirim berarti tidak berubah pada update). `enabled` mengisi `promo_code.partner`; tidak enabled mengosongkan jadi NULL. `quota_unit` wajib bila `enabled` (422 `validation_error` bila kosong atau di luar dua nilai). Voucher Mitra memaksa `is_public = false` dan tidak boleh bersama `affiliator_only` (422 `validation_error`). Validasi: tiap id adalah akun Mitra.
 - `ValidatePromo` (generik, dipakai `/promo-codes/validate` dan `PatchCart`): bila `partner IS NOT NULL` → `ErrInvalidPromo`. Siswa tidak pernah dapat memakai voucher Mitra, walau kodenya diketahui.
-- `ValidatePartnerPromo(ctx, partnerID, code, subtotal, seats)`: voucher harus voucher Mitra, `partner.ids` kosong atau memuat `partnerID`, serta aturan yang sama dengan `ValidatePromo` (kedaluwarsa, kuota, minimum, diskon). Jalur Mitra menerima voucher Mitra saja (asumsi: promo publik biasa tetap hanya untuk siswa). Satuan kuota (BR-VCH-09):
+- `ValidatePartnerPromo(ctx, partnerID, code, subtotal, seats)`: voucher harus voucher Mitra, `partner.ids` kosong atau memuat `partnerID`, serta aturan yang sama dengan `ValidatePromo` (kedaluwarsa, kuota, minimum, diskon). Bila `partner.min_students` > 0 dan jumlah kursi lebih sedikit → `promo_min_students`, diperiksa sebelum kuota. Jalur Mitra menerima voucher Mitra saja (asumsi: promo publik biasa tetap hanya untuk siswa). Satuan kuota:
   - `order`: perilaku `evaluatePromo` yang ada. Pemakaian = 1; diskon dan `max_discount_amount` untuk seluruh subtotal.
   - `student`: pemakaian = `seats`; wajib `max_uses IS NULL OR used_count + seats <= max_uses` (kalau tidak `promo_quota_insufficient` dengan `remaining`). Diskon dihitung per kursi dari harga satuan (persen dikenai `max_discount_amount`; nominal dibatasi harga satuan) lalu dikali `seats`. `min_order_amount` tetap terhadap subtotal order pada kedua satuan.
-- `GET /partners/me/vouchers`: voucher Mitra yang masih berlaku dan memuat Mitra ini (atau kosong). Terpisah dari `GET /affiliates/me/promos` (v1), yang tetap mengembalikan promo `affiliator_only` untuk dibagikan ke siswa (BR-VCH-07). Voucher Mitra tidak pernah muncul di daftar v1 karena `affiliator_only = false`, dan promo v1 tidak muncul di daftar Mitra karena `partner IS NULL`. Jalur order Mitra menolak promo yang bukan voucher Mitra (BR-VCH-08). Tidak ada penyaringan produk; halaman promo admin memperingatkan voucher yang tidak bisa dipakai karena akses produk (BR-VCH-05), dihitung di klien dari data yang sudah ada.
+- `GET /partners/me/vouchers`: voucher Mitra yang masih berlaku dan memuat Mitra ini (atau kosong); kosong bila akun tidak bisa membeli (lihat Failure behavior). Kuota dipotong saat checkout, bukan saat order dibuat, dan tidak dikembalikan saat refund. Terpisah dari `GET /affiliates/me/promos` (v1), yang tetap mengembalikan promo `affiliator_only` untuk dibagikan ke siswa. Voucher Mitra tidak pernah muncul di daftar v1 karena `affiliator_only = false`, dan promo v1 tidak muncul di daftar Mitra karena `partner IS NULL`. Jalur order Mitra menolak promo yang bukan voucher Mitra. Tidak ada penyaringan produk; halaman promo admin memperingatkan voucher yang tidak bisa dipakai karena akses produk, dihitung di klien dari data yang sudah ada.
 - `ListActivePublicPromos` tidak berubah (Mitra `is_public = false`). `ListAffiliatorOnlyPromos` tidak berubah.
 
 ### Order Mitra
@@ -168,7 +169,9 @@ Semua di `/partners/me/orders*`, gerbang `PartnerGate`:
 | `POST /orders` | Membuat order `cart` dengan satu item (qty = jumlah siswa bersih) dan baris `order_participant` |
 | `POST /orders/:id/checkout` | `CheckoutPartnerOrder` |
 | `POST /orders/:id/retry` | Retry pembayaran, tervalidasi sebagai pemilik |
-| `GET /orders`, `GET /orders/:id` | Daftar dan detail milik Mitra |
+| `GET /orders?q=&status=&from=&to=&page=&per_page=` | Daftar bernomor halaman milik Mitra (`{data, page, per_page, total}`), tanpa cart dari order lain; `q` mencocokkan produk, siswa, atau akhiran id order; `from`/`to` hari pembuatan (`to` inklusif); `status` salah satu status order |
+| `GET /orders/:id` | Detail milik Mitra: item, peserta, dan `promo_code` (kode voucher yang dipakai) |
+| `GET /dashboard` | Hitungan beranda: siswa terdaftar, order lunas dan belum dibayar, voucher tersedia, produk terbuka |
 
 `planPartnerOrder(partnerID, productID, studentIDs, promo)` (dipakai preview dan create, tidak pernah mempercayai pratinjau lama):
 1. `studentIDs` tidak kosong; tidak duplikat (`duplicate_participant`).
@@ -179,7 +182,7 @@ Semua di `/partners/me/orders*`, gerbang `PartnerGate`:
 
 `CreatePartnerOrder`: satu transaksi: `CreateOrderTx(partnerID)`, `InsertOrderItemTx`, `InsertOrderParticipantsTx`, `SetOrderPromoTx(orderID, promoID, discount)` (metode repo baru: `UPDATE orders SET promo_code_id, discount, total = subtotal - discount + shipping_cost WHERE id AND status='cart'`). Satu cart terbuka per pembeli (`idx_orders_student_cart`): bila ada cart lama dengan peserta, dibatalkan (`cancelled`/`superseded`); cart lama tanpa peserta tidak mungkin ada karena `/orders` tertutup untuk affiliator.
 
-`CheckoutPartnerOrder(partnerID, orderID, key)`: memastikan pemilik, lalu validasi ulang dalam jalur yang sama: akun aktif, saklar menyala, akses produk, siswa (sekolah/pendaftar) masih lolos, voucher (`ValidatePartnerPromo` terhadap `promo_code_id` order: kedaluwarsa, kuota, dan `discount` tidak berubah), **kepemilikan peserta** (BR-BLI-09), baru memanggil `Checkout` (kode referral kosong). Menggantikan validasi yang di PR #238 bisa dilewati lewat rute generik.
+`CheckoutPartnerOrder(partnerID, orderID, key)`: memastikan pemilik, lalu validasi ulang dalam jalur yang sama: akun aktif, saklar menyala, akses produk, siswa (sekolah/pendaftar) masih lolos, voucher (`ValidatePartnerPromo` terhadap `promo_code_id` order: kedaluwarsa, kuota, dan `discount` tidak berubah), **kepemilikan peserta**, baru memanggil `Checkout` (kode referral kosong). Menggantikan validasi yang di PR #238 bisa dilewati lewat rute generik.
 
 Pengecekan kepemilikan dilakukan di sini karena `Checkout` melewatkan `checkDigitalTargets` untuk order berpeserta (`hasDigital && len(participants) == 0`, `store.go`) dan `recheckDigitalTargets` juga membiarkan order berpeserta ("bulk orders are left to their own flow"). Tanpa ini dua order untuk siswa dan produk yang sama (dari dua Mitra, atau Mitra dan siswa sendiri) bisa sama-sama dibayar. Peserta yang sudah memiliki → 409 `participant_already_owns` dengan daftar siswa. Sisa risiko: dua pembayaran yang sudah berjalan bersamaan sebelum salah satu lunas (sama seperti order massal admin sekolah sekarang).
 
@@ -195,26 +198,36 @@ Semua ini mengubah perilaku di luar fitur dan harus disebut di badan PR.
 6. **`AdminRefundOrder`** tidak diubah. Hanya diverifikasi bahwa `settleAffiliateRefundTx` tidak membuat apa pun untuk order Mitra (tidak ada transaksi komisi) dan `revokeOrderExamRegistrationsTx`/`RevokeEnrollmentsByOrder` mencabut semua peserta.
 7. **Default Program Affiliator** (`affiliate_settings.go`): `affiliateDefaultCommissionRule` menjadi kosong (`resolveAffiliateCommissionRule` jatuh ke `{percent, 0}`), `affiliateDefaultRiseThreshold` dihapus (`affiliateRiseThreshold` sudah mengembalikan `MaxFloat64` untuk nil), `defaultAffiliateSettings()` mengembalikan struct tanpa nilai (hanya `ID`, `MinExtendAmount = 0`). Kode pemakai nilai pengaturan wajib menangani nil; `buildAffiliateEffectiveRules` tidak lagi memasukkan angka bawaan untuk masa tunggu, ikatan, payout.
 8. **Saklar Affiliator**: `UpdateSystemConfig` (titik tunggal; dipakai rute config umum dan `SetAffiliateProgramEnabled`, `system_config.go:340`) menolak perubahan `affiliate_enabled` false→true bila ada pengaturan wajib kosong: `launch_date`, `cookie_days`, `binding_months`, `digital_wait_days`, `physical_wait_days`, `min_payout`, `eval_day`. Galat `affiliate_settings_incomplete` dengan `missing: [...]`. `PUT /admin/affiliate-settings` menolak mengosongkan pengaturan wajib selagi program menyala. `GET /admin/affiliate-settings` mengembalikan nilai apa adanya (null) dan flag `commission_unset` bila tidak ada aturan komisi (peringatan non-blokir di UI).
-9. **Pendaftaran Affiliator**: pemeriksaan `daily_registration_cap` dihapus dari `RegisterAffiliator`; `CountAffiliatorsCreatedSince` dan field `DailyRegistrationCap` dihapus; bagian terkait di halaman pengaturan, `docs/specs/affiliate-program.md`, dan BRD v1 disesuaikan.
+9. **Pendaftaran Affiliator**: pemeriksaan `daily_registration_cap` dihapus dari `RegisterAffiliator`; `CountAffiliatorsCreatedSince` dan field `DailyRegistrationCap` dihapus; bagian terkait di halaman pengaturan, `docs/specs/affiliate-program.md`, disesuaikan.
 
 ### Frontend (web/)
 
-- Registrasi `(auth)/affiliate-register`: dua kartu program dengan keterangan, hanya program yang `enabled`/`partner_enabled`; satu pilihan terkirim sebagai `program`. Bagian lain form (nama, email, HP, kata sandi, syarat, OTP) tidak berubah. Syarat program yang sama untuk kedua program, dengan teks diperbaiki (BRD Lampiran E): kunci i18n `aff_terms_1` sampai `aff_terms_8` diganti set baru (umum, Affiliator, Mitra) untuk `id` dan `en`, judul `/affiliate-terms` menjadi "Ketentuan Program Affiliator dan Mitra" (`aff_terms_title`, tautan `aff_reg_terms_link`), dan `AFFILIATE_TERMS_VERSION` naik dari `2026-10` ke `2026-11`. `terms_version` yang sudah tersimpan tidak diubah; hanya pendaftar baru menyimpan versi baru. Akun yang dibuat admin tetap bertanda `admin_created` dan tidak melewati persetujuan teks. Draf teks perlu ditinjau pemilik produk sebelum dirilis.
+- Registrasi `(auth)/affiliate-register`: dua kartu program dengan keterangan, hanya program yang `enabled`/`partner_enabled`; satu pilihan terkirim sebagai `program`. Bagian lain form (nama, email, HP, kata sandi, syarat, OTP) tidak berubah. Syarat program yang sama untuk kedua program, dengan teks diperbaiki (kunci i18n `aff_terms_*`): kunci i18n `aff_terms_1` sampai `aff_terms_8` diganti set baru (umum, Affiliator, Mitra) untuk `id` dan `en`, judul `/affiliate-terms` menjadi "Ketentuan Program Affiliator dan Mitra" (`aff_terms_title`, tautan `aff_reg_terms_link`), dan `AFFILIATE_TERMS_VERSION` naik dari `2026-10` ke `2026-11`. `terms_version` yang sudah tersimpan tidak diubah; hanya pendaftar baru menyimpan versi baru. Akun yang dibuat admin tetap bertanda `admin_created` dan tidak melewati persetujuan teks. Draf teks perlu ditinjau pemilik produk sebelum dirilis.
 - `GET /auth/me` untuk role `affiliator` menambah `affiliator_programs`: `{affiliate: state, partner: state, account_active, rejection_reason}` (dari `ProgramStates`). Menu dan landing memakai ini; tidak ada panggilan baru.
-- `lib/nav-config.ts`: `AFFILIATOR_NAV` menjadi grup bertajuk Affiliator (submenu v1 yang ada), grup Mitra (Dashboard, Siswa, Pembelian, Voucher), dan Akun di luar grup. Grup yang tidak diikuti tetap terlihat.
-- Halaman Mitra di `app/(affiliate)/affiliate/partner/*`: `page` (dashboard), `students`, `orders`, `orders/new`, `vouchers`. Pembayaran memakai `SnapCheckout` yang ada dengan base path `/partners/me/orders`.
-- Komponen `ProgramGate` membungkus halaman tiap program dan menampilkan pesan per keadaan (belum terdaftar, menunggu, ditolak dengan alasan, nonaktif hanya-baca, saklar mati dengan banner seperti `ProgramOffBanner`).
-- Landing `/affiliate`: satu program → redirect ke programnya; dua program → ringkasan dua kartu (FR-PRT-02). Kartu Affiliator memakai `GET /affiliates/me/stats` yang ada (saldo tersedia, siswa terikat); kartu Mitra memakai `GET /partners/me/dashboard` (jumlah siswa terdaftar-oleh-Mitra, jumlah order lunas). Program yang bukan `active` menampilkan pesan keadaan dari `affiliator_programs` (tanpa memanggil endpoint programnya, yang akan 403). Dashboard Affiliator pindah ke `/affiliate/overview`. `redirectForRole` (`auth-redirect.ts`) tetap `/affiliate`.
-- `PromoModal`: bagian "Voucher Mitra" (toggle, pemilih Mitra yang dapat dicari lewat `GET /admin/affiliates?program=partner&q=`, dan pilihan wajib satuan kuota "per order" atau "per siswa" tanpa nilai awal dengan keterangan arti masing-masing), peringatan voucher yang tidak bisa dipakai karena akses produk.
-- `ProductModal`: bagian "Akses Mitra" (pilihan `none/all/selected` + pemilih), hanya untuk pemegang `affiliates:*`; disimpan lewat `PUT /admin/products/:id/partner-access` setelah simpan produk.
-- Admin affiliator: kolom dan filter program, dialog persetujuan dengan pilihan program, penyunting program dan sekolah.
-- Pengaturan: kartu saklar Mitra (pola `ProgramSwitchCard`); halaman pengaturan Affiliator menampilkan kolom kosong, daftar pengaturan wajib yang belum terisi, dan peringatan komisi kosong.
+- `lib/nav-config.ts`: `AFFILIATOR_NAV` menjadi grup bertajuk Affiliator (Ringkasan, Siswa binaan, Komisi, Voucher siswa, Saldo, Penyesuaian), grup Mitra (Ringkasan, Sekolah, Siswa, Pembelian, Voucher), dan Akun di luar grup. Tiap grup punya `program`; `AppSidebar` menyembunyikan grup program yang `not_enrolled` menurut `affiliator_programs` (keadaan belum diketahui menampilkan keduanya; menunggu atau ditolak tetap tampil karena halamannya menjelaskan).
+- Halaman Mitra di `app/(affiliate)/affiliate/partner/*`: `page` (ringkasan dengan kartu angka dan pintasan beli, kelola siswa, riwayat), `schools`, `students`, `orders`, `orders/[id]` (rincian: produk, siswa, kode voucher, subtotal, diskon, total, tombol bayar untuk order menunggu pembayaran), `orders/new`, `vouchers` (potongan, maksimal potongan, minimal pembelian, minimal siswa, satuan kuota dengan penjelasan, sisa kuota, berlaku untuk siapa, sampai kapan).
+- Daftar sekolah, siswa, dan pembelian memakai pola yang sama dengan "Siswa binaan" Affiliator: `ListToolbar` (pencarian, popover filter, rentang tanggal, jumlah per halaman), `AffiliateList` dengan ringkasan "x–y dari total" dan nomor halaman, state di URL (`useListParams`, parameter `school` ditambahkan untuk filter sekolah). Tombol aksi (Unduh CSV, Impor, Daftarkan, Buat pembelian) berada di baris rata kanan di bawah judul dan keterangan, di atas baris pencarian/filter. Siswa memiliki kolom "Didaftarkan oleh" dan filter sumber, sekolah, dan status akun.
+- Unduh CSV (sekolah, siswa, pembelian) dibuat di browser dari semua halaman yang cocok dengan filter (`fetchAllPartnerPages`, 100 baris per permintaan); sel yang diawali `=`, `+`, `-`, `@` diberi apostrof (`lib/csv.ts`).
+- Pembayaran memakai `SnapCheckout` dengan base path `/partners/me/orders` dan `invalidateKey` ke cache Mitra; order menunggu pembayaran memakai `RetryPaymentButton` (`POST /partners/me/orders/:id/retry`).
+- Komponen `ProgramGate` membungkus halaman tiap program dan menampilkan pesan per keadaan dengan warna: biru belum terdaftar, kuning menunggu, merah ditolak (dengan alasan); akun nonaktif hanya-baca dan saklar mati tampil sebagai banner. `RouteProgramGate` memberi key eksplisit pada anak yang diserahkan router agar React tidak memperingatkan key hilang.
+- Landing `/affiliate`: satu program → redirect ke programnya; dua program → ringkasan dua kartu. Kartu Affiliator memakai `GET /affiliates/me/stats`; kartu Mitra memakai `GET /partners/me/dashboard`. Program yang bukan `active` menampilkan pesan keadaan dari `affiliator_programs` (tanpa memanggil endpoint programnya, yang akan 403). Dashboard Affiliator pindah ke `/affiliate/overview`. `redirectForRole` (`auth-redirect.ts`) tetap `/affiliate`.
+- `PromoModal`: pilihan jenis diskon dan satuan kuota memakai komponen `Select` aplikasi; "Tampilkan di checkout" dan "Khusus affiliator" masing-masing dalam kotak berpenjelasan seperti "Voucher Mitra". Bagian Voucher Mitra: pemilih Mitra yang dapat dicari lewat `GET /admin/affiliates?program=partner&q=`, satuan kuota wajib tanpa nilai awal dengan keterangan, dan "Minimal siswa per order" opsional (0 atau kosong = tanpa minimum).
+- `ProductModal`: bagian "Akses Mitra" (pilihan `none/all/selected` + pemilih), hanya untuk pemegang `affiliates:*`. Satu tombol Simpan: akses disimpan dulu lewat `PUT /admin/products/:id/partner-access` bila berubah, lalu produk; akses yang ditolak menghentikan seluruh simpan. Endpoint tetap terpisah.
+- Admin Affiliator/Mitra (grup menu "Affiliator/Mitra" pada `id`, "Affiliates/Partners" pada `en`; judul dan keterangan halaman daftar, laporan, dan pengaturan menyebut kedua program): daftar dengan tab program (Semua, Affiliator, Mitra) sejajar dengan Unduh CSV dan Tambah; kolom level hanya bermakna untuk Affiliator ("—" untuk Mitra saja); dialog persetujuan dengan pilihan program. Tidak ada sub menu Mitra terpisah. Detail akun: untuk Mitra saja tidak ada level, saldo, ikatan, komisi, maupun penyesuaian; bagian Tindakan memuat tombol "Tambah program ..." yang meminta konfirmasi dan menyatakan program tidak bisa dicabut; sekolah yang di-allow diatur di panel program.
+- Pengaturan: kartu saklar Mitra (`PartnerSwitchCard`) di halaman pengaturan Affiliator/Mitra, di bawah kartu saklar Affiliator; halaman menampilkan kolom kosong, daftar pengaturan wajib yang belum terisi, dan peringatan komisi kosong.
+- Laporan: tab "Mitra" di halaman laporan (lihat Laporan admin Mitra). Kartu total berada di atas deretan tab, menggantikan kartu liabilitas Affiliator pada tab itu.
 - i18n `id` dan `en` untuk semua string baru. Tes mengikuti `docs/standards/web-tests.md`.
+
+### Laporan admin Mitra
+
+- `GET /admin/partner-reports/orders?q=&status=&from=&to=&partner_id=&page=&per_page=` dan `/export` (CSV), gerbang `affiliates:*`. Sumber: order dengan pembeli berperan `affiliator` yang punya baris `order_participant`, kecuali `cart`. Baris: `order_id`, `created_at`, `status`, `partner_id`, `partner_name`, `products`, `seats`, `students` (string) dan `student_list` (array nama), `promo_code`, `subtotal`, `discount`, `total`. Respons memuat `summary`: `orders`, `paid_orders`, `seats`, `paid_total`, `paid_discount` (nilai hanya order lunas: `paid`, `processing`, `shipped`, `completed`) untuk seluruh hasil filter.
+- CSV maksimal 5000 baris, kolom teks diamankan dari injeksi formula (`csvSafeField`). Tanggal `to` inklusif seperti laporan Affiliator.
+- UI: kolom siswa berisi tombol "N siswa" yang membuka popup daftar nama; status memakai kunci i18n status order Mitra.
 
 ### Privasi dan keamanan
 
 - Semua pembatasan (program, status, sekolah, produk, voucher) ditegakkan di server pada setiap permintaan; menu hanya penunjuk.
-- Mitra hanya melihat siswa dalam cakupannya, dengan kolom terbatas (BR-SIS-03). Satu-satunya kredensial yang ia terima adalah kata sandi sementara saat mendaftarkan atau menerbitkan ulang siswa yang ia daftarkan dan belum mengganti kata sandinya; tidak pernah di daftar, tidak pernah untuk siswa lain, dan tidak pernah setelah siswa mengganti kata sandi.
+- Mitra hanya melihat siswa dalam cakupannya, dengan kolom terbatas. Satu-satunya kredensial yang ia terima adalah kata sandi sementara saat mendaftarkan atau menerbitkan ulang siswa yang ia daftarkan dan belum mengganti kata sandinya; tidak pernah di daftar, tidak pernah untuk siswa lain, dan tidak pernah setelah siswa mengganti kata sandi.
 - Jawaban pendaftaran untuk email yang sudah ada tidak menyebutkan role akun.
 - Audit log untuk persetujuan, penolakan, perubahan program, sekolah, akses produk, dan penangguhan.
 
@@ -244,16 +257,21 @@ Semua ini mengubah perilaku di luar fitur dan harus disebut di badan PR.
 | P17 | Frontend: menu dua grup, pesan per keadaan, landing satu/dua program, `PromoModal`/`ProductModal` section, registrasi dengan pilihan program | Vitest sesuai `docs/standards/web-tests.md` |
 | P19 | Kepemilikan saat checkout: peserta yang kini sudah memiliki produk (dibelikan pihak lain atau beli sendiri) membuat checkout 409 `participant_already_owns`; pembelian ulang setelah refund berhasil (sesi `revoked` tidak menghalangi) | Service + integration test |
 | P20 | Voucher terpisah: `/partners/me/vouchers` hanya voucher Mitra, `/affiliates/me/promos` tidak berubah dan tidak memuat voucher Mitra; order Mitra menolak promo publik dan promo `affiliator_only` | Handler + service test |
+| P24 | Pagination bernomor: `/partners/me/schools`, `/students?page=`, dan `/orders` mengembalikan `total`, `page`, `per_page`; pencarian, status, tanggal, dan sekolah menyaring; `page=0` → 400; daftar order hanya milik Mitra sendiri | Service + handler test |
+| P25 | Akun ditangguhkan, program mati, atau belum disetujui: `/vouchers` dan `/products` kosong, hitungan dashboard nol | Handler test |
+| P26 | `min_students`: order di bawah minimum → 422 `promo_min_students` dengan `min`; tepat minimum lolos; nilai negatif ditolak saat membuat voucher; tersimpan dan dapat diubah | Service + handler test |
+| P27 | Laporan admin Mitra: baris memuat Mitra, produk, siswa, voucher; `summary` benar; pencarian, status, dan Mitra menyaring; ekspor CSV; hanya admin dengan `affiliates:*` | Handler test (testcontainer) + Vitest tab laporan |
+| P28 | Frontend admin: tambah program meminta konfirmasi dan tidak dijalankan bila dibatalkan; Mitra saja tanpa level/saldo/penyesuaian; satu tombol Simpan produk menyimpan akses dulu dan berhenti bila akses ditolak; menu menyembunyikan grup program yang tidak diikuti | Vitest |
 | P18 | Alur Mitra penuh: daftar, setujui, atur sekolah/produk/voucher, daftarkan siswa, beli dengan voucher 100% atau Snap no-op, akses terbentuk, refund mencabut | Satu spec Playwright `web/e2e/partner-program.spec.ts` terhadap compose dev bila stack tersedia, bila tidak dicatat tidak dijalankan |
 
 Strategi verifikasi mengikuti `.agents/verification.md`: gate penuh backend `export GOROOT=/opt/homebrew/Cellar/go/1.26.3/libexec && ./deploy/pipeline/backend.sh` (background, lebih dari 10 menit) sebelum PR; loop fokus per paket dengan `-run` saat membangun; frontend `npx tsc --noEmit`, `npx vitest run`, `npm run build` dari `web/`. Tes yang butuh Postgres membutuhkan `DOCKER_HOST` yang benar.
 
 ## Scope
 
-**Dalam lingkup**: lihat BRD bagian 4.1, ditambah perubahan kode yang ada di atas.
+**Dalam lingkup**: program Mitra (akun, persetujuan, sekolah, siswa, impor CSV, akses produk, voucher, order, refund), laporan admin Mitra, perapian Program Affiliator, dan perubahan kode yang ada di atas.
 
-**Non-goals**: produk fisik; komisi/saldo/pencairan Mitra; harga jual dan penagihan siswa; refund per siswa; laporan Mitra; alur promote admin sekolah; pembuatan Mitra massal; aturan voucher tambahan (tanggal mulai, minimal kuantitas, lingkup produk); promo publik biasa untuk Mitra; grup broadcast `partners`; pencabutan v1; pencabutan program dari akun; aturan khusus untuk referral ke siswa yang didaftarkan akun yang sama.
+**Non-goals**: produk fisik; komisi/saldo/pencairan Mitra; harga jual dan penagihan siswa; refund per siswa; pengembalian kuota voucher saat refund; alur promote admin sekolah; pembuatan Mitra massal; aturan voucher tambahan (tanggal mulai, minimal jumlah order sebelumnya, lingkup produk); promo publik biasa untuk Mitra; grup broadcast `partners`; pencabutan v1; pencabutan program dari akun; aturan khusus untuk referral ke siswa yang didaftarkan akun yang sama.
 
-**Keputusan tertunda**: tidak ada pertanyaan terbuka dari BRD v0.5. Perlu ditinjau pemilik produk: kata-kata draf teks ketentuan (BRD Lampiran E) sebelum dirilis.
+**Keputusan tertunda**: tidak ada pertanyaan terbuka. Perlu ditinjau pemilik produk: kata-kata draf teks ketentuan (kunci i18n `aff_terms_*`) sebelum dirilis.
 
 **Residual risk**: JSONB (`programs`, `partner_access`, `partner`) tidak punya FK/CHECK per elemen (divalidasi service); `ChangeAffiliateStatus` mencerminkan status ke dua tempat (satu transaksi, satu fungsi, tapi tetap dua sumber untuk v1); perubahan checkout dan kuota voucher menyentuh alur siswa yang sudah berjalan; Playwright belum terbukti tanpa stack lokal; perilaku checkout ujian massal admin sekolah belum dijalankan.
