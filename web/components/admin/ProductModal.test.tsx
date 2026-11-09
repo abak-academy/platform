@@ -23,8 +23,10 @@ let examsState: { data: { data: typeof sampleExams } | undefined };
 const mockPresign = vi.fn();
 const mockUseExams = vi.fn();
 
+const accessDraft = vi.hoisted(() => ({ value: { dirty: false, valid: true, save: vi.fn() } as Record<string, unknown> }));
 vi.mock("@/components/admin/PartnerAccessSection", () => ({
-  PartnerAccessSection: ({ productId }: { productId: string }) => <div data-testid="partner-access">akses-{productId}</div>,
+  PartnerAccessSection: () => <div data-testid="partner-access">akses</div>,
+  usePartnerAccessDraft: (productId: string | null) => ({ ...accessDraft.value, productId }),
 }));
 vi.mock("@/lib/hooks/admin-courses", () => ({
   useAdminCourses: () => coursesState,
@@ -1020,6 +1022,51 @@ describe("ProductModal", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Ubah relasi" })).toBeInTheDocument());
     expect(mockChangeRelations).toHaveBeenCalledWith({ id: "p1", input: { course_ids: ["c1", "c2"] } });
     expect(mockOnSubmit).not.toHaveBeenCalled();
+  });
+
+  describe("Mitra access saved with the product", () => {
+    const examProduct = { id: "p1", type: "exam" as const, name: "Exam", price: 1000, status: "published" as const };
+
+    beforeEach(() => {
+      mockRole = "super_admin";
+      accessDraft.value = { dirty: true, valid: true, save: vi.fn().mockResolvedValue({}) };
+    });
+
+    it("saves the Mitra access first and then the product, from the one Simpan button", async () => {
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={examProduct} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalled());
+      expect(accessDraft.value.save).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not touch the access when it was not changed", async () => {
+      accessDraft.value = { dirty: false, valid: true, save: vi.fn() };
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={examProduct} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalled());
+      expect(accessDraft.value.save).not.toHaveBeenCalled();
+    });
+
+    it("keeps the product unsaved when the access is refused", async () => {
+      accessDraft.value = { dirty: true, valid: true, save: vi.fn().mockRejectedValue(new Error("ditolak")) };
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={examProduct} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(accessDraft.value.save).toHaveBeenCalled());
+      expect(mockOnSubmit).not.toHaveBeenCalled();
+    });
+
+    it("does not save when 'selected' has no Mitra", async () => {
+      accessDraft.value = { dirty: true, valid: false, save: vi.fn() };
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={examProduct} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await new Promise((r) => setTimeout(r, 20));
+      expect(accessDraft.value.save).not.toHaveBeenCalled();
+      expect(mockOnSubmit).not.toHaveBeenCalled();
+    });
   });
 
   describe("linked items", () => {
