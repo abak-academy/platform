@@ -415,12 +415,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	partnersMe.Use(handler.JWTMiddleware(svc, jwtSigner))
 	partnersMe.Use(handler.PartnerGate(svc))
 	partnersMe.GET("", h.PartnerMe)
+	partnersMe.GET("/products", h.PartnerListProducts)
+	partnersMe.GET("/vouchers", h.PartnerListVouchers)
 	partnersMe.GET("/students", h.PartnerListStudents)
 	partnersMe.POST("/students", h.PartnerRegisterStudent)
 	partnersMe.POST("/students/bulk/presign", h.PartnerPresignStudentBulkUpload)
 	partnersMe.POST("/students/bulk", h.PartnerBulkImportStudents)
 	partnersMe.POST("/students/:id/credentials", h.PartnerReissueStudentCredentials)
 	partnersMe.GET("/jobs/:id", h.PartnerGetJob)
+
+	admin.GET("/products/:id/partner-access", h.AdminGetProductPartnerAccess, handler.RBACMiddleware("affiliates:*"))
+	admin.PUT("/products/:id/partner-access", h.AdminSetProductPartnerAccess, handler.RBACMiddleware("affiliates:*"))
 
 	adminPartnerSettings := admin.Group("/partner-settings")
 	adminPartnerSettings.Use(handler.RBACMiddleware("affiliates:*"))

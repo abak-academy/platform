@@ -157,3 +157,24 @@ func (h *Handler) PartnerGetJob(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, resp)
 }
+
+// PartnerListProducts backs GET /partners/me/products: what the admin opened to this Mitra.
+func (h *Handler) PartnerListProducts(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	products, err := h.svc.ListPartnerProducts(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": products})
+}
+
+// PartnerListVouchers backs GET /partners/me/vouchers: the Mitra vouchers this
+// Mitra can use now. The promos Affiliators share with students are not here.
+func (h *Handler) PartnerListVouchers(c echo.Context) error {
+	claims := ClaimsFromContext(c)
+	vouchers, err := h.svc.ListPartnerVouchers(c.Request().Context(), claims.Sub)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": vouchers})
+}

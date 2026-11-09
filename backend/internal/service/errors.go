@@ -340,6 +340,7 @@ var (
 	ErrCourseNotFound          = errors.New("course not found")
 	ErrInvalidPromo            = errors.New("invalid or expired promo code")
 	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
+	ErrPromoQuotaInsufficient  = errors.New("promo does not have enough uses left for this order")
 	ErrOutOfStock              = errors.New("product out of stock")
 	ErrInsufficientStock       = errors.New("insufficient stock")
 	ErrOrderNotEditable        = errors.New("order not editable")

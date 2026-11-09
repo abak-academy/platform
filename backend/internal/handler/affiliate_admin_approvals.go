@@ -207,3 +207,31 @@ func (h *Handler) PartnerMe(c echo.Context) error {
 		"program_enabled": h.svc.PartnerProgramEnabled(c.Request().Context()),
 	})
 }
+
+// AdminGetProductPartnerAccess backs GET /admin/products/:id/partner-access.
+func (h *Handler) AdminGetProductPartnerAccess(c echo.Context) error {
+	access, err := h.svc.AdminGetProductPartnerAccess(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, access)
+}
+
+// AdminSetProductPartnerAccess backs PUT /admin/products/:id/partner-access. It
+// is separate from the product update so saving the product form cannot
+// overwrite which Mitra can see the product.
+func (h *Handler) AdminSetProductPartnerAccess(c echo.Context) error {
+	var req struct {
+		Scope string   `json:"scope"`
+		IDs   []string `json:"ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims := claimsFromContext(c)
+	access, err := h.svc.AdminSetProductPartnerAccess(c.Request().Context(), claims.Sub, c.Param("id"), req.Scope, req.IDs)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, access)
+}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
 
@@ -30,6 +31,8 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		ExpiresAt         *time.Time `json:"expires_at"`
 		IsPublic          bool       `json:"is_public"`
 		AffiliatorOnly    bool       `json:"affiliator_only"`
+		// PartnerVoucher turns the promo into a Mitra voucher.
+		PartnerVoucher *service.PartnerVoucherInput `json:"partner_voucher"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -49,6 +52,9 @@ func (h *Handler) AdminCreatePromoCode(c echo.Context) error {
 		IsPublic:          req.IsPublic,
 		AffiliatorOnly:    req.AffiliatorOnly,
 	}
+	if req.PartnerVoucher != nil && req.PartnerVoucher.Enabled {
+		promo.Partner = &model.PartnerVoucher{IDs: req.PartnerVoucher.IDs, QuotaUnit: req.PartnerVoucher.QuotaUnit}
+	}
 
 	created, err := h.svc.AdminCreatePromoCode(c.Request().Context(), promo)
 	if err != nil {
@@ -66,12 +72,14 @@ func (h *Handler) AdminUpdatePromoCode(c echo.Context) error {
 		ExpiresAt      *time.Time `json:"expires_at"`
 		IsPublic       bool       `json:"is_public"`
 		AffiliatorOnly bool       `json:"affiliator_only"`
+		// PartnerVoucher left out keeps the Mitra voucher setting as it is.
+		PartnerVoucher *service.PartnerVoucherInput `json:"partner_voucher"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 
-	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic, req.AffiliatorOnly)
+	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic, req.AffiliatorOnly, req.PartnerVoucher)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

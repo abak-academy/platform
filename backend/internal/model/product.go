@@ -44,3 +44,16 @@ type Product struct {
 	CreatedAt         time.Time  `json:"created_at"`
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
+
+const (
+	PartnerScopeNone     = "none"
+	PartnerScopeAll      = "all"
+	PartnerScopeSelected = "selected"
+)
+
+// PartnerAccess is product.partner_access: which Mitra may see and order the
+// product. No value at all is the same as scope "none".
+type PartnerAccess struct {
+	Scope string   `json:"scope"`
+	IDs   []string `json:"ids"`
+}

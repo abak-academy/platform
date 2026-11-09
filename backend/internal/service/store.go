@@ -443,7 +443,7 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 	if err != nil {
 		return PromoValidation{}, err
 	}
-	if promo.Code == "" {
+	if promo.Code == "" || promo.Partner != nil {
 		return PromoValidation{}, ErrInvalidPromo
 	}
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
@@ -1230,10 +1230,8 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affilia
 		// to. Counting it afterwards can silently lose the increment, and an
 		// under-counted promo lets max_uses admit redemptions beyond its limit;
 		// there is no gateway round-trip here, so nothing forces it outside.
-		if order.PromoCodeID != nil {
-			if err := s.storeRepo.IncrementPromoUsesTx(ctx, tx, *order.PromoCodeID); err != nil {
-				return CheckoutResult{}, err
-			}
+		if err := s.consumePromoTx(ctx, tx, order); err != nil {
+			return CheckoutResult{}, err
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return CheckoutResult{}, err
@@ -1256,10 +1254,8 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affilia
 	// under-counted promo lets max_uses admit redemptions past its limit.
 	// This means an abandoned or failed checkout still burns a redemption —
 	// accepted trade-off (over-counting a ceiling is the safe direction).
-	if order.PromoCodeID != nil {
-		if err := s.storeRepo.IncrementPromoUsesTx(ctx, tx, *order.PromoCodeID); err != nil {
-			return CheckoutResult{}, err
-		}
+	if err := s.consumePromoTx(ctx, tx, order); err != nil {
+		return CheckoutResult{}, err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -2117,10 +2113,21 @@ func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (
 	if p.AffiliatorOnly {
 		p.IsPublic = false
 	}
+	if p.Partner != nil {
+		if p.AffiliatorOnly {
+			return model.PromoCode{}, fmt.Errorf("%w: a promo cannot be both affiliator-only and a Mitra voucher", ErrValidation)
+		}
+		if err := s.validatePartnerVoucher(ctx, p.Partner); err != nil {
+			return model.PromoCode{}, err
+		}
+		p.IsPublic = false
+	}
 	return s.storeRepo.CreatePromoCode(ctx, p)
 }
 
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool) error {
+// AdminUpdatePromoCode changes the editable fields of a promo. partner nil
+// leaves the Mitra voucher setting as it is.
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool, partner *PartnerVoucherInput) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
@@ -2128,7 +2135,22 @@ func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *
 	if affiliatorOnly {
 		isPublic = false
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic, affiliatorOnly)
+	change := repository.PartnerVoucherChange{}
+	if partner != nil {
+		change.Set = true
+		if partner.Enabled {
+			if affiliatorOnly {
+				return fmt.Errorf("%w: a promo cannot be both affiliator-only and a Mitra voucher", ErrValidation)
+			}
+			voucher := &model.PartnerVoucher{IDs: partner.IDs, QuotaUnit: partner.QuotaUnit}
+			if err := s.validatePartnerVoucher(ctx, voucher); err != nil {
+				return err
+			}
+			change.Value = voucher
+			isPublic = false
+		}
+	}
+	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic, affiliatorOnly, change)
 }
 
 // ListActivePublicPromos returns is_public promo codes that are still valid
