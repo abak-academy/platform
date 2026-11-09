@@ -48,6 +48,8 @@ export interface NavItem {
 }
 
 export interface NavGroup {
+  /** Affiliator portal groups that belong to one program; hidden from an account outside it. */
+  program?: "affiliate" | "partner";
   titleKey?: keyof (typeof import("./i18n").DICT)["id"];
   items: NavItem[];
 }
@@ -203,6 +205,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
 // to opens a notice instead of data, so the menu never hides what exists.
 const AFFILIATOR_NAV: RoleNavConfig = [
   {
+    program: "affiliate",
     titleKey: "aff_nav_group_affiliator",
     items: [
       { labelKey: "aff_nav_dashboard", href: "/affiliate/overview", icon: LayoutDashboard, exact: true },
@@ -214,6 +217,7 @@ const AFFILIATOR_NAV: RoleNavConfig = [
     ],
   },
   {
+    program: "partner",
     titleKey: "aff_nav_group_partner",
     items: [
       { labelKey: "partner_nav_dashboard", href: "/affiliate/partner", icon: LayoutDashboard, exact: true },

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, LogOut } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
-import { useLogout } from "@/lib/hooks/auth";
+import { useLogout, useMe } from "@/lib/hooks/auth";
 import { fileUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -88,7 +88,12 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
   const user = useAuthStore((s) => s.user);
   const logout = useLogout();
   const { t } = useTranslation();
-  const groups = useMemo(() => NAV_CONFIG[role] ?? [], [role]);
+  const me = useMe({ enabled: role === "affiliator" });
+  const programStates = me.data?.affiliator_programs;
+  const groups = useMemo(
+    () => (NAV_CONFIG[role] ?? []).filter((g) => !g.program || !programStates || programStates[g.program] !== "not_enrolled"),
+    [role, programStates],
+  );
   const [open, setOpen] = useState(() => groups.map(() => true));
 
   const initial = useMemo(() => {

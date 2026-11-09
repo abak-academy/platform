@@ -57,6 +57,14 @@ test.describe("affiliator portal", () => {
     await expect(page).toHaveURL(/\/affiliate(\/overview)?$/);
   });
 
+  test("the student vouchers page opens in the affiliate shell", async ({ page, context, request }) => {
+    await loginRealAffiliator(context, request);
+
+    await page.goto("/affiliate/vouchers");
+
+    await expect(page.getByRole("heading", { name: /voucher untuk siswa/i })).toBeVisible();
+  });
+
   test("the referred-students page lists names only, never contact details", async ({ page, context, request }) => {
     await loginRealAffiliator(context, request);
 
