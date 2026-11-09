@@ -8,7 +8,7 @@ import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePartnerOrders } from "@/lib/hooks/partner";
+import { partnerKeys, usePartnerOrders } from "@/lib/hooks/partner";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import type { PartnerOrder } from "@/lib/types";
@@ -39,7 +39,7 @@ export default function PartnerOrdersPage() {
       header: "",
       align: "right",
       cell: (o) => {
-        if (o.status === "cart") return <SnapCheckout orderId={o.id} basePath="/partners/me/orders" />;
+        if (o.status === "cart") return <SnapCheckout orderId={o.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.orders()} />;
         if (o.status === "payment_pending") return <RetryPaymentButton orderId={o.id} />;
         return null;
       },

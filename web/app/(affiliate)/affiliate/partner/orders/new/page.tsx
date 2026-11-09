@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { partnerOrderErrorMessage } from "@/lib/partner-order-errors";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import {
+  partnerKeys,
   useCreatePartnerOrder,
   usePartnerProducts,
   usePartnerStudents,
@@ -193,7 +194,7 @@ export default function NewPartnerOrderPage() {
       {created ? (
         <section className="md-card-outlined space-y-2 p-5">
           <p className="text-sm text-ink-700">{t("partner_new_pay_hint")}</p>
-          <SnapCheckout orderId={created.id} basePath="/partners/me/orders" />
+          <SnapCheckout orderId={created.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.orders()} />
         </section>
       ) : (
         <div className="flex justify-end">

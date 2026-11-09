@@ -14,6 +14,7 @@ vi.mock("@/components/cart/SnapCheckout", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/hooks/partner", () => ({
+  partnerKeys: { orders: () => ["partner", "orders"] },
   usePartnerProducts: () => ({ isLoading: false, data: { data: [{ id: "p1", type: "course", name: "Kelas Matematika", price: 100000 }] } }),
   usePartnerVouchers: () => ({ data: { data: [{ id: "v1", code: "MITRA10" }] } }),
   usePartnerStudents: () => ({
