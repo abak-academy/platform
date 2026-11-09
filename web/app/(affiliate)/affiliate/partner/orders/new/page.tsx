@@ -146,11 +146,20 @@ export default function NewPartnerOrderPage() {
           <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
             {rows.map((s) => (
               <li key={s.id}>
-                <label className="flex cursor-pointer items-center gap-3 px-4 py-2 text-sm">
-                  <input type="checkbox" checked={s.id in selected} disabled={Boolean(created)} onChange={() => toggle(s.id, s.name)} />
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={s.id in selected}
+                  disabled={Boolean(created)}
+                  onClick={() => toggle(s.id, s.name)}
+                  className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm disabled:cursor-default disabled:opacity-60"
+                >
+                  <span aria-hidden className={`flex size-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${s.id in selected ? "border-primary bg-primary text-white" : "border-line-strong"}`}>
+                    {s.id in selected ? "✓" : ""}
+                  </span>
                   <span className="font-medium text-ink-900">{s.name}</span>
                   <span className="text-ink-500">{s.school_name ?? "-"}</span>
-                </label>
+                </button>
               </li>
             ))}
           </ul>
