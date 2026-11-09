@@ -2875,6 +2875,9 @@ export const DICT = {
     admin_partner_rep_col_students: "Siswa",
     admin_partner_rep_col_voucher: "Voucher",
     admin_partner_rep_col_discount: "Diskon",
+    admin_partner_rep_students_view: "Lihat daftar",
+    admin_partner_rep_students_count: "{n} siswa",
+    admin_partner_rep_students_title: "Siswa yang dibelikan",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -5742,6 +5745,9 @@ export const DICT = {
     admin_partner_rep_col_students: "Students",
     admin_partner_rep_col_voucher: "Voucher",
     admin_partner_rep_col_discount: "Discount",
+    admin_partner_rep_students_view: "View list",
+    admin_partner_rep_students_count: "{n} students",
+    admin_partner_rep_students_title: "Students bought for",
   },
 };
 

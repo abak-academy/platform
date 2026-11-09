@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import ReportsPage from "./page";
 
@@ -147,6 +147,7 @@ describe("AdminAffiliateReportsPage", () => {
       products: "Tryout UTBK",
       seats: 2,
       students: "Ani; Budi",
+      student_list: ["Ani", "Budi"],
       promo_code: "DEMO-ORDER10",
       subtotal: 200000,
       discount: 20000,
@@ -175,10 +176,33 @@ describe("AdminAffiliateReportsPage", () => {
       expect(h.summary).not.toHaveBeenCalled();
       expect(screen.getByText("Sekolah Mitra Jaya")).toBeInTheDocument();
       expect(screen.getByText("Tryout UTBK")).toBeInTheDocument();
-      expect(screen.getByText("Ani; Budi")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /lihat daftar/i })).toHaveTextContent("2 siswa");
       expect(screen.getByText("DEMO-ORDER10")).toBeInTheDocument();
       expect(screen.getByText("Rp360.000")).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "#00001234" })).toHaveAttribute("href", "/admin/orders?order=9a9a9a9a-0000-0000-0000-000000001234");
+    });
+
+    it("lists the students of a purchase in a popup", () => {
+      h.search.value = "tab=partner";
+      render(<ReportsPage />);
+
+      expect(screen.queryByText("Siswa yang dibelikan")).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: /lihat daftar/i }));
+
+      expect(screen.getByText("Siswa yang dibelikan")).toBeInTheDocument();
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("Ani")).toBeInTheDocument();
+      expect(within(dialog).getByText("Budi")).toBeInTheDocument();
+    });
+
+    it("puts the Mitra totals above the tabs, in place of the Affiliator summary", () => {
+      h.search.value = "tab=partner";
+      render(<ReportsPage />);
+
+      const totals = screen.getByText("Rp360.000");
+      const tabs = screen.getByRole("tab", { name: "Mitra" });
+      expect(Boolean(totals.compareDocumentPosition(tabs) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+      expect(screen.queryByText("Rp25.000")).toBeNull();
     });
 
     it("downloads the purchases with the filters applied", () => {

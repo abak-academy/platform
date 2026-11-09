@@ -2047,6 +2047,7 @@ export interface PartnerReportRow {
   products: string;
   seats: number;
   students: string;
+  student_list: string[];
   promo_code: string;
   subtotal: number;
   discount: number;

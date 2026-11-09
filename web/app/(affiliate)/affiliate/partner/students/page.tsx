@@ -88,27 +88,21 @@ function StudentsContent() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        icon={GraduationCap}
-        title={t("partner_students_title")}
-        description={t("partner_students_desc")}
-        actions={
-          <>
-            <Button variant="outline" onClick={exportCsv}>
-              <Download className="mr-2 size-4" />
-              {t("partner_csv_download")}
-            </Button>
-            <Button variant="outline" onClick={() => setImporting(true)}>
-              <Upload className="mr-2 size-4" />
-              {t("partner_students_import")}
-            </Button>
-            <Button onClick={() => setRegistering(true)}>
-              <UserPlus className="mr-2 size-4" />
-              {t("partner_students_register")}
-            </Button>
-          </>
-        }
-      />
+      <AdminPageHeader icon={GraduationCap} title={t("partner_students_title")} description={t("partner_students_desc")} />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={exportCsv}>
+          <Download className="mr-2 size-4" />
+          {t("partner_csv_download")}
+        </Button>
+        <Button variant="outline" onClick={() => setImporting(true)}>
+          <Upload className="mr-2 size-4" />
+          {t("partner_students_import")}
+        </Button>
+        <Button onClick={() => setRegistering(true)}>
+          <UserPlus className="mr-2 size-4" />
+          {t("partner_students_register")}
+        </Button>
+      </div>
       <ListToolbar
         params={params}
         onChange={update}

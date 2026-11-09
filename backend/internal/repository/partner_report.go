@@ -30,6 +30,7 @@ type PartnerReportRow struct {
 	Products    string    `json:"products"`
 	Seats       int       `json:"seats"`
 	Students    string    `json:"students"`
+	StudentList []string  `json:"student_list"`
 	PromoCode   string    `json:"promo_code"`
 	Subtotal    float64   `json:"subtotal"`
 	Discount    float64   `json:"discount"`
@@ -99,6 +100,7 @@ func (r *Repository) ListPartnerReport(ctx context.Context, f PartnerReportFilte
 			COALESCE((SELECT string_agg(oi.name, '; ' ORDER BY oi.created_at) FROM order_item oi WHERE oi.order_id = o.id), ''),
 			COALESCE((SELECT sum(oi.qty) FROM order_item oi WHERE oi.order_id = o.id), 0)::int,
 			COALESCE((SELECT string_agg(s.name, '; ' ORDER BY s.name) FROM order_participant op JOIN users s ON s.id = op.student_id WHERE op.order_id = o.id), ''),
+			ARRAY(SELECT s.name FROM order_participant op JOIN users s ON s.id = op.student_id WHERE op.order_id = o.id ORDER BY s.name),
 			COALESCE(pc.code, ''), o.subtotal, o.discount, o.total` + partnerReportFrom + where + ` ORDER BY o.created_at DESC, o.id DESC`
 	if perPage > 0 {
 		query += fmt.Sprintf(` LIMIT $%d OFFSET $%d`, n, n+1)
@@ -113,7 +115,7 @@ func (r *Repository) ListPartnerReport(ctx context.Context, f PartnerReportFilte
 	for rows.Next() {
 		var row PartnerReportRow
 		if err := rows.Scan(&row.OrderID, &row.CreatedAt, &row.Status, &row.PartnerID, &row.PartnerName,
-			&row.Products, &row.Seats, &row.Students, &row.PromoCode, &row.Subtotal, &row.Discount, &row.Total); err != nil {
+			&row.Products, &row.Seats, &row.Students, &row.StudentList, &row.PromoCode, &row.Subtotal, &row.Discount, &row.Total); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, row)

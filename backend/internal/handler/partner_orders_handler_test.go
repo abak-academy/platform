@@ -301,6 +301,11 @@ func TestAdminPartnerReport(t *testing.T) {
 		if !strings.Contains(rec.Body.String(), code) || !strings.Contains(rec.Body.String(), orderID) {
 			t.Errorf("want the voucher and order in the row: %s", rec.Body.String())
 		}
+		rows, _ := body["data"].([]any)
+		row, _ := rows[0].(map[string]any)
+		if names, _ := row["student_list"].([]any); len(names) != 1 {
+			t.Errorf("student_list = %v, want the one student named", row["student_list"])
+		}
 		summary, _ := body["summary"].(map[string]any)
 		if summary["orders"] != float64(1) || summary["paid_orders"] != float64(1) || summary["seats"] != float64(1) {
 			t.Errorf("summary = %v, want 1 paid order of 1 seat", summary)

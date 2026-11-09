@@ -103,22 +103,16 @@ function OrdersContent() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        icon={ShoppingCart}
-        title={t("partner_orders_title")}
-        description={t("partner_orders_desc")}
-        actions={
-          <>
-            <Button variant="outline" onClick={exportCsv}>
-              <Download className="mr-2 size-4" />
-              {t("partner_csv_download")}
-            </Button>
-            <Button asChild>
-              <Link href="/affiliate/partner/orders/new">{t("partner_orders_new")}</Link>
-            </Button>
-          </>
-        }
-      />
+      <AdminPageHeader icon={ShoppingCart} title={t("partner_orders_title")} description={t("partner_orders_desc")} />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={exportCsv}>
+          <Download className="mr-2 size-4" />
+          {t("partner_csv_download")}
+        </Button>
+        <Button asChild>
+          <Link href="/affiliate/partner/orders/new">{t("partner_orders_new")}</Link>
+        </Button>
+      </div>
       <ListToolbar
         params={params}
         onChange={update}

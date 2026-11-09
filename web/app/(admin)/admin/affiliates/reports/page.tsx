@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Download, FileBarChart, Hourglass, Wallet, XCircle } from "lucide-react";
+import { Download, FileBarChart, Hourglass, Users, Wallet, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -13,6 +13,7 @@ import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import {
@@ -69,7 +70,7 @@ function ReportsContent() {
   return (
     <div className="space-y-6">
       <AdminPageHeader icon={FileBarChart} title={t("admin_aff_rep_title")} description={t("admin_aff_rep_desc")} />
-      <Liability />
+      {tab === "partner" ? <PartnerSummary /> : <Liability />}
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList>
           <TabsTrigger value="summary">{t("admin_aff_rep_tab_summary")}</TabsTrigger>
@@ -262,13 +263,30 @@ const PARTNER_STATUS_KEYS = {
   cancelled: "partner_order_status_cancelled",
 } as const;
 
+// The totals of what the Mitra tab's filters match, shown above the tabs like the
+// Affiliator summary.
+function PartnerSummary() {
+  const { t } = useTranslation();
+  const { params } = useListParams();
+  const summary = useAdminPartnerReport({ q: params.q, status: params.status, from: params.from, to: params.to, page: params.page, per_page: params.per_page }).data?.summary;
+  return (
+    <section aria-label={t("admin_aff_rep_tab_partner")}>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label={t("admin_partner_rep_orders")} value={String(summary?.orders ?? 0)} icon={FileBarChart} />
+        <StatCard label={t("admin_partner_rep_paid_orders")} value={String(summary?.paid_orders ?? 0)} icon={Wallet} accent="secondary" />
+        <StatCard label={t("admin_partner_rep_seats")} value={String(summary?.seats ?? 0)} icon={Hourglass} accent="tertiary" />
+        <StatCard label={t("admin_partner_rep_paid_total")} value={formatRupiah(summary?.paid_total ?? 0)} icon={Wallet} />
+      </div>
+    </section>
+  );
+}
+
 function PartnerTab() {
   const { t } = useTranslation();
   const { params, update, reset, hasFilters } = useListParams();
   const filter = { q: params.q, status: params.status, from: params.from, to: params.to };
   const query = useAdminPartnerReport({ ...filter, page: params.page, per_page: params.per_page });
-  const summary = query.data?.summary;
-
+  const [viewing, setViewing] = useState<PartnerReportRow | null>(null);
   const exportCsv = async () => {
     try {
       await downloadPartnerReportCsv(filter);
@@ -285,12 +303,10 @@ function PartnerTab() {
       key: "students",
       header: t("admin_partner_rep_col_students"),
       cell: (r) => (
-        <div>
-          <div className="text-xs text-ink-500">{r.seats}</div>
-          <div className="max-w-[16rem] truncate" title={r.students}>
-            {r.students}
-          </div>
-        </div>
+        <Button type="button" size="sm" variant="outline" onClick={() => setViewing(r)} aria-label={`${t("admin_partner_rep_students_view")}: ${r.partner_name}`}>
+          <Users className="size-4" aria-hidden />
+          {t("admin_partner_rep_students_count").replace("{n}", String(r.seats))}
+        </Button>
       ),
     },
     { key: "voucher", header: t("admin_partner_rep_col_voucher"), cell: (r) => (r.promo_code ? <span className="font-mono text-xs">{r.promo_code}</span> : "—") },
@@ -302,12 +318,6 @@ function PartnerTab() {
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t("admin_partner_rep_orders")} value={String(summary?.orders ?? 0)} icon={FileBarChart} />
-        <StatCard label={t("admin_partner_rep_paid_orders")} value={String(summary?.paid_orders ?? 0)} icon={Wallet} accent="secondary" />
-        <StatCard label={t("admin_partner_rep_seats")} value={String(summary?.seats ?? 0)} icon={Hourglass} accent="tertiary" />
-        <StatCard label={t("admin_partner_rep_paid_total")} value={formatRupiah(summary?.paid_total ?? 0)} icon={Wallet} />
-      </div>
       <div className="flex justify-end">
         <Button variant="outline" onClick={exportCsv}>
           <Download className="size-4" aria-hidden />
@@ -331,6 +341,23 @@ function PartnerTab() {
         empty={t("admin_partner_rep_empty")}
         filtered={hasFilters}
       />
+      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("admin_partner_rep_students_title")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-ink-600">
+            {viewing?.partner_name} · {viewing?.products}
+          </p>
+          <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line text-sm">
+            {(viewing?.student_list ?? []).map((name, i) => (
+              <li key={`${name}-${i}`} className="px-3 py-2 text-ink-900">
+                {name}
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

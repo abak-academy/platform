@@ -49,17 +49,13 @@ function SchoolsContent() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader
-        icon={School}
-        title={t("partner_schools_title")}
-        description={t("partner_schools_desc")}
-        actions={
-          <Button variant="outline" onClick={exportCsv}>
-            <Download className="mr-2 size-4" />
-            {t("partner_csv_download")}
-          </Button>
-        }
-      />
+      <AdminPageHeader icon={School} title={t("partner_schools_title")} description={t("partner_schools_desc")} />
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" onClick={exportCsv}>
+          <Download className="mr-2 size-4" />
+          {t("partner_csv_download")}
+        </Button>
+      </div>
       <ListToolbar
         params={params}
         onChange={update}
