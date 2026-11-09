@@ -2038,6 +2038,29 @@ export interface PartnerVoucher {
   partner?: PartnerVoucherInfo;
 }
 
+export interface PartnerReportRow {
+  order_id: string;
+  created_at: string;
+  status: string;
+  partner_id: string;
+  partner_name: string;
+  products: string;
+  seats: number;
+  students: string;
+  promo_code: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+}
+
+export interface PartnerReportPage {
+  data: PartnerReportRow[] | null;
+  page: number;
+  per_page: number;
+  total: number;
+  summary: { orders: number; paid_orders: number; seats: number; paid_total: number; paid_discount: number };
+}
+
 export interface PartnerSchoolPage {
   data: PartnerSchool[];
   page: number;

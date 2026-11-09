@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { API_BASE, ApiError, authFetch } from "@/lib/api";
 import type {
+  PartnerReportPage,
   AffiliateCommissionRuleType,
   AffiliateAdminDetail,
   AffiliateAdminListPage,
@@ -304,6 +305,45 @@ export function useAdminAffiliateReportOrders(params: AdminQueueParams) {
     queryKey: adminAffiliateKeys.reportOrders(params),
     queryFn: () => authFetch<AdminQueuePage<AffiliateReportOrder>>(`/admin/affiliate-reports/orders${queueQuery(params)}`),
   });
+}
+
+export interface PartnerReportParams {
+  q?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  per_page?: number;
+}
+
+// Unlike the affiliate queues, an empty status here means every status, not "all".
+function partnerReportQuery(p: PartnerReportParams): string {
+  return qs({ q: p.q, status: p.status, from: p.from, to: p.to, page: p.page, per_page: p.per_page });
+}
+
+// Mitra purchases with who bought, what, for which students and with which voucher.
+export function useAdminPartnerReport(params: PartnerReportParams) {
+  return useQuery({
+    queryKey: [...adminAffiliateKeys.all, "partner-report", params],
+    queryFn: () => authFetch<PartnerReportPage>(`/admin/partner-reports/orders${partnerReportQuery(params)}`),
+  });
+}
+
+export async function downloadPartnerReportCsv(params: PartnerReportParams): Promise<void> {
+  const { useAuthStore } = await import("@/stores/auth");
+  const token = useAuthStore.getState().token;
+  const res = await fetch(`${API_BASE}/admin/partner-reports/orders/export${partnerReportQuery({ ...params, page: undefined, per_page: undefined })}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, `Failed to download partner report: ${res.status}`, res.status);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "partner-report-orders.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // The orders behind one affiliator's commissions; status "" means every status.
