@@ -204,7 +204,8 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 
 	var auditCount int
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM audit_log WHERE target_type = 'affiliate_settings' AND target_id = '1' AND action = 'affiliate.settings_update'`,
+		`SELECT count(*) FROM audit_log WHERE target_type = 'affiliate_settings' AND target_id = '1' AND action = 'affiliate.settings_update' AND actor_id = $1`,
+		actor,
 	).Scan(&auditCount))
 	if auditCount != 1 {
 		t.Fatalf("affiliate.settings_update audit rows = %d, want 1", auditCount)
@@ -212,7 +213,8 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	var actorID string
 	var rawMeta []byte
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT actor_id::text, metadata FROM audit_log WHERE target_type = 'affiliate_settings' AND action = 'affiliate.settings_update'`,
+		`SELECT actor_id::text, metadata FROM audit_log WHERE target_type = 'affiliate_settings' AND action = 'affiliate.settings_update' AND actor_id = $1`,
+		actor,
 	).Scan(&actorID, &rawMeta))
 	if actorID != actor {
 		t.Errorf("audit actor_id = %s, want %s", actorID, actor)
@@ -248,7 +250,8 @@ func TestAffiliateConfigSettingsUpdateAuditAndReadback(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, pool.QueryRow(ctx,
-		`SELECT count(*) FROM audit_log WHERE target_type = 'affiliate_settings' AND target_id = '1' AND action = 'affiliate.settings_update'`,
+		`SELECT count(*) FROM audit_log WHERE target_type = 'affiliate_settings' AND target_id = '1' AND action = 'affiliate.settings_update' AND actor_id = $1`,
+		actor,
 	).Scan(&auditCount))
 	if auditCount != 2 {
 		t.Fatalf("affiliate.settings_update audit rows after second PUT = %d, want 2", auditCount)

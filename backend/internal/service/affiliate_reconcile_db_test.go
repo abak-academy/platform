@@ -136,9 +136,12 @@ func TestUpdateSystemConfig_RecordsWhenTheProgramWasSwitchedOn(t *testing.T) {
 		setAffiliateFlagForCommission(t, repo, "true")
 	})
 	setAffiliateFlagForCommission(t, repo, "false")
+	// The switch refuses to turn on without a launch date; seedAffiliateProgramSettings leaves it unset.
+	_, err := repo.Pool().Exec(ctx, `UPDATE affiliate_settings SET launch_date = $1 WHERE id = 1`, time.Now().UTC().Add(-72*time.Hour))
+	require.NoError(t, err)
 	_, _ = repo.Pool().Exec(ctx, `DELETE FROM system_config WHERE key = $1`, affiliateEnabledSinceKey)
 
-	_, err := svc.UpdateSystemConfig(ctx, actor.String(), map[string]string{"affiliate_enabled": "true"})
+	_, err = svc.UpdateSystemConfig(ctx, actor.String(), map[string]string{"affiliate_enabled": "true"})
 	require.NoError(t, err)
 	first, found, err := repo.GetSystemConfigValue(ctx, affiliateEnabledSinceKey)
 	require.NoError(t, err)
