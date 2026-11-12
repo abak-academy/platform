@@ -20,9 +20,10 @@ func (h *Handler) ListProducts(c echo.Context) error {
 	}
 
 	filter := repository.ProductFilter{
-		Type:   c.QueryParam("type"),
-		Status: c.QueryParam("status"),
-		Cursor: c.QueryParam("cursor"),
+		Type:       c.QueryParam("type"),
+		Status:     c.QueryParam("status"),
+		GroupingID: c.QueryParam("grouping_id"),
+		Cursor:     c.QueryParam("cursor"),
 	}
 
 	products, nextCursor, err := h.svc.ListProducts(c.Request().Context(), filter, role)
@@ -60,9 +61,10 @@ func (h *Handler) AdminListProducts(c echo.Context) error {
 	}
 
 	filter := repository.ProductFilter{
-		Type:   c.QueryParam("type"),
-		Status: c.QueryParam("status"),
-		Cursor: c.QueryParam("cursor"),
+		Type:       c.QueryParam("type"),
+		Status:     c.QueryParam("status"),
+		GroupingID: c.QueryParam("grouping_id"),
+		Cursor:     c.QueryParam("cursor"),
 	}
 
 	products, nextCursor, err := h.svc.ListProducts(c.Request().Context(), filter, role)

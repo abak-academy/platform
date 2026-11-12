@@ -41,28 +41,7 @@ func (s *Service) AdminGetProductGrouping(ctx context.Context, id string) (model
 		}
 		return model.ProductGrouping{}, nil, err
 	}
-	products, err := s.storeRepo.ListProductsByGrouping(ctx, id, false)
-	if err != nil {
-		return model.ProductGrouping{}, nil, err
-	}
-	return *g, products, nil
-}
-
-// GetPublishedProductGrouping is the student-facing detail read: a draft
-// grouping, or one that does not exist, is reported the same way (not found),
-// so a guessed id cannot distinguish the two.
-func (s *Service) GetPublishedProductGrouping(ctx context.Context, id string) (model.ProductGrouping, []model.Product, error) {
-	g, err := s.storeRepo.GetProductGroupingByID(ctx, id)
-	if err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return model.ProductGrouping{}, nil, ErrProductGroupingNotFound
-		}
-		return model.ProductGrouping{}, nil, err
-	}
-	if g.Status != model.ProductGroupingStatusPublished {
-		return model.ProductGrouping{}, nil, ErrProductGroupingNotFound
-	}
-	products, err := s.storeRepo.ListProductsByGrouping(ctx, id, true)
+	products, err := s.storeRepo.ListProductsByGrouping(ctx, id)
 	if err != nil {
 		return model.ProductGrouping{}, nil, err
 	}

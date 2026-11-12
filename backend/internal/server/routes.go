@@ -31,10 +31,11 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	products.GET("", h.ListProducts)
 	products.GET("/:id", h.GetProduct)
 
-	// Student product grouping routes
+	// Student product grouping routes — list only; browsing a grouping's
+	// products goes through GET /products?grouping_id= instead of a dedicated
+	// detail read, so the /catalog grid stays the one place to view them.
 	productGroupings := v1.Group("/product-groupings")
 	productGroupings.GET("", h.ListProductGroupings)
-	productGroupings.GET("/:id", h.GetProductGrouping)
 
 	// Admin product routes
 	admin := v1.Group("/admin")

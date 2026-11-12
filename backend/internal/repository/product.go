@@ -86,9 +86,10 @@ type ProductFilter struct {
 	OrderableExamOnly bool // true = linked to at least one exam whose startable window is open
 	// PartnerID narrows the list to products opened to this Mitra: scope "all",
 	// or scope "selected" naming it. Products with no setting stay out.
-	PartnerID string
-	Cursor    string
-	Limit     int
+	PartnerID  string
+	GroupingID string
+	Cursor     string
+	Limit      int
 }
 
 // stockValue maps the write-side stock: NULL only for an unlimited exam product.
@@ -220,6 +221,16 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 			JOIN exam e ON e.id = pe.exam_id
 			WHERE pe.product_id = p.id` + examOrderabilityFilter + `
 		)`
+	}
+	if filter.GroupingID != "" {
+		query += fmt.Sprintf(` AND p.grouping_id = $%d`, argIdx)
+		args = append(args, filter.GroupingID)
+		argIdx++
+		if filter.VisibleOnly {
+			// A grouping still in draft is not yet announced; a guessed or
+			// leaked id must not let the catalog filter surface its members.
+			query += ` AND EXISTS (SELECT 1 FROM product_grouping pg WHERE pg.id = p.grouping_id AND pg.status = 'published')`
+		}
 	}
 	if filter.Cursor != "" {
 		if _, err := uuid.Parse(filter.Cursor); err != nil {

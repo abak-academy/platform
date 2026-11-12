@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/repository"
 )
 
 // seedGroupingProduct creates a minimal "book" product for grouping tests.
@@ -105,28 +106,39 @@ func TestAdminDeleteProductGrouping_UngroupsMembers(t *testing.T) {
 	}
 }
 
-func TestGetPublishedProductGrouping_HidesDraft(t *testing.T) {
-	svc, _ := newRealDBService(t)
+// Student catalog browsing filters by grouping_id via ListProducts rather
+// than a dedicated grouping-detail read; a draft grouping's id must not let
+// that filter surface its (already individually published) members.
+func TestListProducts_GroupingIDFilter_RespectsGroupingPublishStatus(t *testing.T) {
+	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	g, err := svc.AdminCreateProductGrouping(ctx, model.ProductGrouping{Name: "Grouping " + uniqueSuffix()})
 	if err != nil {
 		t.Fatalf("create grouping: %v", err)
 	}
+	p := seedGroupingProduct(t, repo, "Buku "+uniqueSuffix())
+	if _, _, err := svc.AdminSetGroupingProducts(ctx, g.ID, []string{p.ID}); err != nil {
+		t.Fatalf("assign product: %v", err)
+	}
 
-	if _, _, err := svc.GetPublishedProductGrouping(ctx, g.ID); !errors.Is(err, ErrProductGroupingNotFound) {
-		t.Fatalf("GetPublishedProductGrouping() on a draft err = %v, want ErrProductGroupingNotFound", err)
+	products, _, err := svc.ListProducts(ctx, repository.ProductFilter{GroupingID: g.ID}, RoleStudent)
+	if err != nil {
+		t.Fatalf("ListProducts() on draft grouping err = %v", err)
+	}
+	if len(products) != 0 {
+		t.Fatalf("draft grouping: products = %+v, want none", products)
 	}
 
 	published := model.ProductGroupingStatusPublished
 	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, nil, nil, &published); err != nil {
 		t.Fatalf("publish grouping: %v", err)
 	}
-	got, _, err := svc.GetPublishedProductGrouping(ctx, g.ID)
+	products, _, err = svc.ListProducts(ctx, repository.ProductFilter{GroupingID: g.ID}, RoleStudent)
 	if err != nil {
-		t.Fatalf("GetPublishedProductGrouping() after publish err = %v", err)
+		t.Fatalf("ListProducts() on published grouping err = %v", err)
 	}
-	if got.ID != g.ID {
-		t.Fatalf("got.ID = %q, want %q", got.ID, g.ID)
+	if len(products) != 1 || products[0].ID != p.ID {
+		t.Fatalf("published grouping: products = %+v, want only %q", products, p.ID)
 	}
 }
 

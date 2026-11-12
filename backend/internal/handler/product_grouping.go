@@ -7,8 +7,8 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-// groupingDetailResponse is the shared shape for both the admin and
-// student-facing grouping detail reads: the grouping plus its member products.
+// groupingDetailResponse is the admin grouping detail read's shape: the
+// grouping plus its member products.
 type groupingDetailResponse struct {
 	model.ProductGrouping
 	Products []model.Product `json:"products"`
@@ -20,14 +20,6 @@ func (h *Handler) ListProductGroupings(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": groupings})
-}
-
-func (h *Handler) GetProductGrouping(c echo.Context) error {
-	grouping, products, err := h.svc.GetPublishedProductGrouping(c.Request().Context(), c.Param("id"))
-	if err != nil {
-		return mapServiceError(c, err)
-	}
-	return c.JSON(http.StatusOK, groupingDetailResponse{ProductGrouping: grouping, Products: products})
 }
 
 func (h *Handler) AdminListProductGroupings(c echo.Context) error {

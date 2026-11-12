@@ -123,18 +123,14 @@ func (r *Repository) ReplaceGroupingProducts(ctx context.Context, tx pgx.Tx, gro
 	return nil
 }
 
-// ListProductsByGrouping returns a grouping's member products ordered for
-// display. publishedOnly applies the same student-visible rules as the
-// public catalog (status, availability window, linked-exam orderability).
-func (r *Repository) ListProductsByGrouping(ctx context.Context, groupingID string, publishedOnly bool) ([]model.Product, error) {
+// ListProductsByGrouping returns every one of a grouping's member products,
+// regardless of status, ordered for the admin management page. Student-facing
+// browsing goes through ListProducts with GroupingID set instead, which
+// already applies the public catalog's visibility rules.
+func (r *Repository) ListProductsByGrouping(ctx context.Context, groupingID string) ([]model.Product, error) {
 	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
-	FROM product p WHERE p.grouping_id = $1`
-	if publishedOnly {
-		query += ` AND p.status = 'published'`
-		query += productAvailabilityFilter
-		query += linkedOrderableExamProductFilter
-	}
-	query += ` ORDER BY p.grouping_order, p.created_at`
+	FROM product p WHERE p.grouping_id = $1
+	ORDER BY p.grouping_order, p.created_at`
 
 	rows, err := r.pool.Query(ctx, query, groupingID)
 	if err != nil {
