@@ -42,6 +42,8 @@ export interface PartnerStudentParams {
   registeredByMe?: boolean;
   schoolId?: string;
   status?: string;
+  /** Annotates each returned student with which of these they already own. */
+  productIds?: string[];
 }
 
 function studentQuery(p: PartnerStudentParams, cursor: string): string {
@@ -50,6 +52,7 @@ function studentQuery(p: PartnerStudentParams, cursor: string): string {
   if (p.registeredByMe) qs.set("registered_by_me", "true");
   if (p.schoolId) qs.set("school_id", p.schoolId);
   if (p.status) qs.set("status", p.status);
+  if (p.productIds?.length) qs.set("product_ids", p.productIds.join(","));
   if (cursor) qs.set("cursor", cursor);
   qs.set("limit", "50");
   return `?${qs.toString()}`;
@@ -103,7 +106,7 @@ export function usePartnerVouchers() {
 }
 
 export interface PartnerOrderInput {
-  product_id: string;
+  product_ids: string[];
   student_ids: string[];
   promo_code?: string;
 }

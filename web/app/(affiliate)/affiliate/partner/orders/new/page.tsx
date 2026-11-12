@@ -40,12 +40,12 @@ export default function NewPartnerOrderPage() {
   const [voucher, setVoucher] = useState(NO_VOUCHER);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});
-  const [createdOrders, setCreatedOrders] = useState<PartnerOrder[]>([]);
+  const [createdOrder, setCreatedOrder] = useState<PartnerOrder | null>(null);
   const [creating, setCreating] = useState(false);
-  const [previews, setPreviews] = useState<Record<string, PartnerOrderPreview>>({});
-  const [previewErrors, setPreviewErrors] = useState<Record<string, string>>({});
-  const students = usePartnerStudents({ q: useDebouncedValue(q, 300) });
-  const preview = usePreviewPartnerOrder();
+  const [preview, setPreview] = useState<PartnerOrderPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const students = usePartnerStudents({ q: useDebouncedValue(q, 300), productIds: selectedProductIds });
+  const previewMutation = usePreviewPartnerOrder();
   const create = useCreatePartnerOrder();
 
   const allProducts = products.data?.data ?? [];
@@ -62,34 +62,49 @@ export default function NewPartnerOrderPage() {
   const promo = voucher === NO_VOUCHER ? undefined : voucher;
   const rows = students.data?.pages.flatMap((p) => p.data) ?? [];
   const noSchools = rows.length === 0 && students.data?.pages[0]?.hint === "no_schools";
+  const selectableRows = rows.filter((s) => (s.owned_product_ids?.length ?? 0) === 0);
   const key = `${selectedProductIds.join(",")}|${promo ?? ""}|${ids.join(",")}`;
 
-  // Every selected product gets its own preview request. These run
-  // concurrently on the one shared mutation object, so each call uses its
-  // own mutateAsync() promise rather than the mutate(vars, {onSuccess})
-  // callback form — that form's onSuccess/onError live on the mutation
-  // observer itself, and a second concurrent mutate() call overwrites it
-  // before the first call's request resolves, silently dropping its result.
+  // A single preview request for every selected product at once — the order
+  // model is one order, several products, one payment.
   useEffect(() => {
-    setPreviews({});
-    setPreviewErrors({});
+    setPreview(null);
+    setPreviewError(null);
     if (selectedProductIds.length === 0 || ids.length === 0) return;
     let cancelled = false;
-    for (const pid of selectedProductIds) {
-      preview
-        .mutateAsync({ product_id: pid, student_ids: ids, promo_code: promo })
-        .then((data) => {
-          if (!cancelled) setPreviews((prev) => ({ ...prev, [pid]: data }));
-        })
-        .catch((err) => {
-          if (!cancelled) setPreviewErrors((prev) => ({ ...prev, [pid]: partnerOrderErrorMessage(err, t) }));
-        });
-    }
+    previewMutation
+      .mutateAsync({ product_ids: selectedProductIds, student_ids: ids, promo_code: promo })
+      .then((data) => {
+        if (!cancelled) setPreview(data);
+      })
+      .catch((err) => {
+        if (!cancelled) setPreviewError(partnerOrderErrorMessage(err, t));
+      });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  // A student checked while eligible can become blocked by a later product
+  // pick (they already own it) — drop them so the request never carries a
+  // student who isn't eligible for anything currently selected.
+  useEffect(() => {
+    setSelected((prev) => {
+      const blocked = rows.filter((s) => (s.owned_product_ids?.length ?? 0) > 0);
+      if (blocked.length === 0) return prev;
+      let changed = false;
+      const next = { ...prev };
+      for (const s of blocked) {
+        if (s.id in next) {
+          delete next[s.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows]);
 
   const toggleStudent = (id: string, name: string) =>
     setSelected((prev) => {
@@ -115,14 +130,15 @@ export default function NewPartnerOrderPage() {
     });
   };
 
+  // Only ever selects students who are not blocked by an already-owned product.
   const toggleSelectAllStudents = () => {
-    const allSelected = rows.every((s) => s.id in selected);
+    const allSelected = selectableRows.length > 0 && selectableRows.every((s) => s.id in selected);
     setSelected((prev) => {
       const next = { ...prev };
       if (allSelected) {
-        rows.forEach((s) => delete next[s.id]);
+        selectableRows.forEach((s) => delete next[s.id]);
       } else {
-        rows.forEach((s) => {
+        selectableRows.forEach((s) => {
           next[s.id] = s.name;
         });
       }
@@ -133,28 +149,21 @@ export default function NewPartnerOrderPage() {
   const ready =
     selectedProductIds.length > 0 &&
     ids.length > 0 &&
-    selectedProductIds.every((pid) => (previews[pid]?.net_new_count ?? 0) > 0 && !previewErrors[pid]);
+    !previewError &&
+    (preview?.items ?? []).some((item) => item.net_new_count > 0);
 
-  // Creates one order per selected product (same students, same voucher),
-  // one after another — the Mitra order model stays one product per order.
   async function submit() {
     setCreating(true);
-    const created: PartnerOrder[] = [];
-    for (const pid of selectedProductIds) {
-      try {
-        const order = await create.mutateAsync({ product_id: pid, student_ids: ids, promo_code: promo });
-        created.push(order);
-      } catch (err) {
-        toast.error(partnerOrderErrorMessage(err, t));
-        break;
-      }
-    }
-    if (created.length > 0) {
-      setCreatedOrders((prev) => [...prev, ...created]);
+    try {
+      const order = await create.mutateAsync({ product_ids: selectedProductIds, student_ids: ids, promo_code: promo });
+      setCreatedOrder(order);
       toast.success(t("partner_new_created"));
+      setSelectedProductIds([]);
+    } catch (err) {
+      toast.error(partnerOrderErrorMessage(err, t));
+    } finally {
+      setCreating(false);
     }
-    setSelectedProductIds([]);
-    setCreating(false);
   }
 
   return (
@@ -265,31 +274,35 @@ export default function NewPartnerOrderPage() {
             <label className="flex items-center gap-2 px-1 text-sm font-medium text-ink-700">
               <input
                 type="checkbox"
-                checked={rows.every((s) => s.id in selected)}
+                checked={selectableRows.length > 0 && selectableRows.every((s) => s.id in selected)}
                 onChange={() => toggleSelectAllStudents()}
-                disabled={creating}
+                disabled={creating || selectableRows.length === 0}
               />
               {t("partner_new_select_all")}
             </label>
             <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
-              {rows.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={s.id in selected}
-                    disabled={creating}
-                    onClick={() => toggleStudent(s.id, s.name)}
-                    className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm disabled:cursor-default disabled:opacity-60"
-                  >
-                    <span aria-hidden className={`flex size-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${s.id in selected ? "border-primary bg-primary text-white" : "border-line-strong"}`}>
-                      {s.id in selected ? "✓" : ""}
-                    </span>
-                    <span className="font-medium text-ink-900">{s.name}</span>
-                    <span className="text-ink-500">{s.school_name ?? "-"}</span>
-                  </button>
-                </li>
-              ))}
+              {rows.map((s) => {
+                const blocked = (s.owned_product_ids?.length ?? 0) > 0;
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      role="checkbox"
+                      aria-checked={s.id in selected}
+                      disabled={creating || blocked}
+                      onClick={() => toggleStudent(s.id, s.name)}
+                      className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm disabled:cursor-default disabled:opacity-60"
+                    >
+                      <span aria-hidden className={`flex size-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${s.id in selected ? "border-primary bg-primary text-white" : "border-line-strong"}`}>
+                        {s.id in selected ? "✓" : ""}
+                      </span>
+                      <span className="font-medium text-ink-900">{s.name}</span>
+                      <span className="text-ink-500">{s.school_name ?? "-"}</span>
+                      {blocked && <span className="text-xs text-warn">{t("partner_students_owns_selected")}</span>}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </>
         )}
@@ -301,58 +314,56 @@ export default function NewPartnerOrderPage() {
         <p className="text-sm text-ink-600">{t("partner_new_selected").replace("{n}", String(ids.length))}</p>
       </section>
 
-      {selectedProductIds.map((pid) => {
-        const prod = allProducts.find((p) => p.id === pid);
-        const p = previews[pid];
-        const err = previewErrors[pid];
-        return (
-          <section key={pid} className="md-card-outlined space-y-3 p-5" aria-label={prod?.name ?? pid}>
-            <h2 className="font-semibold text-ink-900">{prod?.name ?? pid}</h2>
-            {err && (
-              <p role="alert" className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
-                {err}
-              </p>
-            )}
-            {p && !err && (
-              <>
-                <p className="text-sm text-ink-700">{t("partner_new_charged").replace("{n}", String(p.net_new_count))}</p>
-                {(p.excluded ?? []).length > 0 && (
-                  <p className="text-sm text-warn">
-                    {t("partner_new_excluded").replace("{names}", (p.excluded ?? []).map((e) => e.name).join(", "))}
-                  </p>
-                )}
-                <dl className="grid grid-cols-2 gap-2 text-sm">
-                  <dt className="text-ink-500">{t("partner_new_unit_price")}</dt>
-                  <dd className="text-right">{formatRupiah(p.unit_price)}</dd>
-                  <dt className="text-ink-500">{t("partner_new_subtotal")}</dt>
-                  <dd className="text-right">{formatRupiah(p.subtotal)}</dd>
-                  <dt className="text-ink-500">{t("partner_new_discount")}</dt>
-                  <dd className="text-right">- {formatRupiah(p.discount)}</dd>
-                  <dt className="font-semibold text-ink-900">{t("partner_new_total")}</dt>
-                  <dd className="text-right font-semibold text-ink-900">{formatRupiah(p.total)}</dd>
-                </dl>
-              </>
-            )}
-          </section>
-        );
-      })}
-
-      <div className="flex justify-end">
-        <Button onClick={submit} disabled={!ready || creating}>
-          {t("partner_new_create")}
-        </Button>
-      </div>
-
-      {createdOrders.length > 0 && (
-        <section className="md-card-outlined space-y-3 p-5">
-          <h2 className="font-semibold text-ink-900">{t("partner_new_orders_created_heading")}</h2>
-          <p className="text-sm text-ink-700">{t("partner_new_pay_hint")}</p>
-          {createdOrders.map((order) => (
-            <div key={order.id} className="rounded-lg border border-line p-3">
-              <SnapCheckout orderId={order.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.orders()} />
-            </div>
-          ))}
+      {(preview || previewError) && (
+        <section className="md-card-outlined space-y-3 p-5" aria-label={t("partner_new_preview_title")}>
+          <h2 className="font-semibold text-ink-900">{t("partner_new_preview_title")}</h2>
+          {previewError && (
+            <p role="alert" className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+              {previewError}
+            </p>
+          )}
+          {preview && !previewError && (
+            <>
+              <ul className="divide-y divide-line text-sm">
+                {preview.items.map((item) => (
+                  <li key={item.product_id} className="space-y-1 py-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="font-medium text-ink-900">{item.name}</span>
+                      <span className="text-ink-600">{formatRupiah(item.unit_price)}</span>
+                    </div>
+                    <p className="text-ink-700">{t("partner_new_charged").replace("{n}", String(item.net_new_count))}</p>
+                    {(item.excluded ?? []).length > 0 && (
+                      <p className="text-warn">
+                        {t("partner_new_excluded").replace("{names}", (item.excluded ?? []).map((e) => e.name).join(", "))}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <dl className="grid grid-cols-2 gap-2 border-t border-line pt-3 text-sm">
+                <dt className="text-ink-500">{t("partner_new_subtotal")}</dt>
+                <dd className="text-right">{formatRupiah(preview.subtotal)}</dd>
+                <dt className="text-ink-500">{t("partner_new_discount")}</dt>
+                <dd className="text-right">- {formatRupiah(preview.discount)}</dd>
+                <dt className="font-semibold text-ink-900">{t("partner_new_total")}</dt>
+                <dd className="text-right font-semibold text-ink-900">{formatRupiah(preview.total)}</dd>
+              </dl>
+            </>
+          )}
         </section>
+      )}
+
+      {createdOrder ? (
+        <section className="md-card-outlined space-y-2 p-5">
+          <p className="text-sm text-ink-700">{t("partner_new_pay_hint")}</p>
+          <SnapCheckout orderId={createdOrder.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.orders()} />
+        </section>
+      ) : (
+        <div className="flex justify-end">
+          <Button onClick={submit} disabled={!ready || creating}>
+            {t("partner_new_create")}
+          </Button>
+        </div>
       )}
     </div>
   );

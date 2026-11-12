@@ -2018,6 +2018,8 @@ export interface PartnerStudent {
   activated: boolean;
   registered_by_me: boolean;
   created_at: string;
+  /** The subset of a requested product_ids filter this student already owns. */
+  owned_product_ids?: string[];
 }
 
 export interface PartnerStudentPage {
@@ -2121,11 +2123,17 @@ export interface PartnerOrderStudent {
   school_name: string | null;
 }
 
-export interface PartnerOrderPreview {
+export interface PartnerOrderItemPreview {
+  product_id: string;
+  name: string;
+  unit_price: number;
   net_new_count: number;
   excluded?: { student_id: string; name: string; reason: string }[];
+}
+
+export interface PartnerOrderPreview {
+  items: PartnerOrderItemPreview[];
   students: PartnerOrderStudent[];
-  unit_price: number;
   subtotal: number;
   discount: number;
   total: number;
