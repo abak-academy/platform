@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import NewPartnerOrderPage from "./page";
 import { ApiError } from "@/lib/api";
@@ -55,6 +55,10 @@ async function chooseProduct(name: RegExp) {
 
 async function chooseStudent(name: RegExp) {
   fireEvent.click(screen.getByRole("checkbox", { name }));
+}
+
+function sectionFor(headingText: string) {
+  return within(screen.getByRole("heading", { name: headingText }).closest("section")!);
 }
 
 describe("NewPartnerOrderPage", () => {
@@ -137,6 +141,33 @@ describe("NewPartnerOrderPage", () => {
     expect(hook.createMutate).toHaveBeenCalledWith({ product_id: "p2", student_ids: ["s1"], promo_code: undefined });
     const snaps = await screen.findAllByTestId("snap");
     expect(snaps.map((s) => s.getAttribute("data-order")).sort()).toEqual(["order-p1", "order-p2"]);
+  });
+
+  it("selects every visible product with one click, scoped to the current grouping filter", async () => {
+    render(<NewPartnerOrderPage />);
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Grouping" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Paket UTBK" }));
+
+    fireEvent.click(sectionFor("Produk").getByRole("checkbox", { name: "Pilih semua" }));
+
+    expect(sectionFor("Produk").getByRole("checkbox", { name: /Kelas Matematika/ })).toBeChecked();
+    expect(sectionFor("Produk").getByRole("checkbox", { name: /Paket Ujian UTBK/ })).toBeChecked();
+    expect(screen.getByText("2 produk dipilih")).toBeInTheDocument();
+
+    fireEvent.click(sectionFor("Produk").getByRole("checkbox", { name: "Pilih semua" }));
+    expect(screen.getByText("0 produk dipilih")).toBeInTheDocument();
+  });
+
+  it("selects every loaded student with one click", async () => {
+    render(<NewPartnerOrderPage />);
+
+    fireEvent.click(sectionFor("Siswa").getByRole("checkbox", { name: "Pilih semua" }));
+
+    expect(screen.getByText("2 siswa dipilih")).toBeInTheDocument();
+
+    fireEvent.click(sectionFor("Siswa").getByRole("checkbox", { name: "Pilih semua" }));
+    expect(screen.getByText("0 siswa dipilih")).toBeInTheDocument();
   });
 
   it("keeps the create button off until every selected product has someone to charge", async () => {
