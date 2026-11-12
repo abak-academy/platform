@@ -194,8 +194,37 @@ export interface Product {
   course_ids?: string[];
   exam_ids?: string[];
   relations?: ProductRelation[];
+  grouping_id?: string | null;
+  grouping_order?: number;
   created_at?: string;
   updated_at?: string;
+}
+
+export type ProductGroupingStatus = "draft" | "published";
+
+export interface ProductGrouping {
+  id: string;
+  name: string;
+  description?: string;
+  status: ProductGroupingStatus;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ProductGroupingDetail extends ProductGrouping {
+  products: Product[];
+}
+
+export interface AdminCreateProductGroupingInput {
+  name: string;
+  description?: string;
+}
+
+export interface AdminUpdateProductGroupingInput {
+  name?: string;
+  description?: string;
+  status?: ProductGroupingStatus;
 }
 
 export interface AdminCreateProductInput {

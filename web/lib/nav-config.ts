@@ -29,6 +29,7 @@ import {
   School,
   ShoppingCart,
   Ticket,
+  Layers,
 } from "lucide-react";
 
 export type UserRole =
@@ -87,6 +88,7 @@ const STUDENT_NAV: RoleNavConfig = [
       { labelKey: "nav_competition", href: "/exam", icon: Trophy },
       { labelKey: "nav_courses", href: "/courses", icon: BookOpen },
       { labelKey: "nav_store", href: "/catalog", icon: ShoppingBag },
+      { labelKey: "nav_product_groupings", href: "/catalog/groupings", icon: Layers },
       { labelKey: "nav_billing", href: "/orders", icon: Receipt },
       { labelKey: "nav_profile", href: "/profile", icon: User },
     ],
@@ -110,6 +112,7 @@ export const CONTENT_MANAGER_NAV: RoleNavConfig = [
     items: [
       { labelKey: "nav_dashboard", href: "/admin/store", icon: LayoutDashboard, exact: true },
       { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
+      { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Layers },
       { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
       { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },
       { labelKey: "promos", href: "/admin/promos", icon: Tag },
@@ -155,6 +158,7 @@ const SUPER_ADMIN_STORE_ITEMS: NavGroup = {
   items: [
     { labelKey: "nav_store_summary", href: "/admin/store", icon: Store, exact: true },
     { labelKey: "admin_nav_products", href: "/admin/products", icon: Package },
+    { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Layers },
     { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library },
     { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt },
     { labelKey: "promos", href: "/admin/promos", icon: Tag },
