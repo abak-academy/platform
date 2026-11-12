@@ -70,6 +70,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_specs", Message: err.Error()}
 	case errors.Is(err, service.ErrProductNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "product_not_found", Message: err.Error()}
+	case errors.Is(err, service.ErrProductGroupingNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "product_grouping_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrCourseNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "course_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrForbidden):
