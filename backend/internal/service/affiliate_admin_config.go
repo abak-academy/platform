@@ -36,17 +36,16 @@ type AffiliateAdminLevelInput struct {
 // AffiliateAdminSettingsInput is the PUT /admin/affiliate-settings body: the
 // global singleton plus optional per-level rows.
 type AffiliateAdminSettingsInput struct {
-	CookieDays           int                        `json:"cookie_days"`
-	BindingMonths        int                        `json:"binding_months"`
-	MinExtendAmount      float64                    `json:"min_extend_amount"`
-	DigitalWaitDays      int                        `json:"digital_wait_days"`
-	PhysicalWaitDays     int                        `json:"physical_wait_days"`
-	MinPayout            float64                    `json:"min_payout"`
-	PayoutDayOfMonth     *int                       `json:"payout_day_of_month"`
-	LaunchDate           *string                    `json:"launch_date"`
-	EvalDay              int                        `json:"eval_day"`
-	DailyRegistrationCap *int                       `json:"daily_registration_cap"`
-	Levels               []AffiliateAdminLevelInput `json:"levels"`
+	CookieDays       *int                       `json:"cookie_days"`
+	BindingMonths    *int                       `json:"binding_months"`
+	MinExtendAmount  float64                    `json:"min_extend_amount"`
+	DigitalWaitDays  *int                       `json:"digital_wait_days"`
+	PhysicalWaitDays *int                       `json:"physical_wait_days"`
+	MinPayout        *float64                   `json:"min_payout"`
+	PayoutDayOfMonth *int                       `json:"payout_day_of_month"`
+	LaunchDate       *string                    `json:"launch_date"`
+	EvalDay          *int                       `json:"eval_day"`
+	Levels           []AffiliateAdminLevelInput `json:"levels"`
 }
 
 // AffiliateAdminSettingsView is the GET/PUT affiliate-settings response: the
@@ -55,6 +54,12 @@ type AffiliateAdminSettingsView struct {
 	Settings       *model.AffiliateSettings       `json:"settings"`
 	Levels         []model.AffiliateLevelSettings `json:"levels"`
 	ProgramEnabled bool                           `json:"program_enabled"`
+	// CommissionUnset is true while no level carries a commission rule, so the
+	// admin sees that switching the program on creates no commission.
+	CommissionUnset bool `json:"commission_unset"`
+	// Missing lists the required settings still empty; the program cannot be
+	// switched on until it is empty.
+	Missing []string `json:"missing"`
 }
 
 // AffiliateReportSummary is the GET /admin/affiliate-reports/summary response.
@@ -77,34 +82,31 @@ type AffiliateReportOptions struct {
 
 // validateAffiliateSettingsInput enforces every BRD range on the PUT body.
 func validateAffiliateSettingsInput(in AffiliateAdminSettingsInput) error {
-	if in.CookieDays < 1 || in.CookieDays > 180 {
+	if in.CookieDays != nil && (*in.CookieDays < 1 || *in.CookieDays > 180) {
 		return fmt.Errorf("%w: cookie_days must be between 1 and 180", ErrValidation)
 	}
-	if in.BindingMonths < 1 || in.BindingMonths > 12 {
+	if in.BindingMonths != nil && (*in.BindingMonths < 1 || *in.BindingMonths > 12) {
 		return fmt.Errorf("%w: binding_months must be between 1 and 12", ErrValidation)
 	}
-	if in.DigitalWaitDays < 0 || in.DigitalWaitDays > 90 {
+	if in.DigitalWaitDays != nil && (*in.DigitalWaitDays < 0 || *in.DigitalWaitDays > 90) {
 		return fmt.Errorf("%w: digital_wait_days must be between 0 and 90", ErrValidation)
 	}
-	if in.PhysicalWaitDays < 0 || in.PhysicalWaitDays > 90 {
+	if in.PhysicalWaitDays != nil && (*in.PhysicalWaitDays < 0 || *in.PhysicalWaitDays > 90) {
 		return fmt.Errorf("%w: physical_wait_days must be between 0 and 90", ErrValidation)
 	}
-	if in.MinPayout <= 0 {
+	if in.MinPayout != nil && *in.MinPayout <= 0 {
 		return fmt.Errorf("%w: min_payout must be greater than 0", ErrValidation)
 	}
 	if err := affiliateValidatePayoutDay(in.PayoutDayOfMonth, "payout_day_of_month"); err != nil {
 		return err
 	}
-	if in.EvalDay < 1 || in.EvalDay > 28 {
+	if in.EvalDay != nil && (*in.EvalDay < 1 || *in.EvalDay > 28) {
 		return fmt.Errorf("%w: eval_day must be between 1 and 28", ErrValidation)
 	}
 	if in.LaunchDate != nil {
 		if _, err := time.Parse("2006-01-02", *in.LaunchDate); err != nil {
 			return fmt.Errorf("%w: launch_date must be YYYY-MM-DD", ErrValidation)
 		}
-	}
-	if in.DailyRegistrationCap != nil && *in.DailyRegistrationCap < 1 {
-		return fmt.Errorf("%w: daily_registration_cap must be at least 1", ErrValidation)
 	}
 	for _, level := range in.Levels {
 		if err := affiliateValidateLevelInput(level); err != nil {
@@ -205,17 +207,16 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 		launch = &parsed
 	}
 	updated := &model.AffiliateSettings{
-		ID:                   1,
-		CookieDays:           in.CookieDays,
-		BindingMonths:        in.BindingMonths,
-		MinExtendAmount:      in.MinExtendAmount,
-		DigitalWaitDays:      in.DigitalWaitDays,
-		PhysicalWaitDays:     in.PhysicalWaitDays,
-		MinPayout:            in.MinPayout,
-		PayoutDayOfMonth:     in.PayoutDayOfMonth,
-		LaunchDate:           launch,
-		EvalDay:              in.EvalDay,
-		DailyRegistrationCap: in.DailyRegistrationCap,
+		ID:               1,
+		CookieDays:       in.CookieDays,
+		BindingMonths:    in.BindingMonths,
+		MinExtendAmount:  in.MinExtendAmount,
+		DigitalWaitDays:  in.DigitalWaitDays,
+		PhysicalWaitDays: in.PhysicalWaitDays,
+		MinPayout:        in.MinPayout,
+		PayoutDayOfMonth: in.PayoutDayOfMonth,
+		LaunchDate:       launch,
+		EvalDay:          in.EvalDay,
 	}
 
 	meta := map[string]any{}
@@ -233,7 +234,6 @@ func affiliateSettingsAuditMeta(old *model.AffiliateSettings, oldLevels []model.
 	add("payout_day_of_month", old.PayoutDayOfMonth, updated.PayoutDayOfMonth)
 	add("launch_date", affiliateDateKey(old.LaunchDate), affiliateDateKey(updated.LaunchDate))
 	add("eval_day", old.EvalDay, updated.EvalDay)
-	add("daily_registration_cap", old.DailyRegistrationCap, updated.DailyRegistrationCap)
 
 	existing := make(map[string]model.AffiliateLevelSettings, len(oldLevels))
 	for _, row := range oldLevels {
@@ -300,11 +300,33 @@ func (s *Service) GetAffiliateAdminSettings(ctx context.Context) (*AffiliateAdmi
 	if err != nil {
 		return nil, fmt.Errorf("load affiliate level settings: %w", err)
 	}
+	return affiliateAdminSettingsView(settings, levels, s.affiliateEnabled(ctx)), nil
+}
+
+func affiliateAdminSettingsView(settings *model.AffiliateSettings, levels []model.AffiliateLevelSettings, enabled bool) *AffiliateAdminSettingsView {
 	return &AffiliateAdminSettingsView{
-		Settings:       settings,
-		Levels:         affiliateSettingsLevelsView(levels),
-		ProgramEnabled: s.affiliateEnabled(ctx),
-	}, nil
+		Settings:        settings,
+		Levels:          affiliateSettingsLevelsView(levels),
+		ProgramEnabled:  enabled,
+		CommissionUnset: affiliateCommissionUnset(levels),
+		Missing:         append([]string{}, affiliateMissingSettings(settings)...),
+	}
+}
+
+// affiliateCommissionUnset reports that no level has a commission rule with a value above zero.
+func affiliateCommissionUnset(levels []model.AffiliateLevelSettings) bool {
+	for _, level := range levels {
+		var rules map[string]model.AffiliateCommissionRule
+		if json.Unmarshal(level.CommissionRule, &rules) != nil {
+			continue
+		}
+		for _, rule := range rules {
+			if rule.Value > 0 {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // SetAffiliateProgramEnabled switches the whole program on or off. It goes
@@ -354,6 +376,13 @@ func (s *Service) UpdateAffiliateAdminSettings(ctx context.Context, actorID stri
 	if err != nil {
 		return nil, err
 	}
+	enabled, err := s.affiliateEnabledErr(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if missing := affiliateMissingSettings(updated); enabled && len(missing) > 0 {
+		return nil, &AffiliateSettingsIncompleteError{Missing: missing}
+	}
 
 	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
@@ -402,10 +431,7 @@ func (s *Service) UpdateAffiliateAdminSettings(ctx context.Context, actorID stri
 	if err != nil {
 		return nil, fmt.Errorf("load affiliate level settings: %w", err)
 	}
-	return &AffiliateAdminSettingsView{
-		Settings: settings,
-		Levels:   affiliateSettingsLevelsView(levels),
-	}, nil
+	return affiliateAdminSettingsView(settings, levels, s.affiliateEnabled(ctx)), nil
 }
 
 // AdminListAffiliateOverrides backs GET /admin/affiliate-product-overrides.

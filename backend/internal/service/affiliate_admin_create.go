@@ -26,6 +26,8 @@ type AdminCreateAffiliatorInput struct {
 	Phone string `json:"phone"`
 	// Password is optional: empty means a generated temporary password.
 	Password string `json:"password"`
+	// Programs lists "affiliate" and/or "partner"; empty means "affiliate".
+	Programs []string `json:"programs"`
 }
 
 // AdminCreatedAffiliator carries the new account and its temporary password
@@ -90,18 +92,28 @@ func (s *Service) AdminCreateAffiliator(ctx context.Context, actorID string, in 
 	if err != nil {
 		return nil, err
 	}
-	code, err := s.generateUniqueAffiliateCode(ctx)
+	names := in.Programs
+	if len(names) == 0 {
+		names = []string{programAffiliate}
+	}
+	programs, err := affiliatorProgramsFrom(names)
 	if err != nil {
 		return nil, err
+	}
+	code := ""
+	if programs.HasAffiliate() {
+		if code, err = s.generateUniqueAffiliateCode(ctx); err != nil {
+			return nil, err
+		}
 	}
 	user := &model.User{
 		Email: &email, Username: &username, Phone: &phone,
 		PasswordHash: string(hash), Role: RoleAffiliator, Name: name,
 	}
-	if err := s.storeRepo.CreateActiveAffiliatorAccount(ctx, user, affiliateAdminTermsVersion, code); err != nil {
+	if err := s.storeRepo.CreateActiveAffiliatorAccount(ctx, user, affiliateAdminTermsVersion, code, programs); err != nil {
 		return nil, fmt.Errorf("create affiliator account: %w", err)
 	}
-	if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, &actorID, affiliateAuditTargetType, user.ID, "affiliate.created", map[string]any{"code": code}); err != nil {
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, &actorID, affiliateAuditTargetType, user.ID, "affiliate.created", map[string]any{"code": code, "programs": names}); err != nil {
 		return nil, fmt.Errorf("write create audit: %w", err)
 	}
 	return &AdminCreatedAffiliator{ID: user.ID, Name: name, Email: email, Phone: phone, Code: code, TempPassword: temp}, nil

@@ -49,6 +49,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
   const { t } = useTranslation();
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [form, setForm] = useState<AffiliateCreateInput>({ name: "", email: "", phone: "", password: "" });
+  const [programs, setPrograms] = useState<("affiliate" | "partner")[]>(["affiliate"]);
   const [file, setFile] = useState<File | null>(null);
   const [defaultPassword, setDefaultPassword] = useState("");
   const [created, setCreated] = useState<AffiliateCreated[]>([]);
@@ -60,6 +61,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
   const close = () => {
     onOpenChange(false);
     setForm({ name: "", email: "", phone: "", password: "" });
+    setPrograms(["affiliate"]);
     setFile(null);
     setDefaultPassword("");
     setCreated([]);
@@ -72,7 +74,11 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
       toast.error(t("admin_aff_act_invalid"));
       return;
     }
-    create.mutate(form, { onSuccess: (c) => setCreated([c]), onError: fail });
+    if (programs.length === 0) {
+      toast.error(t("admin_aff_act_invalid"));
+      return;
+    }
+    create.mutate({ ...form, programs }, { onSuccess: (c) => setCreated([c]), onError: fail });
   };
 
   const onUpload = async () => {
@@ -151,6 +157,26 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                 </button>
               ))}
             </div>
+            {mode === "single" && (
+              <fieldset className="space-y-1">
+                <legend className="text-sm font-medium text-ink-900">{t("admin_aff_create_programs")}</legend>
+                <div className="flex gap-4">
+                  {(["affiliate", "partner"] as const).map((program) => (
+                    <label key={program} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={programs.includes(program)}
+                        disabled={pending}
+                        onChange={() =>
+                          setPrograms((prev) => (prev.includes(program) ? prev.filter((p) => p !== program) : [...prev, program]))
+                        }
+                      />
+                      {t(program === "affiliate" ? "admin_aff_program_affiliate" : "admin_aff_program_partner")}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             {mode === "single" ? (
               (["name", "email", "phone", "password"] as const).map((key) => (
                 <div key={key} className="space-y-1">

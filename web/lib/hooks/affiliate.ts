@@ -149,7 +149,7 @@ export function useValidateAffiliateCode() {
 export function useAffiliateProgramStatus() {
   return useQuery({
     queryKey: [...affiliateKeys.all, "program-status"],
-    queryFn: () => apiFetch<{ enabled: boolean }>("/affiliates/public/status"),
+    queryFn: () => apiFetch<{ enabled: boolean; partner_enabled?: boolean }>("/affiliates/public/status"),
     staleTime: 60_000,
   });
 }

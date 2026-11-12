@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"akademi-bimbel/internal/model"
 )
@@ -13,15 +12,33 @@ var (
 	ErrAffiliateRegistrationClosed = errors.New("affiliate program is not open for registration")
 	ErrAffiliateTermsRequired      = errors.New("program terms must be accepted")
 	ErrAffiliatePhoneRequired      = errors.New("phone number is required")
-	ErrAffiliateRegistrationCap    = errors.New("today's affiliate registration limit has been reached")
 )
 
 // RegisterAffiliator backs POST /auth/affiliators/register (BR-REG-01/03/04).
 // It mirrors Register: the account starts pending_verification behind the same
-// OTP, with a pending_approval profile that has no referral code yet.
-func (s *Service) RegisterAffiliator(ctx context.Context, email, password, name, phone, termsVersion, ip string) (OTPChallenge, error) {
-	if s.storeRepo == nil || !s.affiliateEnabled(ctx) {
+// OTP, with a pending_approval profile that has no referral code yet. program
+// is "affiliate" (also the empty default) or "partner"; the chosen program must
+// be switched on.
+func (s *Service) RegisterAffiliator(ctx context.Context, email, password, name, phone, termsVersion, program, ip string) (OTPChallenge, error) {
+	if program == "" {
+		program = programAffiliate
+	}
+	if program != programAffiliate && program != programPartner {
+		return OTPChallenge{}, ErrAffiliateInvalidProgram
+	}
+	if s.storeRepo == nil {
 		return OTPChallenge{}, ErrAffiliateRegistrationClosed
+	}
+	if program == programPartner {
+		if !s.PartnerProgramEnabled(ctx) {
+			return OTPChallenge{}, ErrPartnerRegistrationClosed
+		}
+	} else if !s.affiliateEnabled(ctx) {
+		return OTPChallenge{}, ErrAffiliateRegistrationClosed
+	}
+	programs, err := affiliatorProgramsFrom([]string{program})
+	if err != nil {
+		return OTPChallenge{}, err
 	}
 	email = normalizeEmail(email)
 	if email == "" {
@@ -54,22 +71,6 @@ func (s *Service) RegisterAffiliator(ctx context.Context, email, password, name,
 		return OTPChallenge{}, ErrEmailTaken
 	}
 
-	settings, err := s.LoadAffiliateSettings(ctx)
-	if err != nil {
-		return OTPChallenge{}, err
-	}
-	if settings.DailyRegistrationCap != nil {
-		nowWIB := time.Now().In(affiliateWIBLocation())
-		dayStart := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, nowWIB.Location())
-		today, err := s.storeRepo.CountAffiliatorsCreatedSince(ctx, dayStart)
-		if err != nil {
-			return OTPChallenge{}, err
-		}
-		if today >= *settings.DailyRegistrationCap {
-			return OTPChallenge{}, ErrAffiliateRegistrationCap
-		}
-	}
-
 	hash, err := hashPassword(password)
 	if err != nil {
 		return OTPChallenge{}, err
@@ -88,7 +89,7 @@ func (s *Service) RegisterAffiliator(ctx context.Context, email, password, name,
 		Status:       "pending_verification",
 		OTPEnabled:   true,
 	}
-	if err := s.storeRepo.CreateAffiliatorAccount(ctx, user, termsVersion); err != nil {
+	if err := s.storeRepo.CreateAffiliatorAccount(ctx, user, termsVersion, programs); err != nil {
 		return OTPChallenge{}, err
 	}
 	return s.startOTPChallenge(ctx, user, ip)

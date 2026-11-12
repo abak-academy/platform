@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { API_BASE, ApiError, authFetch } from "@/lib/api";
 import type {
+  PartnerReportPage,
   AffiliateCommissionRuleType,
   AffiliateAdminDetail,
   AffiliateAdminListPage,
@@ -47,6 +48,8 @@ export const adminAffiliateKeys = {
 export interface AdminAffiliateListParams {
   status?: string;
   level?: string;
+  /** Narrow the list to one program. */
+  program?: "affiliate" | "partner";
   q?: string;
   page?: number;
   per_page?: number;
@@ -83,7 +86,7 @@ export function useAdminAffiliates(params: AdminAffiliateListParams) {
     queryKey: adminAffiliateKeys.list(params),
     queryFn: () =>
       authFetch<AffiliateAdminListPage>(
-        `/admin/affiliates${qs({ status: params.status, level: params.level, q: params.q, page: params.page, per_page: params.per_page })}`,
+        `/admin/affiliates${qs({ status: params.status, level: params.level, program: params.program, q: params.q, page: params.page, per_page: params.per_page })}`,
       ),
   });
 }
@@ -106,9 +109,9 @@ function useAffiliateAction<TInput, TResult = unknown>(path: (input: TInput) => 
 }
 
 export function useDecideAffiliateApproval() {
-  return useAffiliateAction<{ id: string; decision: "approve" | "reject" | "reopen"; reason?: string }>(
+  return useAffiliateAction<{ id: string; decision: "approve" | "reject" | "reopen"; reason?: string; programs?: string[] }>(
     ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/approval`,
-    ({ decision, reason }) => post({ decision, reason: reason ?? "" }),
+    ({ decision, reason, programs }) => post({ decision, reason: reason ?? "", ...(programs ? { programs } : {}) }),
   );
 }
 
@@ -304,6 +307,45 @@ export function useAdminAffiliateReportOrders(params: AdminQueueParams) {
   });
 }
 
+export interface PartnerReportParams {
+  q?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  per_page?: number;
+}
+
+// Unlike the affiliate queues, an empty status here means every status, not "all".
+function partnerReportQuery(p: PartnerReportParams): string {
+  return qs({ q: p.q, status: p.status, from: p.from, to: p.to, page: p.page, per_page: p.per_page });
+}
+
+// Mitra purchases with who bought, what, for which students and with which voucher.
+export function useAdminPartnerReport(params: PartnerReportParams) {
+  return useQuery({
+    queryKey: [...adminAffiliateKeys.all, "partner-report", params],
+    queryFn: () => authFetch<PartnerReportPage>(`/admin/partner-reports/orders${partnerReportQuery(params)}`),
+  });
+}
+
+export async function downloadPartnerReportCsv(params: PartnerReportParams): Promise<void> {
+  const { useAuthStore } = await import("@/stores/auth");
+  const token = useAuthStore.getState().token;
+  const res = await fetch(`${API_BASE}/admin/partner-reports/orders/export${partnerReportQuery({ ...params, page: undefined, per_page: undefined })}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError(`HTTP_${res.status}`, `Failed to download partner report: ${res.status}`, res.status);
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "partner-report-orders.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // The orders behind one affiliator's commissions; status "" means every status.
 export function useAdminAffiliateCommissions(id: string, params: AdminQueueParams) {
   return useQuery({
@@ -341,4 +383,33 @@ export function useBulkCreateAffiliators() {
     () => "/admin/affiliates/bulk",
     (rows) => post({ rows }),
   );
+}
+
+export function useAddAffiliatorProgram() {
+  return useAffiliateAction<{ id: string; program: "affiliate" | "partner" }>(
+    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/programs`,
+    ({ program }) => post({ program }),
+  );
+}
+
+export function useSetPartnerSchools() {
+  return useAffiliateAction<{ id: string; school_ids: string[] }>(
+    ({ id }) => `/admin/affiliates/${encodeURIComponent(id)}/partner/schools`,
+    ({ school_ids }) => ({ method: "PUT", body: JSON.stringify({ school_ids }) }),
+  );
+}
+
+export function useSetPartnerProgram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (enabled: boolean) =>
+      authFetch<{ program_enabled: boolean }>("/admin/partner-settings/program", {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["affiliate", "program-status"] });
+      qc.invalidateQueries({ queryKey: ["admin", "config"] });
+    },
+  });
 }

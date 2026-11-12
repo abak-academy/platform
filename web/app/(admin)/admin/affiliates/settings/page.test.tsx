@@ -34,6 +34,7 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
 }));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability }));
 vi.mock("sonner", () => ({ toast: h.toast }));
+vi.mock("@/components/affiliate/PartnerSwitchCard", () => ({ PartnerSwitchCard: () => <div data-testid="partner-switch" /> }));
 
 const view = {
   program_enabled: false,
@@ -108,6 +109,16 @@ describe("AdminAffiliateSettingsPage", () => {
     expect(screen.getByRole("button", { name: "Nonaktifkan program" })).toBeInTheDocument();
   });
 
+  it("names both programs in its title", () => {
+    render(<SettingsPage />);
+    expect(screen.getByRole("heading", { name: "Pengaturan Affiliator/Mitra" })).toBeInTheDocument();
+  });
+
+  it("carries the Mitra program switch beside the Affiliator one", () => {
+    render(<SettingsPage />);
+    expect(screen.getByTestId("partner-switch")).toBeInTheDocument();
+  });
+
   it("loads the current values into the form", async () => {
     render(<SettingsPage />);
 
@@ -143,7 +154,7 @@ describe("AdminAffiliateSettingsPage", () => {
 
     await screen.findByLabelText("Masa berlaku cookie");
     expect(screen.getAllByText(/Berapa lama browser calon siswa mengingat tautan referral/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/Contoh:/).length).toBeGreaterThan(8);
+    expect(screen.getAllByText(/Contoh:/).length).toBeGreaterThanOrEqual(8);
   });
 
   it("shows the column guide like the student bulk import", async () => {

@@ -40,9 +40,12 @@ func (s *Service) CreateCommissionsForOrder(ctx context.Context, tx pgx.Tx, orde
 	if aff == nil || aff.Status != affiliateAffiliatorStatusActive {
 		return nil
 	}
-	_, rules, err := s.LoadAffiliateEffectiveRules(ctx)
+	settings, rules, err := s.LoadAffiliateEffectiveRules(ctx)
 	if err != nil {
 		return fmt.Errorf("load affiliate effective rules: %w", err)
+	}
+	if missing := affiliateMissingRuleSettings(settings); len(missing) > 0 {
+		return &AffiliateSettingsIncompleteError{Missing: missing}
 	}
 	rule, ok := rules[aff.Level]
 	if !ok {

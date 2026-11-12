@@ -212,17 +212,17 @@ func (r *Repository) CreateStudent(ctx context.Context, u *model.User) error {
 			email, username, password_hash, role, name,
 			school_id, unlisted_school_name, status, otp_enabled, password_temporary,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
-			dob, gender, grade, alamat_domisili, target_exam
+			dob, gender, grade, alamat_domisili, target_exam, registered_by
 		) VALUES (
 			$1, $2, $3, 'student', $4,
 			$5, $6, 'active', false, true,
 			$7, $8, $9, $10, $11,
-			$12, $13, $14, $15, $16
+			$12, $13, $14, $15, $16, $17
 		) RETURNING id, created_at, updated_at`,
 		u.Email, u.Username, u.PasswordHash, u.Name,
 		u.SchoolID, u.UnlistedSchoolName,
 		u.Jenjang, u.ProvinsiID, u.KotaID, u.KecamatanID, u.KodePos,
-		u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam,
+		u.DOB, u.Gender, u.Grade, u.AlamatDomisili, u.TargetExam, u.RegisteredBy,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 

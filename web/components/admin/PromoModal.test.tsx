@@ -5,11 +5,27 @@ import type { PromoCode } from "@/lib/types";
 
 const mockOnSubmit = vi.fn();
 const mockOnOpenChange = vi.fn();
+const capability = vi.hoisted(() => ({ value: false }));
+
+vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: () => capability.value }));
+vi.mock("@/components/admin/PartnerPicker", () => ({
+  PartnerPicker: ({ value, onChange }: { value: string[]; onChange: (ids: string[]) => void }) => (
+    <button type="button" onClick={() => onChange([...value, "mitra-1"])}>
+      pilih mitra ({value.join(",")})
+    </button>
+  ),
+}));
+
+async function choose(trigger: HTMLElement, option: string | RegExp) {
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("option", { name: option }));
+}
 
 describe("PromoModal", () => {
   beforeEach(() => {
     mockOnSubmit.mockReset();
     mockOnOpenChange.mockReset();
+    capability.value = false;
   });
 
   it("renders create modal with empty fields", () => {
@@ -24,7 +40,7 @@ describe("PromoModal", () => {
 
     expect(screen.getByRole("dialog", { name: /buat kode promo/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/contoh: diskon10/i)).toHaveValue("");
-    expect(screen.getByLabelText(/jenis diskon/i)).toHaveValue("percent");
+    expect(screen.getByRole("combobox", { name: /jenis diskon/i })).toHaveTextContent("Persen");
   });
 
   it("renders edit modal prefilled with promo data", () => {
@@ -94,8 +110,7 @@ describe("PromoModal", () => {
 
     fireEvent.input(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "CASHBACK20K" } });
 
-    const typeSelect = screen.getByLabelText(/jenis diskon/i);
-    fireEvent.change(typeSelect, { target: { value: "fixed" } });
+    await choose(screen.getByRole("combobox", { name: /jenis diskon/i }), "Nominal tetap");
 
     fireEvent.input(screen.getByLabelText(/nilai diskon/i), { target: { value: "20000" } });
     fireEvent.input(screen.getByLabelText(/minimal pembelian/i), { target: { value: "50000" } });
@@ -208,5 +223,89 @@ describe("PromoModal", () => {
 
     const saveButton = screen.getByRole("button", { name: /^simpan$/i });
     expect(saveButton).toBeDisabled();
+  });
+
+  describe("Mitra voucher", () => {
+    function renderCreate() {
+      render(<PromoModal open={true} onOpenChange={mockOnOpenChange} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.change(screen.getByPlaceholderText(/contoh: diskon10/i), { target: { value: "MITRA20" } });
+      fireEvent.change(screen.getByLabelText(/nilai diskon/i), { target: { value: "20" } });
+    }
+
+    it("is hidden from an admin who cannot manage Mitra, and sends nothing about it", () => {
+      renderCreate();
+      expect(screen.queryByLabelText(/voucher mitra/i)).toBeNull();
+
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("partner_voucher");
+    });
+
+    it("needs a quota unit before it can be saved, with no unit preselected", async () => {
+      capability.value = true;
+      renderCreate();
+      fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
+
+      expect(screen.getByRole("combobox", { name: "Kuota dihitung" })).toHaveTextContent("Pilih satuan kuota");
+      expect(screen.getByRole("button", { name: /simpan/i })).toBeDisabled();
+
+      await choose(screen.getByRole("combobox", { name: "Kuota dihitung" }), /per siswa/i);
+      expect(screen.getByRole("button", { name: /simpan/i })).toBeEnabled();
+    });
+
+    it("sends the unit and the chosen Mitra, and is never public", async () => {
+      capability.value = true;
+      renderCreate();
+      fireEvent.click(screen.getByRole("checkbox", { name: /tampilkan di checkout/i }));
+      fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
+      await choose(screen.getByRole("combobox", { name: "Kuota dihitung" }), /per order/i);
+      fireEvent.click(screen.getByRole("button", { name: /pilih mitra/i }));
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+
+      expect(mockOnSubmit.mock.calls[0][0]).toMatchObject({
+        is_public: false,
+        partner_voucher: { enabled: true, ids: ["mitra-1"], quota_unit: "order" },
+      });
+    });
+
+    it("sends the minimum students, 0 when left empty, and refuses a negative one", async () => {
+      capability.value = true;
+      renderCreate();
+      fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
+      await choose(screen.getByRole("combobox", { name: "Kuota dihitung" }), /per order/i);
+
+      fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "-2" } });
+      expect(screen.getByRole("button", { name: /simpan/i })).toBeDisabled();
+
+      fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "5" } });
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[0][0].partner_voucher).toMatchObject({ min_students: 5 });
+
+      fireEvent.change(screen.getByLabelText(/minimal siswa per order/i), { target: { value: "" } });
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[1][0].partner_voucher).toMatchObject({ min_students: 0 });
+    });
+
+    it("cannot be combined with the promo shared by Affiliators", () => {
+      capability.value = true;
+      renderCreate();
+      fireEvent.click(screen.getByRole("checkbox", { name: /khusus affiliator/i }));
+      expect(screen.getByRole("checkbox", { name: /voucher mitra/i })).toBeDisabled();
+    });
+
+    it("on an edit, switches an existing Mitra voucher off explicitly, and leaves an ordinary promo alone", () => {
+      capability.value = true;
+      const voucher: PromoCode = { id: "p1", code: "MITRA", discount_percent: 10, used_count: 0, partner: { ids: [], quota_unit: "student" } };
+      const { unmount } = render(<PromoModal open={true} onOpenChange={mockOnOpenChange} promo={voucher} onSubmit={mockOnSubmit} isPending={false} />);
+      expect(screen.getByRole("checkbox", { name: /voucher mitra/i })).toBeChecked();
+      fireEvent.click(screen.getByRole("checkbox", { name: /voucher mitra/i }));
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[0][0]).toMatchObject({ partner_voucher: { enabled: false } });
+      unmount();
+
+      mockOnSubmit.mockReset();
+      render(<PromoModal open={true} onOpenChange={mockOnOpenChange} promo={{ id: "p2", code: "BIASA", discount_percent: 5, used_count: 0 }} onSubmit={mockOnSubmit} isPending={false} />);
+      fireEvent.click(screen.getByRole("button", { name: /simpan/i }));
+      expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("partner_voucher");
+    });
   });
 });

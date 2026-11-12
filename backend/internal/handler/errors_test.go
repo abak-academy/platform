@@ -300,3 +300,31 @@ func TestMapShippingLabelErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestMapServiceError_AffiliateSettingsIncomplete_BodyNamesWhatIsMissing(t *testing.T) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodPut, "/", nil)
+	rec := httptest.NewRecorder()
+	c := e.NewContext(req, rec)
+
+	_ = mapServiceError(c, &service.AffiliateSettingsIncompleteError{Missing: []string{"launch_date", "cookie_days"}})
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status: want 422, got %d", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["code"] != "affiliate_settings_incomplete" {
+		t.Errorf("code: want affiliate_settings_incomplete, got %v", body["code"])
+	}
+	details, ok := body["details"].(map[string]any)
+	if !ok {
+		t.Fatalf("details: want an object, got %#v", body["details"])
+	}
+	missing, ok := details["missing"].([]any)
+	if !ok || len(missing) != 2 || missing[0] != "launch_date" || missing[1] != "cookie_days" {
+		t.Errorf("details.missing = %#v, want [launch_date cookie_days]", details["missing"])
+	}
+}

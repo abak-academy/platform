@@ -10,18 +10,41 @@ import (
 // Affiliator is the program profile of an affiliator user. ID is the owning
 // users.id, and CreatedAt is that user's registration time.
 type Affiliator struct {
-	ID                   uuid.UUID `json:"id"`
-	Code                 string    `json:"code"`
-	Status               string    `json:"status"`
-	RejectionReason      *string   `json:"rejection_reason"`
-	Level                string    `json:"level"`
-	WarnQuarters         int       `json:"warn_quarters"`
-	LastEvaluatedQuarter *string   `json:"-"`
-	TermsVersion         string    `json:"terms_version"`
-	BankName             *string   `json:"bank_name"`
-	BankAccountNumber    *string   `json:"bank_account_number"`
-	BankAccountHolder    *string   `json:"bank_account_holder"`
-	CreatedAt            time.Time `json:"created_at"`
+	ID                   uuid.UUID          `json:"id"`
+	Code                 string             `json:"code"`
+	Status               string             `json:"status"`
+	RejectionReason      *string            `json:"rejection_reason"`
+	Level                string             `json:"level"`
+	WarnQuarters         int                `json:"warn_quarters"`
+	LastEvaluatedQuarter *string            `json:"-"`
+	TermsVersion         string             `json:"terms_version"`
+	Programs             AffiliatorPrograms `json:"programs"`
+	BankName             *string            `json:"bank_name"`
+	BankAccountNumber    *string            `json:"bank_account_number"`
+	BankAccountHolder    *string            `json:"bank_account_holder"`
+	CreatedAt            time.Time          `json:"created_at"`
+}
+
+// AffiliatorPrograms is the program membership stored in affiliators.programs.
+// A NULL column (the zero value) is a plain Affiliator account, so every row
+// that predates the Mitra program keeps its meaning without a backfill.
+type AffiliatorPrograms struct {
+	Affiliate *bool           `json:"affiliate,omitempty"`
+	Partner   *PartnerProfile `json:"partner,omitempty"`
+}
+
+// PartnerProfile marks a Mitra account and holds the schools its buyer may
+// order for.
+type PartnerProfile struct {
+	SchoolIDs []string `json:"school_ids"`
+}
+
+func (p AffiliatorPrograms) HasAffiliate() bool {
+	return p.Affiliate == nil || *p.Affiliate
+}
+
+func (p AffiliatorPrograms) HasPartner() bool {
+	return p.Partner != nil
 }
 
 type AffiliateBinding struct {
@@ -115,20 +138,20 @@ type AffiliateLevelHistory struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
-// Singleton settings row: the DB pins the primary key to 1 (0070).
+// Singleton settings row: the DB pins the primary key to 1 (0070). The required
+// settings are nil until an admin sets them; nothing falls back to a default.
 type AffiliateSettings struct {
-	ID                   int        `json:"id"`
-	CookieDays           int        `json:"cookie_days"`
-	BindingMonths        int        `json:"binding_months"`
-	MinExtendAmount      float64    `json:"min_extend_amount"`
-	DigitalWaitDays      int        `json:"digital_wait_days"`
-	PhysicalWaitDays     int        `json:"physical_wait_days"`
-	MinPayout            float64    `json:"min_payout"`
-	PayoutDayOfMonth     *int       `json:"payout_day_of_month"`
-	LaunchDate           *time.Time `json:"launch_date"`
-	EvalDay              int        `json:"eval_day"`
-	DailyRegistrationCap *int       `json:"daily_registration_cap"`
-	UpdatedAt            time.Time  `json:"updated_at"`
+	ID               int        `json:"id"`
+	CookieDays       *int       `json:"cookie_days"`
+	BindingMonths    *int       `json:"binding_months"`
+	MinExtendAmount  float64    `json:"min_extend_amount"`
+	DigitalWaitDays  *int       `json:"digital_wait_days"`
+	PhysicalWaitDays *int       `json:"physical_wait_days"`
+	MinPayout        *float64   `json:"min_payout"`
+	PayoutDayOfMonth *int       `json:"payout_day_of_month"`
+	LaunchDate       *time.Time `json:"launch_date"`
+	EvalDay          *int       `json:"eval_day"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 type AffiliateLevelSettings struct {

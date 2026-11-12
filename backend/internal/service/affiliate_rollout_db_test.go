@@ -51,37 +51,6 @@ func TestAffiliateValidate_IsCaseAndSpaceInsensitiveAndReportsCookieDays(t *test
 	require.Equal(t, 45, unknown.CookieDays, "the cookie is still sized for a code that is not active yet")
 }
 
-func TestRegisterAffiliator_DailyCap(t *testing.T) {
-	svc, repo, _ := newAffiliateActivationService(t)
-	ctx := context.Background()
-	setAffiliateFlagForCommission(t, repo, "true")
-	t.Cleanup(func() {
-		_, _ = repo.Pool().Exec(ctx, `UPDATE affiliate_settings SET daily_registration_cap = NULL WHERE id = 1`)
-	})
-
-	register := func(label string) error {
-		_, err := svc.RegisterAffiliator(ctx, "cap-"+label+"-"+uniqueSuffix()+"@test.local", "password123", "Budi Santoso", "0812"+uniqueSuffix()[:6], "v1", "127.0.0.1")
-		return err
-	}
-
-	// The shared fixture already holds profiles created today; allow exactly one more.
-	nowWIB := time.Now().In(affiliateWIBLocation())
-	dayStart := time.Date(nowWIB.Year(), nowWIB.Month(), nowWIB.Day(), 0, 0, 0, 0, nowWIB.Location())
-	today, err := repo.CountAffiliatorsCreatedSince(ctx, dayStart)
-	require.NoError(t, err)
-	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO affiliate_settings (id, daily_registration_cap) VALUES (1, $1)
-		 ON CONFLICT (id) DO UPDATE SET daily_registration_cap = $1`, today+1)
-	require.NoError(t, err)
-
-	require.NoError(t, register("first"))
-	require.ErrorIs(t, register("second"), ErrAffiliateRegistrationCap)
-
-	_, err = repo.Pool().Exec(ctx, `UPDATE affiliate_settings SET daily_registration_cap = NULL WHERE id = 1`)
-	require.NoError(t, err)
-	require.NoError(t, register("uncapped"))
-}
-
 // A failed flag read must surface on the money paths instead of reading as
 // "off", which would skip a binding or drop a commission without a trace.
 func TestAffiliateEnabledErr_SurfacesReadFailures(t *testing.T) {

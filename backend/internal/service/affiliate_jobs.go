@@ -22,7 +22,7 @@ const (
 	// affiliateEnabledSinceKey is when the program was last switched on; orders
 	// paid before it were never eligible, so reconciliation leaves them alone.
 	affiliateEnabledSinceKey = "affiliate_enabled_since"
-	affiliateDayKeyFormat         = "2006-01-02"
+	affiliateDayKeyFormat    = "2006-01-02"
 
 	affiliateCommissionBatchLimit = 100
 	affiliatePhysicalBatchLimit   = 100
@@ -277,9 +277,12 @@ func (s *Service) reconcileOrderCommissions(ctx context.Context, orderID uuid.UU
 // commissions whose order has meanwhile been completed:
 // completed_at + physical wait days, per the level's effective rule.
 func (s *Service) backfillPhysicalWaitUntil(ctx context.Context) (int, error) {
-	_, rules, err := s.LoadAffiliateEffectiveRules(ctx)
+	settings, rules, err := s.LoadAffiliateEffectiveRules(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("load affiliate effective rules: %w", err)
+	}
+	if settings.PhysicalWaitDays == nil {
+		return 0, &AffiliateSettingsIncompleteError{Missing: []string{"physical_wait_days"}}
 	}
 	backfilled := 0
 	for {
@@ -327,7 +330,10 @@ func (s *Service) runAffiliateQuarterly(ctx context.Context, now time.Time, forc
 			return res, err
 		}
 	} else {
-		dueQuarter, due, err := affiliateDueQuarter(now, settings.EvalDay)
+		if settings.EvalDay == nil {
+			return res, nil
+		}
+		dueQuarter, due, err := affiliateDueQuarter(now, *settings.EvalDay)
 		if err != nil {
 			return res, err
 		}
@@ -523,7 +529,7 @@ func affiliatePrevLevel(level string) (string, bool) {
 }
 
 // affiliateRiseThreshold is the revenue that rises INTO next: the level's
-// rise_threshold, which falls back to the built-in default for silver and gold.
+// rise_threshold; a level with none set is never risen into.
 func affiliateRiseThreshold(next string, rules map[string]AffiliateEffectiveRule) float64 {
 	if rule := rules[next]; rule.RiseThreshold != nil {
 		return *rule.RiseThreshold

@@ -83,8 +83,11 @@ type ProductFilter struct {
 	Status            string
 	VisibleOnly       bool // true = student-visible catalog rules
 	OrderableExamOnly bool // true = linked to at least one exam whose startable window is open
-	Cursor            string
-	Limit             int
+	// PartnerID narrows the list to products opened to this Mitra: scope "all",
+	// or scope "selected" naming it. Products with no setting stay out.
+	PartnerID string
+	Cursor    string
+	Limit     int
 }
 
 // stockValue maps the write-side stock: NULL only for an unlimited exam product.
@@ -203,6 +206,12 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		query += ` AND p.status = 'published'`
 		query += productAvailabilityFilter
 		query += linkedOrderableExamProductFilter
+	}
+	if filter.PartnerID != "" {
+		query += fmt.Sprintf(` AND (p.partner_access->>'scope' = 'all'
+			OR (p.partner_access->>'scope' = 'selected' AND p.partner_access->'ids' @> to_jsonb($%d::text)))`, argIdx)
+		args = append(args, filter.PartnerID)
+		argIdx++
 	}
 	if filter.OrderableExamOnly {
 		query += ` AND EXISTS (

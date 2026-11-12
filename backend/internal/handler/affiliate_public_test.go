@@ -130,6 +130,11 @@ func TestAffiliateValidateCodeHandler(t *testing.T) {
 			if tt.flag != nil {
 				setAffiliateFlag(t, env.pool, *tt.flag)
 			}
+			if _, err := env.pool.Exec(context.Background(),
+				`INSERT INTO affiliate_settings (id, cookie_days) VALUES (1, 30)
+				 ON CONFLICT (id) DO UPDATE SET cookie_days = 30`); err != nil {
+				t.Fatalf("seed cookie_days: %v", err)
+			}
 
 			q := "/api/v1/affiliates/public/validate?code=" + tt.code(code)
 			req := httptest.NewRequest(http.MethodGet, q, nil)

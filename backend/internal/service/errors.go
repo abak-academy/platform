@@ -340,6 +340,15 @@ var (
 	ErrCourseNotFound          = errors.New("course not found")
 	ErrInvalidPromo            = errors.New("invalid or expired promo code")
 	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
+	ErrPromoQuotaInsufficient  = errors.New("promo does not have enough uses left for this order")
+	ErrPromoMinStudents        = errors.New("order has fewer students than the promo minimum")
+
+	// Mitra orders.
+	ErrPartnerStudentNotAllowed = errors.New("a student is outside the schools assigned to this partner")
+	ErrPartnerProductNotAllowed = errors.New("product is not open to this partner")
+	ErrPartnerProductType       = errors.New("partners can order exam and course products only")
+	ErrParticipantAlreadyOwns   = errors.New("a participant already owns this product")
+	ErrPartnerProgramOff        = errors.New("the partner program is switched off")
 	ErrOutOfStock              = errors.New("product out of stock")
 	ErrInsufficientStock       = errors.New("insufficient stock")
 	ErrOrderNotEditable        = errors.New("order not editable")

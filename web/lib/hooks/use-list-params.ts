@@ -9,13 +9,14 @@ export interface ListParams {
   q: string;
   status: string;
   type: string;
+  school?: string;
   from: string;
   to: string;
   page: number;
   per_page: number;
 }
 
-const TEXT_KEYS = ["q", "status", "type", "from", "to"] as const;
+const TEXT_KEYS = ["q", "status", "type", "school", "from", "to"] as const;
 
 // The list state lives in the URL, so a refresh or the back button keeps the
 // search, filters and page instead of resetting them. Any change other than the
@@ -33,6 +34,7 @@ export function useListParams(defaultPerPage: number = 20) {
       q: sp.get("q") ?? "",
       status: sp.get("status") ?? "",
       type: sp.get("type") ?? "",
+      school: sp.get("school") ?? "",
       from: sp.get("from") ?? "",
       to: sp.get("to") ?? "",
       page: Math.max(1, Math.floor(Number(sp.get("page"))) || 1),
@@ -76,7 +78,7 @@ export function useListParams(defaultPerPage: number = 20) {
     write(next);
   }, [current, write]);
 
-  const hasFilters = Boolean(params.q || params.status || params.type || params.from || params.to);
+  const hasFilters = Boolean(params.q || params.status || params.type || params.school || params.from || params.to);
 
   return { params, update, reset, hasFilters };
 }

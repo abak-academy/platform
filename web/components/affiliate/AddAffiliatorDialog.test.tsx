@@ -2,10 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AddAffiliatorDialog, parseAffiliatorCsv } from "./AddAffiliatorDialog";
 
-const h = vi.hoisted(() => ({ bulk: vi.fn() }));
+const h = vi.hoisted(() => ({ bulk: vi.fn(), create: vi.fn() }));
 
 vi.mock("@/lib/hooks/admin-affiliates", () => ({
-  useCreateAffiliator: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateAffiliator: () => ({ mutate: h.create, isPending: false }),
   useBulkCreateAffiliators: () => ({ mutate: h.bulk, isPending: false }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -72,5 +72,39 @@ describe("AddAffiliatorDialog", () => {
       { name: "Budi", email: "budi@example.com", phone: "0812", password: "Bersama123" },
       { name: "Siti", email: "siti@example.com", phone: "0813", password: "Sendiri123" },
     ]);
+  });
+
+  describe("programs", () => {
+    function fillSingle() {
+      fireEvent.change(screen.getByLabelText("Nama"), { target: { value: "Budi" } });
+      fireEvent.change(screen.getByLabelText("Email"), { target: { value: "budi@example.com" } });
+      fireEvent.change(screen.getByLabelText("Nomor telepon"), { target: { value: "0812" } });
+    }
+
+    it("creates an Affiliator by default", () => {
+      h.create.mockReset();
+      render(<AddAffiliatorDialog open onOpenChange={() => {}} />);
+      expect(screen.getByRole("checkbox", { name: "Affiliator" })).toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "Mitra" })).not.toBeChecked();
+      fillSingle();
+
+      fireEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+      expect(h.create.mock.calls[0][0]).toMatchObject({ programs: ["affiliate"] });
+    });
+
+    it("creates a Mitra, or both, when the admin ticks them, and none is refused", () => {
+      h.create.mockReset();
+      render(<AddAffiliatorDialog open onOpenChange={() => {}} />);
+      fillSingle();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mitra" }));
+      fireEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+      expect(h.create.mock.calls[0][0]).toMatchObject({ programs: ["affiliate", "partner"] });
+
+      h.create.mockReset();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Affiliator" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mitra" }));
+      fireEvent.click(screen.getByRole("button", { name: "Buat akun" }));
+      expect(h.create).not.toHaveBeenCalled();
+    });
   });
 });

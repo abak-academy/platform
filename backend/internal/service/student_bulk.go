@@ -176,6 +176,13 @@ func parseStudentBulkCSV(data []byte, allowLegacySchool, requireSchoolIdentity b
 func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, schoolBound *string, actorRole string, rows []StudentBulkRow, onProgress func(pct int)) ([]StudentBulkResultRow, int, error) {
 	results := make([]StudentBulkResultRow, len(rows))
 	successCount := 0
+	// A Mitra registers students into any school, or none, and every student is
+	// recorded as registered by that Mitra.
+	partner := actorRole == RoleAffiliator
+	var registeredBy *string
+	if partner {
+		registeredBy = &actorID
+	}
 	var boundSchool *model.School
 	var boundSchoolErr error
 	if schoolBound != nil && len(rows) > 0 {
@@ -195,6 +202,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, sc
 		}
 		var school *model.School
 		var err error
+		noSchool := false
 		if schoolBound != nil {
 			school, err = boundSchool, boundSchoolErr
 		} else if strings.TrimSpace(rawNPSN) != "" {
@@ -214,6 +222,8 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, sc
 			school, err = s.storeRepo.GetSchoolByCode(ctx, r.SchoolCode)
 		} else if r.LegacySchoolName != "" {
 			school, err = s.storeRepo.GetSchoolByNameCI(ctx, r.LegacySchoolName)
+		} else if partner {
+			noSchool = true
 		} else {
 			result.Status = "failed"
 			result.Error = ErrStudentBulkSchoolIdentityRequired.Error()
@@ -232,7 +242,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, sc
 			}
 			continue
 		}
-		if school == nil {
+		if school == nil && !noSchool {
 			result.Status = "failed"
 			if r.SchoolCode != "" {
 				result.Error = ErrSchoolNotFoundByCode.Error()
@@ -248,7 +258,9 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, sc
 			continue
 		}
 		allowNPSNLessSchool := schoolBound != nil || r.SchoolCode != ""
-		if school.Status != "active" {
+		if noSchool {
+			err = nil
+		} else if school.Status != "active" {
 			err = ErrSchoolDeactivated
 		} else if !allowNPSNLessSchool {
 			school, err = s.validateSelectedSchool(ctx, school.ID)
@@ -263,11 +275,14 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, sc
 			continue
 		}
 
-		schoolID := school.ID
-		result.SchoolName = school.Name
-		result.SchoolCode = school.Code
-		if school.NPSN != nil {
-			result.SchoolNPSN = *school.NPSN
+		schoolID := ""
+		if !noSchool {
+			schoolID = school.ID
+			result.SchoolName = school.Name
+			result.SchoolCode = school.Code
+			if school.NPSN != nil {
+				result.SchoolNPSN = *school.NPSN
+			}
 		}
 
 		// Resolve address names to IDs (all-or-nothing).
@@ -398,7 +413,7 @@ func (s *Service) ProcessStudentBulkRows(ctx context.Context, actorID string, sc
 		}
 		var resp *StudentRegistrationResponse
 		if err == nil {
-			resp, err = s.registerStudent(ctx, actorID, schoolID, nil, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, password, allowNPSNLessSchool)
+			resp, err = s.registerStudent(ctx, actorID, schoolID, nil, r.Name, r.Jenjang, r.Email, dob, r.Gender, grade, r.AlamatDomisili, r.TargetExam, provinsiID, kotaID, kecamatanID, kodePos, password, allowNPSNLessSchool, registeredBy)
 		}
 		if err == nil {
 			result.Status = "success"

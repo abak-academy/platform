@@ -11,7 +11,11 @@ import (
 
 // CreateAffiliatorAccount inserts the pending-verification user and its
 // pending_approval profile in one tx; the referral code is assigned at approval.
-func (r *Repository) CreateAffiliatorAccount(ctx context.Context, u *model.User, termsVersion string) error {
+func (r *Repository) CreateAffiliatorAccount(ctx context.Context, u *model.User, termsVersion string, programs model.AffiliatorPrograms) error {
+	programsValue, err := programsParam(programs)
+	if err != nil {
+		return err
+	}
 	u.Email = normalizeOptionalEmail(u.Email)
 	if u.AuthProvider == "" {
 		u.AuthProvider = "password"
@@ -31,8 +35,8 @@ func (r *Repository) CreateAffiliatorAccount(ctx context.Context, u *model.User,
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO affiliators (user_id, program_status, terms_version) VALUES ($1, 'pending_approval', $2)`,
-		u.ID, termsVersion,
+		`INSERT INTO affiliators (user_id, program_status, terms_version, programs) VALUES ($1, 'pending_approval', $2, $3)`,
+		u.ID, termsVersion, programsValue,
 	); err != nil {
 		return err
 	}
@@ -41,7 +45,11 @@ func (r *Repository) CreateAffiliatorAccount(ctx context.Context, u *model.User,
 
 // CreateActiveAffiliatorAccount inserts an admin-created user with a temporary
 // password and its already-approved profile, with the referral code, in one tx.
-func (r *Repository) CreateActiveAffiliatorAccount(ctx context.Context, u *model.User, termsVersion, code string) error {
+func (r *Repository) CreateActiveAffiliatorAccount(ctx context.Context, u *model.User, termsVersion, code string, programs model.AffiliatorPrograms) error {
+	programsValue, err := programsParam(programs)
+	if err != nil {
+		return err
+	}
 	u.Email = normalizeOptionalEmail(u.Email)
 	if u.AuthProvider == "" {
 		u.AuthProvider = "password"
@@ -61,8 +69,8 @@ func (r *Repository) CreateActiveAffiliatorAccount(ctx context.Context, u *model
 		return err
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version) VALUES ($1, $2, 'active', $3)`,
-		u.ID, code, termsVersion,
+		`INSERT INTO affiliators (user_id, referral_code, program_status, terms_version, programs) VALUES ($1, NULLIF($2, ''), 'active', $3, $4)`,
+		u.ID, code, termsVersion, programsValue,
 	); err != nil {
 		return err
 	}

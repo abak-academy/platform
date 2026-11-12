@@ -134,7 +134,7 @@ func TestAffiliateAdminApprovalMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			id, code := seedAffiliateAdminAffiliator(t, repo, "Affiliate Seed", "aff-approval-"+uniqueSuffix()+"@test.local", tt.status, "bronze")
 
-			aff, err := svc.DecideAffiliateApproval(ctx, actor, id.String(), tt.decision, tt.reason)
+			aff, err := svc.DecideAffiliateApproval(ctx, actor, id.String(), tt.decision, tt.reason, nil)
 			if tt.wantErr != nil {
 				require.ErrorIs(t, err, tt.wantErr)
 				require.Nil(t, aff)
@@ -162,15 +162,15 @@ func TestAffiliateAdminApprovalMatrix(t *testing.T) {
 	}
 
 	t.Run("approve on an unknown id is not found", func(t *testing.T) {
-		_, err := svc.DecideAffiliateApproval(ctx, actor, uuid.NewString(), "approve", "")
+		_, err := svc.DecideAffiliateApproval(ctx, actor, uuid.NewString(), "approve", "", nil)
 		require.ErrorIs(t, err, ErrAffiliateNotFound)
 	})
 	t.Run("an unknown decision is rejected", func(t *testing.T) {
-		_, err := svc.DecideAffiliateApproval(ctx, actor, uuid.NewString(), "defer", "")
+		_, err := svc.DecideAffiliateApproval(ctx, actor, uuid.NewString(), "defer", "", nil)
 		require.ErrorIs(t, err, ErrAffiliateInvalidDecision)
 	})
 	t.Run("a malformed id is rejected", func(t *testing.T) {
-		_, err := svc.DecideAffiliateApproval(ctx, actor, "not-a-uuid", "approve", "")
+		_, err := svc.DecideAffiliateApproval(ctx, actor, "not-a-uuid", "approve", "", nil)
 		require.ErrorIs(t, err, ErrInvalidUUID)
 	})
 }
@@ -187,7 +187,7 @@ func TestAffiliateAdminApproval_ConcurrentSubmitsKeepTheFirstCode(t *testing.T) 
 	results := make(chan error, 2)
 	for i := 0; i < 2; i++ {
 		go func() {
-			_, err := svc.DecideAffiliateApproval(ctx, actor, id.String(), "approve", "")
+			_, err := svc.DecideAffiliateApproval(ctx, actor, id.String(), "approve", "", nil)
 			results <- err
 		}()
 	}

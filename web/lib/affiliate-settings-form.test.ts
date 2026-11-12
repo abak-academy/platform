@@ -13,7 +13,6 @@ const settings: AffiliateSettings = {
   payout_day_of_month: null,
   launch_date: "2026-11-01T00:00:00Z",
   eval_day: 8,
-  daily_registration_cap: null,
   updated_at: "2026-10-01T00:00:00Z",
 };
 
@@ -63,10 +62,12 @@ describe("affiliate settings form", () => {
     expect(formToInput(form)).toBeNull();
   });
 
-  it("refuses an emptied required field", () => {
+  it("accepts an emptied required field as unset, and refuses one that is not a number", () => {
     const form = settingsToForm(settings, levels);
     form.numbers.min_payout = "";
+    expect(formToInput(form)?.min_payout).toBeNull();
 
+    form.numbers.min_payout = "abc";
     expect(formToInput(form)).toBeNull();
   });
 
@@ -92,5 +93,30 @@ describe("affiliate settings form", () => {
     expect(form.levels.silver.rules.exam).toEqual({ type: "percent", value: "" });
     expect(form.levels.silver.rules.merchandise).toEqual({ type: "fixed", value: "5000" });
     expect(formToInput(form)?.levels.find((l) => l.level === "silver")?.commission_rule).not.toHaveProperty("exam");
+  });
+
+  it("keeps an empty required setting empty instead of inventing a value", () => {
+    const empty: AffiliateSettings = {
+      ...settings,
+      cookie_days: null,
+      binding_months: null,
+      digital_wait_days: null,
+      physical_wait_days: null,
+      min_payout: null,
+      eval_day: null,
+      launch_date: null,
+    };
+    const form = settingsToForm(empty, []);
+    for (const key of ["cookie_days", "binding_months", "digital_wait_days", "physical_wait_days", "min_payout", "eval_day"] as const) {
+      expect(form.numbers[key]).toBe("");
+    }
+
+    const input = formToInput(form);
+    expect(input).not.toBeNull();
+    expect(input?.cookie_days).toBeNull();
+    expect(input?.min_payout).toBeNull();
+    expect(input?.eval_day).toBeNull();
+    expect(input?.launch_date).toBeNull();
+    expect(input?.min_extend_amount).toBe(0);
   });
 });

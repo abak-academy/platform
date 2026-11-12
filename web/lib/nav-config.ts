@@ -25,6 +25,10 @@ import {
   SlidersHorizontal,
   FileBarChart,
   HandCoins,
+  GraduationCap,
+  School,
+  ShoppingCart,
+  Ticket,
 } from "lucide-react";
 
 export type UserRole =
@@ -44,6 +48,8 @@ export interface NavItem {
 }
 
 export interface NavGroup {
+  /** Affiliator portal groups that belong to one program; hidden from an account outside it. */
+  program?: "affiliate" | "partner";
   titleKey?: keyof (typeof import("./i18n").DICT)["id"];
   items: NavItem[];
 }
@@ -194,16 +200,34 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   },
 ];
 
+// Both program groups are always listed: a group the account does not belong
+// to opens a notice instead of data, so the menu never hides what exists.
 const AFFILIATOR_NAV: RoleNavConfig = [
   {
+    program: "affiliate",
+    titleKey: "aff_nav_group_affiliator",
     items: [
-      { labelKey: "aff_nav_dashboard", href: "/affiliate", icon: LayoutDashboard, exact: true },
+      { labelKey: "aff_nav_dashboard", href: "/affiliate/overview", icon: LayoutDashboard, exact: true },
       { labelKey: "aff_nav_students", href: "/affiliate/students", icon: Users },
       { labelKey: "aff_nav_commissions", href: "/affiliate/commissions", icon: Link2 },
+      { labelKey: "aff_nav_vouchers", href: "/affiliate/vouchers", icon: Ticket },
       { labelKey: "aff_nav_wallet", href: "/affiliate/wallet", icon: Wallet },
       { labelKey: "aff_nav_adjustments", href: "/affiliate/adjustments", icon: SlidersHorizontal },
-      { labelKey: "aff_nav_account", href: "/affiliate/account", icon: UserCog },
     ],
+  },
+  {
+    program: "partner",
+    titleKey: "aff_nav_group_partner",
+    items: [
+      { labelKey: "partner_nav_dashboard", href: "/affiliate/partner", icon: LayoutDashboard, exact: true },
+      { labelKey: "partner_nav_schools", href: "/affiliate/partner/schools", icon: School },
+      { labelKey: "partner_nav_students", href: "/affiliate/partner/students", icon: GraduationCap },
+      { labelKey: "partner_nav_orders", href: "/affiliate/partner/orders", icon: ShoppingCart },
+      { labelKey: "partner_nav_vouchers", href: "/affiliate/partner/vouchers", icon: Ticket },
+    ],
+  },
+  {
+    items: [{ labelKey: "aff_nav_account", href: "/affiliate/account", icon: UserCog }],
   },
 ];
 

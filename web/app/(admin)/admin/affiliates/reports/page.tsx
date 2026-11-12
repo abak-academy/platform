@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Download, FileBarChart, Hourglass, Wallet, XCircle } from "lucide-react";
+import { Download, FileBarChart, Hourglass, Users, Wallet, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -13,11 +13,14 @@ import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import type { DataTableColumn } from "@/components/ui/data-table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import {
   downloadAffiliateCsv,
+  downloadPartnerReportCsv,
   useAdminAffiliateReportOrders,
+  useAdminPartnerReport,
   useAffiliateLiabilityReport,
   useAffiliateReportSummary,
 } from "@/lib/hooks/admin-affiliates";
@@ -26,7 +29,7 @@ import { useListParams } from "@/lib/hooks/use-list-params";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { formatCommissionRule } from "@/lib/affiliate-rules";
-import type { AffiliateReportOrder, AffiliateReportRow } from "@/lib/types";
+import type { AffiliateReportOrder, AffiliateReportRow, PartnerReportRow } from "@/lib/types";
 
 const COMMISSION_STATUSES = ["pending", "available", "cancelled"] as const;
 const CATEGORIES = ["exam", "course", "book", "merchandise", "medal"] as const;
@@ -57,23 +60,25 @@ function ReportsContent() {
   const router = useRouter();
   const pathname = usePathname();
   const search = useSearchParams();
-  const tab = search.get("tab") === "orders" ? "orders" : "summary";
+  const requested = search.get("tab");
+  const tab = requested === "orders" || requested === "partner" ? requested : "summary";
 
   if (!canManage) return <NoAccess />;
 
-  const changeTab = (value: string) => router.replace(value === "orders" ? `${pathname}?tab=orders` : pathname, { scroll: false });
+  const changeTab = (value: string) => router.replace(value === "summary" ? pathname : `${pathname}?tab=${value}`, { scroll: false });
 
   return (
     <div className="space-y-6">
       <AdminPageHeader icon={FileBarChart} title={t("admin_aff_rep_title")} description={t("admin_aff_rep_desc")} />
-      <Liability />
+      {tab === "partner" ? <PartnerSummary /> : <Liability />}
       <Tabs value={tab} onValueChange={changeTab}>
         <TabsList>
           <TabsTrigger value="summary">{t("admin_aff_rep_tab_summary")}</TabsTrigger>
           <TabsTrigger value="orders">{t("admin_aff_rep_tab_orders")}</TabsTrigger>
+          <TabsTrigger value="partner">{t("admin_aff_rep_tab_partner")}</TabsTrigger>
         </TabsList>
       </Tabs>
-      {tab === "summary" ? <SummaryTab /> : <OrdersTab />}
+      {tab === "summary" ? <SummaryTab /> : tab === "orders" ? <OrdersTab /> : <PartnerTab />}
     </div>
   );
 }
@@ -247,6 +252,112 @@ function OrdersTab() {
         empty={t("admin_aff_rep_orders_empty_all")}
         filtered={hasFilters}
       />
+    </div>
+  );
+}
+
+const PARTNER_STATUS_KEYS = {
+  payment_pending: "partner_order_status_pending",
+  paid: "partner_order_status_paid",
+  payment_expired: "partner_order_status_expired",
+  cancelled: "partner_order_status_cancelled",
+} as const;
+
+// The totals of what the Mitra tab's filters match, shown above the tabs like the
+// Affiliator summary.
+function PartnerSummary() {
+  const { t } = useTranslation();
+  const { params } = useListParams();
+  const summary = useAdminPartnerReport({ q: params.q, status: params.status, from: params.from, to: params.to, page: params.page, per_page: params.per_page }).data?.summary;
+  return (
+    <section aria-label={t("admin_aff_rep_tab_partner")}>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label={t("admin_partner_rep_orders")} value={String(summary?.orders ?? 0)} icon={FileBarChart} />
+        <StatCard label={t("admin_partner_rep_paid_orders")} value={String(summary?.paid_orders ?? 0)} icon={Wallet} accent="secondary" />
+        <StatCard label={t("admin_partner_rep_seats")} value={String(summary?.seats ?? 0)} icon={Hourglass} accent="tertiary" />
+        <StatCard label={t("admin_partner_rep_paid_total")} value={formatRupiah(summary?.paid_total ?? 0)} icon={Wallet} />
+      </div>
+    </section>
+  );
+}
+
+function PartnerTab() {
+  const { t } = useTranslation();
+  const { params, update, reset, hasFilters } = useListParams();
+  const filter = { q: params.q, status: params.status, from: params.from, to: params.to };
+  const query = useAdminPartnerReport({ ...filter, page: params.page, per_page: params.per_page });
+  const [viewing, setViewing] = useState<PartnerReportRow | null>(null);
+  const exportCsv = async () => {
+    try {
+      await downloadPartnerReportCsv(filter);
+    } catch {
+      toast.error(t("admin_aff_export_failed"));
+    }
+  };
+
+  const columns: DataTableColumn<PartnerReportRow>[] = [
+    { key: "date", header: t("aff_col_date"), cell: (r) => formatAffDate(r.created_at) },
+    { key: "partner", header: t("admin_partner_rep_col_partner"), cell: (r) => <span className="font-medium text-ink-900">{r.partner_name}</span> },
+    { key: "products", header: t("admin_partner_rep_col_products"), cell: (r) => r.products },
+    {
+      key: "students",
+      header: t("admin_partner_rep_col_students"),
+      cell: (r) => (
+        <Button type="button" size="sm" variant="outline" onClick={() => setViewing(r)} aria-label={`${t("admin_partner_rep_students_view")}: ${r.partner_name}`}>
+          <Users className="size-4" aria-hidden />
+          {t("admin_partner_rep_students_count").replace("{n}", String(r.seats))}
+        </Button>
+      ),
+    },
+    { key: "voucher", header: t("admin_partner_rep_col_voucher"), cell: (r) => (r.promo_code ? <span className="font-mono text-xs">{r.promo_code}</span> : "—") },
+    { key: "discount", header: t("admin_partner_rep_col_discount"), align: "right", cell: (r) => formatRupiah(r.discount) },
+    { key: "total", header: t("aff_col_purchase"), align: "right", cell: (r) => <span className="font-semibold">{formatRupiah(r.total)}</span> },
+    { key: "status", header: t("aff_col_status"), cell: (r) => (r.status in PARTNER_STATUS_KEYS ? t(PARTNER_STATUS_KEYS[r.status as keyof typeof PARTNER_STATUS_KEYS]) : r.status) },
+    { key: "order", header: t("admin_aff_col_order"), cell: (r) => <Link href={`/admin/orders?order=${r.order_id}`} className="font-mono text-xs text-brand-700 underline-offset-2 hover:underline">#{r.order_id.slice(-8)}</Link> },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" onClick={exportCsv}>
+          <Download className="size-4" aria-hidden />
+          {t("admin_aff_export_csv")}
+        </Button>
+      </div>
+      <ListToolbar
+        params={params}
+        onChange={update}
+        onReset={reset}
+        searchPlaceholder={t("admin_partner_rep_search")}
+        filters={[{ key: "status", label: t("aff_col_status"), options: Object.entries(PARTNER_STATUS_KEYS).map(([value, key]) => ({ value, label: t(key) })) }]}
+        dateLabel={t("admin_partner_rep_date")}
+      />
+      <AffiliateList
+        query={query}
+        columns={columns}
+        rowKey={(r) => r.order_id}
+        page={params.page}
+        onPageChange={(page) => update({ page })}
+        empty={t("admin_partner_rep_empty")}
+        filtered={hasFilters}
+      />
+      <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("admin_partner_rep_students_title")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-ink-600">
+            {viewing?.partner_name} · {viewing?.products}
+          </p>
+          <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line text-sm">
+            {(viewing?.student_list ?? []).map((name, i) => (
+              <li key={`${name}-${i}`} className="px-3 py-2 text-ink-900">
+                {name}
+              </li>
+            ))}
+          </ul>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

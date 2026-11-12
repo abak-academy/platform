@@ -35,6 +35,7 @@ func TestAffiliateStudentDisplayName(t *testing.T) {
 
 func setAffiliateMeFlag(t *testing.T, repo *repository.Repository, value string) {
 	t.Helper()
+	seedAffiliateProgramSettings(t, repo)
 	_, err := repo.Pool().Exec(context.Background(),
 		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', $1, false)
 		 ON CONFLICT (key) DO UPDATE SET value = $1`, value)

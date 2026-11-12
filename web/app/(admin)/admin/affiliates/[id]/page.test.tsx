@@ -10,6 +10,7 @@ const h = vi.hoisted(() => ({
   status: vi.fn(),
   level: vi.fn(),
   adjust: vi.fn(),
+  addProgram: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn() },
 }));
 
@@ -18,9 +19,13 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
   useChangeAffiliateStatus: () => ({ mutate: h.status, isPending: false }),
   useChangeAffiliateLevel: () => ({ mutate: h.level, isPending: false }),
   useCreateAffiliateAdjustment: () => ({ mutate: h.adjust, isPending: false }),
+  useAddAffiliatorProgram: () => ({ mutate: h.addProgram, isPending: false }),
 }));
 vi.mock("@/components/affiliate/AdminCommissionsPanel", () => ({
   AdminCommissionsPanel: ({ affiliatorId }: { affiliatorId: string }) => <div>orders-panel-{affiliatorId}</div>,
+}));
+vi.mock("@/components/affiliate/PartnerProgramPanel", () => ({
+  PartnerProgramPanel: ({ id }: { id: string }) => <div>programs-panel-{id}</div>,
 }));
 vi.mock("@/lib/hooks/use-capability", () => ({ useHasCapability: h.capability }));
 vi.mock("sonner", () => ({ toast: h.toast }));
@@ -62,6 +67,24 @@ describe("AdminAffiliateDetailPage", () => {
     h.toast.error.mockReset();
     h.capability.mockReturnValue(true);
     h.detail.mockReturnValue({ isLoading: false, isError: false, data: detail });
+  });
+
+  it("shows a Mitra-only account without level, balance, bindings, commissions or adjustments", async () => {
+    h.detail.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: { ...detail, affiliate: { ...detail.affiliate, programs: { affiliate: false, partner: { school_ids: [] } } } },
+    });
+    await renderPage();
+
+    expect(screen.getByRole("heading", { name: "Budi Santoso" })).toBeInTheDocument();
+    expect(screen.getByText("programs-panel-a1")).toBeInTheDocument();
+    expect(screen.queryByText("2 / 1")).toBeNull();
+    expect(screen.queryByText("Sari W.")).toBeNull();
+    expect(screen.queryByText("orders-panel-a1")).toBeNull();
+    expect(screen.queryByRole("button", { name: /level/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /penyesuaian/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /status/i })).toBeInTheDocument();
   });
 
   it("shows the profile summary and privacy-safe student names", async () => {

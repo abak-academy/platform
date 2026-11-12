@@ -20,12 +20,12 @@ func (r *Repository) LoadAffiliateSettings(ctx context.Context) (*model.Affiliat
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, cookie_days, binding_months, min_extend_amount, digital_wait_days,
 		        physical_wait_days, min_payout, payout_day_of_month,
-		        launch_date, eval_day, daily_registration_cap, updated_at
+		        launch_date, eval_day, updated_at
 		 FROM affiliate_settings
 		 WHERE id = 1`,
 	).Scan(&s.ID, &s.CookieDays, &s.BindingMonths, &s.MinExtendAmount, &s.DigitalWaitDays,
 		&s.PhysicalWaitDays, &s.MinPayout, &s.PayoutDayOfMonth,
-		&s.LaunchDate, &s.EvalDay, &s.DailyRegistrationCap, &s.UpdatedAt)
+		&s.LaunchDate, &s.EvalDay, &s.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -93,11 +93,26 @@ func (r *Repository) SetAffiliateLaunchDateIfUnset(ctx context.Context, date tim
 	return err
 }
 
-// CountAffiliatorsCreatedSince counts affiliator accounts registered at or after since.
-func (r *Repository) CountAffiliatorsCreatedSince(ctx context.Context, since time.Time) (int, error) {
-	var n int
-	err := r.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'affiliator' AND created_at >= $1`, since).Scan(&n)
-	return n, err
+// SeedAffiliateDevSettingsIfUnset fills each required setting, and the level
+// commission rules, only while it is still unset. It exists for local
+// development; staging and production never call it.
+func (r *Repository) SeedAffiliateDevSettingsIfUnset(ctx context.Context, levels json.RawMessage) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO affiliate_settings
+		     (id, cookie_days, binding_months, digital_wait_days, physical_wait_days, min_payout, eval_day, levels)
+		 VALUES (1, 30, 3, 7, 14, 100000, 8, $1::jsonb)
+		 ON CONFLICT (id) DO UPDATE SET
+		     cookie_days = COALESCE(affiliate_settings.cookie_days, 30),
+		     binding_months = COALESCE(affiliate_settings.binding_months, 3),
+		     digital_wait_days = COALESCE(affiliate_settings.digital_wait_days, 7),
+		     physical_wait_days = COALESCE(affiliate_settings.physical_wait_days, 14),
+		     min_payout = COALESCE(affiliate_settings.min_payout, 100000),
+		     eval_day = COALESCE(affiliate_settings.eval_day, 8),
+		     levels = CASE WHEN affiliate_settings.levels = '{}'::jsonb THEN $1::jsonb ELSE affiliate_settings.levels END,
+		     updated_at = now()`,
+		levels,
+	)
+	return err
 }
 
 // affiliateProductOverride is the JSON shape of product.affiliate_commission.

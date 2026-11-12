@@ -80,9 +80,12 @@ func (s *Service) RequestMyAffiliatePayout(ctx context.Context, userID string, a
 		return nil, ErrAffiliatePayoutInFlight
 	}
 
-	_, rules, err := s.LoadAffiliateEffectiveRules(ctx)
+	settings, rules, err := s.LoadAffiliateEffectiveRules(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("load affiliate effective rules: %w", err)
+	}
+	if settings.MinPayout == nil {
+		return nil, &AffiliateSettingsIncompleteError{Missing: []string{"min_payout"}}
 	}
 	rule := rules[fresh.Level]
 

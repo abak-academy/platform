@@ -42,7 +42,7 @@ test.describe("affiliator portal", () => {
   test("shows the code and link on the dashboard in the affiliate shell", async ({ page, context, request }) => {
     await loginRealAffiliator(context, request);
 
-    await page.goto("/affiliate");
+    await page.goto("/affiliate/overview");
 
     await expect(page.getByText(/kode referral/i).first()).toBeVisible();
     await expect(page.getByRole("main").getByRole("link", { name: /siswa binaan/i })).toBeVisible();
@@ -54,7 +54,15 @@ test.describe("affiliator portal", () => {
 
     await page.goto("/");
 
-    await expect(page).toHaveURL(/\/affiliate$/);
+    await expect(page).toHaveURL(/\/affiliate(\/overview)?$/);
+  });
+
+  test("the student vouchers page opens in the affiliate shell", async ({ page, context, request }) => {
+    await loginRealAffiliator(context, request);
+
+    await page.goto("/affiliate/vouchers");
+
+    await expect(page.getByRole("heading", { name: /voucher untuk siswa/i })).toBeVisible();
   });
 
   test("the referred-students page lists names only, never contact details", async ({ page, context, request }) => {

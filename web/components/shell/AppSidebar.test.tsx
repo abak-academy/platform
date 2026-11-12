@@ -16,8 +16,11 @@ const logoutMutate = vi.fn(
   (_input: unknown, opts?: { onSettled?: () => void }) => opts?.onSettled?.()
 );
 
+const meState = vi.hoisted(() => ({ data: undefined as unknown }));
+
 vi.mock("@/lib/hooks/auth", () => ({
   useLogout: () => ({ mutate: logoutMutate }),
+  useMe: () => meState,
 }));
 
 vi.mock("@/lib/i18n", () => ({
@@ -164,5 +167,44 @@ describe("AppSidebar — logout destination", () => {
     clickLogout();
 
     expect(replace).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AppSidebar — affiliator program groups", () => {
+  const states = (affiliate: string, partner: string) => ({
+    data: { affiliator_programs: { affiliate, partner, account_active: true } },
+  });
+
+  beforeEach(() => {
+    authStore = { user: { name: "Mitra", role: "affiliator" } };
+  });
+
+  it("hides the Affiliator group from an account that is only in the Mitra program", () => {
+    Object.assign(meState, states("not_enrolled", "active"));
+    render(<AppSidebar role="affiliator" />);
+
+    expect(screen.getByText("aff_nav_group_partner")).toBeInTheDocument();
+    expect(screen.queryByText("aff_nav_group_affiliator")).toBeNull();
+  });
+
+  it("hides the Mitra group from a plain Affiliator", () => {
+    Object.assign(meState, states("active", "not_enrolled"));
+    render(<AppSidebar role="affiliator" />);
+
+    expect(screen.getByText("aff_nav_group_affiliator")).toBeInTheDocument();
+    expect(screen.queryByText("aff_nav_group_partner")).toBeNull();
+  });
+
+  it("shows both groups to an account in both programs, and while the state is unknown", () => {
+    Object.assign(meState, states("active", "pending"));
+    const { unmount } = render(<AppSidebar role="affiliator" />);
+    expect(screen.getByText("aff_nav_group_affiliator")).toBeInTheDocument();
+    expect(screen.getByText("aff_nav_group_partner")).toBeInTheDocument();
+    unmount();
+
+    meState.data = undefined;
+    render(<AppSidebar role="affiliator" />);
+    expect(screen.getByText("aff_nav_group_affiliator")).toBeInTheDocument();
+    expect(screen.getByText("aff_nav_group_partner")).toBeInTheDocument();
   });
 });

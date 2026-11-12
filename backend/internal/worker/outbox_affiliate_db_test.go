@@ -20,6 +20,15 @@ import (
 // the real service so handleOrderPaid runs the commission step for real.
 func setAffiliateWorkerFlag(t *testing.T, repo *repository.Repository, value string) {
 	t.Helper()
+	rule := `{"commission_rule":{"course":{"type":"percent","value":10},"book":{"type":"percent","value":3}}}`
+	levels := `{"bronze":` + rule + `,"silver":` + rule + `,"gold":` + rule + `}`
+	if _, err := repo.Pool().Exec(context.Background(),
+		`INSERT INTO affiliate_settings (id, cookie_days, binding_months, digital_wait_days, physical_wait_days, min_payout, eval_day, levels)
+		 VALUES (1, 30, 3, 7, 14, 100000, 8, $1::jsonb)
+		 ON CONFLICT (id) DO UPDATE SET cookie_days = 30, binding_months = 3, digital_wait_days = 7,
+		     physical_wait_days = 14, min_payout = 100000, eval_day = 8, levels = $1::jsonb`, levels); err != nil {
+		t.Fatalf("seed affiliate settings: %v", err)
+	}
 	if _, err := repo.Pool().Exec(context.Background(),
 		`INSERT INTO system_config (key, value, is_secret) VALUES ('affiliate_enabled', $1, false)
 		 ON CONFLICT (key) DO UPDATE SET value = $1`, value); err != nil {

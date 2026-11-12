@@ -42,6 +42,10 @@ vi.mock("@/lib/hooks/students", () => ({
   usePresignUpload: () => ({ mutateAsync: vi.fn() }),
 }));
 
+vi.mock("@/components/admin/PartnerAccessSection", () => ({
+  PartnerAccessSection: () => null,
+  usePartnerAccessDraft: () => ({ dirty: false, valid: true, save: vi.fn() }),
+}));
 vi.mock("sonner", () => ({
   toast: {
     success: vi.fn(),

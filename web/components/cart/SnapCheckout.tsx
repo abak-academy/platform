@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Lock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { useCheckout, ordersKeys } from "@/lib/hooks/orders";
 import { payWithSnap } from "@/lib/snap";
 import { ApiError } from "@/lib/api";
@@ -15,11 +15,12 @@ import { Button } from "@/components/ui/button";
 export interface SnapCheckoutProps {
   orderId?: string;
   basePath?: string;
+  invalidateKey?: QueryKey;
   disabled?: boolean;
   affiliateCode?: string;
 }
 
-export function SnapCheckout({ orderId, basePath = "/orders", disabled, affiliateCode }: SnapCheckoutProps) {
+export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, disabled, affiliateCode }: SnapCheckoutProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const checkout = useCheckout(basePath, affiliateCode);
@@ -42,7 +43,7 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled, affiliat
       onSuccess: async (data) => {
         if (data.free) {
           finish();
-          qc.invalidateQueries({ queryKey: ordersKeys.all });
+          qc.invalidateQueries({ queryKey: invalidateKey ?? ordersKeys.all });
           toast.success("Pesanan gratis berhasil diproses.");
           if (basePath === "/orders") {
             router.push(`/orders/${orderId}`);
@@ -58,7 +59,7 @@ export function SnapCheckout({ orderId, basePath = "/orders", disabled, affiliat
                   toast.error(t("payment_failed"));
                   return;
                 }
-                qc.invalidateQueries({ queryKey: ordersKeys.all });
+                qc.invalidateQueries({ queryKey: invalidateKey ?? ordersKeys.all });
                 if (event === "success") toast.info(t("payment_received"));
                 if (event === "pending") toast.info(t("payment_pending"));
                 if (event !== "close" && basePath === "/orders") router.push(`/orders/${orderId}`);

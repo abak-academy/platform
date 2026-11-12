@@ -138,6 +138,8 @@ export interface User {
   status?: string;
   otp_enabled?: boolean;
   password_temporary?: boolean;
+  /** Only for the affiliator role: standing in each program. */
+  affiliator_programs?: AffiliatorProgramStates;
   phone?: string;
   nis?: string;
   grade?: number;
@@ -405,6 +407,16 @@ export interface PromoCode {
   is_public?: boolean;
   /** Listed only on the affiliator dashboard; hidden from the student listing. */
   affiliator_only?: boolean;
+  /** Set on a Mitra voucher: who it is for (empty means every Mitra) and what max_uses counts. */
+  partner?: PartnerVoucherInfo;
+}
+
+/** The partner_voucher object of the promo admin API. */
+export interface PartnerVoucherInput {
+  enabled: boolean;
+  ids?: string[];
+  quota_unit?: PartnerQuotaUnit;
+  min_students?: number;
 }
 
 export interface AdminCreatePromoCodeInput {
@@ -417,6 +429,7 @@ export interface AdminCreatePromoCodeInput {
   expires_at?: string;
   is_public?: boolean;
   affiliator_only?: boolean;
+  partner_voucher?: PartnerVoucherInput;
 }
 
 export interface AdminUpdatePromoCodeInput {
@@ -424,6 +437,8 @@ export interface AdminUpdatePromoCodeInput {
   expires_at?: string;
   is_public?: boolean;
   affiliator_only?: boolean;
+  /** Left out, the Mitra voucher setting stays as it is. */
+  partner_voucher?: PartnerVoucherInput;
 }
 
 // GET /promo-codes/active wire shape (FR-11) — deliberately omits id,
@@ -1759,9 +1774,17 @@ export interface AffiliateAdjustmentPage {
 
 // Affiliate admin (super_admin) — mirrors the admin handler/service JSON.
 
+export interface AffiliatorPrograms {
+  /** Absent means a plain Affiliator account. */
+  affiliate?: boolean;
+  /** Present for a Mitra account. */
+  partner?: { school_ids: string[] };
+}
+
 export interface AffiliateAdminRow {
   id: string;
   code: string;
+  programs?: AffiliatorPrograms;
   status: string;
   rejection_reason: string | null;
   level: string;
@@ -1804,18 +1827,18 @@ export interface AffiliateAdminPayoutPage {
   per_page?: number;
 }
 
+/** Required settings are null until an admin sets them; the program has no built-in defaults. */
 export interface AffiliateSettings {
   id: number;
-  cookie_days: number;
-  binding_months: number;
+  cookie_days: number | null;
+  binding_months: number | null;
   min_extend_amount: number;
-  digital_wait_days: number;
-  physical_wait_days: number;
-  min_payout: number;
+  digital_wait_days: number | null;
+  physical_wait_days: number | null;
+  min_payout: number | null;
   payout_day_of_month: number | null;
   launch_date: string | null;
-  eval_day: number;
-  daily_registration_cap: number | null;
+  eval_day: number | null;
   updated_at: string;
 }
 
@@ -1842,6 +1865,10 @@ export interface AffiliateSettingsView {
   settings: AffiliateSettings;
   levels: AffiliateLevelSettings[];
   program_enabled: boolean;
+  /** True while no level has a commission rule: switching on creates no commission. */
+  commission_unset: boolean;
+  /** Required settings still empty; the program cannot be switched on until this is empty. */
+  missing: string[];
 }
 
 export type AffiliateSettingsInput = Omit<AffiliateSettings, "id" | "updated_at"> & {
@@ -1915,6 +1942,8 @@ export interface AffiliateCreateInput {
   email: string;
   phone: string;
   password?: string;
+  /** "affiliate" and/or "partner"; empty means "affiliate". */
+  programs?: ("affiliate" | "partner")[];
 }
 
 export interface AffiliateCreated {
@@ -1931,4 +1960,183 @@ export interface AffiliateBulkResult {
   email: string;
   created?: AffiliateCreated;
   error?: string;
+}
+
+// Program membership (Affiliator and Mitra) of an affiliator account.
+
+export type ProgramState = "not_enrolled" | "pending" | "rejected" | "active";
+
+export interface AffiliatorProgramStates {
+  affiliate: ProgramState;
+  partner: ProgramState;
+  /** False for a suspended account: readable in every program, not writable. */
+  account_active: boolean;
+  rejection_reason?: string;
+  partner_school_ids?: string[];
+}
+
+// Mitra (partner) program — mirrors the handler/service JSON.
+
+export interface PartnerStudent {
+  id: string;
+  name: string;
+  username: string | null;
+  school_name: string | null;
+  grade: number | null;
+  jenjang: string;
+  status: string;
+  /** False until the student replaces the temporary password. */
+  activated: boolean;
+  registered_by_me: boolean;
+  created_at: string;
+}
+
+export interface PartnerStudentPage {
+  data: PartnerStudent[];
+  next_cursor: string;
+  /** "no_schools" when the list is empty because nothing is assigned yet. */
+  hint?: string;
+}
+
+export interface PartnerStudentRegistration {
+  id: string;
+  name: string;
+  username: string;
+  temp_password?: string;
+}
+
+export interface PartnerCredentials {
+  username: string;
+  temp_password: string;
+}
+
+export interface PartnerProduct {
+  id: string;
+  type: "exam" | "course";
+  name: string;
+  price: number;
+}
+
+export type PartnerQuotaUnit = "order" | "student";
+
+export interface PartnerVoucherInfo {
+  ids: string[];
+  quota_unit: PartnerQuotaUnit;
+  min_students?: number;
+}
+
+export interface PartnerVoucher {
+  id: string;
+  code: string;
+  discount_percent: number | null;
+  discount_amount: number | null;
+  max_discount_amount: number | null;
+  min_order_amount: number | null;
+  max_uses: number | null;
+  used_count: number;
+  expires_at: string | null;
+  partner?: PartnerVoucherInfo;
+}
+
+export interface PartnerReportRow {
+  order_id: string;
+  created_at: string;
+  status: string;
+  partner_id: string;
+  partner_name: string;
+  products: string;
+  seats: number;
+  students: string;
+  student_list: string[];
+  promo_code: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+}
+
+export interface PartnerReportPage {
+  data: PartnerReportRow[] | null;
+  page: number;
+  per_page: number;
+  total: number;
+  summary: { orders: number; paid_orders: number; seats: number; paid_total: number; paid_discount: number };
+}
+
+export interface PartnerSchoolPage {
+  data: PartnerSchool[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface PartnerStudentPageNumbered {
+  data: PartnerStudent[];
+  page: number;
+  per_page: number;
+  total: number;
+  hint?: string;
+}
+
+export interface PartnerSchool {
+  id: string;
+  name: string;
+  code: string;
+  npsn: string | null;
+  status: string;
+}
+
+export interface PartnerOrderStudent {
+  id: string;
+  name: string;
+  school_name: string | null;
+}
+
+export interface PartnerOrderPreview {
+  net_new_count: number;
+  excluded?: { student_id: string; name: string; reason: string }[];
+  students: PartnerOrderStudent[];
+  unit_price: number;
+  subtotal: number;
+  discount: number;
+  total: number;
+  promo_code?: string;
+}
+
+export interface PartnerOrder {
+  id: string;
+  status: OrderStatus;
+  subtotal: number;
+  discount: number;
+  total: number;
+  created_at: string;
+  items: { product_id: string; name: string; qty: number; unit_price: number }[];
+  students?: PartnerOrderStudent[];
+  promo_code?: string;
+}
+
+export interface PartnerOrderPage {
+  data: PartnerOrder[];
+  page: number;
+  per_page: number;
+  total: number;
+}
+
+export interface PartnerDashboard {
+  students_registered: number;
+  orders_paid: number;
+  orders_unpaid: number;
+  vouchers_available: number;
+  products_open: number;
+}
+
+export interface PartnerMe {
+  states: AffiliatorProgramStates;
+  program_enabled: boolean;
+}
+
+export type PartnerAccessScope = "none" | "all" | "selected";
+
+export interface PartnerAccess {
+  scope: PartnerAccessScope;
+  ids: string[];
 }

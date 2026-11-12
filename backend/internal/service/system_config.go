@@ -52,6 +52,7 @@ var configKeyCatalog = map[string]configKeyDef{
 	"biteship_api_key":               {group: "shipping", valueType: "string", secret: true},
 	"biteship_webhook_secret":        {group: "shipping", valueType: "string", secret: true},
 	"affiliate_enabled":              {group: "app", valueType: "bool"},
+	"partner_enabled":                {group: "app", valueType: "bool"},
 }
 
 // TODO: uncertain — service codes mapped from dashboard names via Biteship docs, reconcile with GET /v1/couriers before prod
@@ -322,6 +323,16 @@ func (s *Service) UpdateSystemConfig(ctx context.Context, actorID string, values
 	before, err := s.GetSystemConfig(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if values["affiliate_enabled"] == "true" && before["affiliate_enabled"] != "true" {
+		settings, err := s.LoadAffiliateSettings(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if missing := affiliateMissingSettings(settings); len(missing) > 0 {
+			return nil, &AffiliateSettingsIncompleteError{Missing: missing}
+		}
 	}
 
 	processed, changedKeys, err := processConfigValues(values, s.cfg.ConfigEncryptionKey)

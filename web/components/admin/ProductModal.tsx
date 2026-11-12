@@ -16,8 +16,10 @@ import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { usePresignUpload } from "@/lib/hooks/students";
+import { toast } from "sonner";
 import { ApiError, fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
+import { PartnerAccessSection, usePartnerAccessDraft } from "@/components/admin/PartnerAccessSection";
 import type { Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { useAdminProduct, useUpdateProductRelations } from "@/lib/hooks/admin-products";
@@ -184,6 +186,27 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
     (isEdit || !showCourses || courseIds.length > 0) &&
     (isEdit || !showExams || examIds.length > 0);
 
+  const canEditAccess = isEdit && Boolean(product) && (product?.type === "exam" || product?.type === "course") && hasCapability(role, "affiliates:*");
+  const accessDraft = usePartnerAccessDraft(canEditAccess ? (product?.id ?? null) : null);
+
+  // The Mitra access has its own endpoint; it is saved first so a refused access
+  // stops the whole save instead of leaving the form half applied.
+  async function saveAccessThen(send: () => void) {
+    if (canEditAccess && accessDraft.dirty) {
+      if (!accessDraft.valid) {
+        toast.error("Pilih minimal satu Mitra untuk akses Mitra terpilih.");
+        return;
+      }
+      try {
+        await accessDraft.save();
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.message : "Gagal menyimpan akses Mitra");
+        return;
+      }
+    }
+    send();
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || isPending || editingRelations || relations.isPending) return;
@@ -207,7 +230,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
       };
-      onSubmit(input);
+      void saveAccessThen(() => onSubmit(input));
       return;
     }
 
@@ -224,7 +247,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
       ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
     };
-    onSubmit(input);
+    void saveAccessThen(() => onSubmit(input));
   }
 
   const readOnlyRelations = isEdit && !editingRelations;
@@ -605,6 +628,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                 </div>
               </div>
             </Section>
+            {canEditAccess && <PartnerAccessSection draft={accessDraft} disabled={isPending} />}
           </div>
 
           <DialogFooter className="shrink-0 border-t px-6 py-4">

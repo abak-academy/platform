@@ -42,6 +42,7 @@ func (h *Handler) RegisterAffiliator(c echo.Context) error {
 		Name         string `json:"name"`
 		Phone        string `json:"phone"`
 		TermsVersion string `json:"terms_version"`
+		Program      string `json:"program"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -49,7 +50,7 @@ func (h *Handler) RegisterAffiliator(c echo.Context) error {
 	if req.Email == "" || req.Password == "" || req.Name == "" || req.Phone == "" || req.TermsVersion == "" {
 		return badRequest(c, "email, password, name, phone and terms_version are required")
 	}
-	chall, err := h.svc.RegisterAffiliator(c.Request().Context(), req.Email, req.Password, req.Name, req.Phone, req.TermsVersion, c.RealIP())
+	chall, err := h.svc.RegisterAffiliator(c.Request().Context(), req.Email, req.Password, req.Name, req.Phone, req.TermsVersion, req.Program, c.RealIP())
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -301,7 +302,7 @@ func (h *Handler) Me(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{
+	payload := map[string]any{
 		"id":                 user.ID,
 		"email":              derefStr(user.Email),
 		"username":           derefStr(user.Username),
@@ -312,7 +313,15 @@ func (h *Handler) Me(c echo.Context) error {
 		"status":             user.Status,
 		"photo_url":          derefStr(user.PhotoURL),
 		"password_temporary": user.PasswordTemporary,
-	})
+	}
+	if user.Role == service.RoleAffiliator {
+		states, err := h.svc.AffiliatorProgramStates(c.Request().Context(), claims.Sub)
+		if err != nil {
+			return mapServiceError(c, err)
+		}
+		payload["affiliator_programs"] = states
+	}
+	return c.JSON(http.StatusOK, payload)
 }
 
 func userPayload(user *model.User) map[string]any {

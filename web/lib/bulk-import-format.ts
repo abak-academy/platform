@@ -23,6 +23,14 @@ export const SUPER_ADMIN_STUDENT_TEMPLATE_ROWS = [
   "Siti Aminah,,YAYASANBIAN,SMA,,,,,,,,,,,",
 ];
 
+export const PARTNER_STUDENT_TEMPLATE_HEADER =
+  "name,school_npsn,school_code,jenjang,email,dob,gender,grade,target_exam,alamat_domisili,provinsi,kota,kecamatan,kode_pos";
+
+export const PARTNER_STUDENT_TEMPLATE_ROWS = [
+  'Budi Santoso,20100001,,SMA,budi@example.com,2008-05-14,male,11,UTBK,"Jl. Melati No. 3, RT 04",JAWA BARAT,KOTA BANDUNG,COBLONG,40132',
+  "Siti Aminah,,,SMA,,,,,,,,,,",
+];
+
 export const SCHOOL_TEMPLATE_HEADER = "name,code,npsn,school_types,alamat,provinsi,kota";
 
 export const SCHOOL_TEMPLATE_ROWS = [
@@ -56,6 +64,13 @@ export const SUPER_ADMIN_STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
   { column: "school_code", required: false, ruleKey: "bulk_format_student_school_code", example: "YAYASANBIAN" },
   ...STUDENT_BULK_FIELDS.slice(1),
   { column: "password", required: false, ruleKey: "bulk_format_student_password", example: "" },
+];
+
+export const PARTNER_STUDENT_BULK_FIELDS: BulkFieldSpec[] = [
+  STUDENT_BULK_FIELDS[0],
+  { column: "school_npsn", required: false, ruleKey: "bulk_format_student_school_npsn_partner", example: "20100001" },
+  { column: "school_code", required: false, ruleKey: "bulk_format_student_school_code_partner", example: "YAYASANBIAN" },
+  ...STUDENT_BULK_FIELDS.slice(1),
 ];
 
 export const SCHOOL_BULK_FIELDS: BulkFieldSpec[] = [
@@ -103,9 +118,17 @@ export const AFFILIATOR_GUIDE_PITFALL_KEYS = [
   "admin_aff_add_pitfall_max",
 ] as const satisfies readonly I18nKey[];
 
-export function buildStudentTemplateCSV(includePassword = false): string {
-  const header = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_HEADER : STUDENT_TEMPLATE_HEADER;
-  const rows = includePassword ? SUPER_ADMIN_STUDENT_TEMPLATE_ROWS : STUDENT_TEMPLATE_ROWS;
+export function buildStudentTemplateCSV(includePassword = false, partner = false): string {
+  const header = partner
+    ? PARTNER_STUDENT_TEMPLATE_HEADER
+    : includePassword
+      ? SUPER_ADMIN_STUDENT_TEMPLATE_HEADER
+      : STUDENT_TEMPLATE_HEADER;
+  const rows = partner
+    ? PARTNER_STUDENT_TEMPLATE_ROWS
+    : includePassword
+      ? SUPER_ADMIN_STUDENT_TEMPLATE_ROWS
+      : STUDENT_TEMPLATE_ROWS;
   return `${header}\n${rows.join("\n")}\n`;
 }
 
@@ -124,8 +147,12 @@ function formatFieldGuide(fields: BulkFieldSpec[], t: Translate): string {
     .join("\n\n");
 }
 
-export function buildStudentGuideText(t: Translate, includePassword = false): string {
-  const fields = includePassword ? SUPER_ADMIN_STUDENT_BULK_FIELDS : STUDENT_BULK_FIELDS;
+export function buildStudentGuideText(t: Translate, includePassword = false, partner = false): string {
+  const fields = partner
+    ? PARTNER_STUDENT_BULK_FIELDS
+    : includePassword
+      ? SUPER_ADMIN_STUDENT_BULK_FIELDS
+      : STUDENT_BULK_FIELDS;
   return [
     t("bulk_format_student_guide_title"),
     "",

@@ -1,11 +1,11 @@
 ---
 title: Program Affiliator (affiliate klasik) — Fase 1
-issue: none (BRD internal)
+issue: none
 status: accepted
 created: 2026-10-25
-updated: 2026-10-30
+updated: 2026-11-10
 sources:
-  - docs/specs/affiliate-program-brd.md (v0.4)
+  - docs/specs/partner-program.md
   - docs/standards/go-patterns.md
   - docs/standards/go-style-and-tests.md
   - backend/internal/service/store.go (outbox OrderPaid, refund, complete)
@@ -20,29 +20,29 @@ sources:
 
 Akuisisi siswa lewat rekomendasi mulut-ke-mulut tidak terukur dan tidak bisa diberi imbalan. Outcome Fase 1: individu yang disetujui (affiliator) membawa calon siswa lewat link/kode referral, siswa terikat 3 bulan (dapat diperpanjang), setiap pembelian lunas menghasilkan komisi dengan masa tunggu refund, komisi dan semua mutasi saldo masuk satu buku transaksi yang dapat direkonsiliasi, dicairkan manual oleh admin, dan level (Bronze/Silver/Gold) dievaluasi kuartalan. Semua angka aturan diatur super_admin lewat halaman pengaturan.
 
-Aturan bisnis lengkap ada di BRD v0.4 (`docs/specs/affiliate-program-brd.md`: BR-REG, BR-ATR, BR-KOM, BR-LVL, BR-PCR, BR-PLG, BR-ADJ, BR-PRV, BR-NTF). Dokumen ini hanya menuliskan kontrak teknis; tidak menyalin ulang BRD.
+Dokumen ini memegang aturan bisnis dan kontrak teknis; tidak ada BRD terpisah (BRD v0.4 dihapus, riwayatnya ada di git). Program Mitra yang berjalan berdampingan dengan program ini ada di `docs/specs/partner-program.md`.
 
 ## Agreed behavior
 
 ### Alur utama
 
 1. Calon affiliator mendaftar mandiri (form khusus, bukan form siswa) → akun `role=affiliator` aktif + profil `pending_approval`; super_admin setujui (→ kode referral dibuat) atau tolak dengan alasan.
-2. Atribusi siswa: klik `/r/{code}` menyimpan cookie `aff_ref` (hari sesuai pengaturan, default 30); kode manual opsional di form register siswa; kode opsional di checkout. Prioritas: **kode manual > cookie > tidak terikat**; klik terakhir menang di antara beberapa klik. Server tidak mencatat klik.
-3. Ikatan dibuat saat akun siswa aktif (selesai OTP) atau saat order ber-kode lunas (checkout). Satu siswa hanya satu binding aktif; pembelian lunas ≥ `min_extend_amount` (default 0 = semua pembelian) memperpanjang masa ikatan dari tanggal bayar.
+2. Atribusi siswa: klik `/r/{code}` menyimpan cookie `aff_ref` (hari sesuai pengaturan wajib `cookie_days`); kode manual opsional di form register siswa; kode opsional di checkout. Prioritas: **kode manual > cookie > tidak terikat**; klik terakhir menang di antara beberapa klik. Server tidak mencatat klik.
+3. Ikatan dibuat saat akun siswa aktif (selesai OTP) atau saat order ber-kode lunas (checkout). Satu siswa hanya satu binding aktif; pembelian lunas ≥ `min_extend_amount` (0 = semua pembelian) memperpanjang masa ikatan dari tanggal bayar.
 4. Komisi per item order lunas: transaksi `commission` berstatus `pending` (belum efektif, belum masuk saldo) → (job) `available` dengan `effective_at` terisi; refund penuh membatalkan `pending` atau menulis transaksi `refund_deduction` untuk komisi yang sudah `available`.
 5. Pencairan: affiliator ajukan (≥ min payout, status program `active`) → transaksi `payout` negatif langsung efektif → admin ekspor daftar → transfer manual → tandai `paid` dengan bukti, atau tolak dengan alasan (transaksi `payout_reversal` mengembalikan saldo).
 6. Level dievaluasi kuartal kalender WIB pada hari ke-8 bulan pertama kuartal baru: naik boleh lompat, bertahan lewat ambang hold, turun satu tingkat setelah 2 kuartal gagal; admin bisa mengubah level manual (tidak ada kunci level).
 
-### Keputusan dari diskusi (perubahan atas BRD v0.2/v0.3)
+### Keputusan dari diskusi
 
 | Keputusan | Isi |
 |---|---|
 | Role pengelola | Hanya `super_admin` mengelola affiliator (persetujuan, pengaturan, payout, status akun, penyesuaian). Repo punya 5 role (`student`, `admin_school`, `admin_exam`, `admin_store`, `super_admin`) — role lain tidak mendapat akses fitur ini |
-| Order manual | Dihapus dari lingkup (BR-KOM-07/FR-KOM-06 v0.3). Pembayaran offline → penyesuaian manual |
+| Order manual | Dihapus dari lingkup. Pembayaran offline → penyesuaian manual |
 | Persetujuan kedua | Tidak dibangun Fase 1 (satu akun super_admin). Ambang, kolom, dan alur persetujuan ditambahkan bersama akun admin kedua |
 | Uang | Mengikuti konvensi repo: `NUMERIC(12,2)` di DB, `float64` di Go. Nominal komisi dibulatkan ke rupiah utuh (floor) saat dibuat |
 | Barang diterima | `completed_at` order (admin Complete). Event `delivered` kurir hanya fallback tampilan |
-| Masa tunggu | Digital default **7 hari** setelah bayar; fisik default **14 hari** setelah `completed_at` (satu parameter `physical_wait_days`). Diatur admin, 0–90; 0 = langsung available |
+| Masa tunggu | Digital `digital_wait_days` setelah bayar; fisik `physical_wait_days` setelah `completed_at`. Pengaturan wajib tanpa nilai bawaan, diatur admin, 0–90; 0 = langsung available |
 | Checkout | Hanya kode referral (bukan link) |
 | Nama siswa untuk affiliator | Nama pertama + inisial belakang; tanpa email/HP/alamat/nilai |
 | Broadcast | Grup penerima baru `affiliators` ditambahkan ke announcement yang ada (email via worker) |
@@ -50,9 +50,9 @@ Aturan bisnis lengkap ada di BRD v0.4 (`docs/specs/affiliate-program-brd.md`: BR
 | Aturan komisi | Setiap aturan berupa `{type: percent|fixed, value}`. `percent` 0–100 maks 2 desimal; `fixed` rupiah utuh **per unit** (qty). Komisi per item dibatasi maksimal `base_amount` item |
 | Pencairan | Manual penuh di luar sistem (transfer bank oleh admin, tandai Dibayar + bukti). `payout_day_of_month` hanya informasi untuk affiliator, tidak membatasi pengajuan. Satu payout `requested`/`processing` per affiliator, dijaga DB |
 | Status akun | Penangguhan tanpa batas waktu sampai admin mengaktifkan kembali. Pengajuan penarikan ditolak bila status program bukan `active`. Tidak ada pembekuan saldo dan tidak ada kunci level |
-| Batas registrasi | `daily_registration_cap` membatasi pendaftar **affiliator** baru per hari WIB (NULL = tanpa batas). Pendaftaran siswa tanpa batas |
+| Batas registrasi | Tidak ada. Batas harian pendaftar dihapus; kolom `daily_registration_cap` masih ada tetapi tidak dibaca (dihapus di rilis berikutnya) |
 | Durasi ikatan | `binding_months` bisa berbeda per level (kosong = ikut global) |
-| Ambang level | `rise_threshold` (naik) dan `hold_threshold` (bertahan) per level di `affiliate_settings.levels`; kosong → nilai bawaan kode (Silver 5.000.000, Gold 15.000.000 untuk naik; tanpa batas untuk bertahan) |
+| Ambang level | `rise_threshold` (naik) dan `hold_threshold` (bertahan) per level di `affiliate_settings.levels`; kosong → tidak ada kenaikan level dan tanpa batas untuk bertahan (tidak ada nilai bawaan kode) |
 | Ditunda dari Fase 1 | Sistem pelanggaran dan banding, penandaan kasus mencurigakan, statistik klik link, riwayat level terstruktur (perubahan manual di audit log), pembekuan saldo, kunci level, skors berjangka |
 | Job | Semua job idempoten dan aman di-rerun. Scope rerun: `bindings`, `commissions`, `levels` |
 
@@ -74,7 +74,7 @@ Aturan bisnis lengkap ada di BRD v0.4 (`docs/specs/affiliate-program-brd.md`: BR
 - Saat flag mati: tidak ada binding baru, komisi baru, atau job harian; binding yang ada tetap tersimpan dan jamnya (`expires_at`) terus berjalan. Pembelian yang dibayar saat flag mati tidak pernah menghasilkan komisi: saat flag dinyalakan, `affiliate_enabled_since` dicatat di `system_config` dan rekonsiliasi hanya menghitung order yang dibayar sejak saat itu. Refund tetap menyelesaikan komisi terkait (batal atau potongan) walau flag mati.
 - Saat flag mati portal affiliator menjadi hanya-baca: login dan semua data (`/affiliates/me*`) tetap terbaca, `program_enabled=false` di profil, setiap menu menampilkan keterangan bahwa program sedang off; mengubah rekening (`PATCH /affiliates/me/bank`) dan mengajukan penarikan (`POST /affiliates/me/payouts`) ditolak 403 `affiliate_program_off`; daftar promo kosong. Tautan dan halaman daftar affiliator disembunyikan lewat `GET /affiliates/public/status`.
 - Saklar program ada di `/admin/affiliates/settings` (kartu Status program, dengan konfirmasi): `PUT /admin/affiliate-settings/program` `{enabled}` di bawah izin `affiliates:*`; `GET /admin/affiliate-settings` membawa `program_enabled`. Penyalaan dicatat lewat `affiliate_enabled_since`.
-- Default flag per lingkungan: `affiliate_enabled` mati di staging dan produksi sampai dinyalakan manual di System Config. Hanya lokal (`APP_ENV=dev`) menyala otomatis saat API start, bersama `launch_date` lampau; penyemaian itu hanya menyisipkan bila belum ada, jadi pilihan manual (termasuk mematikannya) tidak ditimpa. Aturan komisi dan ambang level memakai nilai bawaan kode (`affiliateDefaultCommissionRule` dan ambang naik default) sampai admin mengisi `levels`, jadi cek angka itu sebelum flag produksi dinyalakan.
+- Default flag per lingkungan: `affiliate_enabled` mati di staging dan produksi sampai dinyalakan manual di System Config. Hanya lokal (`APP_ENV=dev`) menyala otomatis saat API start, bersama `launch_date` lampau; penyemaian itu hanya menyisipkan bila belum ada, jadi pilihan manual (termasuk mematikannya) tidak ditimpa. Tidak ada nilai bawaan kode untuk komisi dan ambang level: sebelum admin mengisinya, komisi 0 dan tidak ada kenaikan level. Enam pengaturan wajib (`cookie_days`, `binding_months`, `digital_wait_days`, `physical_wait_days`, `min_payout`, `eval_day`) mulai kosong; `UpdateSystemConfig` menolak `affiliate_enabled` false→true selama ada yang kosong (`affiliate_settings_incomplete` dengan daftar `missing`), dan menolak mengosongkannya saat program menyala. Detail program Mitra: `docs/specs/partner-program.md`.
 - Nama field JSON API tidak berubah untuk fitur yang dipertahankan; `id` affiliator di JSON berisi `user_id`.
 
 ## Technical contract
@@ -105,7 +105,7 @@ Kolom uang `NUMERIC(12,2)`. Semua id `UUID`. Empat tabel baru dan dua kolom di t
 | `affiliators` (9 kolom) | `user_id` PK → `users`; `referral_code` TEXT UNIQUE, NULL sampai disetujui (8 char A-Z0-9 tanpa O/0/I/1); `program_status` `pending_approval|active|suspended|deactivated|rejected`; `rejection_reason`; `level` `bronze|silver|gold` default bronze; `missed_quarters` int; `last_evaluated_quarter` TEXT ('2026-Q4', penjaga idempotensi evaluasi); `terms_version`; `bank_account` JSONB `{bank_name, account_number, account_holder}`. Waktu daftar = `users.created_at` |
 | `affiliate_bindings` (9 kolom) | `id`, `affiliator_id` FK → `affiliators.user_id`, `student_id` FK users; `status` `active|ended`; `source` `link|manual_code|checkout_code`; `started_at`, `expires_at` (tanggal kedaluwarsa, dimajukan saat perpanjang), `created_at`, `updated_at`. Partial UNIQUE `(student_id) WHERE status='active'`; index `(affiliator_id, status)` |
 | `affiliate_transactions` (20 kolom) | Buku transaksi tunggal, lihat bagian berikut |
-| `affiliate_settings` (13 kolom, singleton) | `id=1`, `cookie_days=30`, `binding_months=3`, `min_extend_amount=0`, `digital_wait_days=7`, `physical_wait_days=14`, `min_payout=100000`, `payout_day_of_month` (informasi saja), `launch_date`, `eval_day=8`, `daily_registration_cap` NULL, `levels` JSONB, `updated_at`. Tanpa seed: baris yang hilang atau nilai yang kosong memakai bawaan kode |
+| `affiliate_settings` (13 kolom, singleton) | `id=1`, `cookie_days`, `binding_months`, `digital_wait_days`, `physical_wait_days`, `min_payout`, `eval_day` (enam kolom wajib, NULL tanpa default), `min_extend_amount=0`, `payout_day_of_month` (informasi saja), `launch_date`, `levels` JSONB, `updated_at`; `daily_registration_cap` tidak dibaca lagi. Tanpa seed: baris yang hilang berarti semua pengaturan wajib kosong dan program tidak bisa dinyalakan; hanya `APP_ENV=dev` menyemai nilai awal |
 
 `levels` JSONB memuat per level (`bronze|silver|gold`): `commission_rule` `{exam,course,book,merchandise,medal}` masing-masing `{type: percent|fixed, value}`, `binding_months`, `digital_wait_days`, `physical_wait_days`, `min_payout`, `payout_day_of_month`, `rise_threshold`, `hold_threshold`. Nilai kosong mengikuti global (atau bawaan kode untuk aturan komisi dan ambang). Bronze tidak punya ambang naik.
 
@@ -145,7 +145,7 @@ Aturan integritas (CHECK, index, trigger `affiliate_transactions_guard()`):
 - Worker `handleOrderPaid` (worker/outbox.go) diperluas: setelah fulfilment akses, bila flag on dan binding siswa aktif → untuk tiap item kategori `exam|course|book|merchandise|medal`: buat transaksi komisi `ON CONFLICT (order_item_id) DO NOTHING` dengan snapshot: `base_amount` = alokasi net per item, aturan (`detail.rule`) = override produk > level setting > bawaan, `amount` = `percent`: floor(base × value/100); `fixed`: value × quantity; lalu dibatasi `min(amount, base_amount)`; `detail.level`, `release_at` = `paid_at + digital_wait_days` (digital) atau NULL (fisik, menunggu `completed_at`; setelah itu `completed_at + physical_wait_days`).
 - `AdminRefundOrder` diperluas (tx sama): komisi `pending` order itu → `cancelled`; komisi `available` → `cancelled` dan satu transaksi `refund_deduction` negatif (refund platform hanya penuh → deduction penuh per item).
 - Job harian worker (loop ticker, guard day-key WIB `Asia/Jakarta`): (a) binding `expires_at < now` → `ended`; (b) rekonsiliasi komisi yang hilang (jendela 14 hari); (c) komisi fisik `pending` dengan `completed_at` terisi → hitung `release_at`; (d) komisi `pending` dengan `release_at <= now` → `available` + `effective_at`.
-- Job kuartalan: dieksekusi dari loop harian bila hari evaluasi (setting) kuartal baru tercapai; evaluasi BR-LVL-02..07 memakai `users.created_at` untuk kelayakan dan `last_evaluated_quarter` sebagai penjaga per affiliator (tidak menaikkan `missed_quarters` dua kali). Rerun hanya untuk kuartal terakhir yang jatuh tempo.
+- Job kuartalan: dieksekusi dari loop harian bila hari evaluasi (setting) kuartal baru tercapai; evaluasi level memakai `users.created_at` untuk kelayakan dan `last_evaluated_quarter` sebagai penjaga per affiliator (tidak menaikkan `missed_quarters` dua kali). Rerun hanya untuk kuartal terakhir yang jatuh tempo.
 - Rerun admin: `POST /admin/affiliate-jobs/run {scope: bindings|commissions|levels, quarter?}`; semua scope idempoten.
 - Waktu job: ticker di worker (pola `exam_expiry.go`) dengan guard day-key WIB; jam tidak diatur dari UI, admin hanya mengatur `eval_day` dan rerun manual.
 
@@ -156,7 +156,7 @@ Aturan integritas (CHECK, index, trigger `affiliate_transactions_guard()`):
 - `POST /auth/otp/verify` menambah field opsional `referral_code` (manual) dan `referral_code_cookie`: saat akun jadi aktif, service resolusi manual > cookie; validasi kode ada & affiliator `active`; tolak self-purchase (email/HP identik dengan affiliator) → tidak dibinding; tolak akun pre-launch; buat binding `source=manual_code|link` dalam tx aktivasi.
 - `GET /api/v1/affiliates/public/validate?code=` untuk UX register/checkout dan halaman `/r/{code}` (tanpa JWT): mengembalikan `valid`, `affiliator_name`, dan `cookie_days` (umur cookie dari pengaturan, dikirim selama fitur aktif agar kode yang belum aktif pun mendapat umur cookie yang benar).
 - Checkout: `POST /orders/:id/checkout` body opsional `affiliate_code` — hanya diproses bila pembeli tak terikat, `created_at ≥ launch_date`, kode milik affiliator aktif, bukan dirinya sendiri; binding dibuat di `markOrderPaidTx` (`source=checkout_code`).
-- Registrasi affiliator: `POST /auth/affiliators/register` (email, HP, nama, terms_version) — mirror alur OTP register siswa; tolak dengan error khusus bila `daily_registration_cap` hari ini (WIB) sudah tercapai (hitung dari `users` dengan `role='affiliator'`); tolak email/username yang sudah dipakai akun `admin_school` (BR-REG-03); buat user `role=affiliator` + profil `pending_approval`.
+- Registrasi affiliator: `POST /auth/affiliators/register` (email, HP, nama, terms_version) — mirror alur OTP register siswa; tanpa batas harian; tolak email/username yang sudah dipakai akun `admin_school`; buat user `role=affiliator` + profil `pending_approval`.
 - Kode referral dibuat saat approval (server-generated, coba lagi bila collision).
 
 ### Endpoint
@@ -173,6 +173,7 @@ GET    /api/v1/affiliates/me/payouts             riwayat penarikan
 POST   /api/v1/affiliates/me/payouts             ajukan (tolak bila status program bukan active, di bawah min, atau sudah ada payout berjalan)
 GET    /api/v1/affiliates/me/adjustments         riwayat penyesuaian + alasan
 GET    /api/v1/affiliates/me/stats               ringkasan siswa, omzet, komisi per periode
+GET    /api/v1/affiliates/me/promos              promo `affiliator_only` aktif untuk dibagikan ke siswa
 ```
 
 Super admin (grup `/admin`, `RBACMiddleware("affiliates:*")`):
@@ -205,17 +206,18 @@ Announcement: enum grup penerima + `affiliators`; `ListActiveUserEmails` menanga
 |---|---|
 | `app/r/[code]/page.tsx` | Publik: set cookie `aff_ref`, redirect `/` |
 | `(auth)/register` | Kolom kode referral opsional (prefill dari cookie), kirim `referral_code` + `referral_code_cookie` di register dan verify |
-| `(auth)/affiliate-register` | Form pendaftaran affiliator + Ketentuan Program (FR-REG-01/05) |
-| `(student)` checkout | Input kode opsional (tampil bila memenuhi BR-ATR-05; validasi via endpoint publik) |
-| `(affiliate)` portal | Ringkasan, kode/link, siswa binaan, komisi (filter), saldo & penarikan (mutasi + payout), akun/rekening. Tanpa halaman sanksi dan banding |
-| `(admin)/admin/affiliates` | Daftar+persetujuan; detail bertab (profil, siswa, komisi, saldo); payout antrean+export; settings (global, per level termasuk ambang naik/bertahan, override produk, job); reports. Tanpa halaman flags dan appeals |
+| `(auth)/affiliate-register` | Form pendaftaran dengan pilihan program (Affiliator atau Mitra) + Ketentuan Program |
+| `(student)` checkout | Input kode opsional (validasi via endpoint publik) |
+| `(affiliate)` portal | Grup Affiliator di menu: Ringkasan (`/affiliate/overview`; `/affiliate` adalah landing), kode/link, siswa binaan, komisi (filter), Voucher siswa (`/affiliate/vouchers`), saldo & penarikan (mutasi + payout), penyesuaian, akun/rekening. Menu menyembunyikan grup program yang tidak diikuti akun (lihat `partner-program.md`). Tanpa halaman sanksi dan banding |
+| `/affiliate/vouchers` | Tabel promo yang bisa dibagikan ke siswa (`GET /affiliates/me/promos`): kode dengan tombol salin, potongan, maksimal potongan, minimal pembelian, sisa kuota, berlaku sampai. Menggantikan kartu "Promo untuk dibagikan" di Ringkasan |
+| `(admin)/admin/affiliates` | Grup menu "Affiliator/Mitra" (`id`) / "Affiliates/Partners" (`en`); judul dan keterangan daftar, laporan, dan pengaturan menyebut kedua program. Daftar+persetujuan dengan tab program (Semua, Affiliator, Mitra) sejajar dengan Unduh CSV dan Tambah, tanpa sub menu Mitra terpisah; level dan penyesuaian hanya untuk akun Affiliator; detail bertab (profil, siswa, komisi, saldo); payout antrean+export; laporan (tab ringkasan per affiliator, detail order, dan Mitra, lihat `partner-program.md`); settings (global, per level termasuk ambang naik/bertahan, override produk, job); reports. Tanpa halaman flags dan appeals |
 | Settings admin | Tiap baris komisi (global, level, override produk) punya pilihan Persen/Nominal; ambang naik dan bertahan hanya di tab per level; `payout_day_of_month` berlabel informasi |
 | web/lib | `types.ts`, `api.ts`, hooks React Query per page-group; test vitest mengikuti `docs/standards/web-tests.md` |
 
 ### Privasi & keamanan
 
-- Pembatasan affiliator di level query (repo memfilter `affiliator_id` dari JWT `user_id`), bukan hanya UI (BR-PRV-01).
-- Payload siswa binaan tanpa email/HP/alamat/nilai ujian (BR-PRV-02); nama = nama pertama + inisial.
+- Pembatasan affiliator di level query (repo memfilter `affiliator_id` dari JWT `user_id`), bukan hanya UI.
+- Payload siswa binaan tanpa email/HP/alamat/nilai ujian; nama = nama pertama + inisial.
 - Semua aksi admin → `audit_log` lewat `InsertAuditLogMeta` (approval, status, level, adjustment, payout, settings, override produk) termasuk perpindahan status transaksi.
 - Rekening bank hanya di `affiliators.bank_account` dan snapshot `detail.bank_account` payout; tidak ada di `users` dan tidak dikirim di respons profil umum.
 - Rate limit (`LoginRateLimiter` pattern) pada `/affiliates/public/validate` dan `POST /auth/affiliators/register` (NFR-07).
@@ -228,18 +230,18 @@ Announcement: enum grup penerima + `affiliators`; `ListActiveUserEmails` menanga
 | A1 | Register siswa dengan kode manual/cookie menghasilkan binding `active` 3 bulan; manual menang atas cookie; klik lain saat terikat tidak mengubah binding; akun pre-launch tidak terikat | Integration test (Postgres testcontainer) di service binding |
 | A2 | Order lunas → tepat 1 transaksi komisi per item (duplicate `OrderPaid` tetap 1); snapshot rule/level/base tersimpan; perubahan setting setelahnya tidak mengubah komisi lama | Unit + integration test worker; query `count(*)` |
 | A3 | Refund: `pending` → `cancelled` tanpa menyentuh saldo; `available` → `cancelled` + satu `refund_deduction`; `saldo == SUM(amount) WHERE effective_at IS NOT NULL` setiap kasus; refund dua kali tidak menulis dua deduction | Integration test refund path |
-| A4 | Masa tunggu: digital `paid_at + 7d` (setting), fisik `completed_at + physical_wait_days` (default 14d); job transisi `pending→available` dengan `effective_at`; fisik tanpa `completed_at` tetap pending | Unit test job (fake clock) + integration |
-| A5 | Perpanjangan ikatan saat pembelian ≥ `min_extend_amount`; `min_extend_amount=0` default; order gratis tidak memperpanjang | Integration test binding extension |
-| A6 | Evaluasi level kuartalan: naik lompat, bertahan, turun setelah 2 kuartal gagal; rerun idempoten via `last_evaluated_quarter`; ambang naik/bertahan dari `levels` dengan bawaan kode | Unit test evaluator + rerun integration |
+| A4 | Masa tunggu: digital `paid_at + digital_wait_days`, fisik `completed_at + physical_wait_days` (keduanya pengaturan wajib); job transisi `pending→available` dengan `effective_at`; fisik tanpa `completed_at` tetap pending | Unit test job (fake clock) + integration |
+| A5 | Perpanjangan ikatan saat pembelian ≥ `min_extend_amount`; `min_extend_amount=0` berarti semua pembelian memperpanjang; order gratis tidak memperpanjang | Integration test binding extension |
+| A6 | Evaluasi level kuartalan: naik lompat, bertahan, turun setelah 2 kuartal gagal; rerun idempoten via `last_evaluated_quarter`; ambang naik/bertahan dari `levels`; tanpa ambang tidak ada kenaikan | Unit test evaluator + rerun integration |
 | A7 | Payout: tolak di bawah min, saat status program bukan `active`, dan saat sudah ada payout `requested/processing`; reject menulis satu `payout_reversal` dan mengembalikan saldo; mark paid wajib bukti; export CSV | Handler + service test |
 | A8 | Penyesuaian: langsung efektif, alasan wajib, tolak target diri sendiri, audit row tercipta | Service test |
 | A9 | Broadcast `recipients=affiliators` hanya email akun role affiliator dengan program aktif | Service test announcement |
 | A10 | Flag off: atribusi diabaikan, endpoint affiliator 403/404, checkout tanpa kode berjalan normal | Integration test gate |
 | A11 | Affiliator hanya melihat datanya sendiri; payload siswa tanpa PII; nama pertama+inisial | Handler test authz + payload assertion |
 | A12 | Siswa tidak melihat apa pun tentang ikatan (tidak ada endpoint/field baru untuk student) | Review diff + handler test |
-| A13 | Komisi `fixed` = nominal × qty, dibatasi `base_amount`; `percent` floor; override produk > level > bawaan; snapshot type/value tersimpan di `detail.rule` | Unit test kalkulator + integration worker |
+| A13 | Komisi `fixed` = nominal × qty, dibatasi `base_amount`; `percent` floor; override produk > level > global (tanpa aturan sama sekali: `{percent, 0}`); snapshot type/value tersimpan di `detail.rule` | Unit test kalkulator + integration worker |
 | A14 | Rerun tiap scope job (`bindings|commissions|levels`) dua kali menghasilkan state sama (tanpa transaksi ganda, `missed_quarters` tidak bertambah dua kali) | Integration test per scope |
-| A15 | Penarikan ditolak bila status program bukan `active`; registrasi affiliator ditolak saat cap tercapai (hitung dari `users`) | Service + handler test |
+| A15 | Penarikan ditolak bila status program bukan `active`; pendaftaran affiliator tidak dibatasi per hari | Service + handler test |
 | A16 | `binding_months` level dipakai saat ikatan dibuat/diperpanjang; kosong ikut global; ikatan lama tidak berubah | Integration test binding |
 | A17 | Trigger `affiliate_transactions_guard`: `UPDATE amount`/`type`/`affiliator_id`/`parent_id`, `DELETE`, perubahan kedua `effective_at`, dan transisi status yang tidak sah ditolak; satu payout berjalan per affiliator ditegakkan DB | Migration/DB test (testcontainer) |
 | A18 | Saldo pada tanggal T stabil: setelah refund atau penolakan payout, saldo untuk T sebelum peristiwa itu tidak berubah | Integration test rekonsiliasi |
@@ -252,6 +254,6 @@ Strategi verifikasi (mengikuti `.agents/verification.md`): gate penuh backend `e
 
 **Non-goals Fase 1**: order manual; alur persetujuan kedua; pajak; payout otomatis; notifikasi otomatis (broadcast manual saja) termasuk status "Segera Berakhir"; bonus target; multi-level; aturan khusus per affiliator; fitur agen; refund parsial; sistem poin/loyalty; sistem pelanggaran, sanksi bertingkat, dan banding; penandaan kasus mencurigakan; pembekuan saldo; kunci level; skors berjangka; statistik klik link; riwayat level terstruktur.
 
-**Keputusan tertunda (nilai bisnis, tidak menghambat)**: angka komisi per kategori (placeholder), ambang level (placeholder), tanggal peluncuran & jadwal payout (Q-12), biaya transfer (Q-11), retensi data (Q-16), perlakuan saldo affiliator nonaktif permanen (Q-10 — default: saldo tetap tercatat, penarikan hanya untuk status `active`).
+**Keputusan tertunda (nilai bisnis, tidak menghambat)**: angka komisi per kategori (placeholder), ambang level (placeholder), tanggal peluncuran & jadwal payout, biaya transfer, retensi data, perlakuan saldo affiliator nonaktif permanen (saldo tetap tercatat, penarikan hanya untuk status `active`).
 
 **Residual risk**: satu akun super_admin mengelola dana (mitigasi audit log + trigger buku transaksi + rekonsiliasi saldo per tanggal); tanpa deteksi fraud otomatis (hanya penolakan self-purchase saat binding); cookie bisa hilang (kode manual & checkout sebagai cadangan); JSONB `detail` dan `levels` tidak punya CHECK per field (divalidasi service, `detail` komisi dikunci trigger); Playwright belum terbukti tanpa stack lokal.

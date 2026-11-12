@@ -159,7 +159,7 @@ func (r *Repository) ListActiveUserEmails(ctx context.Context, recipients string
 		query += " AND role LIKE 'admin_%'"
 	case "affiliators":
 		// Active affiliator accounts only: the user row alone is not enough.
-		query += " AND role = 'affiliator' AND EXISTS (SELECT 1 FROM affiliators a WHERE a.user_id = users.id AND a.program_status = 'active')"
+		query += " AND role = 'affiliator' AND EXISTS (SELECT 1 FROM affiliators a WHERE a.user_id = users.id AND a.program_status = 'active' AND (a.programs IS NULL OR (a.programs->>'affiliate')::boolean IS NOT FALSE))"
 	case "all":
 		// no additional filter
 	default:

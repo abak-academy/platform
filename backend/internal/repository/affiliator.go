@@ -8,7 +8,7 @@ import (
 
 const (
 	affiliatorColumns = `a.user_id, COALESCE(a.referral_code, ''), a.program_status, a.rejection_reason, a.level,
-		a.missed_quarters, a.last_evaluated_quarter, a.terms_version, a.bank_account, u.created_at`
+		a.missed_quarters, a.last_evaluated_quarter, a.terms_version, a.bank_account, a.programs, u.created_at`
 	affiliatorFrom = `FROM affiliators a JOIN users u ON u.id = a.user_id`
 )
 
@@ -22,16 +22,22 @@ type affiliatorBankAccount struct {
 // affiliatorScan reads the affiliatorColumns list; bank_account arrives as raw
 // JSON and is unpacked by result.
 type affiliatorScan struct {
-	a    model.Affiliator
-	bank []byte
+	a        model.Affiliator
+	bank     []byte
+	programs []byte
 }
 
 func (s *affiliatorScan) dest() []any {
 	return []any{&s.a.ID, &s.a.Code, &s.a.Status, &s.a.RejectionReason, &s.a.Level,
-		&s.a.WarnQuarters, &s.a.LastEvaluatedQuarter, &s.a.TermsVersion, &s.bank, &s.a.CreatedAt}
+		&s.a.WarnQuarters, &s.a.LastEvaluatedQuarter, &s.a.TermsVersion, &s.bank, &s.programs, &s.a.CreatedAt}
 }
 
 func (s *affiliatorScan) result() (model.Affiliator, error) {
+	if len(s.programs) > 0 {
+		if err := json.Unmarshal(s.programs, &s.a.Programs); err != nil {
+			return model.Affiliator{}, err
+		}
+	}
 	if len(s.bank) > 0 {
 		var bank affiliatorBankAccount
 		if err := json.Unmarshal(s.bank, &bank); err != nil {

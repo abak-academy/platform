@@ -35,11 +35,11 @@ function conflictError(reason: string, kind = "course") {
 }
 
 let client: QueryClient;
-function renderCheckout(basePath?: string) {
+function renderCheckout(basePath?: string, invalidateKey?: readonly unknown[]) {
   client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SnapCheckout orderId="order-1" basePath={basePath} />
+      <SnapCheckout orderId="order-1" basePath={basePath} invalidateKey={invalidateKey} />
     </QueryClientProvider>,
   );
 }
@@ -210,6 +210,19 @@ describe("SnapCheckout popup", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Bayar" })).toBeEnabled());
     if (goes) expect(push).toHaveBeenCalledWith("/orders/order-1");
     else expect(push).not.toHaveBeenCalled();
+  });
+
+  it("refreshes the given query key instead of the student orders when payment succeeds", async () => {
+    const snapPay = vi.fn();
+    window.snap = { pay: snapPay, embed: vi.fn() };
+    authFetch.mockResolvedValue({ snap_token: "test-token", payment_url: "https://pay.example/x" });
+    renderCheckout("/partners/me/orders", ["partner", "orders"]);
+    const spy = vi.spyOn(client, "invalidateQueries");
+    await pay();
+    await waitFor(() => expect(snapPay).toHaveBeenCalled());
+    act(() => snapPay.mock.calls[0][1].onSuccess({ transaction_status: "settlement" }));
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ["partner", "orders"] }));
+    expect(spy).not.toHaveBeenCalledWith({ queryKey: ordersKeys.all });
   });
 
   it("explains a failed payment in English without opening a tab", async () => {

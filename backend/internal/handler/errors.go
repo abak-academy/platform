@@ -112,6 +112,32 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "validation_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPromo):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_promo", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerStudentNotAllowed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "student_not_allowed", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerProductNotAllowed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "product_not_allowed", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerProductType):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "partner_product_type", Message: err.Error()}
+	case errors.Is(err, service.ErrPartnerProgramOff):
+		status, apiErr = http.StatusForbidden, APIError{Code: "partner_program_off", Message: err.Error()}
+	case errors.Is(err, service.ErrParticipantAlreadyOwns):
+		status, apiErr = http.StatusConflict, APIError{Code: "participant_already_owns", Message: err.Error()}
+		var ownsErr *service.ParticipantAlreadyOwnsError
+		if errors.As(err, &ownsErr) {
+			apiErr.Details = map[string]any{"students": ownsErr.Students}
+		}
+	case errors.Is(err, service.ErrPromoQuotaInsufficient):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_quota_insufficient", Message: err.Error()}
+		var quotaErr *service.PromoQuotaInsufficientError
+		if errors.As(err, &quotaErr) {
+			apiErr.Details = map[string]any{"remaining": quotaErr.Remaining}
+		}
+	case errors.Is(err, service.ErrPromoMinStudents):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_students", Message: err.Error()}
+		var minErr *service.PromoMinStudentsError
+		if errors.As(err, &minErr) {
+			apiErr.Details = map[string]any{"min": minErr.Min}
+		}
 	case errors.Is(err, service.ErrPromoMinOrder):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "promo_min_order", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidSignature):
@@ -338,8 +364,22 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateInvalidTransition):
 		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
-	case errors.Is(err, service.ErrAffiliateRegistrationCap):
-		status, apiErr = http.StatusTooManyRequests, APIError{Code: "affiliate_registration_cap", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateSettingsIncomplete):
+		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "affiliate_settings_incomplete", Message: err.Error()}
+		var incompleteErr *service.AffiliateSettingsIncompleteError
+		if errors.As(err, &incompleteErr) {
+			apiErr.Details = map[string]any{"missing": incompleteErr.Missing}
+		}
+	case errors.Is(err, service.ErrPartnerRegistrationClosed):
+		status, apiErr = http.StatusForbidden, APIError{Code: "partner_registration_closed", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliateInvalidProgram):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error()}
+	case errors.Is(err, service.ErrStudentAlreadyActivated):
+		status, apiErr = http.StatusConflict, APIError{Code: "student_already_activated", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorNotApproved):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliate_state_conflict", Message: err.Error()}
+	case errors.Is(err, service.ErrAffiliatorNotPartner):
+		status, apiErr = http.StatusConflict, APIError{Code: "affiliator_not_partner", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateRegistrationClosed):
 		status, apiErr = http.StatusForbidden, APIError{Code: "affiliate_registration_closed", Message: err.Error()}
 	case errors.Is(err, service.ErrAffiliateTermsRequired), errors.Is(err, service.ErrAffiliatePhoneRequired), errors.Is(err, service.ErrAffiliateBulkTooLarge):

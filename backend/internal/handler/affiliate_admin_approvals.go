@@ -12,6 +12,8 @@ import (
 type affiliateApprovalRequest struct {
 	Decision string `json:"decision"`
 	Reason   string `json:"reason"`
+	// Programs lets the admin change the requested program on approve.
+	Programs []string `json:"programs"`
 }
 
 type affiliateStatusRequest struct {
@@ -31,6 +33,7 @@ func (h *Handler) AdminListAffiliates(c echo.Context) error {
 		Status:  c.QueryParam("status"),
 		Level:   c.QueryParam("level"),
 		Query:   c.QueryParam("q"),
+		Program: c.QueryParam("program"),
 		Page:    1,
 		PerPage: parseLimit(c.QueryParam("per_page"), 20, 50),
 	}
@@ -58,7 +61,7 @@ func (h *Handler) AdminDecideAffiliateApproval(c echo.Context) error {
 		return badRequest(c, "decision must be approve, reject or reopen")
 	}
 	claims := claimsFromContext(c)
-	aff, err := h.svc.DecideAffiliateApproval(c.Request().Context(), claims.Sub, c.Param("id"), req.Decision, req.Reason)
+	aff, err := h.svc.DecideAffiliateApproval(c.Request().Context(), claims.Sub, c.Param("id"), req.Decision, req.Reason, req.Programs)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -144,4 +147,91 @@ func (h *Handler) AdminAffiliatorsExport(c echo.Context) error {
 		return mapServiceError(c, err)
 	}
 	return csvDownload(c, "affiliators.csv", data)
+}
+
+// AdminAddAffiliatorProgram backs POST /admin/affiliates/:id/programs: it adds
+// one program to an approved account and never removes one.
+func (h *Handler) AdminAddAffiliatorProgram(c echo.Context) error {
+	var req struct {
+		Program string `json:"program"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims := claimsFromContext(c)
+	aff, err := h.svc.AdminAddAffiliatorProgram(c.Request().Context(), claims.Sub, c.Param("id"), req.Program)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, aff)
+}
+
+// AdminSetPartnerSchools backs PUT /admin/affiliates/:id/partner/schools.
+func (h *Handler) AdminSetPartnerSchools(c echo.Context) error {
+	var req struct {
+		SchoolIDs []string `json:"school_ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims := claimsFromContext(c)
+	aff, err := h.svc.AdminSetPartnerSchools(c.Request().Context(), claims.Sub, c.Param("id"), req.SchoolIDs)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, aff)
+}
+
+// AdminSetPartnerProgram backs PUT /admin/partner-settings/program: the switch
+// of the Mitra program, separate from the Affiliator switch.
+func (h *Handler) AdminSetPartnerProgram(c echo.Context) error {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims := claimsFromContext(c)
+	if err := h.svc.SetPartnerProgramEnabled(c.Request().Context(), claims.Sub, req.Enabled); err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]bool{"program_enabled": req.Enabled})
+}
+
+// PartnerMe backs GET /partners/me: the Mitra's own program standing and
+// schools, for the portal menu.
+func (h *Handler) PartnerMe(c echo.Context) error {
+	states := partnerStatesFromContext(c)
+	return c.JSON(http.StatusOK, map[string]any{
+		"states":          states,
+		"program_enabled": h.svc.PartnerProgramEnabled(c.Request().Context()),
+	})
+}
+
+// AdminGetProductPartnerAccess backs GET /admin/products/:id/partner-access.
+func (h *Handler) AdminGetProductPartnerAccess(c echo.Context) error {
+	access, err := h.svc.AdminGetProductPartnerAccess(c.Request().Context(), c.Param("id"))
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, access)
+}
+
+// AdminSetProductPartnerAccess backs PUT /admin/products/:id/partner-access. It
+// is separate from the product update so saving the product form cannot
+// overwrite which Mitra can see the product.
+func (h *Handler) AdminSetProductPartnerAccess(c echo.Context) error {
+	var req struct {
+		Scope string   `json:"scope"`
+		IDs   []string `json:"ids"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	claims := claimsFromContext(c)
+	access, err := h.svc.AdminSetProductPartnerAccess(c.Request().Context(), claims.Sub, c.Param("id"), req.Scope, req.IDs)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, access)
 }

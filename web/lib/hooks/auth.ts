@@ -76,6 +76,8 @@ export function useRegister() {
 export interface RegisterAffiliatorInput extends RegisterInput {
   phone: string;
   terms_version: string;
+  /** Which program the applicant asks for; the Affiliator program when left out. */
+  program?: "affiliate" | "partner";
 }
 
 export function useRegisterAffiliator() {

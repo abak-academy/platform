@@ -6,6 +6,7 @@ const replace = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
+  usePathname: () => "/affiliate/account",
 }));
 
 vi.mock("@/components/shell/AppShell", () => ({

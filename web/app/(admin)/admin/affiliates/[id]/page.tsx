@@ -7,6 +7,8 @@ import { NoAccess } from "@/components/admin/NoAccess";
 import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
 import { LevelBadge } from "@/components/affiliate/LevelBadge";
+import { inAffiliate, ProgramBadges } from "@/components/affiliate/ProgramBadges";
+import { PartnerProgramPanel } from "@/components/affiliate/PartnerProgramPanel";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -73,6 +75,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
 
   const d = query.data;
   const aff = d.affiliate;
+  const inV1 = inAffiliate(aff.programs);
 
   const bindingColumns: DataTableColumn<AffiliateBinding>[] = [
     { key: "name", header: t("aff_col_name"), cell: (r) => r.name },
@@ -88,30 +91,39 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
       <div className="flex flex-wrap items-center gap-3">
         <h1 className="font-serif text-2xl font-bold text-ink-900">{d.name}</h1>
         <StatusBadge status={aff.status} />
-        <LevelBadge level={aff.level} />
+        <ProgramBadges programs={aff.programs} />
+        {inV1 && <LevelBadge level={aff.level} />}
       </div>
       <p className="text-sm text-ink-600">
         {d.email ?? "—"} · {aff.code || "—"}
       </p>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card label={t("admin_aff_detail_balance")} value={formatRupiah(d.saldo)} />
-        <Card label={t("admin_aff_detail_bindings")} value={`${d.bindings.active} / ${d.bindings.ended}`} />
-        <Card label={t("admin_aff_detail_commissions")} value={formatRupiah(d.commissions.total_amount)} />
-      </div>
+      {inV1 && (
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Card label={t("admin_aff_detail_balance")} value={formatRupiah(d.saldo)} />
+          <Card label={t("admin_aff_detail_bindings")} value={`${d.bindings.active} / ${d.bindings.ended}`} />
+          <Card label={t("admin_aff_detail_commissions")} value={formatRupiah(d.commissions.total_amount)} />
+        </div>
+      )}
+
+      <PartnerProgramPanel id={aff.id} programs={aff.programs} />
 
       <section className="space-y-2">
         <h2 className="font-semibold text-ink-900">{t("admin_aff_actions")}</h2>
-        <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} />
+        <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} affiliate={inV1} programs={aff.programs} />
       </section>
 
-      <section className="space-y-2">
-        <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_bindings")}</h2>
-        <DataTable columns={bindingColumns} rows={d.bindings.data} rowKey={(r) => r.binding_id} empty={t("aff_students_empty")} />
-      </section>
-      <section>
-        <AdminCommissionsPanel affiliatorId={aff.id} />
-      </section>
+      {inV1 && (
+        <>
+          <section className="space-y-2">
+            <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_bindings")}</h2>
+            <DataTable columns={bindingColumns} rows={d.bindings.data} rowKey={(r) => r.binding_id} empty={t("aff_students_empty")} />
+          </section>
+          <section>
+            <AdminCommissionsPanel affiliatorId={aff.id} />
+          </section>
+        </>
+      )}
     </div>
   );
 }

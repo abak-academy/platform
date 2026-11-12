@@ -15,7 +15,8 @@ vi.mock("@/lib/hooks/auth", () => ({
   useRegisterAffiliator: () => ({ mutateAsync: registerMock, isPending: false }),
 }));
 
-const programStatus = vi.hoisted(() => ({ value: { enabled: true } as { enabled: boolean } | undefined }));
+type Status = { enabled: boolean; partner_enabled?: boolean } | undefined;
+const programStatus = vi.hoisted(() => ({ value: { enabled: true, partner_enabled: false } as Status }));
 
 vi.mock("@/lib/hooks/affiliate", () => ({
   useAffiliateProgramStatus: () => ({ data: programStatus.value }),
@@ -44,6 +45,7 @@ describe("AffiliateRegisterPage", () => {
     push.mockClear();
     registerMock.mockReset();
     sessionStorage.clear();
+    programStatus.value = { enabled: true, partner_enabled: false };
   });
 
   it("keeps the sign-up button off until the terms are ticked, and says why", () => {
@@ -96,18 +98,57 @@ describe("AffiliateRegisterPage", () => {
       phone: "081200000000",
       password: "password123",
       terms_version: AFFILIATE_TERMS_VERSION,
+      program: "affiliate",
     });
     expect(sessionStorage.getItem("abak-pending-token")).toBe("tok");
   });
 
-  it("shows a closed notice instead of the form while the program is off", () => {
-    programStatus.value = { enabled: false };
+  it("shows a closed notice instead of the form while no program is open", () => {
+    programStatus.value = { enabled: false, partner_enabled: false };
     render(<AffiliateRegisterPage />);
 
-    expect(screen.getByText(/pendaftaran affiliator sedang ditutup/i)).toBeInTheDocument();
+    expect(screen.getByText(/pendaftaran sedang ditutup/i)).toBeInTheDocument();
     expect(screen.queryByLabelText("Nama Lengkap")).toBeNull();
     expect(screen.getByRole("link", { name: "Kembali ke halaman masuk" })).toHaveAttribute("href", "/login");
-    programStatus.value = { enabled: true };
+  });
+
+  it("offers only the programs that are switched on", () => {
+    programStatus.value = { enabled: true, partner_enabled: true };
+    const { unmount } = render(<AffiliateRegisterPage />);
+    expect(screen.getByRole("radio", { name: /affiliator/i })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /mitra/i })).toBeInTheDocument();
+    unmount();
+
+    programStatus.value = { enabled: false, partner_enabled: true };
+    render(<AffiliateRegisterPage />);
+    expect(screen.queryByRole("radio")).toBeNull();
+  });
+
+  it("with two programs open, needs a choice before it registers, and sends the chosen one", async () => {
+    programStatus.value = { enabled: true, partner_enabled: true };
+    registerMock.mockResolvedValue({ otp_required: true, pending_token: "tok", resend_after: 60 });
+    render(<AffiliateRegisterPage />);
+    fillValid();
+    fireEvent.click(screen.getByRole("checkbox"));
+    const button = screen.getByRole("button", { name: /daftar & verifikasi otp/i });
+    expect(button).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: /mitra/i }));
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+
+    await waitFor(() => expect(registerMock).toHaveBeenCalledWith(expect.objectContaining({ program: "partner" })));
+  });
+
+  it("with only the Mitra program open, registers as a Mitra without asking", async () => {
+    programStatus.value = { enabled: false, partner_enabled: true };
+    registerMock.mockResolvedValue({ otp_required: true, pending_token: "tok", resend_after: 60 });
+    render(<AffiliateRegisterPage />);
+    fillValid();
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /daftar & verifikasi otp/i }));
+
+    await waitFor(() => expect(registerMock).toHaveBeenCalledWith(expect.objectContaining({ program: "partner" })));
   });
 
   it("stays on the form when registration is closed", async () => {
@@ -119,20 +160,6 @@ describe("AffiliateRegisterPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /daftar & verifikasi otp/i }));
 
     await waitFor(() => expect(registerMock).toHaveBeenCalled());
-    expect(push).not.toHaveBeenCalled();
-  });
-
-  it("explains a full daily quota", async () => {
-    registerMock.mockRejectedValue(new ApiError("affiliate_registration_cap", "limit", 429));
-    render(<AffiliateRegisterPage />);
-    fillValid();
-    fireEvent.click(screen.getByRole("checkbox"));
-
-    fireEvent.click(screen.getByRole("button", { name: /daftar & verifikasi otp/i }));
-
-    await waitFor(() =>
-      expect(toastError).toHaveBeenCalledWith("Kuota pendaftaran affiliator hari ini sudah penuh. Coba lagi besok."),
-    );
     expect(push).not.toHaveBeenCalled();
   });
 });

@@ -252,6 +252,11 @@ func TestAffiliateMePayoutHandler_validationErrors(t *testing.T) {
 func TestAffiliateMePayoutHandler_requestPayoutHappyPath(t *testing.T) {
 	env := newAffiliatePayoutEnv(t)
 	setAffiliateFlag(t, env.pool, "true")
+	if _, err := env.pool.Exec(context.Background(),
+		`INSERT INTO affiliate_settings (id, min_payout) VALUES (1, 100000)
+		 ON CONFLICT (id) DO UPDATE SET min_payout = 100000`); err != nil {
+		t.Fatalf("seed min_payout: %v", err)
+	}
 	owner := seedAffiliatePayoutOwner(t, env.pool, "Affiliator Pay Ok "+uniqueHandlerSuffix())
 	seedAffiliatePayoutBank(t, env.pool, owner.affID)
 	seedAffiliatePayoutSaldo(t, env.pool, owner.affID, 150000)

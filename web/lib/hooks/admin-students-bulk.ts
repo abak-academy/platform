@@ -20,11 +20,11 @@ export interface EnqueueBulkResult {
  * Returns the presigned URL, HTTP method, and the object key the caller must
  * send back to /admin/students/bulk once the file is uploaded.
  */
-export function usePresignStudentBulkUpload() {
+export function usePresignStudentBulkUpload(base = "/admin/students") {
   return useMutation({
     mutationFn: ({ filename, contentType }: { filename: string; contentType: string }) => {
       const qs = new URLSearchParams({ filename, content_type: contentType }).toString();
-      return authFetch<PresignedUpload>(`/admin/students/bulk/presign?${qs}`, {
+      return authFetch<PresignedUpload>(`${base}/bulk/presign?${qs}`, {
         method: "POST",
       });
     },
@@ -57,10 +57,10 @@ export async function putFileToPresignedURL(
  * Enqueue a student-bulk import job for an already-uploaded CSV.
  * POST /admin/students/bulk {file_key} -> {job_id}
  */
-export function useEnqueueStudentBulkImport() {
+export function useEnqueueStudentBulkImport(base = "/admin/students") {
   return useMutation({
     mutationFn: ({ fileKey }: { fileKey: string }) =>
-      authFetch<EnqueueBulkResult>("/admin/students/bulk", {
+      authFetch<EnqueueBulkResult>(`${base}/bulk`, {
         method: "POST",
         body: JSON.stringify({ file_key: fileKey }),
       }),
