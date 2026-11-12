@@ -29,8 +29,9 @@ type mockRepository struct {
 	getExpiredPaymentOrdersFn func(context.Context, int) ([]uuid.UUID, error)
 	getExamsByProductIDFn     func(context.Context, uuid.UUID) ([]model.Exam, error)
 	createExamRegistrationFn  func(context.Context, pgx.Tx, model.ExamRegistration) error
-	stampOrderItemFulfilledFn func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
-	getOrderParticipantsFn    func(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	stampOrderItemFulfilledFn    func(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
+	getOrderParticipantsFn       func(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	getOrderItemParticipantsFn   func(context.Context, uuid.UUID) ([]uuid.UUID, error)
 }
 
 func (m *mockRepository) ClaimOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
@@ -91,6 +92,13 @@ func (m *mockRepository) GetOrderParticipants(ctx context.Context, orderID uuid.
 		return []uuid.UUID{}, nil
 	}
 	return m.getOrderParticipantsFn(ctx, orderID)
+}
+
+func (m *mockRepository) GetOrderItemParticipants(ctx context.Context, orderItemID uuid.UUID) ([]uuid.UUID, error) {
+	if m.getOrderItemParticipantsFn == nil {
+		return []uuid.UUID{}, nil
+	}
+	return m.getOrderItemParticipantsFn(ctx, orderItemID)
 }
 
 func (m *mockRepository) ExpirePaymentOrderTx(context.Context, pgx.Tx, uuid.UUID) (bool, error) {
@@ -526,7 +534,7 @@ func TestOrderPaidHandler_ExamItem_WithParticipants_RegistersEachParticipantNotB
 		getExamsByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Exam, error) {
 			return []model.Exam{{ID: examID, Title: "Finals"}}, nil
 		},
-		getOrderParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
+		getOrderItemParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
 			return []uuid.UUID{participant1, participant2}, nil
 		},
 		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
@@ -601,7 +609,7 @@ func TestOrderPaidHandler_ExamItem_WithParticipants_IdempotentOnReplay(t *testin
 		getExamsByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Exam, error) {
 			return []model.Exam{{ID: examID, Title: "Finals"}}, nil
 		},
-		getOrderParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
+		getOrderItemParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
 			return []uuid.UUID{participant1, participant2}, nil
 		},
 		createExamRegistrationFn: func(ctx context.Context, tx pgx.Tx, reg model.ExamRegistration) error {
@@ -660,7 +668,7 @@ func TestOrderPaidHandler_ExamItem_EmptyParticipants_RegistersBuyer(t *testing.T
 		getExamsByProductIDFn: func(ctx context.Context, pid uuid.UUID) ([]model.Exam, error) {
 			return []model.Exam{{ID: examID, Title: "Finals"}}, nil
 		},
-		getOrderParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
+		getOrderItemParticipantsFn: func(ctx context.Context, oid uuid.UUID) ([]uuid.UUID, error) {
 			// Return empty slice — same as nil fn default
 			return []uuid.UUID{}, nil
 		},

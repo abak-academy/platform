@@ -27,17 +27,27 @@ func (e *ParticipantAlreadyOwnsError) Is(target error) bool {
 	return target == ErrParticipantAlreadyOwns
 }
 
-// PartnerOrderPreview is what a Mitra sees before creating an order: who is
-// charged, who is left out, and what the voucher does.
+// PartnerOrderItemPreview is one product's own slice of a multi-product
+// preview: its own net-new count and its own excluded (already-owning)
+// students, since ownership is resolved independently per product.
+type PartnerOrderItemPreview struct {
+	ProductID   string              `json:"product_id"`
+	Name        string              `json:"name"`
+	UnitPrice   float64             `json:"unit_price"`
+	NetNewCount int                 `json:"net_new_count"`
+	Excluded    []BulkOrderExcluded `json:"excluded,omitempty"`
+}
+
+// PartnerOrderPreview is what a Mitra sees before creating an order: one line
+// per product, who across the whole order is actually served, and what the
+// voucher does.
 type PartnerOrderPreview struct {
-	NetNewCount int                              `json:"net_new_count"`
-	Excluded    []BulkOrderExcluded              `json:"excluded,omitempty"`
-	Students    []repository.PartnerOrderStudent `json:"students"`
-	UnitPrice   float64                          `json:"unit_price"`
-	Subtotal    float64                          `json:"subtotal"`
-	Discount    float64                          `json:"discount"`
-	Total       float64                          `json:"total"`
-	PromoCode   string                           `json:"promo_code,omitempty"`
+	Items     []PartnerOrderItemPreview        `json:"items"`
+	Students  []repository.PartnerOrderStudent `json:"students"`
+	Subtotal  float64                          `json:"subtotal"`
+	Discount  float64                          `json:"discount"`
+	Total     float64                          `json:"total"`
+	PromoCode string                           `json:"promo_code,omitempty"`
 }
 
 // PartnerOrderDetail is an order with the students it grants access to.
@@ -47,13 +57,37 @@ type PartnerOrderDetail struct {
 	Students  []repository.PartnerOrderStudent `json:"students"`
 }
 
-type partnerOrderPlan struct {
+// partnerOrderItemPlan is one product's own ownership resolution: it keeps its
+// own net-new/excluded sets independently of every other product in the plan.
+type partnerOrderItemPlan struct {
 	product  model.Product
+	pID      uuid.UUID
 	netNew   []uuid.UUID
-	students []repository.PartnerOrderStudent
 	excluded []BulkOrderExcluded
+}
+
+type partnerOrderPlan struct {
+	items    []partnerOrderItemPlan // only products with at least one net-new student
+	students map[uuid.UUID]repository.PartnerOrderStudent
 	subtotal float64
 	promo    *PartnerPromoResult
+}
+
+// servedStudents is the union of every surviving item's net-new students —
+// the set this plan actually serves, once, regardless of how many products
+// each of them ends up buying.
+func (p partnerOrderPlan) servedStudents() []uuid.UUID {
+	seen := make(map[uuid.UUID]bool)
+	var out []uuid.UUID
+	for _, item := range p.items {
+		for _, id := range item.netNew {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 // requirePartnerCanBuy is the service-side twin of PartnerGate for the write
@@ -155,9 +189,14 @@ func (s *Service) studentsOwningProduct(ctx context.Context, productType string,
 }
 
 // planPartnerOrder resolves an order request from scratch: nothing a Mitra
-// sends, or saw in an earlier preview, is trusted.
-func (s *Service) planPartnerOrder(ctx context.Context, partnerID, productID string, studentIDs []string, promoCode string) (partnerOrderPlan, error) {
+// sends, or saw in an earlier preview, is trusted. Ownership is resolved
+// independently per product, so a student already owning one selected
+// product is simply left off that product's line and still served the rest.
+func (s *Service) planPartnerOrder(ctx context.Context, partnerID string, productIDs []string, studentIDs []string, promoCode string) (partnerOrderPlan, error) {
 	if len(studentIDs) == 0 {
+		return partnerOrderPlan{}, ErrEmptySelector
+	}
+	if len(productIDs) == 0 {
 		return partnerOrderPlan{}, ErrEmptySelector
 	}
 	states, err := s.requirePartnerCanBuy(ctx, partnerID)
@@ -177,11 +216,6 @@ func (s *Service) planPartnerOrder(ctx context.Context, partnerID, productID str
 		ids = append(ids, id)
 	}
 
-	product, pID, err := s.partnerProduct(ctx, partnerID, productID)
-	if err != nil {
-		return partnerOrderPlan{}, err
-	}
-
 	students, err := s.storeRepo.ListPartnerOrderStudents(ctx, ids, states.PartnerSchools, partnerID)
 	if err != nil {
 		return partnerOrderPlan{}, fmt.Errorf("list partner order students: %w", err)
@@ -194,23 +228,43 @@ func (s *Service) planPartnerOrder(ctx context.Context, partnerID, productID str
 		byID[st.ID] = st
 	}
 
-	owned, err := s.studentsOwningProduct(ctx, product.Type, pID, ids)
-	if err != nil {
-		return partnerOrderPlan{}, err
-	}
-	plan := partnerOrderPlan{product: product}
-	for _, id := range ids {
-		if owned[id] {
-			plan.excluded = append(plan.excluded, BulkOrderExcluded{StudentID: id.String(), Name: byID[id].Name, Reason: "already_owned"})
-			continue
+	plan := partnerOrderPlan{students: byID}
+	seenProducts := make(map[string]bool, len(productIDs))
+	for _, productID := range productIDs {
+		if seenProducts[productID] {
+			return partnerOrderPlan{}, fmt.Errorf("%w: duplicate product %s", ErrValidation, productID)
 		}
-		plan.netNew = append(plan.netNew, id)
-		plan.students = append(plan.students, byID[id])
-	}
-	plan.subtotal = float64(product.Price) * float64(len(plan.netNew))
+		seenProducts[productID] = true
 
-	if promoCode != "" && len(plan.netNew) > 0 {
-		res, err := s.ValidatePartnerPromo(ctx, partnerID, promoCode, float64(product.Price), len(plan.netNew))
+		product, pID, err := s.partnerProduct(ctx, partnerID, productID)
+		if err != nil {
+			return partnerOrderPlan{}, err
+		}
+		owned, err := s.studentsOwningProduct(ctx, product.Type, pID, ids)
+		if err != nil {
+			return partnerOrderPlan{}, err
+		}
+		item := partnerOrderItemPlan{product: product, pID: pID}
+		for _, id := range ids {
+			if owned[id] {
+				item.excluded = append(item.excluded, BulkOrderExcluded{StudentID: id.String(), Name: byID[id].Name, Reason: "already_owned"})
+				continue
+			}
+			item.netNew = append(item.netNew, id)
+		}
+		if len(item.netNew) > 0 {
+			plan.items = append(plan.items, item)
+			plan.subtotal += float64(product.Price) * float64(len(item.netNew))
+		}
+	}
+
+	served := plan.servedStudents()
+	if promoCode != "" && len(served) > 0 {
+		groups := make([]promoSeatGroup, 0, len(plan.items))
+		for _, item := range plan.items {
+			groups = append(groups, promoSeatGroup{UnitPrice: float64(item.product.Price), Seats: len(item.netNew)})
+		}
+		res, err := s.ValidatePartnerPromo(ctx, partnerID, promoCode, groups, len(served))
 		if err != nil {
 			return partnerOrderPlan{}, err
 		}
@@ -219,20 +273,25 @@ func (s *Service) planPartnerOrder(ctx context.Context, partnerID, productID str
 	return plan, nil
 }
 
-// PreviewPartnerOrder shows who would be charged and what the voucher does,
-// without creating anything.
-func (s *Service) PreviewPartnerOrder(ctx context.Context, partnerID, productID string, studentIDs []string, promoCode string) (PartnerOrderPreview, error) {
-	plan, err := s.planPartnerOrder(ctx, partnerID, productID, studentIDs, promoCode)
+// PreviewPartnerOrder shows, per product, who would be charged and who is
+// already excluded, plus what the voucher does for the whole order.
+func (s *Service) PreviewPartnerOrder(ctx context.Context, partnerID string, productIDs []string, studentIDs []string, promoCode string) (PartnerOrderPreview, error) {
+	plan, err := s.planPartnerOrder(ctx, partnerID, productIDs, studentIDs, promoCode)
 	if err != nil {
 		return PartnerOrderPreview{}, err
 	}
-	preview := PartnerOrderPreview{
-		NetNewCount: len(plan.netNew),
-		Excluded:    plan.excluded,
-		Students:    plan.students,
-		UnitPrice:   float64(plan.product.Price),
-		Subtotal:    plan.subtotal,
-		Total:       plan.subtotal,
+	preview := PartnerOrderPreview{Subtotal: plan.subtotal, Total: plan.subtotal}
+	for _, item := range plan.items {
+		preview.Items = append(preview.Items, PartnerOrderItemPreview{
+			ProductID:   item.product.ID,
+			Name:        item.product.Name,
+			UnitPrice:   float64(item.product.Price),
+			NetNewCount: len(item.netNew),
+			Excluded:    item.excluded,
+		})
+	}
+	for _, id := range plan.servedStudents() {
+		preview.Students = append(preview.Students, plan.students[id])
 	}
 	if plan.promo != nil {
 		preview.Discount = plan.promo.Discount
@@ -242,22 +301,20 @@ func (s *Service) PreviewPartnerOrder(ctx context.Context, partnerID, productID 
 	return preview, nil
 }
 
-// CreatePartnerOrder resolves the request again and creates the order with its
-// participants and voucher in one transaction. A Mitra has one unpaid order
-// open at a time: an earlier one that was never checked out is cancelled.
-func (s *Service) CreatePartnerOrder(ctx context.Context, partnerID, productID string, studentIDs []string, promoCode string) (model.Order, error) {
-	plan, err := s.planPartnerOrder(ctx, partnerID, productID, studentIDs, promoCode)
+// CreatePartnerOrder resolves the request again and creates the order with
+// one order_item (and its own participants) per product that still has
+// someone net-new, plus the voucher, in one transaction. A Mitra has one
+// unpaid order open at a time: an earlier one that was never checked out is
+// cancelled.
+func (s *Service) CreatePartnerOrder(ctx context.Context, partnerID string, productIDs []string, studentIDs []string, promoCode string) (model.Order, error) {
+	plan, err := s.planPartnerOrder(ctx, partnerID, productIDs, studentIDs, promoCode)
 	if err != nil {
 		return model.Order{}, err
 	}
-	if len(plan.netNew) == 0 {
+	if len(plan.items) == 0 {
 		return model.Order{}, ErrZeroNetNewParticipants
 	}
 	buyerID, err := uuid.Parse(partnerID)
-	if err != nil {
-		return model.Order{}, ErrInvalidUUID
-	}
-	productUUID, err := uuid.Parse(plan.product.ID)
 	if err != nil {
 		return model.Order{}, ErrInvalidUUID
 	}
@@ -282,18 +339,24 @@ func (s *Service) CreatePartnerOrder(ctx context.Context, partnerID, productID s
 	if err != nil {
 		return model.Order{}, err
 	}
-	item := model.OrderItem{
-		ProductID:   productUUID,
-		ProductType: plan.product.Type,
-		Name:        plan.product.Name,
-		UnitPrice:   float64(plan.product.Price),
-		Qty:         len(plan.netNew),
-	}
-	if err := s.storeRepo.InsertOrderItemTx(ctx, tx, order.ID, item); err != nil {
-		return model.Order{}, err
-	}
-	if err := s.storeRepo.InsertOrderParticipantsTx(ctx, tx, order.ID, plan.netNew); err != nil {
-		return model.Order{}, err
+	for _, item := range plan.items {
+		productUUID, err := uuid.Parse(item.product.ID)
+		if err != nil {
+			return model.Order{}, ErrInvalidUUID
+		}
+		itemID, err := s.storeRepo.InsertOrderItemTx(ctx, tx, order.ID, model.OrderItem{
+			ProductID:   productUUID,
+			ProductType: item.product.Type,
+			Name:        item.product.Name,
+			UnitPrice:   float64(item.product.Price),
+			Qty:         len(item.netNew),
+		})
+		if err != nil {
+			return model.Order{}, err
+		}
+		if err := s.storeRepo.InsertOrderItemParticipantsTx(ctx, tx, order.ID, itemID, item.netNew); err != nil {
+			return model.Order{}, err
+		}
 	}
 	if plan.promo != nil {
 		if err := s.storeRepo.SetOrderPromoTx(ctx, tx, order.ID, plan.promo.PromoID, plan.promo.Discount); err != nil {
@@ -345,40 +408,49 @@ func (s *Service) CheckoutPartnerOrder(ctx context.Context, partnerID, orderID, 
 	return s.Checkout(ctx, partnerID, orderID, key, "")
 }
 
+// revalidatePartnerOrder re-checks every item on the order independently —
+// each item's own participants against its own product — since a
+// multi-product order can have a different served set per item.
 func (s *Service) revalidatePartnerOrder(ctx context.Context, partnerID string, states *AffiliatorProgramStates, order model.Order) error {
-	if len(order.Items) != 1 {
+	if len(order.Items) == 0 {
 		return ErrOrderNotEditable
-	}
-	item := order.Items[0]
-	product, pID, err := s.partnerProduct(ctx, partnerID, item.ProductID.String())
-	if err != nil {
-		return err
-	}
-
-	participants, err := s.storeRepo.GetOrderParticipants(ctx, order.ID)
-	if err != nil {
-		return err
-	}
-	if len(participants) == 0 {
-		return ErrOrderNotEditable
-	}
-	allowed, err := s.storeRepo.ListPartnerOrderStudents(ctx, participants, states.PartnerSchools, partnerID)
-	if err != nil {
-		return fmt.Errorf("list partner order students: %w", err)
-	}
-	if len(allowed) != len(participants) {
-		return ErrPartnerStudentNotAllowed
-	}
-
-	owned, err := s.studentsOwningProduct(ctx, product.Type, pID, participants)
-	if err != nil {
-		return err
 	}
 	var owners []repository.PartnerOrderStudent
-	for _, st := range allowed {
-		if owned[st.ID] {
-			owners = append(owners, st)
+	groups := make([]promoSeatGroup, 0, len(order.Items))
+	distinctStudents := make(map[uuid.UUID]bool)
+
+	for _, item := range order.Items {
+		product, pID, err := s.partnerProduct(ctx, partnerID, item.ProductID.String())
+		if err != nil {
+			return err
 		}
+
+		participants, err := s.storeRepo.GetOrderItemParticipants(ctx, item.ID)
+		if err != nil {
+			return err
+		}
+		if len(participants) == 0 {
+			return ErrOrderNotEditable
+		}
+		allowed, err := s.storeRepo.ListPartnerOrderStudents(ctx, participants, states.PartnerSchools, partnerID)
+		if err != nil {
+			return fmt.Errorf("list partner order students: %w", err)
+		}
+		if len(allowed) != len(participants) {
+			return ErrPartnerStudentNotAllowed
+		}
+
+		owned, err := s.studentsOwningProduct(ctx, product.Type, pID, participants)
+		if err != nil {
+			return err
+		}
+		for _, st := range allowed {
+			if owned[st.ID] {
+				owners = append(owners, st)
+			}
+			distinctStudents[st.ID] = true
+		}
+		groups = append(groups, promoSeatGroup{UnitPrice: item.UnitPrice, Seats: item.Qty})
 	}
 	if len(owners) > 0 {
 		return &ParticipantAlreadyOwnsError{Students: owners}
@@ -389,7 +461,7 @@ func (s *Service) revalidatePartnerOrder(ctx context.Context, partnerID string, 
 		if err != nil {
 			return err
 		}
-		res, err := evaluatePartnerPromo(promo, partnerID, item.UnitPrice, item.Qty, time.Now())
+		res, err := evaluatePartnerPromo(promo, partnerID, groups, len(distinctStudents), time.Now())
 		if err != nil {
 			return err
 		}

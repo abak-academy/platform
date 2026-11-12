@@ -151,11 +151,12 @@ func (s *Service) CreateBulkExamOrder(ctx context.Context, buyerAdminID, schoolI
 		UnitPrice:   float64(product.Price),
 		Qty:         len(netNew),
 	}
-	if err := s.storeRepo.InsertOrderItemTx(ctx, tx, order.ID, item); err != nil {
+	itemID, err := s.storeRepo.InsertOrderItemTx(ctx, tx, order.ID, item)
+	if err != nil {
 		return model.Order{}, err
 	}
 
-	if err := s.storeRepo.InsertOrderParticipantsTx(ctx, tx, order.ID, netNew); err != nil {
+	if err := s.storeRepo.InsertOrderItemParticipantsTx(ctx, tx, order.ID, itemID, netNew); err != nil {
 		return model.Order{}, err
 	}
 

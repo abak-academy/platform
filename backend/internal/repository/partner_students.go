@@ -26,6 +26,9 @@ type PartnerStudentRow struct {
 	Activated      bool      `json:"activated"`
 	RegisteredByMe bool      `json:"registered_by_me"`
 	CreatedAt      time.Time `json:"created_at"`
+	// OwnedProductIDs is the subset of a requested product_ids filter this
+	// student already owns, set only when that filter was given.
+	OwnedProductIDs []string `json:"owned_product_ids,omitempty"`
 }
 
 // PartnerStudentFilter narrows a Mitra's student list. SchoolID and Q are

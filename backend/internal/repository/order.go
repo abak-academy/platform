@@ -398,8 +398,9 @@ func (r *Repository) CreateOrderTx(ctx context.Context, tx pgx.Tx, studentID uui
 }
 
 // InsertOrderItemTx inserts a single order item inside the caller's transaction
-// and recalculates order totals within the same transaction.
-func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, item model.OrderItem) error {
+// and recalculates order totals within the same transaction. Returns the
+// generated item id so the caller can link order_participant rows to it.
+func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, item model.OrderItem) (uuid.UUID, error) {
 	item.ID = uuid.New()
 	item.OrderID = orderID
 	jumlah := item.UnitPrice * float64(item.Qty)
@@ -409,7 +410,7 @@ func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID u
 		item.ID, item.OrderID, item.ProductID, item.ProductType, item.Name, item.UnitPrice, item.Qty, jumlah, item.WeightGrams,
 	)
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	_, err = tx.Exec(ctx, `
 		UPDATE orders SET
@@ -417,7 +418,10 @@ func (r *Repository) InsertOrderItemTx(ctx context.Context, tx pgx.Tx, orderID u
 		  total      = COALESCE((SELECT SUM(jumlah) FROM order_item WHERE order_id = $1), 0) - discount + shipping_cost,
 		  updated_at = now()
 		WHERE id = $1`, orderID)
-	return err
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return item.ID, nil
 }
 
 // SetOrderPromoTx records a promo on a cart order inside the caller's
