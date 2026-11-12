@@ -1,19 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bell, ShoppingBag } from "lucide-react";
 import { useProducts } from "@/lib/hooks/products";
+import { useProductGroupings } from "@/lib/hooks/product-groupings";
 import { useTranslation } from "@/lib/i18n";
 import { CategoryRail, type CatalogCategory } from "@/components/catalog/CategoryRail";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProductCard } from "@/components/catalog/ProductCard";
+import type { Product } from "@/lib/types";
 
-function CatalogGrid({ products, tab }: { products: ReturnType<typeof useProducts>["data"]; tab: CatalogCategory }) {
+const ALL_GROUPINGS = "all";
+
+function CatalogGrid({ products, isFiltered }: { products: Product[] | undefined; isFiltered: boolean }) {
   const { t } = useTranslation();
   if (!products || products.length === 0) {
-    if (tab !== "all") {
+    if (isFiltered) {
       return (
         <div className="rounded-2xl border border-line bg-surface px-8 py-16 text-center">
           <p className="text-sm text-ink-500">{t("catalog_empty")}</p>
@@ -66,9 +73,37 @@ function CatalogSkeleton() {
 
 export default function CatalogPage() {
   const { t } = useTranslation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [category, setCategory] = useState<CatalogCategory>("all");
+  const [groupingId, setGroupingId] = useState(searchParams.get("grouping") ?? ALL_GROUPINGS);
+  const [search, setSearch] = useState("");
+
   const type = category === "all" ? undefined : category;
-  const { data, isLoading, isError, error, refetch } = useProducts(type);
+  const { data, isLoading, isError, error, refetch } = useProducts(
+    type,
+    groupingId === ALL_GROUPINGS ? undefined : groupingId,
+  );
+  const { data: groupings } = useProductGroupings();
+
+  function changeGrouping(value: string) {
+    setGroupingId(value);
+    const params = new URLSearchParams(searchParams.toString());
+    if (value === ALL_GROUPINGS) params.delete("grouping");
+    else params.set("grouping", value);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!data || q === "") return data;
+    return data.filter((p) => p.name.toLowerCase().includes(q));
+  }, [data, search]);
+
+  const isFiltered = category !== "all" || groupingId !== ALL_GROUPINGS || search.trim() !== "";
 
   return (
     <>
@@ -76,6 +111,31 @@ export default function CatalogPage() {
         <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">{t("nav_store")}</h1>
         <p className="mt-1 text-sm text-ink-500">{t("catalog_subtitle")}</p>
       </header>
+
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={t("catalog_search_placeholder")}
+          aria-label={t("catalog_search_placeholder")}
+          className="sm:max-w-xs"
+        />
+        {(groupings?.length ?? 0) > 0 && (
+          <Select value={groupingId} onValueChange={changeGrouping}>
+            <SelectTrigger aria-label={t("catalog_grouping_label")} className="sm:w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_GROUPINGS}>{t("catalog_grouping_all")}</SelectItem>
+              {groupings!.map((g) => (
+                <SelectItem key={g.id} value={g.id}>
+                  {g.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </div>
 
       <div className="flex flex-col gap-4 md:flex-row md:gap-6">
         <CategoryRail value={category} onChange={setCategory} />
@@ -91,7 +151,7 @@ export default function CatalogPage() {
           ) : isLoading ? (
             <CatalogSkeleton />
           ) : (
-            <CatalogGrid products={data} tab={category} />
+            <CatalogGrid products={filtered} isFiltered={isFiltered} />
           )}
         </div>
       </div>

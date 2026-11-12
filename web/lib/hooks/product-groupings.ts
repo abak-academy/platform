@@ -2,14 +2,16 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
-import type { ProductGrouping, ProductGroupingDetail } from "@/lib/types";
+import type { ProductGrouping } from "@/lib/types";
 
 export const productGroupingsKeys = {
   all: ["product-groupings"] as const,
   list: () => [...productGroupingsKeys.all, "list"] as const,
-  detail: (id: string) => [...productGroupingsKeys.all, "detail", id] as const,
 };
 
+// Published groupings only — used to populate the catalog's grouping filter.
+// Browsing a grouping's products goes through useProducts(type, groupingId)
+// rather than a dedicated detail fetch.
 export function useProductGroupings() {
   return useQuery({
     queryKey: productGroupingsKeys.list(),
@@ -17,13 +19,5 @@ export function useProductGroupings() {
       const res = await apiFetch<{ data: ProductGrouping[] }>("/product-groupings");
       return res.data ?? [];
     },
-  });
-}
-
-export function useProductGrouping(id: string) {
-  return useQuery({
-    queryKey: productGroupingsKeys.detail(id),
-    queryFn: () => apiFetch<ProductGroupingDetail>(`/product-groupings/${encodeURIComponent(id)}`),
-    enabled: Boolean(id),
   });
 }

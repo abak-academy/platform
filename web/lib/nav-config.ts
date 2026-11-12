@@ -88,7 +88,6 @@ const STUDENT_NAV: RoleNavConfig = [
       { labelKey: "nav_competition", href: "/exam", icon: Trophy },
       { labelKey: "nav_courses", href: "/courses", icon: BookOpen },
       { labelKey: "nav_store", href: "/catalog", icon: ShoppingBag },
-      { labelKey: "nav_product_groupings", href: "/catalog/groupings", icon: Layers },
       { labelKey: "nav_billing", href: "/orders", icon: Receipt },
       { labelKey: "nav_profile", href: "/profile", icon: User },
     ],
