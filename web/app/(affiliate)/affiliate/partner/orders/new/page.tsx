@@ -64,21 +64,30 @@ export default function NewPartnerOrderPage() {
   const noSchools = rows.length === 0 && students.data?.pages[0]?.hint === "no_schools";
   const key = `${selectedProductIds.join(",")}|${promo ?? ""}|${ids.join(",")}`;
 
-  // Every selected product gets its own preview request: the server decides
-  // who is charged and what the voucher does for that product, per product.
+  // Every selected product gets its own preview request. These run
+  // concurrently on the one shared mutation object, so each call uses its
+  // own mutateAsync() promise rather than the mutate(vars, {onSuccess})
+  // callback form — that form's onSuccess/onError live on the mutation
+  // observer itself, and a second concurrent mutate() call overwrites it
+  // before the first call's request resolves, silently dropping its result.
   useEffect(() => {
     setPreviews({});
     setPreviewErrors({});
     if (selectedProductIds.length === 0 || ids.length === 0) return;
+    let cancelled = false;
     for (const pid of selectedProductIds) {
-      preview.mutate(
-        { product_id: pid, student_ids: ids, promo_code: promo },
-        {
-          onSuccess: (data) => setPreviews((prev) => ({ ...prev, [pid]: data })),
-          onError: (err) => setPreviewErrors((prev) => ({ ...prev, [pid]: partnerOrderErrorMessage(err, t) })),
-        },
-      );
+      preview
+        .mutateAsync({ product_id: pid, student_ids: ids, promo_code: promo })
+        .then((data) => {
+          if (!cancelled) setPreviews((prev) => ({ ...prev, [pid]: data }));
+        })
+        .catch((err) => {
+          if (!cancelled) setPreviewErrors((prev) => ({ ...prev, [pid]: partnerOrderErrorMessage(err, t) }));
+        });
     }
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 

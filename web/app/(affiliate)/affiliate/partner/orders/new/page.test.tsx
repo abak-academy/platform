@@ -4,7 +4,7 @@ import NewPartnerOrderPage from "./page";
 import { ApiError } from "@/lib/api";
 
 const hook = vi.hoisted(() => ({
-  previewMutate: vi.fn(),
+  previewMutateAsync: vi.fn(),
   createMutate: vi.fn(),
 }));
 
@@ -30,7 +30,7 @@ vi.mock("@/lib/hooks/partner", () => ({
     hasNextPage: false,
     data: { pages: [{ data: [{ id: "s1", name: "Ani Siswa", school_name: "SMA Contoh" }, { id: "s2", name: "Budi Siswa", school_name: null }] }] },
   }),
-  usePreviewPartnerOrder: () => ({ mutate: hook.previewMutate }),
+  usePreviewPartnerOrder: () => ({ mutateAsync: hook.previewMutateAsync }),
   useCreatePartnerOrder: () => ({ mutateAsync: hook.createMutate }),
 }));
 vi.mock("@/lib/hooks/product-groupings", () => ({
@@ -43,9 +43,10 @@ const previewFor: Record<string, { net_new_count: number; students: unknown[]; u
 };
 
 function mockPreviewSuccess() {
-  hook.previewMutate.mockImplementation((input: { product_id: string; promo_code?: string }, opts: { onSuccess: (d: unknown) => void }) => {
+  hook.previewMutateAsync.mockImplementation(async (input: { product_id: string; promo_code?: string }) => {
     const data = previewFor[input.product_id];
-    if (data) opts.onSuccess({ ...data, promo_code: input.promo_code });
+    if (!data) throw new ApiError("no_preview_fixture", "x", 400);
+    return { ...data, promo_code: input.promo_code };
   });
 }
 
@@ -63,24 +64,24 @@ function sectionFor(headingText: string) {
 
 describe("NewPartnerOrderPage", () => {
   beforeEach(() => {
-    hook.previewMutate.mockReset();
+    hook.previewMutateAsync.mockReset();
     hook.createMutate.mockReset();
     mockPreviewSuccess();
   });
 
   it("asks the server for a preview once a product and students are chosen, and shows what it answers", async () => {
     render(<NewPartnerOrderPage />);
-    expect(hook.previewMutate).not.toHaveBeenCalled();
+    expect(hook.previewMutateAsync).not.toHaveBeenCalled();
 
     await chooseProduct(/Kelas Matematika/);
     await chooseStudent(/Ani Siswa/);
     await chooseStudent(/Budi Siswa/);
 
     await waitFor(() =>
-      expect(hook.previewMutate).toHaveBeenLastCalledWith({ product_id: "p1", student_ids: ["s1", "s2"], promo_code: undefined }, expect.anything()),
+      expect(hook.previewMutateAsync).toHaveBeenLastCalledWith({ product_id: "p1", student_ids: ["s1", "s2"], promo_code: undefined }),
     );
     expect(screen.getByText("2 siswa dipilih")).toBeInTheDocument();
-    expect(screen.getByText("2 siswa akan ditagihkan.")).toBeInTheDocument();
+    expect(await screen.findByText("2 siswa akan ditagihkan.")).toBeInTheDocument();
     expect(screen.getByText(/180\.000/)).toBeInTheDocument();
   });
 
@@ -111,12 +112,12 @@ describe("NewPartnerOrderPage", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Voucher" }));
     fireEvent.click(await screen.findByRole("option", { name: "MITRA10" }));
 
-    await waitFor(() => expect(hook.previewMutate).toHaveBeenLastCalledWith(expect.objectContaining({ promo_code: "MITRA10" }), expect.anything()));
+    await waitFor(() => expect(hook.previewMutateAsync).toHaveBeenLastCalledWith(expect.objectContaining({ promo_code: "MITRA10" })));
   });
 
   it("shows why the server refused a product's preview, and does not let the order be created", async () => {
-    hook.previewMutate.mockImplementation((input: { product_id: string }, opts: { onError: (e: unknown) => void }) =>
-      opts.onError(new ApiError("participant_already_owns", "x", 409, { details: { students: [{ name: "Ani Siswa" }] } })),
+    hook.previewMutateAsync.mockRejectedValue(
+      new ApiError("participant_already_owns", "x", 409, { details: { students: [{ name: "Ani Siswa" }] } }),
     );
     render(<NewPartnerOrderPage />);
     await chooseProduct(/Kelas Matematika/);
@@ -124,6 +125,25 @@ describe("NewPartnerOrderPage", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Siswa berikut sudah memiliki produk ini: Ani Siswa.");
     expect(screen.getByRole("button", { name: "Buat pesanan" })).toBeDisabled();
+  });
+
+  // Regression guard for a real bug: selecting two products fired two
+  // concurrent preview requests on one shared mutation hook. Using its
+  // mutate(vars, {onSuccess}) form meant the second call's onSuccess
+  // silently replaced the first's before the first's request resolved, so
+  // only the last-selected product's preview ever appeared and the create
+  // button stayed disabled forever. The fix uses mutateAsync's own promise
+  // per call instead of the shared onSuccess/onError.
+  it("gets a chargeable preview for every selected product, not just the last one chosen", async () => {
+    render(<NewPartnerOrderPage />);
+    await chooseProduct(/Kelas Matematika/);
+    await chooseProduct(/Paket Ujian UTBK/);
+    await chooseStudent(/Ani Siswa/);
+
+    await waitFor(() => expect(screen.getAllByText("2 siswa akan ditagihkan.")).toHaveLength(2));
+    expect(screen.getByRole("heading", { name: "Kelas Matematika" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Paket Ujian UTBK" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Buat pesanan" })).not.toBeDisabled());
   });
 
   it("creates one order per selected product and shows a payment link for each", async () => {
