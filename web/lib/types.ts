@@ -2044,6 +2044,7 @@ export interface PartnerProduct {
   type: "exam" | "course";
   name: string;
   price: number;
+  grouping_id?: string | null;
 }
 
 export type PartnerQuotaUnit = "order" | "student";
