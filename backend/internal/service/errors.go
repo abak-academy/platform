@@ -333,6 +333,11 @@ var (
 	ErrShippingAuthRejected = errors.New("shipping provider rejected credentials")
 )
 
+// --- from product_grouping.go ---
+var (
+	ErrProductGroupingNotFound = errors.New("product grouping not found")
+)
+
 // --- from store.go ---
 var (
 	ErrForbidden               = errors.New("forbidden")

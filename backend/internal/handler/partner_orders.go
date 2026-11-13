@@ -10,7 +10,7 @@ import (
 )
 
 type partnerOrderRequest struct {
-	ProductID  string   `json:"product_id"`
+	ProductIDs []string `json:"product_ids"`
 	StudentIDs []string `json:"student_ids"`
 	PromoCode  string   `json:"promo_code"`
 }
@@ -20,8 +20,8 @@ func bindPartnerOrder(c echo.Context) (partnerOrderRequest, error) {
 	if err := c.Bind(&req); err != nil {
 		return req, badRequest(c, "invalid request body")
 	}
-	if req.ProductID == "" || len(req.StudentIDs) == 0 {
-		return req, badRequest(c, "product_id and student_ids are required")
+	if len(req.ProductIDs) == 0 || len(req.StudentIDs) == 0 {
+		return req, badRequest(c, "product_ids and student_ids are required")
 	}
 	return req, nil
 }
@@ -29,11 +29,11 @@ func bindPartnerOrder(c echo.Context) (partnerOrderRequest, error) {
 // PartnerPreviewOrder backs POST /partners/me/orders/preview.
 func (h *Handler) PartnerPreviewOrder(c echo.Context) error {
 	req, err := bindPartnerOrder(c)
-	if err != nil || req.ProductID == "" || len(req.StudentIDs) == 0 {
+	if err != nil || len(req.ProductIDs) == 0 || len(req.StudentIDs) == 0 {
 		return err
 	}
 	claims := ClaimsFromContext(c)
-	preview, err := h.svc.PreviewPartnerOrder(c.Request().Context(), claims.Sub, req.ProductID, req.StudentIDs, req.PromoCode)
+	preview, err := h.svc.PreviewPartnerOrder(c.Request().Context(), claims.Sub, req.ProductIDs, req.StudentIDs, req.PromoCode)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -43,11 +43,11 @@ func (h *Handler) PartnerPreviewOrder(c echo.Context) error {
 // PartnerCreateOrder backs POST /partners/me/orders.
 func (h *Handler) PartnerCreateOrder(c echo.Context) error {
 	req, err := bindPartnerOrder(c)
-	if err != nil || req.ProductID == "" || len(req.StudentIDs) == 0 {
+	if err != nil || len(req.ProductIDs) == 0 || len(req.StudentIDs) == 0 {
 		return err
 	}
 	claims := ClaimsFromContext(c)
-	order, err := h.svc.CreatePartnerOrder(c.Request().Context(), claims.Sub, req.ProductID, req.StudentIDs, req.PromoCode)
+	order, err := h.svc.CreatePartnerOrder(c.Request().Context(), claims.Sub, req.ProductIDs, req.StudentIDs, req.PromoCode)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

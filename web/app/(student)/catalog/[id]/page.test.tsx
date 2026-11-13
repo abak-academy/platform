@@ -5,8 +5,10 @@ import { Suspense } from "react";
 import ProductDetailPage from "./page";
 import { ApiError } from "@/lib/api";
 
+const { routerBack } = vi.hoisted(() => ({ routerBack: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), back: routerBack }),
 }));
 
 const BASE_PRODUCT = {
@@ -75,6 +77,7 @@ beforeEach(() => {
   cartItems.length = 0;
   addToCartMutate.mockReset();
   toastError.mockReset();
+  routerBack.mockReset();
   product = { ...BASE_PRODUCT };
   profile = undefined;
 });
@@ -85,6 +88,16 @@ describe("ProductDetailPage", () => {
 
     expect(await screen.findAllByText(/stok: 12/i)).toHaveLength(2);
     expect(screen.getByText(/dikirim ke alamat/i)).toBeInTheDocument();
+  });
+
+  // Going back must land on whatever /catalog URL (filters, search) the
+  // reader actually came from — a fixed href="/catalog" link would drop them.
+  it("goes back in history instead of a fixed /catalog link", async () => {
+    await renderPage();
+
+    await userEvent.click(screen.getByRole("button", { name: /katalog/i }));
+
+    expect(routerBack).toHaveBeenCalledTimes(1);
   });
 
   // Descriptions are typed into a plain textarea, so an admin's paragraph break

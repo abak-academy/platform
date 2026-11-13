@@ -25,6 +25,12 @@ func enablePartnerProgram(t *testing.T, repo *repository.Repository) {
 func f(v float64) *float64 { return &v }
 func i(v int) *int         { return &v }
 
+// group1 is the single-product shape: one group, distinctStudents == seats —
+// exactly what every pre-multi-product test case exercised.
+func group1(unitPrice float64, seats int) []promoSeatGroup {
+	return []promoSeatGroup{{UnitPrice: unitPrice, Seats: seats}}
+}
+
 func TestEvaluatePartnerPromo(t *testing.T) {
 	now := time.Date(2026, 11, 9, 10, 0, 0, 0, time.UTC)
 	mitra := uuid.NewString()
@@ -36,16 +42,16 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 	}
 
 	t.Run("who it applies to", func(t *testing.T) {
-		_, err := evaluatePartnerPromo(model.PromoCode{Code: "BIASA", DiscountPercent: f(10)}, mitra, 100000, 1, now)
+		_, err := evaluatePartnerPromo(model.PromoCode{Code: "BIASA", DiscountPercent: f(10)}, mitra, group1(100000, 1), 1, now)
 		require.ErrorIs(t, err, ErrInvalidPromo, "an ordinary promo is not a Mitra voucher")
 
-		_, err = evaluatePartnerPromo(voucher("order", uuid.NewString()), mitra, 100000, 1, now)
+		_, err = evaluatePartnerPromo(voucher("order", uuid.NewString()), mitra, group1(100000, 1), 1, now)
 		require.ErrorIs(t, err, ErrInvalidPromo, "a voucher made for another Mitra")
 
-		_, err = evaluatePartnerPromo(voucher("order", mitra), mitra, 100000, 1, now)
+		_, err = evaluatePartnerPromo(voucher("order", mitra), mitra, group1(100000, 1), 1, now)
 		require.NoError(t, err, "a voucher naming this Mitra")
 
-		_, err = evaluatePartnerPromo(voucher("order"), mitra, 100000, 1, now)
+		_, err = evaluatePartnerPromo(voucher("order"), mitra, group1(100000, 1), 1, now)
 		require.NoError(t, err, "a voucher with no Mitra named is for every Mitra")
 	})
 
@@ -53,17 +59,17 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 		v := voucher("order")
 		v.Partner.MinStudents = 5
 
-		_, err := evaluatePartnerPromo(v, mitra, 100000, 4, now)
+		_, err := evaluatePartnerPromo(v, mitra, group1(100000, 4), 4, now)
 		var minErr *PromoMinStudentsError
 		require.ErrorIs(t, err, ErrPromoMinStudents)
 		require.ErrorAs(t, err, &minErr)
 		require.Equal(t, 5, minErr.Min)
 
-		_, err = evaluatePartnerPromo(v, mitra, 100000, 5, now)
+		_, err = evaluatePartnerPromo(v, mitra, group1(100000, 5), 5, now)
 		require.NoError(t, err, "exactly the minimum is enough")
 
 		v.Partner.MinStudents = 0
-		_, err = evaluatePartnerPromo(v, mitra, 100000, 1, now)
+		_, err = evaluatePartnerPromo(v, mitra, group1(100000, 1), 1, now)
 		require.NoError(t, err, "zero means no minimum")
 	})
 
@@ -71,29 +77,29 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 		expired := voucher("order")
 		past := now.Add(-time.Hour)
 		expired.ExpiresAt = &past
-		_, err := evaluatePartnerPromo(expired, mitra, 100000, 1, now)
+		_, err := evaluatePartnerPromo(expired, mitra, group1(100000, 1), 1, now)
 		require.ErrorIs(t, err, ErrInvalidPromo)
 
 		exhausted := voucher("student")
 		exhausted.MaxUses, exhausted.UsedCount = i(10), 10
-		_, err = evaluatePartnerPromo(exhausted, mitra, 100000, 1, now)
+		_, err = evaluatePartnerPromo(exhausted, mitra, group1(100000, 1), 1, now)
 		require.ErrorIs(t, err, ErrInvalidPromo)
 
 		perOrder := voucher("order")
 		perOrder.MaxUses, perOrder.UsedCount = i(3), 2
-		res, err := evaluatePartnerPromo(perOrder, mitra, 100000, 50, now)
+		res, err := evaluatePartnerPromo(perOrder, mitra, group1(100000, 50), 50, now)
 		require.NoError(t, err, "an order of 50 students takes one use when uses are counted per order")
 		require.Equal(t, 1, res.Uses)
 
 		perStudent := voucher("student")
 		perStudent.MaxUses, perStudent.UsedCount = i(10), 6
-		_, err = evaluatePartnerPromo(perStudent, mitra, 100000, 5, now)
+		_, err = evaluatePartnerPromo(perStudent, mitra, group1(100000, 5), 5, now)
 		var short *PromoQuotaInsufficientError
 		require.ErrorAs(t, err, &short)
 		require.ErrorIs(t, err, ErrPromoQuotaInsufficient)
 		require.Equal(t, 4, short.Remaining, "the whole order is refused and the Mitra is told what is left")
 
-		res, err = evaluatePartnerPromo(perStudent, mitra, 100000, 4, now)
+		res, err = evaluatePartnerPromo(perStudent, mitra, group1(100000, 4), 4, now)
 		require.NoError(t, err)
 		require.Equal(t, 4, res.Uses, "one use per student")
 	})
@@ -101,14 +107,14 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 	t.Run("the discount cap follows the quota unit", func(t *testing.T) {
 		perOrder := voucher("order")
 		perOrder.MaxDiscountAmount = f(30000)
-		res, err := evaluatePartnerPromo(perOrder, mitra, 100000, 5, now)
+		res, err := evaluatePartnerPromo(perOrder, mitra, group1(100000, 5), 5, now)
 		require.NoError(t, err)
 		require.Equal(t, 30000.0, res.Discount, "10% of 500000 is capped once for the whole order")
 		require.Equal(t, 470000.0, res.Total)
 
 		perStudent := voucher("student")
 		perStudent.MaxDiscountAmount = f(8000)
-		res, err = evaluatePartnerPromo(perStudent, mitra, 100000, 5, now)
+		res, err = evaluatePartnerPromo(perStudent, mitra, group1(100000, 5), 5, now)
 		require.NoError(t, err)
 		require.Equal(t, 40000.0, res.Discount, "10% of 100000 is capped at 8000 for each of 5 students")
 		require.Equal(t, 460000.0, res.Total)
@@ -117,13 +123,13 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 	t.Run("a fixed discount", func(t *testing.T) {
 		perOrder := voucher("order")
 		perOrder.DiscountPercent, perOrder.DiscountAmount = nil, f(25000)
-		res, err := evaluatePartnerPromo(perOrder, mitra, 100000, 5, now)
+		res, err := evaluatePartnerPromo(perOrder, mitra, group1(100000, 5), 5, now)
 		require.NoError(t, err)
 		require.Equal(t, 25000.0, res.Discount)
 
 		perStudent := voucher("student")
 		perStudent.DiscountPercent, perStudent.DiscountAmount = nil, f(25000)
-		res, err = evaluatePartnerPromo(perStudent, mitra, 20000, 3, now)
+		res, err = evaluatePartnerPromo(perStudent, mitra, group1(20000, 3), 3, now)
 		require.NoError(t, err)
 		require.Equal(t, 60000.0, res.Discount, "each student's discount cannot pass the unit price")
 		require.Equal(t, 0.0, res.Total)
@@ -132,10 +138,55 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 	t.Run("the minimum is on the whole order", func(t *testing.T) {
 		v := voucher("student")
 		v.MinOrderAmount = f(300000)
-		_, err := evaluatePartnerPromo(v, mitra, 100000, 2, now)
+		_, err := evaluatePartnerPromo(v, mitra, group1(100000, 2), 2, now)
 		require.ErrorIs(t, err, ErrPromoMinOrder)
-		_, err = evaluatePartnerPromo(v, mitra, 100000, 3, now)
+		_, err = evaluatePartnerPromo(v, mitra, group1(100000, 3), 3, now)
 		require.NoError(t, err)
+	})
+
+	// A Mitra buying two products in one order: each product has its own
+	// price and its own net-new seat count.
+	t.Run("multi-product: per-order quota and discount use the combined subtotal", func(t *testing.T) {
+		v := voucher("order")
+		v.MaxDiscountAmount = f(20000)
+		groups := []promoSeatGroup{{UnitPrice: 100000, Seats: 2}, {UnitPrice: 50000, Seats: 3}}
+		// subtotal = 200000 + 150000 = 350000; 10% = 35000, capped at 20000.
+		res, err := evaluatePartnerPromo(v, mitra, groups, 3, now)
+		require.NoError(t, err)
+		require.Equal(t, 1, res.Uses, "one use for the whole order regardless of product count")
+		require.Equal(t, 20000.0, res.Discount)
+		require.Equal(t, 330000.0, res.Total)
+	})
+
+	t.Run("multi-product: per-student quota and discount are summed per product", func(t *testing.T) {
+		v := voucher("student")
+		groups := []promoSeatGroup{{UnitPrice: 100000, Seats: 2}, {UnitPrice: 50000, Seats: 3}}
+		// 2 seats on product A (10% of 100000 = 10000 each) + 3 seats on
+		// product B (10% of 50000 = 5000 each) = 20000 + 15000.
+		res, err := evaluatePartnerPromo(v, mitra, groups, 3, now)
+		require.NoError(t, err)
+		require.Equal(t, 5, res.Uses, "2 + 3 seats, even though only 3 distinct students are served")
+		require.Equal(t, 35000.0, res.Discount)
+	})
+
+	t.Run("multi-product: min_students is the distinct-student count, not the summed seats", func(t *testing.T) {
+		v := voucher("order")
+		v.Partner.MinStudents = 4
+		groups := []promoSeatGroup{{UnitPrice: 100000, Seats: 2}, {UnitPrice: 50000, Seats: 3}}
+		// 2 + 3 = 5 seats, but only 3 distinct students are actually served.
+		_, err := evaluatePartnerPromo(v, mitra, groups, 3, now)
+		var minErr *PromoMinStudentsError
+		require.ErrorAs(t, err, &minErr)
+	})
+
+	t.Run("multi-product: max_uses can be exhausted partway through the groups", func(t *testing.T) {
+		v := voucher("student")
+		v.MaxUses, v.UsedCount = i(4), 0
+		groups := []promoSeatGroup{{UnitPrice: 100000, Seats: 2}, {UnitPrice: 50000, Seats: 3}}
+		_, err := evaluatePartnerPromo(v, mitra, groups, 3, now)
+		var short *PromoQuotaInsufficientError
+		require.ErrorAs(t, err, &short)
+		require.Equal(t, 4, short.Remaining)
 	})
 }
 

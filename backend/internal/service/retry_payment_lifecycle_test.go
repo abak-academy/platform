@@ -105,7 +105,11 @@ func TestRetryPayment_ProceedsWhenTheRecheckHasNothingToRefuse(t *testing.T) {
 				exam := seedExamTarget(t, repo)
 				product := seedDigitalProduct(t, repo, "exam", 50000, exam)
 				orderID := pendingOrderFor(t, svc, student, product)
-				if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, orderID, participant); err != nil {
+				var itemID string
+				if err := repo.Pool().QueryRow(ctx, `SELECT id FROM order_item WHERE order_id = $1 AND product_id = $2`, orderID, product).Scan(&itemID); err != nil {
+					t.Fatalf("find order item: %v", err)
+				}
+				if _, err := repo.Pool().Exec(ctx, `INSERT INTO order_participant (order_id, order_item_id, student_id) VALUES ($1, $2, $3)`, orderID, itemID, participant); err != nil {
 					t.Fatalf("seed participant: %v", err)
 				}
 				registerForExam(t, repo, student, exam, "registered")

@@ -125,11 +125,9 @@ export default function ProductDetailPage({
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
-      <Button asChild variant="ghost" size="sm" className="mb-4">
-        <Link href="/catalog">
-          <ArrowLeft className="size-4" />
-          {t("product_back_catalog")}
-        </Link>
+      <Button variant="ghost" size="sm" className="mb-4" onClick={() => router.back()}>
+        <ArrowLeft className="size-4" />
+        {t("product_back_catalog")}
       </Button>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_300px]">

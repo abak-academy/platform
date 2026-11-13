@@ -104,17 +104,18 @@ func TestPreviewPartnerOrder_whoAndWhatAMitraMayOrder(t *testing.T) {
 	otherMitrasNoSchool := env.student(t, "Eko", "", seedProgramAccount(t, env.repo, "active", "active", "", partnerOnlyPrograms).String())
 
 	t.Run("the allowed school and the students the Mitra registered", func(t *testing.T) {
-		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{inSchool, mine, mineElsewhere}, "")
+		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{inSchool, mine, mineElsewhere}, "")
 		require.NoError(t, err)
-		require.Equal(t, 3, preview.NetNewCount)
+		require.Len(t, preview.Items, 1)
+		require.Equal(t, 3, preview.Items[0].NetNewCount)
 		require.Equal(t, 300000.0, preview.Subtotal)
 		require.Equal(t, 300000.0, preview.Total)
-		require.Empty(t, preview.Excluded)
+		require.Empty(t, preview.Items[0].Excluded)
 	})
 
 	t.Run("one student out of scope refuses the whole request", func(t *testing.T) {
 		for _, bad := range []string{outside, otherMitrasNoSchool, uuid.NewString()} {
-			_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{inSchool, bad}, "")
+			_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{inSchool, bad}, "")
 			require.ErrorIs(t, err, ErrPartnerStudentNotAllowed, bad)
 		}
 	})
@@ -122,15 +123,16 @@ func TestPreviewPartnerOrder_whoAndWhatAMitraMayOrder(t *testing.T) {
 	t.Run("a student who already owns the product is left out and not charged", func(t *testing.T) {
 		owner := env.student(t, "Fani", env.schoolA, "")
 		env.enroll(t, owner, course)
-		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{inSchool, owner}, "")
+		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{inSchool, owner}, "")
 		require.NoError(t, err)
-		require.Equal(t, 1, preview.NetNewCount)
+		require.Len(t, preview.Items, 1)
+		require.Equal(t, 1, preview.Items[0].NetNewCount)
 		require.Equal(t, 100000.0, preview.Subtotal)
-		require.Len(t, preview.Excluded, 1)
-		require.Equal(t, owner, preview.Excluded[0].StudentID)
-		require.Equal(t, "already_owned", preview.Excluded[0].Reason)
+		require.Len(t, preview.Items[0].Excluded, 1)
+		require.Equal(t, owner, preview.Items[0].Excluded[0].StudentID)
+		require.Equal(t, "already_owned", preview.Items[0].Excluded[0].Reason)
 
-		_, err = env.svc.CreatePartnerOrder(ctx, env.partner, product.String(), []string{owner}, "")
+		_, err = env.svc.CreatePartnerOrder(ctx, env.partner, []string{product.String()}, []string{owner}, "")
 		require.ErrorIs(t, err, ErrZeroNetNewParticipants)
 	})
 
@@ -139,18 +141,106 @@ func TestPreviewPartnerOrder_whoAndWhatAMitraMayOrder(t *testing.T) {
 		env.enroll(t, refunded, course)
 		_, err := env.repo.Pool().Exec(ctx, `UPDATE course_session SET status = 'revoked' WHERE student_id = $1`, refunded)
 		require.NoError(t, err)
-		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{refunded}, "")
+		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{refunded}, "")
 		require.NoError(t, err)
-		require.Equal(t, 1, preview.NetNewCount, "after a refund the student can be bought for again")
+		require.Equal(t, 1, preview.Items[0].NetNewCount, "after a refund the student can be bought for again")
 	})
 
 	t.Run("bad requests", func(t *testing.T) {
-		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), nil, "")
+		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, nil, "")
 		require.ErrorIs(t, err, ErrEmptySelector)
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{inSchool, inSchool}, "")
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{inSchool, inSchool}, "")
 		require.ErrorIs(t, err, ErrDuplicateParticipant)
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{"nope"}, "")
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{"nope"}, "")
 		require.ErrorIs(t, err, ErrInvalidUUID)
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, nil, []string{inSchool}, "")
+		require.ErrorIs(t, err, ErrEmptySelector, "no product chosen")
+	})
+}
+
+// A Mitra buying two products at once: ownership is resolved per product, so
+// a student already owning one product is only dropped from that product's
+// line and still served the other.
+func TestPreviewAndCreatePartnerOrder_multiProduct(t *testing.T) {
+	env := newPartnerOrderEnv(t)
+	ctx := context.Background()
+	productA, courseA := env.courseProduct(t, 100000)
+	productB, _ := env.courseProduct(t, 50000)
+	env.open(t, productA)
+	env.open(t, productB)
+
+	ani := env.student(t, "Ani", env.schoolA, "")
+	budi := env.student(t, "Budi", env.schoolA, "")
+	env.enroll(t, ani, courseA) // Ani already owns product A, not B.
+
+	t.Run("preview excludes a student from only the product they already own", func(t *testing.T) {
+		preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{productA.String(), productB.String()}, []string{ani, budi}, "")
+		require.NoError(t, err)
+		require.Len(t, preview.Items, 2)
+		byProduct := map[string]PartnerOrderItemPreview{}
+		for _, item := range preview.Items {
+			byProduct[item.ProductID] = item
+		}
+		require.Equal(t, 1, byProduct[productA.String()].NetNewCount, "only Budi is net-new on A")
+		require.Len(t, byProduct[productA.String()].Excluded, 1)
+		require.Equal(t, ani, byProduct[productA.String()].Excluded[0].StudentID)
+		require.Equal(t, 2, byProduct[productB.String()].NetNewCount, "both are net-new on B")
+		require.Empty(t, byProduct[productB.String()].Excluded)
+		require.Equal(t, 100000.0+50000.0*2, preview.Subtotal, "A charges Budi once, B charges both")
+		require.Len(t, preview.Students, 2, "Ani is still served (by B), so still a served student")
+	})
+
+	t.Run("create: one order, one order_item per product, Ani still gets B", func(t *testing.T) {
+		order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String(), productB.String()}, []string{ani, budi}, "")
+		require.NoError(t, err)
+		require.Len(t, order.Items, 2, "one order_item per product that has someone net-new")
+
+		var itemA, itemB model.OrderItem
+		for _, item := range order.Items {
+			switch item.ProductID.String() {
+			case productA.String():
+				itemA = item
+			case productB.String():
+				itemB = item
+			}
+		}
+		require.Equal(t, 1, itemA.Qty, "only Budi on A")
+		require.Equal(t, 2, itemB.Qty, "both on B")
+
+		aniOnA, err := env.repo.GetOrderItemParticipants(ctx, itemA.ID)
+		require.NoError(t, err)
+		require.NotContains(t, aniOnA, uuid.MustParse(ani), "Ani already owns A, so she is not a participant on A's item")
+
+		aniOnB, err := env.repo.GetOrderItemParticipants(ctx, itemB.ID)
+		require.NoError(t, err)
+		require.Contains(t, aniOnB, uuid.MustParse(ani), "Ani is still served by B")
+
+		all, err := env.repo.GetOrderParticipants(ctx, order.ID)
+		require.NoError(t, err)
+		require.Len(t, all, 2, "both students are participants somewhere on the order")
+	})
+
+	t.Run("a product every selected student already owns is dropped, the order still succeeds for the rest", func(t *testing.T) {
+		order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String(), productB.String()}, []string{ani}, "")
+		require.NoError(t, err)
+		require.Len(t, order.Items, 1, "A is dropped entirely — Ani is its only candidate and already owns it")
+		require.Equal(t, productB.String(), order.Items[0].ProductID.String())
+	})
+
+	t.Run("every product already owned by every selected student fails the whole order", func(t *testing.T) {
+		_, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String()}, []string{ani}, "")
+		require.ErrorIs(t, err, ErrZeroNetNewParticipants)
+	})
+
+	t.Run("the order detail lists a student once even though they are a participant on two items", func(t *testing.T) {
+		order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String(), productB.String()}, []string{budi}, "")
+		require.NoError(t, err)
+		require.Len(t, order.Items, 2, "Budi owns neither product yet, so both items survive")
+
+		detail, err := env.svc.GetPartnerOrder(ctx, env.partner, order.ID.String())
+		require.NoError(t, err)
+		require.Len(t, detail.Students, 1, "Budi is a participant on both items but must appear once")
+		require.Equal(t, budi, detail.Students[0].ID.String())
 	})
 }
 
@@ -161,7 +251,7 @@ func TestPreviewPartnerOrder_productRules(t *testing.T) {
 
 	t.Run("a product nobody opened to a Mitra is refused", func(t *testing.T) {
 		closed, _ := env.courseProduct(t, 100000)
-		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, closed.String(), []string{student}, "")
+		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{closed.String()}, []string{student}, "")
 		require.ErrorIs(t, err, ErrPartnerProductNotAllowed)
 	})
 
@@ -170,7 +260,7 @@ func TestPreviewPartnerOrder_productRules(t *testing.T) {
 		other := seedProgramAccount(t, env.repo, "active", "active", "", partnerOnlyPrograms).String()
 		_, err := env.svc.AdminSetProductPartnerAccess(ctx, env.actor, product.String(), "selected", []string{other})
 		require.NoError(t, err)
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{student}, "")
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{student}, "")
 		require.ErrorIs(t, err, ErrPartnerProductNotAllowed)
 	})
 
@@ -180,7 +270,7 @@ func TestPreviewPartnerOrder_productRules(t *testing.T) {
 			`INSERT INTO product (type, name, price, stock, status, weight_grams) VALUES ('book', $1, 30000, 5, 'published', 300) RETURNING id`, "Buku "+uniqueSuffix(),
 		).Scan(&book))
 		env.open(t, book)
-		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, book.String(), []string{student}, "")
+		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{book.String()}, []string{student}, "")
 		require.ErrorIs(t, err, ErrPartnerProductType)
 	})
 
@@ -189,7 +279,7 @@ func TestPreviewPartnerOrder_productRules(t *testing.T) {
 		env.open(t, draft)
 		_, err := env.repo.Pool().Exec(ctx, `UPDATE product SET status = 'draft' WHERE id = $1`, draft)
 		require.NoError(t, err)
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, draft.String(), []string{student}, "")
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{draft.String()}, []string{student}, "")
 		require.ErrorIs(t, err, ErrProductNotFound)
 	})
 
@@ -198,12 +288,12 @@ func TestPreviewPartnerOrder_productRules(t *testing.T) {
 		env.open(t, product)
 
 		suspended := seedProgramAccount(t, env.repo, "deactivated", "suspended", "", partnerOnlyPrograms).String()
-		_, err := env.svc.PreviewPartnerOrder(ctx, suspended, product.String(), []string{student}, "")
+		_, err := env.svc.PreviewPartnerOrder(ctx, suspended, []string{product.String()}, []string{student}, "")
 		require.ErrorIs(t, err, ErrAccountDeactivated)
 
 		_, err = env.repo.Pool().Exec(ctx, `UPDATE system_config SET value = 'false' WHERE key = 'partner_enabled'`)
 		require.NoError(t, err)
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{student}, "")
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{student}, "")
 		require.ErrorIs(t, err, ErrPartnerProgramOff)
 	})
 }
@@ -216,7 +306,7 @@ func TestPreviewPartnerOrder_voucher(t *testing.T) {
 	a, b := env.student(t, "Ani", env.schoolA, ""), env.student(t, "Budi", env.schoolA, "")
 
 	perStudent := env.voucher(t, 10, "student", nil)
-	preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{a, b}, perStudent.Code)
+	preview, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{a, b}, perStudent.Code)
 	require.NoError(t, err)
 	require.Equal(t, 200000.0, preview.Subtotal)
 	require.Equal(t, 20000.0, preview.Discount)
@@ -228,7 +318,7 @@ func TestPreviewPartnerOrder_voucher(t *testing.T) {
 		ordinary, err := env.svc.AdminCreatePromoCode(ctx, model.PromoCode{Code: "ORD" + uniqueSuffix(), DiscountPercent: &pct, IsPublic: true})
 		require.NoError(t, err)
 		t.Cleanup(func() { _, _ = env.repo.Pool().Exec(ctx, `DELETE FROM promo_code WHERE id = $1`, ordinary.ID) })
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{a}, ordinary.Code)
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{a}, ordinary.Code)
 		require.ErrorIs(t, err, ErrInvalidPromo)
 	})
 
@@ -238,13 +328,13 @@ func TestPreviewPartnerOrder_voucher(t *testing.T) {
 		v, err := env.svc.AdminCreatePromoCode(ctx, model.PromoCode{Code: "OTH" + uniqueSuffix(), DiscountPercent: &pct, Partner: &model.PartnerVoucher{IDs: []string{other}, QuotaUnit: "order"}})
 		require.NoError(t, err)
 		t.Cleanup(func() { _, _ = env.repo.Pool().Exec(ctx, `DELETE FROM promo_code WHERE id = $1`, v.ID) })
-		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{a}, v.Code)
+		_, err = env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{a}, v.Code)
 		require.ErrorIs(t, err, ErrInvalidPromo)
 	})
 
 	t.Run("an order bigger than the quota left is refused, with what is left", func(t *testing.T) {
 		limited := env.voucher(t, 10, "student", i(1))
-		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, product.String(), []string{a, b}, limited.Code)
+		_, err := env.svc.PreviewPartnerOrder(ctx, env.partner, []string{product.String()}, []string{a, b}, limited.Code)
 		var short *PromoQuotaInsufficientError
 		require.ErrorAs(t, err, &short)
 		require.Equal(t, 1, short.Remaining)
@@ -259,7 +349,7 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 	a, b := env.student(t, "Ani", env.schoolA, ""), env.student(t, "Budi", "", env.partner)
 	full := env.voucher(t, 100, "student", i(10))
 
-	order, err := env.svc.CreatePartnerOrder(ctx, env.partner, product.String(), []string{a, b}, full.Code)
+	order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{product.String()}, []string{a, b}, full.Code)
 	require.NoError(t, err)
 	require.Equal(t, env.partner, order.StudentID.String(), "the Mitra is the buyer")
 	require.Equal(t, "cart", order.Status)
@@ -290,7 +380,7 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 	})
 
 	t.Run("a second order replaces the unpaid first one", func(t *testing.T) {
-		second, err := env.svc.CreatePartnerOrder(ctx, env.partner, product.String(), []string{a}, "")
+		second, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{product.String()}, []string{a}, "")
 		require.NoError(t, err)
 		var status string
 		require.NoError(t, env.repo.Pool().QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, order.ID).Scan(&status))
@@ -300,7 +390,7 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 	})
 
 	t.Run("a fully discounted order is paid at once and takes one voucher use per student", func(t *testing.T) {
-		withVoucher, err := env.svc.CreatePartnerOrder(ctx, env.partner, product.String(), []string{a, b}, full.Code)
+		withVoucher, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{product.String()}, []string{a, b}, full.Code)
 		require.NoError(t, err)
 		res, err := env.svc.CheckoutPartnerOrder(ctx, env.partner, withVoucher.ID.String(), "key-"+uniqueSuffix())
 		require.NoError(t, err)
@@ -375,7 +465,7 @@ func TestCheckoutPartnerOrder_revalidatesWhatChangedSinceTheOrderWasCreated(t *t
 			env.open(t, product)
 			students := []string{env.student(t, "Ani", env.schoolA, ""), env.student(t, "Budi", env.schoolA, "")}
 			v := env.voucher(t, 10, "student", i(10))
-			order, err := env.svc.CreatePartnerOrder(ctx, env.partner, product.String(), students, v.Code)
+			order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{product.String()}, students, v.Code)
 			require.NoError(t, err)
 
 			tt.change(t, env, product, course, students, v)
@@ -396,6 +486,36 @@ func TestCheckoutPartnerOrder_revalidatesWhatChangedSinceTheOrderWasCreated(t *t
 	}
 }
 
+// On a multi-product order, only the item whose participant actually became
+// an owner blocks checkout — the other item's own participants are checked
+// against its own product, independently.
+func TestCheckoutPartnerOrder_revalidatesEachItemIndependently(t *testing.T) {
+	env := newPartnerOrderEnv(t)
+	ctx := context.Background()
+	productA, courseA := env.courseProduct(t, 100000)
+	productB, _ := env.courseProduct(t, 50000)
+	env.open(t, productA)
+	env.open(t, productB)
+	ani := env.student(t, "Ani", env.schoolA, "")
+	budi := env.student(t, "Budi", env.schoolA, "")
+
+	order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String(), productB.String()}, []string{ani, budi}, "")
+	require.NoError(t, err)
+
+	// Ani buys product A herself before the Mitra pays — only A's item is affected.
+	env.enroll(t, ani, courseA)
+
+	_, err = env.svc.CheckoutPartnerOrder(ctx, env.partner, order.ID.String(), "key-"+uniqueSuffix())
+	var owns *ParticipantAlreadyOwnsError
+	require.ErrorAs(t, err, &owns)
+	require.Len(t, owns.Students, 1, "only Ani, only on A")
+	require.Equal(t, ani, owns.Students[0].ID.String())
+
+	var status string
+	require.NoError(t, env.repo.Pool().QueryRow(ctx, `SELECT status FROM orders WHERE id = $1`, order.ID).Scan(&status))
+	require.Equal(t, "cart", status, "the whole order stays unpaid, not partially settled")
+}
+
 func TestCheckout_aParticipantOrderMayHaveManySeatsButASelfOrderMayNot(t *testing.T) {
 	env := newPartnerOrderEnv(t)
 	ctx := context.Background()
@@ -408,8 +528,9 @@ func TestCheckout_aParticipantOrderMayHaveManySeatsButASelfOrderMayNot(t *testin
 		require.NoError(t, err)
 		order, err := env.repo.CreateOrderTx(ctx, tx, uuid.MustParse(buyer))
 		require.NoError(t, err)
-		require.NoError(t, env.repo.InsertOrderItemTx(ctx, tx, order.ID, model.OrderItem{ProductID: product, ProductType: "course", Name: "Kelas", UnitPrice: 0, Qty: 3}))
-		require.NoError(t, env.repo.InsertOrderParticipantsTx(ctx, tx, order.ID, participants))
+		itemID, err := env.repo.InsertOrderItemTx(ctx, tx, order.ID, model.OrderItem{ProductID: product, ProductType: "course", Name: "Kelas", UnitPrice: 0, Qty: 3})
+		require.NoError(t, err)
+		require.NoError(t, env.repo.InsertOrderItemParticipantsTx(ctx, tx, order.ID, itemID, participants))
 		require.NoError(t, tx.Commit(ctx))
 		return order.ID
 	}
@@ -438,9 +559,9 @@ func TestListPartnerOrders_pagesAndFilters(t *testing.T) {
 	ani := env.student(t, "Ani", env.schoolA, "")
 	budi := env.student(t, "Budi", env.schoolA, "")
 
-	one, err := env.svc.CreatePartnerOrder(ctx, env.partner, first.String(), []string{ani}, "")
+	one, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{first.String()}, []string{ani}, "")
 	require.NoError(t, err)
-	two, err := env.svc.CreatePartnerOrder(ctx, env.partner, second.String(), []string{budi}, "")
+	two, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{second.String()}, []string{budi}, "")
 	require.NoError(t, err)
 	var firstName string
 	require.NoError(t, env.repo.Pool().QueryRow(ctx, `SELECT name FROM product WHERE id = $1`, first).Scan(&firstName))

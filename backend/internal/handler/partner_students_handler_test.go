@@ -77,6 +77,48 @@ func TestPartnerStudentRoutes(t *testing.T) {
 		}
 	})
 
+	t.Run("the list flags a student who already owns a product named in product_ids", func(t *testing.T) {
+		productID := seedOpenCourseProduct(t, env, 100000)
+		var courseID string
+		if err := env.pool.QueryRow(context.Background(), `SELECT course_id::text FROM product_course WHERE product_id = $1`, productID).Scan(&courseID); err != nil {
+			t.Fatalf("read course id: %v", err)
+		}
+		_, body := register(`{"name":"Wati Handler","jenjang":"sma"}`)
+		studentID := body["id"].(string)
+		if _, err := env.pool.Exec(context.Background(),
+			`INSERT INTO course_session (student_id, course_id, status, source) VALUES ($1, $2, 'active', 'order')`, studentID, courseID); err != nil {
+			t.Fatalf("enroll student: %v", err)
+		}
+
+		rec := getWithToken(t, env.e, "/api/v1/partners/me/students?registered_by_me=true&product_ids="+productID, token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+		}
+		resp := decodeBody(t, rec)
+		rows, _ := resp["data"].([]any)
+		var found bool
+		for _, raw := range rows {
+			row, _ := raw.(map[string]any)
+			if row["id"] != studentID {
+				continue
+			}
+			found = true
+			owned, _ := row["owned_product_ids"].([]any)
+			if len(owned) != 1 || owned[0] != productID {
+				t.Errorf("owned_product_ids = %v, want [%s]", row["owned_product_ids"], productID)
+			}
+		}
+		if !found {
+			t.Fatalf("the enrolled student is missing from the list: %s", rec.Body.String())
+		}
+
+		// Without product_ids, the field is absent (omitempty), not an empty list.
+		rec = getWithToken(t, env.e, "/api/v1/partners/me/students?registered_by_me=true", token)
+		if strings.Contains(rec.Body.String(), "owned_product_ids") {
+			t.Errorf("owned_product_ids must not appear when product_ids was not asked for: %s", rec.Body.String())
+		}
+	})
+
 	t.Run("bad filters are a bad request", func(t *testing.T) {
 		for _, path := range []string{
 			"/api/v1/partners/me/students?status=deleted",

@@ -23,6 +23,7 @@ type OrderPaidPayload struct {
 
 // OrderItemMini contains minimal item info for access provisioning
 type OrderItemMini struct {
+	ID          uuid.UUID `json:"id"`
 	ProductID   uuid.UUID `json:"product_id"`
 	ProductType string    `json:"product_type"`
 }
@@ -54,6 +55,7 @@ type outboxRepository interface {
 	CreateExamRegistration(context.Context, pgx.Tx, model.ExamRegistration) error
 	StampOrderItemFulfilledAt(context.Context, pgx.Tx, uuid.UUID, uuid.UUID) error
 	GetOrderParticipants(context.Context, uuid.UUID) ([]uuid.UUID, error)
+	GetOrderItemParticipants(context.Context, uuid.UUID) ([]uuid.UUID, error)
 }
 
 type Worker struct {
@@ -236,9 +238,9 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 			// paid for other students, who get the access instead. Each session
 			// carries the order id so a refund revokes every participant.
 			enrollIDs := []uuid.UUID{order.StudentID}
-			participants, err := w.repo.GetOrderParticipants(ctx, payload.OrderID)
+			participants, err := w.repo.GetOrderItemParticipants(ctx, item.ID)
 			if err != nil {
-				slog.Error("get order participants", "order_id", payload.OrderID, "err", err)
+				slog.Error("get order item participants", "order_id", payload.OrderID, "item_id", item.ID, "err", err)
 				return
 			}
 			if len(participants) > 0 {
@@ -274,9 +276,9 @@ func (w *Worker) handleOrderPaid(ctx context.Context, event model.OutboxEvent) {
 			// Fan-out: if order_participant rows exist, register each
 			// participant instead of the buyer (order.StudentID).
 			registerIDs := []uuid.UUID{order.StudentID}
-			participants, err := w.repo.GetOrderParticipants(ctx, payload.OrderID)
+			participants, err := w.repo.GetOrderItemParticipants(ctx, item.ID)
 			if err != nil {
-				slog.Error("get order participants", "order_id", payload.OrderID, "err", err)
+				slog.Error("get order item participants", "order_id", payload.OrderID, "item_id", item.ID, "err", err)
 				return
 			}
 			if len(participants) > 0 {

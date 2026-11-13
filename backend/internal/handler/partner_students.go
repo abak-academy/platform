@@ -28,6 +28,10 @@ func (h *Handler) PartnerListStudents(c echo.Context) error {
 		}
 		registeredByMe = parsed
 	}
+	var productIDs []string
+	if raw := c.QueryParam("product_ids"); raw != "" {
+		productIDs = strings.Split(raw, ",")
+	}
 	if c.QueryParam("page") != "" || c.QueryParam("per_page") != "" {
 		page, perPage, err := adminQueuePaging(c)
 		if err != nil {
@@ -38,6 +42,7 @@ func (h *Handler) PartnerListStudents(c echo.Context) error {
 			Status:         status,
 			Q:              c.QueryParam("q"),
 			RegisteredByMe: registeredByMe,
+			ProductIDs:     productIDs,
 		}, page, perPage)
 		if err != nil {
 			return mapServiceError(c, err)
@@ -51,6 +56,7 @@ func (h *Handler) PartnerListStudents(c echo.Context) error {
 		RegisteredByMe: registeredByMe,
 		Cursor:         c.QueryParam("cursor"),
 		Limit:          parseLimit(c.QueryParam("limit"), 20, 100),
+		ProductIDs:     productIDs,
 	})
 	if err != nil {
 		return mapServiceError(c, err)

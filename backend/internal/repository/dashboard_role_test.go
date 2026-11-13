@@ -135,11 +135,23 @@ func seedOrderForBuyer(
 	return id
 }
 
+// seedOrderParticipant links a student to an order via a freshly created
+// order_item, since order_participant rows are scoped to one order_item.
 func seedOrderParticipant(t *testing.T, r *Repository, orderID, studentID string) {
 	t.Helper()
-	_, err := r.pool.Exec(context.Background(),
-		`INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`,
-		orderID, studentID,
+	ctx := context.Background()
+	productID := insertOrderParticipantProduct(t, r, "Dashboard Seed "+uuid.NewString()[:8])
+	var itemID string
+	if err := r.pool.QueryRow(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, weight_grams)
+		 VALUES ($1, $2, 'exam', 'Dashboard Seed Item', 1000, 1, 0) RETURNING id`,
+		orderID, productID,
+	).Scan(&itemID); err != nil {
+		t.Fatalf("seed order_item: %v", err)
+	}
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO order_participant (order_id, order_item_id, student_id) VALUES ($1, $2, $3)`,
+		orderID, itemID, studentID,
 	)
 	if err != nil {
 		t.Fatalf("seed order_participant: %v", err)

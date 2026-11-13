@@ -41,8 +41,13 @@ type Product struct {
 	AvailableUntil    *time.Time `json:"available_until"`
 	AvailableFromSet  bool       `json:"-"`
 	AvailableUntilSet bool       `json:"-"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	// GroupingID is the product_grouping this product belongs to, or nil when
+	// ungrouped. GroupingOrder only has meaning while grouped: it is the
+	// product's position within that grouping's display order.
+	GroupingID    *string   `json:"grouping_id"`
+	GroupingOrder int       `json:"grouping_order"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 const (

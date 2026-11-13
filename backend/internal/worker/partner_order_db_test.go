@@ -52,7 +52,7 @@ func TestOrderPaidPartnerOrder_everyParticipantGetsTheCourseAndARefundTakesItBac
 		env.exec(t, `DELETE FROM promo_code WHERE id = $1`, voucher.ID)
 	})
 
-	order, err := env.svc.CreatePartnerOrder(ctx, partnerID.String(), product.String(), []string{first.String(), second.String()}, voucher.Code)
+	order, err := env.svc.CreatePartnerOrder(ctx, partnerID.String(), []string{product.String()}, []string{first.String(), second.String()}, voucher.Code)
 	if err != nil {
 		t.Fatalf("create partner order: %v", err)
 	}

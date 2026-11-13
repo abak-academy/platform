@@ -41,4 +41,15 @@ describe("useProducts", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(fetchSpy).toHaveBeenCalledTimes(10);
   });
+
+  it("forwards grouping_id alongside type so the catalog can filter by grouping", async () => {
+    const fetchSpy = vi.spyOn(api, "apiFetch").mockResolvedValueOnce({
+      data: [{ id: "a", type: "book", name: "Buku", price: 1 }],
+    });
+
+    const { result } = renderHook(() => useProducts("book", "g1"), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchSpy).toHaveBeenCalledWith("/products?type=book&grouping_id=g1");
+  });
 });

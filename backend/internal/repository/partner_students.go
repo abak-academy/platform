@@ -26,6 +26,9 @@ type PartnerStudentRow struct {
 	Activated      bool      `json:"activated"`
 	RegisteredByMe bool      `json:"registered_by_me"`
 	CreatedAt      time.Time `json:"created_at"`
+	// OwnedProductIDs is the subset of a requested product_ids filter this
+	// student already owns, set only when that filter was given.
+	OwnedProductIDs []string `json:"owned_product_ids,omitempty"`
 }
 
 // PartnerStudentFilter narrows a Mitra's student list. SchoolID and Q are
@@ -272,9 +275,11 @@ func (r *Repository) ListPartnerOrderStudents(ctx context.Context, ids []uuid.UU
 }
 
 // ListOrderParticipantStudents names the students an order grants access to.
+// A student appears once even when the order covers several products, since
+// order_participant now has one row per (order_item_id, student_id).
 func (r *Repository) ListOrderParticipantStudents(ctx context.Context, orderID uuid.UUID) ([]PartnerOrderStudent, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT u.id, u.name, s.name
+		`SELECT DISTINCT u.id, u.name, s.name
 		 FROM order_participant op
 		 JOIN users u ON u.id = op.student_id
 		 LEFT JOIN school s ON s.id = u.school_id

@@ -31,6 +31,12 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	products.GET("", h.ListProducts)
 	products.GET("/:id", h.GetProduct)
 
+	// Student product grouping routes — list only; browsing a grouping's
+	// products goes through GET /products?grouping_id= instead of a dedicated
+	// detail read, so the /catalog grid stays the one place to view them.
+	productGroupings := v1.Group("/product-groupings")
+	productGroupings.GET("", h.ListProductGroupings)
+
 	// Admin product routes
 	admin := v1.Group("/admin")
 	admin.Use(handler.JWTMiddleware(svc, jwtSigner))
@@ -195,6 +201,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminOrders.POST("/:id/complete", h.AdminCompleteOrder)
 	adminOrders.POST("/:id/refund", h.AdminRefundOrder)
 	adminOrders.POST("/:id/reconcile", h.AdminReconcileOrder)
+
+	// Admin product grouping routes
+	adminProductGroupings := admin.Group("/product-groupings")
+	adminProductGroupings.Use(handler.RBACMiddleware("product-groupings:write"))
+	adminProductGroupings.GET("", h.AdminListProductGroupings)
+	adminProductGroupings.POST("", h.AdminCreateProductGrouping)
+	adminProductGroupings.PATCH("/order", h.AdminReorderProductGroupings)
+	adminProductGroupings.GET("/:id", h.AdminGetProductGrouping)
+	adminProductGroupings.PATCH("/:id", h.AdminUpdateProductGrouping)
+	adminProductGroupings.DELETE("/:id", h.AdminDeleteProductGrouping)
+	adminProductGroupings.PUT("/:id/products", h.AdminSetGroupingProducts)
 
 	// Admin promo code routes
 	adminPromos := admin.Group("/promo-codes")

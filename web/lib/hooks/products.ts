@@ -6,15 +6,16 @@ import type { Product, ProductType } from "@/lib/types";
 
 export const productsKeys = {
   all: ["products"] as const,
-  list: (type?: ProductType) => [...productsKeys.all, "list", type ?? "all"] as const,
+  list: (type?: ProductType, groupingId?: string) =>
+    [...productsKeys.all, "list", type ?? "all", groupingId ?? "all"] as const,
   detail: (id: string) => [...productsKeys.all, "detail", id] as const,
 };
 
 const MAX_PRODUCT_PAGES = 10;
 
-export function useProducts(type?: ProductType) {
+export function useProducts(type?: ProductType, groupingId?: string) {
   return useQuery({
-    queryKey: productsKeys.list(type),
+    queryKey: productsKeys.list(type, groupingId),
     queryFn: async () => {
       const all: Product[] = [];
       let cursor: string | undefined;
@@ -22,6 +23,7 @@ export function useProducts(type?: ProductType) {
       for (let page = 0; page < MAX_PRODUCT_PAGES; page++) {
         const params = new URLSearchParams();
         if (type) params.set("type", type);
+        if (groupingId) params.set("grouping_id", groupingId);
         if (cursor) params.set("cursor", cursor);
         const qs = params.toString() ? `?${params.toString()}` : "";
 

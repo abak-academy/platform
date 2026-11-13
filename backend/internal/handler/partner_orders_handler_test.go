@@ -73,18 +73,23 @@ func TestPartnerOrderRoutes(t *testing.T) {
 	order := "/api/v1/partners/me/orders"
 
 	t.Run("a preview shows the charge", func(t *testing.T) {
-		rec := postJSONWithToken(t, env.e, order+"/preview", token, `{"product_id":"`+product+`","student_ids":["`+mine+`"]}`)
+		rec := postJSONWithToken(t, env.e, order+"/preview", token, `{"product_ids":["`+product+`"],"student_ids":["`+mine+`"]}`)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
 		}
 		body := decodeBody(t, rec)
-		if body["net_new_count"] != float64(1) || body["total"] != float64(100000) {
+		items, _ := body["items"].([]any)
+		if len(items) != 1 {
+			t.Fatalf("preview items = %v, want 1", body["items"])
+		}
+		item, _ := items[0].(map[string]any)
+		if item["net_new_count"] != float64(1) || body["total"] != float64(100000) {
 			t.Errorf("preview = %v, want 1 student and 100000", body)
 		}
 	})
 
 	t.Run("a student outside the Mitra's scope refuses the request", func(t *testing.T) {
-		rec := postJSONWithToken(t, env.e, order+"/preview", token, `{"product_id":"`+product+`","student_ids":["`+mine+`","`+other+`"]}`)
+		rec := postJSONWithToken(t, env.e, order+"/preview", token, `{"product_ids":["`+product+`"],"student_ids":["`+mine+`","`+other+`"]}`)
 		if rec.Code != http.StatusForbidden || decodeBody(t, rec)["code"] != "student_not_allowed" {
 			t.Errorf("want 403 student_not_allowed, got %d %s", rec.Code, rec.Body.String())
 		}
@@ -95,14 +100,14 @@ func TestPartnerOrderRoutes(t *testing.T) {
 		if _, err := env.pool.Exec(context.Background(), `UPDATE product SET partner_access = NULL WHERE id = $1`, closed); err != nil {
 			t.Fatalf("close product: %v", err)
 		}
-		rec := postJSONWithToken(t, env.e, order+"/preview", token, `{"product_id":"`+closed+`","student_ids":["`+mine+`"]}`)
+		rec := postJSONWithToken(t, env.e, order+"/preview", token, `{"product_ids":["`+closed+`"],"student_ids":["`+mine+`"]}`)
 		if rec.Code != http.StatusForbidden || decodeBody(t, rec)["code"] != "product_not_allowed" {
 			t.Errorf("want 403 product_not_allowed, got %d %s", rec.Code, rec.Body.String())
 		}
 	})
 
 	t.Run("a request with no students is a bad request", func(t *testing.T) {
-		rec := postJSONWithToken(t, env.e, order, token, `{"product_id":"`+product+`","student_ids":[]}`)
+		rec := postJSONWithToken(t, env.e, order, token, `{"product_ids":["`+product+`"],"student_ids":[]}`)
 		if rec.Code != http.StatusBadRequest {
 			t.Errorf("want 400, got %d: %s", rec.Code, rec.Body.String())
 		}
@@ -116,7 +121,7 @@ func TestPartnerOrderRoutes(t *testing.T) {
 			t.Fatalf("create voucher: %d %s", rec.Code, rec.Body.String())
 		}
 
-		rec := postJSONWithToken(t, env.e, order, token, `{"product_id":"`+product+`","student_ids":["`+mine+`"],"promo_code":"`+code+`"}`)
+		rec := postJSONWithToken(t, env.e, order, token, `{"product_ids":["`+product+`"],"student_ids":["`+mine+`"],"promo_code":"`+code+`"}`)
 		if rec.Code != http.StatusCreated {
 			t.Fatalf("create: want 201, got %d: %s", rec.Code, rec.Body.String())
 		}
@@ -164,7 +169,7 @@ func TestPartnerOrderRoutes(t *testing.T) {
 	t.Run("a suspended Mitra cannot start an order", func(t *testing.T) {
 		suspended := seedProgramAccount(t, env.pool, "deactivated", "suspended", "", partnerOnlyJSON, "")
 		rec := postJSONWithToken(t, env.e, order, env.tokenForUser(t, suspended, service.RoleAffiliator),
-			`{"product_id":"`+product+`","student_ids":["`+uuid.NewString()+`"]}`)
+			`{"product_ids":["`+product+`"],"student_ids":["`+uuid.NewString()+`"]}`)
 		if rec.Code != http.StatusForbidden || decodeBody(t, rec)["code"] != "account_deactivated" {
 			t.Errorf("want 403 account_deactivated, got %d %s", rec.Code, rec.Body.String())
 		}
@@ -282,7 +287,7 @@ func TestAdminPartnerReport(t *testing.T) {
 		`{"code":"`+code+`","discount_percent":100,"partner_voucher":{"enabled":true,"quota_unit":"student"}}`); rec.Code != http.StatusCreated {
 		t.Fatalf("create voucher: %d %s", rec.Code, rec.Body.String())
 	}
-	rec := postJSONWithToken(t, env.e, "/api/v1/partners/me/orders", token, `{"product_id":"`+product+`","student_ids":["`+student+`"],"promo_code":"`+code+`"}`)
+	rec := postJSONWithToken(t, env.e, "/api/v1/partners/me/orders", token, `{"product_ids":["`+product+`"],"student_ids":["`+student+`"],"promo_code":"`+code+`"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create order: %d %s", rec.Code, rec.Body.String())
 	}

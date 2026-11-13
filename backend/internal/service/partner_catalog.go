@@ -102,20 +102,31 @@ type PartnerPromoResult struct {
 	Uses int
 }
 
-// ValidatePartnerPromo applies a Mitra voucher to an order of seats seats at
-// unitPrice each. Only a voucher made for Mitra, and for this one, applies. The
-// quota unit decides what max_uses and the discount cap count: whole orders, or
-// each student.
-func (s *Service) ValidatePartnerPromo(ctx context.Context, partnerID, code string, unitPrice float64, seats int) (PartnerPromoResult, error) {
+// promoSeatGroup is one product's own (unit price, net-new seat count) pair
+// in a multi-product order. A single-product order is just one group — the
+// math below is written to be exactly today's behavior when len(groups) == 1.
+type promoSeatGroup struct {
+	UnitPrice float64
+	Seats     int
+}
+
+// ValidatePartnerPromo applies a Mitra voucher across every product group in
+// an order (distinctStudents is the order's served-student count, used for
+// min_students — it can differ from the sum of each group's seats, since one
+// student may be net-new on more than one product). Only a voucher made for
+// Mitra, and for this one, applies. The quota unit decides what max_uses and
+// the discount cap count: the whole order once, or each student on each
+// product they're net-new for.
+func (s *Service) ValidatePartnerPromo(ctx context.Context, partnerID, code string, groups []promoSeatGroup, distinctStudents int) (PartnerPromoResult, error) {
 	promo, err := s.storeRepo.GetPromoByCode(ctx, code)
 	if err != nil {
 		return PartnerPromoResult{}, err
 	}
-	return evaluatePartnerPromo(promo, partnerID, unitPrice, seats, time.Now())
+	return evaluatePartnerPromo(promo, partnerID, groups, distinctStudents, time.Now())
 }
 
-func evaluatePartnerPromo(promo model.PromoCode, partnerID string, unitPrice float64, seats int, now time.Time) (PartnerPromoResult, error) {
-	if promo.Code == "" || promo.Partner == nil || seats < 1 {
+func evaluatePartnerPromo(promo model.PromoCode, partnerID string, groups []promoSeatGroup, distinctStudents int, now time.Time) (PartnerPromoResult, error) {
+	if promo.Code == "" || promo.Partner == nil || distinctStudents < 1 || len(groups) == 0 {
 		return PartnerPromoResult{}, ErrInvalidPromo
 	}
 	if len(promo.Partner.IDs) > 0 && !slices.Contains(promo.Partner.IDs, partnerID) {
@@ -125,14 +136,23 @@ func evaluatePartnerPromo(promo model.PromoCode, partnerID string, unitPrice flo
 		return PartnerPromoResult{}, ErrInvalidPromo
 	}
 
-	if seats < promo.Partner.MinStudents {
+	if distinctStudents < promo.Partner.MinStudents {
 		return PartnerPromoResult{}, &PromoMinStudentsError{Min: promo.Partner.MinStudents}
 	}
 
 	perStudent := promo.Partner.QuotaUnit == model.PartnerQuotaPerStudent
+
+	var subtotal float64
+	for _, g := range groups {
+		subtotal += g.UnitPrice * float64(g.Seats)
+	}
+
 	uses := 1
 	if perStudent {
-		uses = seats
+		uses = 0
+		for _, g := range groups {
+			uses += g.Seats
+		}
 	}
 	if promo.MaxUses != nil {
 		remaining := *promo.MaxUses - promo.UsedCount
@@ -144,24 +164,27 @@ func evaluatePartnerPromo(promo model.PromoCode, partnerID string, unitPrice flo
 		}
 	}
 
-	subtotal := unitPrice * float64(seats)
 	if promo.MinOrderAmount != nil && subtotal < *promo.MinOrderAmount {
 		return PartnerPromoResult{}, ErrPromoMinOrder
 	}
 
 	var discount float64
 	if perStudent {
-		var perUnit float64
-		switch {
-		case promo.DiscountPercent != nil:
-			perUnit = unitPrice * (*promo.DiscountPercent / 100)
-			if promo.MaxDiscountAmount != nil && perUnit > *promo.MaxDiscountAmount {
-				perUnit = *promo.MaxDiscountAmount
+		// Per student-product pair: each product's own price and seat count
+		// get their own discount-per-unit (capped per product), summed.
+		for _, g := range groups {
+			var perUnit float64
+			switch {
+			case promo.DiscountPercent != nil:
+				perUnit = g.UnitPrice * (*promo.DiscountPercent / 100)
+				if promo.MaxDiscountAmount != nil && perUnit > *promo.MaxDiscountAmount {
+					perUnit = *promo.MaxDiscountAmount
+				}
+			case promo.DiscountAmount != nil:
+				perUnit = math.Min(*promo.DiscountAmount, g.UnitPrice)
 			}
-		case promo.DiscountAmount != nil:
-			perUnit = math.Min(*promo.DiscountAmount, unitPrice)
+			discount += perUnit * float64(g.Seats)
 		}
-		discount = perUnit * float64(seats)
 	} else {
 		switch {
 		case promo.DiscountPercent != nil:

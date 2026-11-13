@@ -4,10 +4,11 @@ import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { RetryPaymentButton } from "@/components/partner/RetryPaymentButton";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { usePartnerOrder } from "@/lib/hooks/partner";
+import { partnerKeys, usePartnerOrder } from "@/lib/hooks/partner";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 
@@ -54,6 +55,9 @@ export default function PartnerOrderDetailPage({ params }: { params: Promise<{ i
               <dt className="text-ink-500">{t("partner_order_voucher")}</dt>
               <dd className="text-right font-mono">{order.promo_code ?? t("partner_order_no_voucher")}</dd>
             </dl>
+            {order.status === "cart" && (
+              <SnapCheckout orderId={order.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.order(order.id)} />
+            )}
             {order.status === "payment_pending" && (
               <div className="flex justify-end">
                 <RetryPaymentButton orderId={order.id} />

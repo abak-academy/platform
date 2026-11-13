@@ -23,7 +23,8 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 	var specs []byte
 	err := row.Scan(
 		&p.ID, &p.Type, &p.Name, &description, &p.Price, &p.Stock, &p.StockLimited, &p.Status,
-		&weightGrams, &imageURL, &specs, &p.AvailableFrom, &p.AvailableUntil, &p.CreatedAt, &p.UpdatedAt,
+		&weightGrams, &imageURL, &specs, &p.AvailableFrom, &p.AvailableUntil,
+		&p.GroupingID, &p.GroupingOrder, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		return err
@@ -85,9 +86,10 @@ type ProductFilter struct {
 	OrderableExamOnly bool // true = linked to at least one exam whose startable window is open
 	// PartnerID narrows the list to products opened to this Mitra: scope "all",
 	// or scope "selected" naming it. Products with no setting stay out.
-	PartnerID string
-	Cursor    string
-	Limit     int
+	PartnerID  string
+	GroupingID string
+	Cursor     string
+	Limit      int
 }
 
 // stockValue maps the write-side stock: NULL only for an unlimited exam product.
@@ -124,7 +126,7 @@ func marshalSpecs(specs []model.ProductSpec) ([]byte, error) {
 func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Product, error) {
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
-		`SELECT id, type, name, description, price, COALESCE(stock, 0), (stock IS NOT NULL), status, weight_grams, image_url, specs, available_from, available_until, created_at, updated_at
+		`SELECT id, type, name, description, price, COALESCE(stock, 0), (stock IS NOT NULL), status, weight_grams, image_url, specs, available_from, available_until, grouping_id, grouping_order, created_at, updated_at
 		FROM product
 		WHERE id = $1`,
 		id,
@@ -145,7 +147,7 @@ func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
 		`SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status,
-		        p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.created_at, p.updated_at
+		        p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
 		 FROM product p
 		 JOIN product_exam pe ON pe.product_id = p.id
 		 JOIN exam e ON e.id = pe.exam_id
@@ -169,7 +171,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	products := []model.Product{}
-	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.created_at, p.updated_at
+	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
 	FROM product p WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
@@ -219,6 +221,16 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 			JOIN exam e ON e.id = pe.exam_id
 			WHERE pe.product_id = p.id` + examOrderabilityFilter + `
 		)`
+	}
+	if filter.GroupingID != "" {
+		query += fmt.Sprintf(` AND p.grouping_id = $%d`, argIdx)
+		args = append(args, filter.GroupingID)
+		argIdx++
+		if filter.VisibleOnly {
+			// A grouping still in draft is not yet announced; a guessed or
+			// leaked id must not let the catalog filter surface its members.
+			query += ` AND EXISTS (SELECT 1 FROM product_grouping pg WHERE pg.id = p.grouping_id AND pg.status = 'published')`
+		}
 	}
 	if filter.Cursor != "" {
 		if _, err := uuid.Parse(filter.Cursor); err != nil {

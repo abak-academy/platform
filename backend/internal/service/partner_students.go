@@ -9,6 +9,8 @@ import (
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 // ErrStudentAlreadyActivated reports a credential reissue for a student who has
@@ -50,6 +52,47 @@ type PartnerStudentListFilter struct {
 	RegisteredByMe bool
 	Cursor         string
 	Limit          int
+	// ProductIDs annotates each returned row with which of these products (if
+	// any) it already owns, so the New Purchase picker can disable them
+	// up front instead of only finding out at preview/checkout.
+	ProductIDs []string
+}
+
+// annotateOwnedProducts sets OwnedProductIDs on every row for the subset of
+// productIDs that row's student already owns. A product this Mitra cannot
+// order (wrong type, not open to them) is silently skipped rather than
+// failing the whole list — the picker only needs to know what blocks a
+// checkbox, not relitigate catalog access here.
+func (s *Service) annotateOwnedProducts(ctx context.Context, partnerID string, productIDs []string, rows []repository.PartnerStudentRow) error {
+	if len(productIDs) == 0 || len(rows) == 0 {
+		return nil
+	}
+	rowIDs := make([]uuid.UUID, 0, len(rows))
+	byRow := make(map[uuid.UUID]*repository.PartnerStudentRow, len(rows))
+	for i := range rows {
+		id, err := parseUUID(rows[i].ID)
+		if err != nil {
+			continue
+		}
+		rowIDs = append(rowIDs, id)
+		byRow[id] = &rows[i]
+	}
+	for _, productID := range productIDs {
+		product, pID, err := s.partnerProduct(ctx, partnerID, productID)
+		if err != nil {
+			continue
+		}
+		owned, err := s.studentsOwningProduct(ctx, product.Type, pID, rowIDs)
+		if err != nil {
+			return err
+		}
+		for id, isOwned := range owned {
+			if isOwned {
+				byRow[id].OwnedProductIDs = append(byRow[id].OwnedProductIDs, productID)
+			}
+		}
+	}
+	return nil
 }
 
 // PartnerRegisterStudent registers a student on behalf of a Mitra and records
@@ -105,6 +148,9 @@ func (s *Service) ListPartnerStudentsPage(ctx context.Context, partnerID string,
 	if err != nil {
 		return nil, fmt.Errorf("list partner students: %w", err)
 	}
+	if err := s.annotateOwnedProducts(ctx, partnerID, filter.ProductIDs, rows); err != nil {
+		return nil, fmt.Errorf("annotate owned products: %w", err)
+	}
 	out := &PartnerStudentsNumberedPage{Data: rows, Page: page, PerPage: perPage, Total: total}
 	if total == 0 && len(allowedSchoolIDs) == 0 && filter.Q == "" && filter.SchoolID == "" {
 		out.Hint = "no_schools"
@@ -137,6 +183,9 @@ func (s *Service) ListPartnerStudents(ctx context.Context, partnerID string, all
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list partner students: %w", err)
+	}
+	if err := s.annotateOwnedProducts(ctx, partnerID, filter.ProductIDs, rows); err != nil {
+		return nil, fmt.Errorf("annotate owned products: %w", err)
 	}
 	page := &PartnerStudentsPage{Data: rows, NextCursor: next}
 	if len(rows) == 0 && len(allowedSchoolIDs) == 0 && filter.Cursor == "" && filter.Q == "" && filter.SchoolID == "" {

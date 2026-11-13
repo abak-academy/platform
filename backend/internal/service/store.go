@@ -1048,6 +1048,7 @@ type OrderPaidPayload struct {
 }
 
 type OrderPaidPayloadItem struct {
+	ID          string `json:"id"`
 	ProductID   string `json:"product_id"`
 	ProductType string `json:"product_type"`
 	Qty         int    `json:"qty"`
@@ -1221,6 +1222,7 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affilia
 		payload := OrderPaidPayload{OrderID: oID.String()}
 		for _, item := range order.Items {
 			payload.Items = append(payload.Items, OrderPaidPayloadItem{
+				ID:          item.ID.String(),
 				ProductID:   item.ProductID.String(),
 				ProductType: item.ProductType,
 				Qty:         item.Qty,
@@ -1707,6 +1709,7 @@ func (s *Service) markOrderPaidTx(ctx context.Context, tx pgx.Tx, order model.Or
 	payload := OrderPaidPayload{OrderID: order.ID.String()}
 	for _, item := range order.Items {
 		payload.Items = append(payload.Items, OrderPaidPayloadItem{
+			ID:          item.ID.String(),
 			ProductID:   item.ProductID.String(),
 			ProductType: item.ProductType,
 			Qty:         item.Qty,
@@ -2312,6 +2315,7 @@ func (s *Service) HandlePaymentWebhook(ctx context.Context, payload []byte, sign
 	outboxPayload := OrderPaidPayload{OrderID: orderID.String()}
 	for _, item := range order.Items {
 		outboxPayload.Items = append(outboxPayload.Items, OrderPaidPayloadItem{
+			ID:          item.ID.String(),
 			ProductID:   item.ProductID.String(),
 			ProductType: item.ProductType,
 			Qty:         item.Qty,
