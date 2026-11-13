@@ -7,10 +7,11 @@ const hook = vi.hoisted(() => ({
   previewMutateAsync: vi.fn(),
   createMutate: vi.fn(),
   usePartnerStudents: vi.fn(),
+  routerPush: vi.fn(),
 }));
 
-vi.mock("@/components/cart/SnapCheckout", () => ({
-  SnapCheckout: ({ orderId, basePath }: { orderId: string; basePath: string }) => <div data-testid="snap" data-order={orderId} data-base={basePath} />,
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: hook.routerPush }),
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/hooks/partner", () => ({
@@ -100,6 +101,7 @@ describe("NewPartnerOrderPage", () => {
     hook.previewMutateAsync.mockReset();
     hook.createMutate.mockReset();
     hook.usePartnerStudents.mockReset();
+    hook.routerPush.mockReset();
     mockPreviewSuccess();
     mockStudents();
   });
@@ -179,7 +181,7 @@ describe("NewPartnerOrderPage", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Buat pesanan" })).not.toBeDisabled());
   });
 
-  it("creates a single order for every selected product and shows one payment link", async () => {
+  it("creates a single order for every selected product and sends the Mitra to pay it there", async () => {
     hook.createMutate.mockResolvedValue({ id: "order-1" });
     render(<NewPartnerOrderPage />);
     await chooseProduct(/Kelas Matematika/);
@@ -191,9 +193,7 @@ describe("NewPartnerOrderPage", () => {
 
     await waitFor(() => expect(hook.createMutate).toHaveBeenCalledTimes(1));
     expect(hook.createMutate).toHaveBeenCalledWith({ product_ids: ["p1", "p2"], student_ids: ["s1"], promo_code: undefined });
-    const snaps = await screen.findAllByTestId("snap");
-    expect(snaps).toHaveLength(1);
-    expect(snaps[0]).toHaveAttribute("data-order", "order-1");
+    await waitFor(() => expect(hook.routerPush).toHaveBeenCalledWith("/affiliate/partner/orders/order-1"));
   });
 
   it("selects every visible product with one click, scoped to the current grouping filter", async () => {

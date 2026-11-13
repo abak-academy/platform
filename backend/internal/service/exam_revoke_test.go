@@ -283,9 +283,13 @@ func TestRefundOrder_RevokesExamRegistrations(t *testing.T) {
 	if _, err := svc.GrantExamAccess(ctx, actorID.String(), examID.String(), []uuid.UUID{buyer, participant}); err != nil {
 		t.Fatalf("GrantExamAccess: %v", err)
 	}
+	var itemID string
+	require.NoError(t, repo.Pool().QueryRow(ctx,
+		`SELECT id FROM order_item WHERE order_id = $1 AND product_id = $2`, order.ID, productID,
+	).Scan(&itemID))
 	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`,
-		order.ID, participant,
+		`INSERT INTO order_participant (order_id, order_item_id, student_id) VALUES ($1, $2, $3)`,
+		order.ID, itemID, participant,
 	)
 	require.NoError(t, err)
 	_, err = repo.Pool().Exec(ctx, `UPDATE orders SET status = 'paid' WHERE id = $1`, order.ID)

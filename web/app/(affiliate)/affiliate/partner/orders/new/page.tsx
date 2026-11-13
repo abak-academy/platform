@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { SnapCheckout } from "@/components/cart/SnapCheckout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { partnerOrderErrorMessage } from "@/lib/partner-order-errors";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import {
-  partnerKeys,
   useCreatePartnerOrder,
   usePartnerProducts,
   usePartnerStudents,
@@ -23,13 +22,14 @@ import {
 import { useProductGroupings } from "@/lib/hooks/product-groupings";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import type { PartnerOrder, PartnerOrderPreview } from "@/lib/types";
+import type { PartnerOrderPreview } from "@/lib/types";
 
 const NO_VOUCHER = "none";
 const ALL_GROUPINGS = "all";
 
 export default function NewPartnerOrderPage() {
   const { t } = useTranslation();
+  const router = useRouter();
   const products = usePartnerProducts();
   const groupings = useProductGroupings();
   const vouchers = usePartnerVouchers();
@@ -40,7 +40,6 @@ export default function NewPartnerOrderPage() {
   const [voucher, setVoucher] = useState(NO_VOUCHER);
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});
-  const [createdOrder, setCreatedOrder] = useState<PartnerOrder | null>(null);
   const [creating, setCreating] = useState(false);
   const [preview, setPreview] = useState<PartnerOrderPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -156,12 +155,10 @@ export default function NewPartnerOrderPage() {
     setCreating(true);
     try {
       const order = await create.mutateAsync({ product_ids: selectedProductIds, student_ids: ids, promo_code: promo });
-      setCreatedOrder(order);
       toast.success(t("partner_new_created"));
-      setSelectedProductIds([]);
+      router.push(`/affiliate/partner/orders/${order.id}`);
     } catch (err) {
       toast.error(partnerOrderErrorMessage(err, t));
-    } finally {
       setCreating(false);
     }
   }
@@ -353,18 +350,11 @@ export default function NewPartnerOrderPage() {
         </section>
       )}
 
-      {createdOrder ? (
-        <section className="md-card-outlined space-y-2 p-5">
-          <p className="text-sm text-ink-700">{t("partner_new_pay_hint")}</p>
-          <SnapCheckout orderId={createdOrder.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.orders()} />
-        </section>
-      ) : (
-        <div className="flex justify-end">
-          <Button onClick={submit} disabled={!ready || creating}>
-            {t("partner_new_create")}
-          </Button>
-        </div>
-      )}
+      <div className="flex justify-end">
+        <Button onClick={submit} disabled={!ready || creating}>
+          {t("partner_new_create")}
+        </Button>
+      </div>
     </div>
   );
 }

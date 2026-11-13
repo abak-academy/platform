@@ -64,9 +64,12 @@ func seedExamPendingOrderRow(t *testing.T, pool *pgxpool.Pool, productID uuid.UU
 
 func seedBulkOrderParticipant(t *testing.T, pool *pgxpool.Pool, orderID uuid.UUID) {
 	t.Helper()
+	ctx := context.Background()
 	studentID := insertGradingUser(t, pool, "student", "Bulk Participant")
-	_, err := pool.Exec(context.Background(),
-		`INSERT INTO order_participant (order_id, student_id) VALUES ($1, $2)`, orderID, studentID)
+	var itemID uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx, `SELECT id FROM order_item WHERE order_id = $1`, orderID).Scan(&itemID))
+	_, err := pool.Exec(ctx,
+		`INSERT INTO order_participant (order_id, order_item_id, student_id) VALUES ($1, $2, $3)`, orderID, itemID, studentID)
 	require.NoError(t, err)
 }
 

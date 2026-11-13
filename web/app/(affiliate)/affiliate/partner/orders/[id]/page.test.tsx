@@ -5,8 +5,12 @@ import PartnerOrderDetailPage from "./page";
 
 const hook = vi.hoisted(() => ({ state: {} as Record<string, unknown> }));
 
-vi.mock("@/lib/hooks/partner", () => ({ usePartnerOrder: () => hook.state }));
+vi.mock("@/lib/hooks/partner", () => ({
+  usePartnerOrder: () => hook.state,
+  partnerKeys: { order: (id: string) => ["partner", "order", id] },
+}));
 vi.mock("@/components/partner/RetryPaymentButton", () => ({ RetryPaymentButton: () => <button>Bayar</button> }));
+vi.mock("@/components/cart/SnapCheckout", () => ({ SnapCheckout: () => <button>Bayar</button> }));
 
 async function renderPage() {
   await act(async () => {
@@ -39,6 +43,13 @@ describe("PartnerOrderDetailPage", () => {
     expect(screen.getByText("DEMO-ORDER10")).toBeInTheDocument();
     expect(screen.getByText("Ani")).toBeInTheDocument();
     expect(screen.getByText("Budi")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bayar" })).toBeInTheDocument();
+  });
+
+  it("offers a way to pay a freshly created, unpaid order", async () => {
+    hook.state = { isLoading: false, isError: false, data: { ...order, status: "cart" } };
+    await renderPage();
+
     expect(screen.getByRole("button", { name: "Bayar" })).toBeInTheDocument();
   });
 

@@ -231,6 +231,17 @@ func TestPreviewAndCreatePartnerOrder_multiProduct(t *testing.T) {
 		_, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String()}, []string{ani}, "")
 		require.ErrorIs(t, err, ErrZeroNetNewParticipants)
 	})
+
+	t.Run("the order detail lists a student once even though they are a participant on two items", func(t *testing.T) {
+		order, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{productA.String(), productB.String()}, []string{budi}, "")
+		require.NoError(t, err)
+		require.Len(t, order.Items, 2, "Budi owns neither product yet, so both items survive")
+
+		detail, err := env.svc.GetPartnerOrder(ctx, env.partner, order.ID.String())
+		require.NoError(t, err)
+		require.Len(t, detail.Students, 1, "Budi is a participant on both items but must appear once")
+		require.Equal(t, budi, detail.Students[0].ID.String())
+	})
 }
 
 func TestPreviewPartnerOrder_productRules(t *testing.T) {
