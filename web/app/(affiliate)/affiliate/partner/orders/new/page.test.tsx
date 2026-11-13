@@ -27,6 +27,7 @@ vi.mock("@/lib/hooks/partner", () => ({
     },
   }),
   usePartnerVouchers: () => ({ data: { data: [{ id: "v1", code: "MITRA10" }] } }),
+  usePartnerSchools: () => ({ data: { data: [{ id: "sch1", name: "SMA Contoh", code: "C1", npsn: null, status: "active" }] } }),
   usePartnerStudents: hook.usePartnerStudents,
   usePreviewPartnerOrder: () => ({ mutateAsync: hook.previewMutateAsync }),
   useCreatePartnerOrder: () => ({ mutateAsync: hook.createMutate }),
@@ -196,30 +197,30 @@ describe("NewPartnerOrderPage", () => {
     await waitFor(() => expect(hook.routerPush).toHaveBeenCalledWith("/affiliate/partner/orders/order-1"));
   });
 
-  it("selects every visible product with one click, scoped to the current grouping filter", async () => {
+  it("selects every visible product with one click, scoped to the current grouping filter, and clears with another", async () => {
     render(<NewPartnerOrderPage />);
 
     fireEvent.click(screen.getByRole("combobox", { name: "Grouping" }));
     fireEvent.click(await screen.findByRole("option", { name: "Paket UTBK" }));
 
-    fireEvent.click(sectionFor("Produk").getByRole("checkbox", { name: "Pilih semua" }));
+    fireEvent.click(sectionFor("Produk").getByRole("button", { name: "Pilih semua" }));
 
-    expect(sectionFor("Produk").getByRole("checkbox", { name: /Kelas Matematika/ })).toBeChecked();
-    expect(sectionFor("Produk").getByRole("checkbox", { name: /Paket Ujian UTBK/ })).toBeChecked();
+    expect(sectionFor("Produk").getByRole("checkbox", { name: "Kelas Matematika" })).toBeChecked();
+    expect(sectionFor("Produk").getByRole("checkbox", { name: "Paket Ujian UTBK" })).toBeChecked();
     expect(screen.getByText("2 produk dipilih")).toBeInTheDocument();
 
-    fireEvent.click(sectionFor("Produk").getByRole("checkbox", { name: "Pilih semua" }));
+    fireEvent.click(sectionFor("Produk").getByRole("button", { name: "Hapus semua" }));
     expect(screen.getByText("0 produk dipilih")).toBeInTheDocument();
   });
 
-  it("selects every loaded student with one click", async () => {
+  it("selects every loaded student with one click, and clears with another", async () => {
     render(<NewPartnerOrderPage />);
 
-    fireEvent.click(sectionFor("Siswa").getByRole("checkbox", { name: "Pilih semua" }));
+    fireEvent.click(sectionFor("Siswa").getByRole("button", { name: "Pilih semua" }));
 
     expect(screen.getByText("2 siswa dipilih")).toBeInTheDocument();
 
-    fireEvent.click(sectionFor("Siswa").getByRole("checkbox", { name: "Pilih semua" }));
+    fireEvent.click(sectionFor("Siswa").getByRole("button", { name: "Hapus semua" }));
     expect(screen.getByText("0 siswa dipilih")).toBeInTheDocument();
   });
 
@@ -261,12 +262,43 @@ describe("NewPartnerOrderPage", () => {
     expect(sectionFor("Siswa").getByRole("checkbox", { name: /Budi Siswa/ })).toBeDisabled();
   });
 
+  it("filters students through the filter popover, with removable chips", async () => {
+    render(<NewPartnerOrderPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Filter/ }));
+    fireEvent.click(await screen.findByRole("combobox", { name: "Didaftarkan oleh" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Anda" }));
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Sekolah" }));
+    fireEvent.click(await screen.findByRole("option", { name: "SMA Contoh" }));
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Status akun" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Akun aktif" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Tampilkan hasil" }));
+
+    await waitFor(() => {
+      const lastCall = hook.usePartnerStudents.mock.calls.at(-1)?.[0];
+      expect(lastCall).toMatchObject({ registeredByMe: true, schoolId: "sch1", status: "active" });
+    });
+    expect(screen.getByText("Didaftarkan oleh: Anda")).toBeInTheDocument();
+    expect(screen.getByText("Sekolah: SMA Contoh")).toBeInTheDocument();
+    expect(screen.getByText("Status akun: Akun aktif")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Hapus filter: Sekolah: SMA Contoh" }));
+    await waitFor(() => {
+      const lastCall = hook.usePartnerStudents.mock.calls.at(-1)?.[0];
+      expect(lastCall.schoolId).toBeUndefined();
+    });
+    expect(screen.queryByText("Sekolah: SMA Contoh")).toBeNull();
+  });
+
   it("select-all only picks students not already blocked by an owned product", async () => {
     mockStudents(["s2"]);
     render(<NewPartnerOrderPage />);
 
     await chooseProduct(/Kelas Matematika/);
-    fireEvent.click(sectionFor("Siswa").getByRole("checkbox", { name: "Pilih semua" }));
+    fireEvent.click(sectionFor("Siswa").getByRole("button", { name: "Pilih semua" }));
 
     expect(screen.getByText("1 siswa dipilih")).toBeInTheDocument();
     expect(sectionFor("Siswa").getByRole("checkbox", { name: /Ani Siswa/ })).toBeChecked();

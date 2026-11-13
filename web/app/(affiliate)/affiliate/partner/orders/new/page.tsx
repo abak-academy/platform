@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ShoppingCart } from "lucide-react";
+import { Check, Search, ShoppingCart, SlidersHorizontal, X } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { partnerOrderErrorMessage } from "@/lib/partner-order-errors";
@@ -15,17 +17,91 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import {
   useCreatePartnerOrder,
   usePartnerProducts,
+  usePartnerSchools,
   usePartnerStudents,
   usePartnerVouchers,
   usePreviewPartnerOrder,
 } from "@/lib/hooks/partner";
 import { useProductGroupings } from "@/lib/hooks/product-groupings";
 import { formatRupiah } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import type { PartnerOrderPreview } from "@/lib/types";
 
 const NO_VOUCHER = "none";
 const ALL_GROUPINGS = "all";
+const ALL_FILTER = "__all__";
+
+function SearchField({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="relative min-w-0 flex-1">
+      <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-600" aria-hidden />
+      <Input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        disabled={disabled}
+        className="pr-10 pl-9"
+      />
+      {value && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="absolute top-0 right-0 size-9"
+          aria-label={t("aff_search_clear")}
+          onClick={() => onChange("")}
+        >
+          <X className="size-4" aria-hidden />
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function PickerActionRow({
+  count,
+  countLabel,
+  onSelectAll,
+  selectAllDisabled,
+  onClearAll,
+  clearAllDisabled,
+}: {
+  count: number;
+  countLabel: string;
+  onSelectAll: () => void;
+  selectAllDisabled: boolean;
+  onClearAll: () => void;
+  clearAllDisabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center justify-between text-xs text-ink-500">
+      <span>{countLabel.replace("{n}", String(count))}</span>
+      <div className="flex gap-3">
+        <button type="button" onClick={onSelectAll} disabled={selectAllDisabled} className="font-medium text-brand-600 hover:underline disabled:cursor-default disabled:text-ink-400 disabled:no-underline">
+          {t("partner_new_select_all")}
+        </button>
+        <button type="button" onClick={onClearAll} disabled={clearAllDisabled} className="font-medium text-ink-500 hover:underline disabled:cursor-default disabled:text-ink-300 disabled:no-underline">
+          {t("partner_new_deselect_all")}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export default function NewPartnerOrderPage() {
   const { t } = useTranslation();
@@ -33,17 +109,27 @@ export default function NewPartnerOrderPage() {
   const products = usePartnerProducts();
   const groupings = useProductGroupings();
   const vouchers = usePartnerVouchers();
+  const schools = usePartnerSchools();
 
   const [groupingId, setGroupingId] = useState(ALL_GROUPINGS);
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [voucher, setVoucher] = useState(NO_VOUCHER);
   const [q, setQ] = useState("");
+  const [studentMine, setStudentMine] = useState("");
+  const [studentSchoolId, setStudentSchoolId] = useState("");
+  const [studentStatus, setStudentStatus] = useState("");
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [preview, setPreview] = useState<PartnerOrderPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const students = usePartnerStudents({ q: useDebouncedValue(q, 300), productIds: selectedProductIds });
+  const students = usePartnerStudents({
+    q: useDebouncedValue(q, 300),
+    productIds: selectedProductIds,
+    registeredByMe: studentMine === "mine" || undefined,
+    schoolId: studentSchoolId || undefined,
+    status: studentStatus || undefined,
+  });
   const previewMutation = usePreviewPartnerOrder();
   const create = useCreatePartnerOrder();
 
@@ -63,6 +149,23 @@ export default function NewPartnerOrderPage() {
   const noSchools = rows.length === 0 && students.data?.pages[0]?.hint === "no_schools";
   const selectableRows = rows.filter((s) => (s.owned_product_ids?.length ?? 0) === 0);
   const key = `${selectedProductIds.join(",")}|${promo ?? ""}|${ids.join(",")}`;
+
+  const studentFilterCount = (studentMine ? 1 : 0) + (studentSchoolId ? 1 : 0) + (studentStatus ? 1 : 0);
+  const studentChips = useMemo(() => {
+    const chips: { key: string; label: string; clear: () => void }[] = [];
+    if (studentMine) {
+      chips.push({ key: "mine", label: `${t("partner_students_filter_registered")}: ${t("partner_students_source_me")}`, clear: () => setStudentMine("") });
+    }
+    if (studentSchoolId) {
+      const school = (schools.data?.data ?? []).find((sc) => sc.id === studentSchoolId);
+      chips.push({ key: "school", label: `${t("partner_students_filter_school_label")}: ${school?.name ?? studentSchoolId}`, clear: () => setStudentSchoolId("") });
+    }
+    if (studentStatus) {
+      const statusLabel = t(studentStatus === "active" ? "partner_students_status_active" : "partner_students_status_deactivated");
+      chips.push({ key: "status", label: `${t("partner_students_filter_account")}: ${statusLabel}`, clear: () => setStudentStatus("") });
+    }
+    return chips;
+  }, [studentMine, studentSchoolId, studentStatus, schools.data, t]);
 
   // A single preview request for every selected product at once — the order
   // model is one order, several products, one payment.
@@ -116,34 +219,24 @@ export default function NewPartnerOrderPage() {
   const toggleProduct = (id: string) =>
     setSelectedProductIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
-  // Selects or clears every currently filtered (grouping + search) product,
+  // Adds every currently filtered (grouping + search) product to the selection,
   // leaving a selection outside the current filter untouched.
-  const toggleSelectAllProducts = () => {
-    const allSelected = visibleProducts.every((p) => selectedProductIds.includes(p.id));
-    setSelectedProductIds((prev) => {
-      if (allSelected) {
-        const visibleIds = new Set(visibleProducts.map((p) => p.id));
-        return prev.filter((id) => !visibleIds.has(id));
-      }
-      return Array.from(new Set([...prev, ...visibleProducts.map((p) => p.id)]));
-    });
+  const selectAllVisibleProducts = () => {
+    setSelectedProductIds((prev) => Array.from(new Set([...prev, ...visibleProducts.map((p) => p.id)])));
   };
+  const clearSelectedProducts = () => setSelectedProductIds([]);
 
   // Only ever selects students who are not blocked by an already-owned product.
-  const toggleSelectAllStudents = () => {
-    const allSelected = selectableRows.length > 0 && selectableRows.every((s) => s.id in selected);
+  const selectAllVisibleStudents = () => {
     setSelected((prev) => {
       const next = { ...prev };
-      if (allSelected) {
-        selectableRows.forEach((s) => delete next[s.id]);
-      } else {
-        selectableRows.forEach((s) => {
-          next[s.id] = s.name;
-        });
-      }
+      selectableRows.forEach((s) => {
+        next[s.id] = s.name;
+      });
       return next;
     });
   };
+  const clearSelectedStudents = () => setSelected({});
 
   const ready =
     selectedProductIds.length > 0 &&
@@ -171,16 +264,10 @@ export default function NewPartnerOrderPage() {
         <h2 className="font-semibold text-ink-900">{t("partner_new_product")}</h2>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <Input
-            value={productSearch}
-            onChange={(e) => setProductSearch(e.target.value)}
-            placeholder={t("partner_new_search_ph")}
-            aria-label={t("partner_new_search_ph")}
-            className="w-full sm:max-w-xs"
-          />
+          <SearchField value={productSearch} onChange={setProductSearch} placeholder={t("partner_new_search_ph")} disabled={creating} />
           {(groupings.data?.length ?? 0) > 0 && (
-            <Select value={groupingId} onValueChange={setGroupingId}>
-              <SelectTrigger aria-label={t("partner_new_grouping_label")} className="w-full sm:w-48">
+            <Select value={groupingId} onValueChange={setGroupingId} disabled={creating}>
+              <SelectTrigger aria-label={t("partner_new_grouping_label")} className="w-full shrink-0 sm:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -203,36 +290,50 @@ export default function NewPartnerOrderPage() {
           <p className="text-sm text-ink-600">{t("partner_new_products_empty")}</p>
         ) : (
           <>
-            <label className="flex items-center gap-2 px-1 text-sm font-medium text-ink-700">
-              <input
-                type="checkbox"
-                checked={visibleProducts.every((p) => selectedProductIds.includes(p.id))}
-                onChange={() => toggleSelectAllProducts()}
-                disabled={creating}
-              />
-              {t("partner_new_select_all")}
-            </label>
-            <ul className="max-h-64 divide-y divide-line overflow-y-auto rounded-lg border border-line">
-              {visibleProducts.map((prod) => (
-                <li key={prod.id}>
-                  <label className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selectedProductIds.includes(prod.id)}
-                      onChange={() => toggleProduct(prod.id)}
-                      disabled={creating}
-                    />
-                    <span className="font-medium text-ink-900">{prod.name}</span>
-                    <span className="text-ink-500">({formatRupiah(prod.price)})</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
+            <PickerActionRow
+              count={selectedProductIds.length}
+              countLabel={t("partner_new_selected_products")}
+              onSelectAll={selectAllVisibleProducts}
+              selectAllDisabled={creating || visibleProducts.length === 0}
+              onClearAll={clearSelectedProducts}
+              clearAllDisabled={creating || selectedProductIds.length === 0}
+            />
+            <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
+              {visibleProducts.map((prod) => {
+                const isSelected = selectedProductIds.includes(prod.id);
+                return (
+                  <button
+                    key={prod.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    aria-label={prod.name}
+                    disabled={creating}
+                    onClick={() => toggleProduct(prod.id)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-2.5 text-left text-sm transition-colors hover:bg-surface-2 disabled:cursor-default disabled:opacity-60",
+                      isSelected && "border-brand-600 bg-brand-50",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "flex size-5 shrink-0 items-center justify-center rounded border",
+                        isSelected ? "border-brand-600 bg-brand-600 text-white" : "border-line-strong",
+                      )}
+                    >
+                      {isSelected && <Check className="size-3.5" />}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium text-ink-900">{prod.name}</span>
+                    <Badge variant="secondary" className="shrink-0 font-normal">
+                      {formatRupiah(prod.price)}
+                    </Badge>
+                  </button>
+                );
+              })}
+            </div>
           </>
         )}
-        <p className="text-sm text-ink-600">
-          {t("partner_new_selected_products").replace("{n}", String(selectedProductIds.length))}
-        </p>
 
         <div className="space-y-1.5">
           <Label htmlFor="partner-order-voucher">{t("partner_new_voucher")}</Label>
@@ -253,13 +354,105 @@ export default function NewPartnerOrderPage() {
       </section>
 
       <section className="md-card-outlined space-y-3 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-ink-900">{t("partner_new_students")}</h2>
-            <p className="text-xs text-ink-500">{t("partner_new_students_hint")}</p>
-          </div>
-          <Input className="max-w-xs" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("partner_students_search")} aria-label={t("partner_students_search")} />
+        <div>
+          <h2 className="font-semibold text-ink-900">{t("partner_new_students")}</h2>
+          <p className="text-xs text-ink-500">{t("partner_new_students_hint")}</p>
         </div>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <SearchField value={q} onChange={setQ} placeholder={t("partner_students_search")} disabled={creating} />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 shrink-0"
+                disabled={creating}
+                aria-label={`${t("aff_filter_button")}${studentFilterCount ? ` (${studentFilterCount})` : ""}`}
+              >
+                <SlidersHorizontal className="size-4" aria-hidden />
+                {t("aff_filter_button")}
+                {studentFilterCount > 0 && <span className="tabular-nums">{studentFilterCount}</span>}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="admin-shell w-[min(22rem,calc(100vw-2rem))]" aria-label={t("aff_filter_title")}>
+              <div className="space-y-3">
+                <h3 className="font-semibold">{t("aff_filter_title")}</h3>
+                <div className="space-y-1.5">
+                  <span className="block text-sm font-medium">{t("partner_students_filter_registered")}</span>
+                  <Select value={studentMine || ALL_FILTER} onValueChange={(v) => setStudentMine(v === ALL_FILTER ? "" : v)}>
+                    <SelectTrigger className="w-full" aria-label={t("partner_students_filter_registered")}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_FILTER}>{t("aff_filter_all")}</SelectItem>
+                      <SelectItem value="mine">{t("partner_students_source_me")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="block text-sm font-medium">{t("partner_students_filter_school_label")}</span>
+                  <Select value={studentSchoolId || ALL_FILTER} onValueChange={(v) => setStudentSchoolId(v === ALL_FILTER ? "" : v)}>
+                    <SelectTrigger className="w-full" aria-label={t("partner_students_filter_school_label")}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_FILTER}>{t("aff_filter_all")}</SelectItem>
+                      {(schools.data?.data ?? []).map((sc) => (
+                        <SelectItem key={sc.id} value={sc.id}>
+                          {sc.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <span className="block text-sm font-medium">{t("partner_students_filter_account")}</span>
+                  <Select value={studentStatus || ALL_FILTER} onValueChange={(v) => setStudentStatus(v === ALL_FILTER ? "" : v)}>
+                    <SelectTrigger className="w-full" aria-label={t("partner_students_filter_account")}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALL_FILTER}>{t("aff_filter_all")}</SelectItem>
+                      <SelectItem value="active">{t("partner_students_status_active")}</SelectItem>
+                      <SelectItem value="deactivated">{t("partner_students_status_deactivated")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setStudentMine("");
+                      setStudentSchoolId("");
+                      setStudentStatus("");
+                    }}
+                  >
+                    {t("aff_filter_reset")}
+                  </Button>
+                  <PopoverClose asChild>
+                    <Button type="button">{t("aff_filter_show")}</Button>
+                  </PopoverClose>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        {studentChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("aff_filter_active")}>
+            {studentChips.map((chip) => (
+              <span key={chip.key} className="md-chip md-chip-primary gap-1">
+                {chip.label}
+                <Button variant="ghost" size="icon" className="size-6" aria-label={`${t("aff_filter_remove")}: ${chip.label}`} onClick={chip.clear}>
+                  <X className="size-3.5" aria-hidden />
+                </Button>
+              </span>
+            ))}
+          </div>
+        )}
+
         {students.isLoading ? (
           <Skeleton className="h-24 w-full" />
         ) : noSchools ? (
@@ -268,39 +461,54 @@ export default function NewPartnerOrderPage() {
           <p className="text-sm text-ink-600">{t("partner_students_empty")}</p>
         ) : (
           <>
-            <label className="flex items-center gap-2 px-1 text-sm font-medium text-ink-700">
-              <input
-                type="checkbox"
-                checked={selectableRows.length > 0 && selectableRows.every((s) => s.id in selected)}
-                onChange={() => toggleSelectAllStudents()}
-                disabled={creating || selectableRows.length === 0}
-              />
-              {t("partner_new_select_all")}
-            </label>
-            <ul className="max-h-72 divide-y divide-line overflow-y-auto rounded-lg border border-line">
+            <PickerActionRow
+              count={ids.length}
+              countLabel={t("partner_new_selected")}
+              onSelectAll={selectAllVisibleStudents}
+              selectAllDisabled={creating || selectableRows.length === 0}
+              onClearAll={clearSelectedStudents}
+              clearAllDisabled={creating || ids.length === 0}
+            />
+            <div className="max-h-72 space-y-1 overflow-y-auto rounded-lg border border-line p-2">
               {rows.map((s) => {
                 const blocked = (s.owned_product_ids?.length ?? 0) > 0;
+                const isSelected = s.id in selected;
                 return (
-                  <li key={s.id}>
-                    <button
-                      type="button"
-                      role="checkbox"
-                      aria-checked={s.id in selected}
-                      disabled={creating || blocked}
-                      onClick={() => toggleStudent(s.id, s.name)}
-                      className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm disabled:cursor-default disabled:opacity-60"
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={isSelected}
+                    aria-label={s.name}
+                    disabled={creating || blocked}
+                    onClick={() => toggleStudent(s.id, s.name)}
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-md border border-transparent px-3 py-2.5 text-left text-sm transition-colors hover:bg-surface-2 disabled:cursor-default disabled:opacity-60 disabled:hover:bg-transparent",
+                      isSelected && "border-brand-600 bg-brand-50",
+                    )}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "flex size-5 shrink-0 items-center justify-center rounded border",
+                        isSelected ? "border-brand-600 bg-brand-600 text-white" : "border-line-strong",
+                      )}
                     >
-                      <span aria-hidden className={`flex size-4 shrink-0 items-center justify-center rounded border text-[10px] leading-none ${s.id in selected ? "border-primary bg-primary text-white" : "border-line-strong"}`}>
-                        {s.id in selected ? "✓" : ""}
-                      </span>
-                      <span className="font-medium text-ink-900">{s.name}</span>
-                      <span className="text-ink-500">{s.school_name ?? "-"}</span>
-                      {blocked && <span className="text-xs text-warn">{t("partner_students_owns_selected")}</span>}
-                    </button>
-                  </li>
+                      {isSelected && <Check className="size-3.5" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-ink-900">{s.name}</span>
+                      <span className="block truncate text-xs text-ink-500">{s.school_name ?? "-"}</span>
+                    </span>
+                    {blocked && (
+                      <Badge variant="outline" className="shrink-0 border-transparent bg-warn-bg text-warn">
+                        {t("partner_students_owns_selected")}
+                      </Badge>
+                    )}
+                  </button>
                 );
               })}
-            </ul>
+            </div>
           </>
         )}
         {students.hasNextPage && (
@@ -308,7 +516,6 @@ export default function NewPartnerOrderPage() {
             {t("partner_load_more")}
           </Button>
         )}
-        <p className="text-sm text-ink-600">{t("partner_new_selected").replace("{n}", String(ids.length))}</p>
       </section>
 
       {(preview || previewError) && (
