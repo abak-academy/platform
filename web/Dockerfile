@@ -10,6 +10,11 @@ ENV NEXT_PUBLIC_MIDTRANS_SNAP_URL=${NEXT_PUBLIC_MIDTRANS_SNAP_URL}
 ENV NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
 ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
 COPY package.json package-lock.json ./
+# Pinned: node:26-alpine's bundled npm drifts with upstream patch releases, and a
+# newer npm resolves @rolldown/binding-wasm32-wasi's optional @emnapi/* deps (and
+# the @tiptap/* tree) differently than the npm that generated package-lock.json,
+# so npm ci can fail non-deterministically depending on when this image is pulled.
+RUN npm install -g npm@11.6.2
 RUN npm ci
 COPY . .
 RUN npm run build
