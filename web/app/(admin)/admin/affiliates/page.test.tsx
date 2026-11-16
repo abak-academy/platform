@@ -104,7 +104,7 @@ describe("AdminAffiliatesPage", () => {
   it("opens the add-affiliator dialog with single and CSV modes", async () => {
     render(<AdminAffiliatesPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Tambah affiliator" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tambah affiliator/mitra" }));
 
     expect(await screen.findByLabelText("Nomor telepon")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Unggah CSV" })).toBeInTheDocument();

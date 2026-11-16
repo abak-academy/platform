@@ -11,10 +11,10 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { ApiError } from "@/lib/api";
 import {
-  AFFILIATOR_BULK_FIELDS,
-  AFFILIATOR_GUIDE_PITFALL_KEYS,
-  AFFILIATOR_TEMPLATE_HEADER,
-  AFFILIATOR_TEMPLATE_ROWS,
+  AFFILIATE_PARTNER_BULK_FIELDS,
+  AFFILIATE_PARTNER_GUIDE_PITFALL_KEYS,
+  AFFILIATE_PARTNER_TEMPLATE_HEADER,
+  AFFILIATE_PARTNER_TEMPLATE_ROWS,
   downloadTextFile,
 } from "@/lib/bulk-import-format";
 import { useBulkCreateAffiliators, useCreateAffiliator } from "@/lib/hooks/admin-affiliates";
@@ -23,7 +23,7 @@ import type { AffiliateCreateInput, AffiliateCreated } from "@/lib/types";
 
 const BULK_MAX = 200;
 
-export function parseAffiliatorCsv(text: string): AffiliateCreateInput[] {
+export function parseAffiliatePartnerCsv(text: string): AffiliateCreateInput[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const rows = lines.map((l) => l.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
   const header = rows[0]?.map((c) => c.toLowerCase());
@@ -40,7 +40,7 @@ function downloadCsv(items: AffiliateCreated[]) {
   const url = URL.createObjectURL(new Blob([credentialsCsv(items)], { type: "text/csv" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = "affiliator-credentials.csv";
+  a.download = "affiliate-partner-credentials.csv";
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -86,7 +86,11 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
       toast.error(t("bulk_register_no_file"));
       return;
     }
-    const rows = parseAffiliatorCsv(await file.text()).map((r) => ({ ...r, password: r.password || defaultPassword }));
+    if (programs.length === 0) {
+      toast.error(t("admin_aff_act_invalid"));
+      return;
+    }
+    const rows = parseAffiliatePartnerCsv(await file.text()).map((r) => ({ ...r, password: r.password || defaultPassword, programs }));
     if (rows.length === 0 || rows.length > BULK_MAX) {
       toast.error(t("admin_aff_add_bulk_hint"));
       return;
@@ -110,12 +114,18 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
   };
 
   const showResult = created.length > 0 || failures.length > 0;
+  const titleKey =
+    programs.length === 1 && programs[0] === "partner"
+      ? "admin_aff_add_partner"
+      : programs.length === 1 && programs[0] === "affiliate"
+        ? "admin_aff_add"
+        : "admin_aff_add_affiliator_partner";
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
       <DialogContent className="sm:max-h-[90vh] sm:max-w-xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("admin_aff_add_title")}</DialogTitle>
+          <DialogTitle>{t(titleKey)}</DialogTitle>
         </DialogHeader>
         {showResult ? (
           <div className="space-y-3 text-sm">
@@ -157,26 +167,24 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                 </button>
               ))}
             </div>
-            {mode === "single" && (
-              <fieldset className="space-y-1">
-                <legend className="text-sm font-medium text-ink-900">{t("admin_aff_create_programs")}</legend>
-                <div className="flex gap-4">
-                  {(["affiliate", "partner"] as const).map((program) => (
-                    <label key={program} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={programs.includes(program)}
-                        disabled={pending}
-                        onChange={() =>
-                          setPrograms((prev) => (prev.includes(program) ? prev.filter((p) => p !== program) : [...prev, program]))
-                        }
-                      />
-                      {t(program === "affiliate" ? "admin_aff_program_affiliate" : "admin_aff_program_partner")}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            )}
+            <fieldset className="space-y-1">
+              <legend className="text-sm font-medium text-ink-900">{t("admin_aff_create_programs")}</legend>
+              <div className="flex gap-4">
+                {(["affiliate", "partner"] as const).map((program) => (
+                  <label key={program} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={programs.includes(program)}
+                      disabled={pending}
+                      onChange={() =>
+                        setPrograms((prev) => (prev.includes(program) ? prev.filter((p) => p !== program) : [...prev, program]))
+                      }
+                    />
+                    {t(program === "affiliate" ? "admin_aff_program_affiliate" : "admin_aff_program_partner")}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             {mode === "single" ? (
               (["name", "email", "phone", "password"] as const).map((key) => (
                 <div key={key} className="space-y-1">
@@ -212,8 +220,8 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                     className="rounded-full"
                     onClick={() =>
                       downloadTextFile(
-                        "affiliator_template.csv",
-                        [AFFILIATOR_TEMPLATE_HEADER, ...AFFILIATOR_TEMPLATE_ROWS].join("\n"),
+                        "affiliate_partner_template.csv",
+                        [AFFILIATE_PARTNER_TEMPLATE_HEADER, ...AFFILIATE_PARTNER_TEMPLATE_ROWS].join("\n"),
                         "text/csv;charset=utf-8",
                       )
                     }
@@ -221,7 +229,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                     <Download className="mr-2 size-4" aria-hidden />
                     {t("admin_aff_add_template")}
                   </Button>
-                  <BulkFormatGuide fields={AFFILIATOR_BULK_FIELDS} pitfallKeys={AFFILIATOR_GUIDE_PITFALL_KEYS} />
+                  <BulkFormatGuide fields={AFFILIATE_PARTNER_BULK_FIELDS} pitfallKeys={AFFILIATE_PARTNER_GUIDE_PITFALL_KEYS} />
                 </section>
                 <section className="space-y-2">
                   <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_add_step_upload")}</h3>

@@ -19,6 +19,7 @@ const logoutMutate = vi.fn(
 
 vi.mock("@/lib/hooks/auth", () => ({
   useLogout: () => ({ mutate: logoutMutate }),
+  useMe: () => ({ data: undefined }),
 }));
 
 vi.mock("@/lib/i18n", () => ({

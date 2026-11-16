@@ -157,18 +157,25 @@ export default function LoginPage() {
           {t("login_sign_up_link")}
         </button>
       </p>
-      {affiliateStatus.data?.enabled === true && (
-        <p className="mt-2 text-center text-[13px] text-ink-500">
-          {t("login_affiliate_prompt")}{" "}
-          <button
-            type="button"
-            onClick={() => router.push("/affiliate-register")}
-            className="font-bold text-success transition-colors hover:text-success/80"
-          >
-            {t("login_affiliate_link")}
-          </button>
-        </p>
-      )}
+      {(() => {
+        const affiliateOpen = affiliateStatus.data?.enabled === true;
+        const partnerOpen = affiliateStatus.data?.partner_enabled === true;
+        if (!affiliateOpen && !partnerOpen) return null;
+        const promptKey = affiliateOpen ? "login_affiliate_prompt" : "login_partner_prompt";
+        const linkKey = affiliateOpen ? "login_affiliate_link" : "login_partner_link";
+        return (
+          <p className="mt-2 text-center text-[13px] text-ink-500">
+            {t(promptKey)}{" "}
+            <button
+              type="button"
+              onClick={() => router.push("/affiliate-register")}
+              className="font-bold text-success transition-colors hover:text-success/80"
+            >
+              {t(linkKey)}
+            </button>
+          </p>
+        );
+      })()}
 
       {googleSignInAvailable && (
         <>
