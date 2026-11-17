@@ -1,4 +1,5 @@
 import type { LucideIcon } from "lucide-react";
+import type { AffiliatorProgramStates } from "./types";
 import {
   LayoutDashboard,
   Trophy,
@@ -246,4 +247,15 @@ export const NAV_CONFIG: Record<UserRole, RoleNavConfig> = {
 export function roleLabelKey(role?: string): keyof (typeof import("./i18n").DICT)["id"] | undefined {
   if (!role) return undefined;
   return ROLE_LABEL_KEYS[role as UserRole];
+}
+
+// The "affiliator" role covers two independently-togglable programs, so the
+// label shown to the user must match which one(s) they are actually in.
+export function affiliatorRoleLabelKey(programStates?: AffiliatorProgramStates): keyof (typeof import("./i18n").DICT)["id"] {
+  if (!programStates) return "role_affiliator";
+  const inAffiliate = programStates.affiliate !== "not_enrolled";
+  const inPartner = programStates.partner !== "not_enrolled";
+  if (inAffiliate && inPartner) return "role_affiliator_partner";
+  if (inPartner) return "role_partner";
+  return "role_affiliator";
 }

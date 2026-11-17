@@ -4,7 +4,24 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowDown, ArrowUp, X } from "lucide-react";
+import { ArrowLeft, ArrowDown, ArrowUp, GripVertical, X } from "lucide-react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +31,91 @@ import { useAdminProductGrouping, useSetGroupingProducts } from "@/lib/hooks/adm
 import { useAdminProducts } from "@/lib/hooks/admin-products";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+
+type GroupingMember = { id: string; name: string; price: number };
+
+function SortableMemberRow({
+  product,
+  index,
+  total,
+  onMove,
+  onRemove,
+  dragLabel,
+  upLabel,
+  downLabel,
+  removeLabel,
+}: {
+  product: GroupingMember;
+  index: number;
+  total: number;
+  onMove: (index: number, delta: number) => void;
+  onRemove: (id: string) => void;
+  dragLabel: string;
+  upLabel: string;
+  downLabel: string;
+  removeLabel: string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: product.id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between gap-3 px-3 py-2 ${isDragging ? "bg-muted" : ""}`}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          className="cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+          aria-label={dragLabel}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="size-4" aria-hidden />
+        </button>
+        <div className="min-w-0 truncate">
+          <span className="font-medium">{product.name}</span>{" "}
+          <span className="text-xs text-muted-foreground">{formatRupiah(product.price)}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          aria-label={upLabel}
+          disabled={index === 0}
+          onClick={() => onMove(index, -1)}
+        >
+          <ArrowUp className="size-4" aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          aria-label={downLabel}
+          disabled={index === total - 1}
+          onClick={() => onMove(index, 1)}
+        >
+          <ArrowDown className="size-4" aria-hidden />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="size-7"
+          aria-label={removeLabel}
+          onClick={() => onRemove(product.id)}
+        >
+          <X className="size-4" aria-hidden />
+        </Button>
+      </div>
+    </li>
+  );
+}
 
 export default function ProductGroupingDetailPage() {
   const { t } = useTranslation();
@@ -26,6 +128,10 @@ export default function ProductGroupingDetailPage() {
 
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     if (grouping) setMemberIds(grouping.products.map((p) => p.id));
@@ -51,6 +157,17 @@ export default function ProductGroupingDetailPage() {
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     setMemberIds(next);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setMemberIds((prev) => {
+      const oldIndex = prev.indexOf(String(active.id));
+      const newIndex = prev.indexOf(String(over.id));
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
   }
 
   function remove(productId: string) {
@@ -101,50 +218,26 @@ export default function ProductGroupingDetailPage() {
             {members.length === 0 && <p className="text-sm text-muted-foreground">{t("grouping_members_empty")}</p>}
 
             {members.length > 0 && (
-              <ul className="divide-y rounded-md border">
-                {members.map((p, i) => (
-                  <li key={p.id} className="flex items-center justify-between gap-3 px-3 py-2">
-                    <div className="min-w-0 truncate">
-                      <span className="font-medium">{p.name}</span>{" "}
-                      <span className="text-xs text-muted-foreground">{formatRupiah(p.price)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        aria-label={t("grouping_move_up")}
-                        disabled={i === 0}
-                        onClick={() => move(i, -1)}
-                      >
-                        <ArrowUp className="size-4" aria-hidden />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        aria-label={t("grouping_move_down")}
-                        disabled={i === members.length - 1}
-                        onClick={() => move(i, 1)}
-                      >
-                        <ArrowDown className="size-4" aria-hidden />
-                      </Button>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        className="size-7"
-                        aria-label={t("grouping_remove_product")}
-                        onClick={() => remove(p.id)}
-                      >
-                        <X className="size-4" aria-hidden />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={memberIds} strategy={verticalListSortingStrategy}>
+                  <ul className="divide-y rounded-md border">
+                    {members.map((p, i) => (
+                      <SortableMemberRow
+                        key={p.id}
+                        product={p}
+                        index={i}
+                        total={members.length}
+                        onMove={move}
+                        onRemove={remove}
+                        dragLabel={t("grouping_drag_handle")}
+                        upLabel={t("grouping_move_up")}
+                        downLabel={t("grouping_move_down")}
+                        removeLabel={t("grouping_remove_product")}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
             )}
 
             <div className="space-y-2">

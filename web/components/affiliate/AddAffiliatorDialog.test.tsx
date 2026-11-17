@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { AddAffiliatorDialog, parseAffiliatorCsv } from "./AddAffiliatorDialog";
+import { AddAffiliatorDialog, parseAffiliatePartnerCsv } from "./AddAffiliatorDialog";
 
 const h = vi.hoisted(() => ({ bulk: vi.fn(), create: vi.fn() }));
 
@@ -10,9 +10,9 @@ vi.mock("@/lib/hooks/admin-affiliates", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-describe("parseAffiliatorCsv", () => {
+describe("parseAffiliatePartnerCsv", () => {
   it("reads name, email, phone and the optional password, skipping the header", () => {
-    const rows = parseAffiliatorCsv('name,email,phone,password\nBudi,budi@example.com,0812,\n"Siti",siti@example.com,0813,SandiAwal123\n');
+    const rows = parseAffiliatePartnerCsv('name,email,phone,password\nBudi,budi@example.com,0812,\n"Siti",siti@example.com,0813,SandiAwal123\n');
 
     expect(rows).toEqual([
       { name: "Budi", email: "budi@example.com", phone: "0812", password: "" },
@@ -69,8 +69,8 @@ describe("AddAffiliatorDialog", () => {
 
     await waitFor(() => expect(h.bulk).toHaveBeenCalled());
     expect(h.bulk.mock.calls[0][0]).toEqual([
-      { name: "Budi", email: "budi@example.com", phone: "0812", password: "Bersama123" },
-      { name: "Siti", email: "siti@example.com", phone: "0813", password: "Sendiri123" },
+      { name: "Budi", email: "budi@example.com", phone: "0812", password: "Bersama123", programs: ["affiliate"] },
+      { name: "Siti", email: "siti@example.com", phone: "0813", password: "Sendiri123", programs: ["affiliate"] },
     ]);
   });
 
@@ -105,6 +105,28 @@ describe("AddAffiliatorDialog", () => {
       fireEvent.click(screen.getByRole("checkbox", { name: "Mitra" }));
       fireEvent.click(screen.getByRole("button", { name: "Buat akun" }));
       expect(h.create).not.toHaveBeenCalled();
+    });
+
+    it("applies the same program choice to every row in a bulk upload, and refuses none", async () => {
+      h.bulk.mockReset();
+      render(<AddAffiliatorDialog open onOpenChange={() => {}} />);
+      fireEvent.click(screen.getByRole("button", { name: "Unggah CSV" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mitra" }));
+
+      const file = new File(["name,email,phone,password\nBudi,budi@example.com,0812,\n"], "a.csv", { type: "text/csv" });
+      fireEvent.change(screen.getByLabelText("Pilih file CSV"), { target: { files: [file] } });
+      fireEvent.click(screen.getByRole("button", { name: "Unggah" }));
+
+      await waitFor(() => expect(h.bulk).toHaveBeenCalled());
+      expect(h.bulk.mock.calls[0][0]).toEqual([
+        { name: "Budi", email: "budi@example.com", phone: "0812", password: "", programs: ["affiliate", "partner"] },
+      ]);
+
+      h.bulk.mockReset();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Affiliator" }));
+      fireEvent.click(screen.getByRole("checkbox", { name: "Mitra" }));
+      fireEvent.click(screen.getByRole("button", { name: "Unggah" }));
+      expect(h.bulk).not.toHaveBeenCalled();
     });
   });
 });

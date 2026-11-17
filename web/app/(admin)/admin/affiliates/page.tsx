@@ -85,10 +85,19 @@ function AffiliatesContent() {
     );
   };
 
+  const whoHeader =
+    program === "partner"
+      ? t("admin_aff_program_partner")
+      : program === "affiliate"
+        ? t("admin_aff_col_affiliator")
+        : t("admin_aff_col_affiliator_partner");
+  const addLabel =
+    program === "partner" ? t("admin_aff_add_partner") : program === "affiliate" ? t("admin_aff_add") : t("admin_aff_add_affiliator_partner");
+
   const columns: DataTableColumn<AffiliateAdminRow>[] = [
     {
       key: "who",
-      header: t("admin_aff_col_affiliator"),
+      header: whoHeader,
       cell: (r) => (
         <div>
           <div className="font-medium text-ink-900">{r.name}</div>
@@ -145,7 +154,7 @@ function AffiliatesContent() {
             <Download className="size-4" aria-hidden />
             {t("admin_aff_export_csv")}
           </Button>
-          <Button onClick={() => setAdding(true)}>{t("admin_aff_add")}</Button>
+          <Button onClick={() => setAdding(true)}>{addLabel}</Button>
         </div>
       </div>
       <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />

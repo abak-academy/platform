@@ -236,12 +236,24 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 		if _, err := uuid.Parse(filter.Cursor); err != nil {
 			return nil, "", ErrInvalidCursor
 		}
-		query += fmt.Sprintf(` AND p.id > $%d`, argIdx)
+		if filter.GroupingID != "" {
+			// Keyset pagination must follow the same (grouping_order, id) order as
+			// the SELECT below, or a page boundary could skip or repeat a row.
+			query += fmt.Sprintf(` AND (p.grouping_order, p.id) > (SELECT grouping_order, id FROM product WHERE id = $%d)`, argIdx)
+		} else {
+			query += fmt.Sprintf(` AND p.id > $%d`, argIdx)
+		}
 		args = append(args, filter.Cursor)
 		argIdx++
 	}
 
-	query += ` ORDER BY p.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	if filter.GroupingID != "" {
+		// Admin's naik/turun reorder writes grouping_order; the student catalog
+		// must sort by it too, or the reorder has no visible effect.
+		query += ` ORDER BY p.grouping_order, p.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	} else {
+		query += ` ORDER BY p.id LIMIT $` + fmt.Sprintf("%d", argIdx)
+	}
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)

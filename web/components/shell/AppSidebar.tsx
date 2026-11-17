@@ -16,6 +16,7 @@ import {
   NAV_CONFIG,
   ADMIN_ROLES,
   roleLabelKey,
+  affiliatorRoleLabelKey,
   type UserRole,
   type NavItem,
 } from "@/lib/nav-config";
@@ -101,7 +102,7 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
     return source.trim().charAt(0).toUpperCase();
   }, [user]);
 
-  const roleKey = roleLabelKey(role ?? user?.role);
+  const roleKey = role === "affiliator" ? affiliatorRoleLabelKey(programStates) : roleLabelKey(role ?? user?.role);
   const roleLabel = roleKey ? t(roleKey) : t("account");
 
   function handleLogout() {

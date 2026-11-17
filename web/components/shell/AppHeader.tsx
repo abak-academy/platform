@@ -15,11 +15,11 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { useCartStore } from "@/stores/cart";
 import { useUIStore, type Lang } from "@/stores/ui";
-import { useLogout } from "@/lib/hooks/auth";
+import { useLogout, useMe } from "@/lib/hooks/auth";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
-import { roleLabelKey, ADMIN_ROLES } from "@/lib/nav-config";
+import { roleLabelKey, affiliatorRoleLabelKey, ADMIN_ROLES } from "@/lib/nav-config";
 import type { UserRole } from "@/lib/nav-config";
 import { loginPathForRole } from "@/lib/auth-redirect";
 import { Button } from "@/components/ui/button";
@@ -65,7 +65,8 @@ export function AppHeader({ onMenuClick }: AppHeaderProps) {
     .charAt(0)
     .toUpperCase();
 
-  const roleKey = roleLabelKey(user?.role);
+  const me = useMe({ enabled: user?.role === "affiliator" });
+  const roleKey = user?.role === "affiliator" ? affiliatorRoleLabelKey(me.data?.affiliator_programs) : roleLabelKey(user?.role);
   const roleLabel = roleKey ? t(roleKey) : t("account");
 
   function handleLogout() {
