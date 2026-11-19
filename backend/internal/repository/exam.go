@@ -2052,10 +2052,14 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 	rows, err := r.pool.Query(ctx,
 		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
 			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number,
-			reg.token
+			reg.token, u.email, u.phone, u.dob, u.jenjang, u.grade,
+			sc.name, p.name, c.name
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		JOIN users u ON u.id = reg.student_id
+		LEFT JOIN school sc ON sc.id = u.school_id
+		LEFT JOIN province p ON p.id = sc.provinsi_id
+		LEFT JOIN city c ON c.id = sc.kota_id
 		WHERE reg.exam_id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)
 			AND ($3::boolean = false OR
 				($4::boolean AND reg.participant_number IS NULL AND
@@ -2090,6 +2094,8 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 			&item.RegistrationID, &item.StudentID, &item.StudentName, &item.StudentUsername,
 			&item.ParticipantNumber, &item.Status, &item.CheckedInAt, &item.RegisteredAt,
 			&item.ExamScheduledAt, &item.ExamNumber, &item.Token,
+			&item.StudentEmail, &item.StudentPhone, &item.StudentDOB, &item.StudentJenjang, &item.StudentGrade,
+			&item.SchoolName, &item.SchoolProvinsi, &item.SchoolKota,
 		); err != nil {
 			return nil, "", err
 		}
