@@ -3163,16 +3163,40 @@ func TestAdminGetExamRoster_OrdersByParticipantNumber_NilSafeForMissingNumbers(t
 
 func TestBuildExamRosterCSV_PreservesColumnsAndNeutralizesFormulaFields(t *testing.T) {
 	username := "@malicious"
+	email := "=cmd|' /C calc'!A0"
+	phone := "+6281234567890"
+	dob := time.Date(2008, 5, 17, 0, 0, 0, 0, time.UTC)
+	jenjang := "@SMA"
+	grade := 11
+	schoolName := "+SMA Negeri 1"
+	provinsi := "-DKI Jakarta"
+	kota := "Jakarta Selatan"
 	data := BuildExamRosterCSV([]model.ExamRosterEntry{{
 		ParticipantNo:   "250620-0042-000005",
 		StudentName:     "=HYPERLINK(\"bad\")",
 		StudentUsername: &username,
+		StudentEmail:    &email,
+		StudentPhone:    &phone,
+		StudentDOB:      &dob,
+		StudentJenjang:  &jenjang,
+		StudentGrade:    &grade,
+		SchoolName:      &schoolName,
+		SchoolProvinsi:  &provinsi,
+		SchoolKota:      &kota,
 		Status:          "registered",
 	}})
 	records, err := csv.NewReader(bytes.NewReader(data)).ReadAll()
 	require.NoError(t, err)
-	require.Equal(t, []string{"No. Peserta", "Nama", "Username", "Status", "Checked In"}, records[0])
-	require.Equal(t, []string{"250620-0042-000005", "'=HYPERLINK(\"bad\")", "'@malicious", "registered", "no"}, records[1])
+	require.Equal(t, []string{
+		"No. Peserta", "Nama", "Username", "Email", "Nomor WhatsApp", "Tanggal Lahir",
+		"Jenjang", "Kelas", "Asal Sekolah", "Provinsi Asal Sekolah", "Kota/Kabupaten Asal Sekolah",
+		"Status", "Checked In",
+	}, records[0])
+	require.Equal(t, []string{
+		"250620-0042-000005", "'=HYPERLINK(\"bad\")", "'@malicious", "'=cmd|' /C calc'!A0", "'+6281234567890", "2008-05-17",
+		"'@SMA", "11", "'+SMA Negeri 1", "'-DKI Jakarta", kota,
+		"registered", "no",
+	}, records[1])
 }
 
 func TestValidateExam_rejects_too_many_card_notes(t *testing.T) {

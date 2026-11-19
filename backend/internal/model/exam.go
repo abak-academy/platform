@@ -476,6 +476,14 @@ type ExamRosterEntry struct {
 	StudentID         uuid.UUID  `json:"student_id"`
 	StudentName       string     `json:"student_name"`
 	StudentUsername   *string    `json:"student_username"`
+	StudentEmail      *string    `json:"student_email"`
+	StudentPhone      *string    `json:"student_phone"`
+	StudentDOB        *time.Time `json:"student_dob"`
+	StudentJenjang    *string    `json:"student_jenjang"`
+	StudentGrade      *int       `json:"student_grade"`
+	SchoolName        *string    `json:"school_name"`
+	SchoolProvinsi    *string    `json:"school_provinsi"`
+	SchoolKota        *string    `json:"school_kota"`
 	ParticipantNumber *int       `json:"participant_number"`
 	ParticipantNo     string     `json:"participant_no"`
 	Status            string     `json:"status"`

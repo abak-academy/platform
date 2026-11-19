@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -347,8 +348,13 @@ func TestAdminExportExamRegistrations_IsCompleteScopedAndFormulaSafe(t *testing.
 	if len(records) != 24 {
 		t.Fatalf("CSV rows including header: got %d, want 24", len(records))
 	}
-	if got := records[0]; len(got) != 5 || got[0] != "No. Peserta" || got[1] != "Nama" {
-		t.Fatalf("unexpected header: %v", got)
+	wantHeader := []string{
+		"No. Peserta", "Nama", "Username", "Email", "Nomor WhatsApp", "Tanggal Lahir",
+		"Jenjang", "Kelas", "Asal Sekolah", "Provinsi Asal Sekolah", "Kota/Kabupaten Asal Sekolah",
+		"Status", "Checked In",
+	}
+	if got := records[0]; !slices.Equal(got, wantHeader) {
+		t.Fatalf("unexpected header: %v, want %v", got, wantHeader)
 	}
 	foundSafe := false
 	for _, row := range records[1:] {

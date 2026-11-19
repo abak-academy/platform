@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -1711,11 +1712,47 @@ func (s *Service) ExportExamRosterCSV(ctx context.Context, examID uuid.UUID, sch
 func BuildExamRosterCSV(rows []model.ExamRosterEntry) []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"No. Peserta", "Nama", "Username", "Status", "Checked In"})
+	_ = w.Write([]string{
+		"No. Peserta", "Nama", "Username", "Email", "Nomor WhatsApp", "Tanggal Lahir",
+		"Jenjang", "Kelas", "Asal Sekolah", "Provinsi Asal Sekolah", "Kota/Kabupaten Asal Sekolah",
+		"Status", "Checked In",
+	})
 	for _, row := range rows {
 		username := ""
 		if row.StudentUsername != nil {
 			username = *row.StudentUsername
+		}
+		email := ""
+		if row.StudentEmail != nil {
+			email = *row.StudentEmail
+		}
+		phone := ""
+		if row.StudentPhone != nil {
+			phone = *row.StudentPhone
+		}
+		dob := ""
+		if row.StudentDOB != nil {
+			dob = row.StudentDOB.Format("2006-01-02")
+		}
+		jenjang := ""
+		if row.StudentJenjang != nil {
+			jenjang = *row.StudentJenjang
+		}
+		grade := ""
+		if row.StudentGrade != nil {
+			grade = strconv.Itoa(*row.StudentGrade)
+		}
+		schoolName := ""
+		if row.SchoolName != nil {
+			schoolName = *row.SchoolName
+		}
+		provinsi := ""
+		if row.SchoolProvinsi != nil {
+			provinsi = *row.SchoolProvinsi
+		}
+		kota := ""
+		if row.SchoolKota != nil {
+			kota = *row.SchoolKota
 		}
 		checkedIn := "no"
 		if row.CheckedInAt != nil {
@@ -1725,6 +1762,14 @@ func BuildExamRosterCSV(rows []model.ExamRosterEntry) []byte {
 			csvSafeField(row.ParticipantNo),
 			csvSafeField(row.StudentName),
 			csvSafeField(username),
+			csvSafeField(email),
+			csvSafeField(phone),
+			dob,
+			csvSafeField(jenjang),
+			grade,
+			csvSafeField(schoolName),
+			csvSafeField(provinsi),
+			csvSafeField(kota),
 			csvSafeField(row.Status),
 			checkedIn,
 		})
