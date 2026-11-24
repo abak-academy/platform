@@ -4,6 +4,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, authFetch } from "@/lib/api";
 import type { ActivePromoCode, CheckoutResult, CourierRate, Order, PromoValidation } from "@/lib/types";
 
+// Mirrors backend service.CheckoutAgreements: productID -> checkboxID ->
+// agreed. A product with no configured checkboxes needs no entry.
+export type CheckoutAgreements = Record<string, Record<string, boolean>>;
+
 export const ordersKeys = {
   all: ["orders"] as const,
   list: () => [...ordersKeys.all, "list"] as const,
@@ -141,16 +145,19 @@ export function useValidatePromo() {
   });
 }
 
-export function useCheckout(basePath?: string, affiliateCode?: string) {
+export function useCheckout(basePath?: string, affiliateCode?: string, agreements?: CheckoutAgreements) {
   const qc = useQueryClient();
   const pathPrefix = basePath ?? "/orders";
   const code = affiliateCode?.trim();
+  const body: Record<string, unknown> = {};
+  if (code) body.affiliate_code = code;
+  if (agreements && Object.keys(agreements).length > 0) body.agreements = agreements;
   return useMutation({
     mutationFn: (orderId: string) =>
       authFetch<CheckoutResult>(`${pathPrefix}/${encodeURIComponent(orderId)}/checkout`, {
         method: "POST",
         headers: { "Idempotency-Key": crypto.randomUUID() },
-        ...(code ? { body: JSON.stringify({ affiliate_code: code }) } : {}),
+        ...(Object.keys(body).length > 0 ? { body: JSON.stringify(body) } : {}),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ordersKeys.cart() });

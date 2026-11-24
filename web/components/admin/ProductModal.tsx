@@ -19,8 +19,9 @@ import { usePresignUpload } from "@/lib/hooks/students";
 import { toast } from "sonner";
 import { ApiError, fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
+import { AgreementCheckboxEditor } from "@/components/admin/AgreementCheckboxEditor";
 import { PartnerAccessSection, usePartnerAccessDraft } from "@/components/admin/PartnerAccessSection";
-import type { Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
+import type { Product, ProductType, ProductStatus, ProductSpec, ProductAgreementCheckbox, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { useAdminProduct, useUpdateProductRelations } from "@/lib/hooks/admin-products";
 import { useTranslation } from "@/lib/i18n";
@@ -98,6 +99,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [availableFrom, setAvailableFrom] = useState("");
   const [availableUntil, setAvailableUntil] = useState("");
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
+  const [agreementCheckboxes, setAgreementCheckboxes] = useState<ProductAgreementCheckbox[]>([]);
   const { data: courses } = useAdminCourses();
   const [examSearch, setExamSearch] = useState("");
   const examQ = useDebouncedValue(examSearch).trim();
@@ -126,6 +128,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setAvailableFrom(toLocalInput(product.available_from));
         setAvailableUntil(toLocalInput(product.available_until));
         setSpecs(product.specs ?? []);
+        setAgreementCheckboxes(product.agreement_checkboxes ?? []);
       } else {
         setName("");
         setType("");
@@ -141,6 +144,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setAvailableFrom("");
         setAvailableUntil("");
         setSpecs([]);
+        setAgreementCheckboxes([]);
       }
     }
   }, [open, product]);
@@ -229,6 +233,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
+        agreement_checkboxes: agreementCheckboxes.filter((c) => c.title.trim() !== "" && c.body.trim() !== ""),
       };
       void saveAccessThen(() => onSubmit(input));
       return;
@@ -244,6 +249,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
       ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
       specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
+      agreement_checkboxes: agreementCheckboxes.filter((c) => c.title.trim() !== "" && c.body.trim() !== ""),
       ...(showCourses && courseIds.length > 0 ? { course_ids: courseIds } : {}),
       ...(showExams && examIds.length > 0 ? { exam_ids: examIds } : {}),
     };
@@ -580,6 +586,8 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
             </Section>
 
             <ProductSpecsEditor type={type as ProductType} value={specs} onChange={setSpecs} />
+
+            <AgreementCheckboxEditor value={agreementCheckboxes} onChange={setAgreementCheckboxes} />
 
             <Section title="Deskripsi">
               <textarea

@@ -171,6 +171,14 @@ export interface ProductSpec {
   value: string;
 }
 
+// A checkout agreement row for a product. id stays stable across edits so a
+// past order's agreement_snapshot can still reference which checkbox it was.
+export interface ProductAgreementCheckbox {
+  id: string;
+  title: string;
+  body: string;
+}
+
 export interface ProductRelation {
   id: string;
   title: string;
@@ -189,6 +197,7 @@ export interface Product {
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
+  agreement_checkboxes?: ProductAgreementCheckbox[];
   available_from?: string | null;
   available_until?: string | null;
   course_ids?: string[];
@@ -236,6 +245,7 @@ export interface AdminCreateProductInput {
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
+  agreement_checkboxes?: ProductAgreementCheckbox[];
   available_from?: string | null;
   available_until?: string | null;
   course_ids?: string[];
@@ -251,6 +261,7 @@ export interface AdminUpdateProductInput {
   weight_grams?: number;
   image_url?: string;
   specs?: ProductSpec[];
+  agreement_checkboxes?: ProductAgreementCheckbox[];
   available_from?: string | null;
   available_until?: string | null;
 }

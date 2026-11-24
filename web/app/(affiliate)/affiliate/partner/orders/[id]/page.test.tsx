@@ -11,6 +11,7 @@ vi.mock("@/lib/hooks/partner", () => ({
 }));
 vi.mock("@/components/partner/RetryPaymentButton", () => ({ RetryPaymentButton: () => <button>Bayar</button> }));
 vi.mock("@/components/cart/SnapCheckout", () => ({ SnapCheckout: () => <button>Bayar</button> }));
+vi.mock("@/components/cart/AgreementChecklist", () => ({ AgreementChecklist: () => null }));
 
 async function renderPage() {
   await act(async () => {

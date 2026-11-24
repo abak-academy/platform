@@ -13,6 +13,8 @@ import type { OrderItem } from "@/lib/types";
 import { CartLineItem } from "@/components/cart/CartLineItem";
 import { PromoSheet } from "@/components/cart/PromoSheet";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
+import { AgreementChecklist } from "@/components/cart/AgreementChecklist";
+import type { CheckoutAgreements } from "@/lib/hooks/orders";
 import { ReferralCodeField } from "@/components/auth/ReferralCodeField";
 import { readAffRefCookie } from "@/lib/aff-ref";
 import { ShippingAddressForm, type ShippingAddressFormState } from "@/components/cart/ShippingAddressForm";
@@ -66,8 +68,14 @@ export default function CartPage() {
   const [addressFormOpen, setAddressFormOpen] = useState(true);
   const [courierNote, setCourierNote] = useState("");
   const [shippingClearedNotice, setShippingClearedNotice] = useState(false);
+  const [agreements, setAgreements] = useState<CheckoutAgreements>({});
+  const [allAgreed, setAllAgreed] = useState(true);
 
   const items: OrderItem[] = cart?.items ?? [];
+  const agreementItems = useMemo(
+    () => items.map((item) => ({ product_id: item.product_id, name: item.name })),
+    [items],
+  );
   const subtotal = cart?.subtotal ?? items.reduce((s, it) => s + it.jumlah, 0);
   const discount = cart?.discount ?? 0;
   const total = cart?.total ?? Math.max(0, subtotal - discount + (cart?.shipping_cost ?? 0));
@@ -498,11 +506,29 @@ export default function CartPage() {
                 </div>
               )}
 
+              <AgreementChecklist
+                items={agreementItems}
+                onChange={(nextAgreements, nextAllAgreed) => {
+                  setAgreements(nextAgreements);
+                  setAllAgreed(nextAllAgreed);
+                }}
+              />
+
               <SnapCheckout
                 orderId={cart?.id}
                 affiliateCode={cart?.affiliate_code_eligible ? referralCode : undefined}
-                disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
+                agreements={agreements}
+                disabled={
+                  (hasPhysical && shippingRates.isError) ||
+                  patchCart.isPending ||
+                  removeItem.isPending ||
+                  updateQty.isPending ||
+                  !allAgreed
+                }
               />
+              {!allAgreed && (
+                <p className="mt-2 text-center text-xs text-warn">{t("cart_agreement_required")}</p>
+              )}
 
               <p className="mt-3 text-center text-xs text-ink-400">
                 {t("cart_secure_payment")}
