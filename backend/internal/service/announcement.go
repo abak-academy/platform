@@ -259,10 +259,8 @@ func (s *Service) sendAnnouncement(ctx context.Context, a *model.Announcement, p
 	count := len(emails)
 	for _, email := range emails {
 		pacer.wait()
-		if err := s.emailProvider.SendEmail(ctx, email, a.Title, a.Message); err != nil {
-			// One failure logs and continues — never aborts the loop.
-			log.Printf("failed to send announcement %s to %s: %v", a.ID, email, err)
-		}
+		// One failure never aborts the loop; the SMTP provider logs it.
+		_ = s.emailProvider.SendEmail(ctx, email, a.Title, a.Message)
 	}
 
 	return s.announceRepo.MarkAnnouncementSent(ctx, a.ID, time.Now(), count)
