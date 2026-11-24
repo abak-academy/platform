@@ -22,6 +22,9 @@ func TestBuildOTPMessage_MultipartWithCodeInBothParts(t *testing.T) {
 	if got := msg.Header.Get("Subject"); got != "Kode OTP Abak Academy" {
 		t.Errorf("Subject: got %q", got)
 	}
+	if _, err := msg.Header.Date(); err != nil {
+		t.Errorf("Date header missing or unparseable: %v", err)
+	}
 	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/alternative" {
 		t.Fatalf("Content-Type: got %q (%v), want multipart/alternative", mediaType, err)

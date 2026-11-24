@@ -4,6 +4,7 @@ import (
 	"akademi-bimbel/config"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -74,6 +75,11 @@ func main() {
 	repo := repository.New(pool)
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	emailProvider := newEmailProvider(cfg)
+	if _, noop := emailProvider.(*adapter.NoopEmailProvider); noop && cfg.Env == "prod" {
+		logger.Error("refusing to start: no email provider in prod — set smtp_host in secrets.yaml")
+		os.Exit(1)
+	}
+	logger.Info("email provider", "type", fmt.Sprintf("%T", emailProvider), "smtp_host", cfg.SMTPHost)
 	paymentClient := adapter.ResolvePaymentClient(ctx, repo, &cfg)
 	logisticsClient := adapter.ResolveShippingClient(ctx, repo, &cfg)
 	storageClient := newStorageClient(cfg)

@@ -141,7 +141,7 @@ entropy argument.
 
 ## 3. F-6 — Amazon SES *(moved here from E1 on 2026-07-30)*
 
-The platform stays on the existing Hostinger SMTP for now. The migration is **deferred, not
+Prod is moving from Hostinger to Brevo SMTP (PR #254, 2026-11-24); SES stays the target for event scale. The migration is **deferred, not
 cancelled**, and it moved into this epic because this is the epic that forces it.
 
 **The constraint did not move with it.** The mailbox caps at **100 emails/day** and OTP rides the same

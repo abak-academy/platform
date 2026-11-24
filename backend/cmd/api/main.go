@@ -4,6 +4,7 @@ import (
 	"akademi-bimbel/config"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -72,6 +73,12 @@ func main() {
 	storeRepo := repository.New(pool)
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
+	// Noop reports success and prints the code to stdout: in prod that is silent OTP loss plus a code leak.
+	if _, noop := otpProvider.(*adapter.NoopOTPProvider); noop && cfg.Env == "prod" {
+		logger.Error("refusing to start: no OTP provider in prod — set smtp_host in secrets.yaml")
+		os.Exit(1)
+	}
+	logger.Info("notify provider", "otp", fmt.Sprintf("%T", otpProvider), "smtp_host", cfg.SMTPHost)
 	paymentClient := adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	logisticsClient := adapter.ResolveShippingClient(ctx, storeRepo, &cfg)
 	storageClient := newStorageClient(cfg)

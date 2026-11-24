@@ -57,6 +57,9 @@ type SMTPProvider struct {
 
 func NewSMTPProvider(cfg SMTPConfig) *SMTPProvider {
 	headerFrom := cfg.From
+	if headerFrom != "" && cfg.FromName != "" && !strings.Contains(headerFrom, "<") {
+		headerFrom = fmt.Sprintf("%s <%s>", cfg.FromName, headerFrom)
+	}
 	if headerFrom == "" {
 		if cfg.FromName != "" {
 			headerFrom = fmt.Sprintf("%s <%s>", cfg.FromName, cfg.Username)
@@ -141,6 +144,7 @@ func buildMessage(from, to, subject, body string) []byte {
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
+	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
 	b.WriteString("Subject: " + subject + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
@@ -179,6 +183,7 @@ func buildOTPMessage(from, to, code string) ([]byte, error) {
 	var b strings.Builder
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
+	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
 	b.WriteString("Subject: Kode OTP Abak Academy\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: multipart/alternative; boundary=\"" + mw.Boundary() + "\"\r\n")

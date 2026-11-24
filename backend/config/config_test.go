@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func writeYAML(t *testing.T, dir, name, content string) {
@@ -609,7 +611,6 @@ object_storage_secret_key: "sk"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
-		{"SMTPHost", cfg.SMTPHost, ""},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
 	}
 	for _, c := range checks {
@@ -775,5 +776,25 @@ object_storage_secret_key: "minio-sk"
 	}
 	if !contains(err.Error(), "otp_secret") {
 		t.Errorf("error should name otp_secret, got: %v", err)
+	}
+}
+
+// fileConfig silently drops unknown keys, so an SMTP key left in an image-baked
+// config.yaml would load fine and never take effect; read the files raw instead.
+func TestCommittedConfigYAMLHasNoSMTPRelayKeys(t *testing.T) {
+	for _, env := range []string{"prod", "staging"} {
+		data, err := os.ReadFile(filepath.Join("env", env, "config.yaml"))
+		if err != nil {
+			t.Fatalf("read %s config.yaml: %v", env, err)
+		}
+		var keys map[string]any
+		if err := yaml.Unmarshal(data, &keys); err != nil {
+			t.Fatalf("parse %s config.yaml: %v", env, err)
+		}
+		for _, k := range []string{"smtp_host", "smtp_port", "smtp_from", "smtp_from_name", "smtp_username", "smtp_password"} {
+			if _, ok := keys[k]; ok {
+				t.Errorf("%s/config.yaml sets %s; SMTP relay settings belong in secrets.yaml", env, k)
+			}
+		}
 	}
 }

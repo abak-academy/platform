@@ -1,6 +1,6 @@
 # Backlog: move transactional email to Amazon SES
 
-**Raised:** 2026-07-30 · **Status:** **deferred 2026-07-30 — staying on Hostinger SMTP for now** ·
+**Raised:** 2026-07-30 · **Status:** **deferred 2026-07-30; prod moving Hostinger → Brevo SMTP (PR #254, 2026-11-24)** ·
 **Epic:** [E7](e7-scale-event-readiness.md) (F-6)
 
 Detail doc for F-6. No GitHub issue of its own — it is scope inside E7 (#62). Originally sat in E1;
@@ -49,9 +49,8 @@ SES exposes an SMTP endpoint. This is a configuration swap, not an integration.
       on the same day.
 - [ ] **Region.** `ap-southeast-3` (Jakarta) or `ap-southeast-1` (Singapore). Either is fine; it only
       changes the SMTP hostname. Pick one and write it here.
-- [ ] **Where do the current SMTP credentials come from?** `config/env/prod/config.yaml` carries only
-      `smtp_host`, `smtp_port`, `smtp_from`, `smtp_from_name` — **not** username/password. Find how
-      those are injected today before swapping, because the same channel has to carry the SES ones.
+- [x] **Where do the current SMTP credentials come from?** Since PR #254 every `smtp_*` key, credentials
+      included, lives in `deploy/secrets/prod-secrets.yaml` on vm-app (hand-placed, mounted read-only).
 
 ### Phase 1 — SES identity + DKIM *(free, no disruption, can be done today)*
 
@@ -88,15 +87,14 @@ Hostinger keeps working untouched throughout this phase.
 
 - [ ] Generate **SES SMTP credentials** (a dedicated username/password pair, distinct from any AWS
       access key).
-- [ ] Point config at SES:
+- [ ] Point `prod-secrets.yaml` at SES:
 
       smtp_host: "email-smtp.<region>.amazonaws.com"
       smtp_port: "587"
       smtp_from: "noreply@abakacademy.id"     # unchanged — the domain is what is verified
 
-- [ ] **Rebuild and redeploy api *and* worker.** `config.go` has **no env-var override** — the YAML in
-      the repo is the only source, so it is baked into the image. This is a deploy, not a restart, and
-      with F-5 still open it is a manual `IMAGE_TAG` edit on both VMs.
+- [ ] **Recreate api *and* worker.** Secrets are read at container start, so this is a restart, not a
+      rebuild.
 
 ### Phase 5 — verify
 
@@ -123,8 +121,8 @@ bounces and complaints. Not required to cut over, but required before a 5,000-ad
 
 ## Rollback
 
-Reverting `smtp_host` to `smtp.hostinger.com` and redeploying restores the old path — the DNS records
-are additive and harmless if SES is unused. Rollback is a rebuild, same as the cutover.
+Restoring the previous `smtp_*` values in `prod-secrets.yaml` and recreating api + worker restores the
+old path — the DNS records are additive and harmless if SES is unused. No rebuild needed.
 
 ---
 
