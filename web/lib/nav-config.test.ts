@@ -45,6 +45,7 @@ describe("admin navigation", () => {
       "/admin/exam/packages",
       "/admin/exam/monitor",
       "/admin/school/students",
+      "/admin/system/schools",
     ]);
     expect(ADMIN_SCHOOL_NAV[0].items.map((item) => item.href)).toEqual([
       "/admin/school",
@@ -57,5 +58,12 @@ describe("admin navigation", () => {
     const hrefs = ADMIN_EXAM_NAV.flatMap((group) => group.items.map((item) => item.href));
     expect(hrefs).toContain("/admin/school/students");
     expect(NAV_CONFIG.admin_exam.flatMap((group) => group.items.map((item) => item.href))).toEqual(hrefs);
+  });
+
+  it("offers the school directory to admin_exam and admin_store, but only for create/bulk-import (no edit/deactivate)", () => {
+    for (const role of ["admin_exam", "admin_store"] as const) {
+      const hrefs = NAV_CONFIG[role].flatMap((group) => group.items.map((item) => item.href));
+      expect(hrefs).toContain("/admin/system/schools");
+    }
   });
 });

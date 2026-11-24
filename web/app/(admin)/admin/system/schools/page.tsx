@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
+import { useHasCapability } from "@/lib/hooks/use-capability";
 import { SchoolBulkImportModal } from "@/components/admin/SchoolBulkImportModal";
 import {
   useAdminSchools,
@@ -74,6 +75,9 @@ const EMPTY_FORM: SchoolForm = {
 export default function SystemSchoolsPage() {
   const { t, lang } = useTranslation();
   const numberLocale = lang === "en" ? "en-US" : "id-ID";
+  // admin_exam/admin_store hold schools:create (register schools) but not
+  // schools:write — they must never see edit/deactivate for an existing row.
+  const canWrite = useHasCapability("schools:write");
   // searchInput is the raw input value; debouncedSearch is what actually goes
   // to the server (q param) and into filterKey below, so pagination doesn't
   // reset and refetch on every keystroke.
@@ -344,27 +348,28 @@ export default function SystemSchoolsPage() {
       key: "actions",
       header: "",
       align: "right",
-      cell: (school) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-xs" className="rounded-full">
-              <MoreHorizontal className="size-4 text-ink-500" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => handleEditOpen(school)}>
-              <Edit className="mr-2 size-4" />
-              {t("schools_action_edit")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => handleStatusToggle(school)}>
-              <Lock className="mr-2 size-4" />
-              {school.status === "active"
-                ? t("accounts_action_deactivate")
-                : t("accounts_action_activate")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      cell: (school) =>
+        canWrite ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon-xs" className="rounded-full">
+                <MoreHorizontal className="size-4 text-ink-500" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleEditOpen(school)}>
+                <Edit className="mr-2 size-4" />
+                {t("schools_action_edit")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleStatusToggle(school)}>
+                <Lock className="mr-2 size-4" />
+                {school.status === "active"
+                  ? t("accounts_action_deactivate")
+                  : t("accounts_action_activate")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null,
     },
   ];
 
@@ -487,10 +492,12 @@ export default function SystemSchoolsPage() {
                   <p className="mt-3 text-xs leading-5 text-ink-500">
                     {inspectedSchool.alamat ?? (lang === "en" ? "Address not provided" : "Alamat belum tersedia")}
                   </p>
-                  <Button className="mt-5 rounded-md" onClick={() => handleEditOpen(inspectedSchool)}>
-                    <Edit className="mr-2 size-4" />
-                    {lang === "en" ? "Edit school record" : "Edit data sekolah"}
-                  </Button>
+                  {canWrite && (
+                    <Button className="mt-5 rounded-md" onClick={() => handleEditOpen(inspectedSchool)}>
+                      <Edit className="mr-2 size-4" />
+                      {lang === "en" ? "Edit school record" : "Edit data sekolah"}
+                    </Button>
+                  )}
                 </div>
                 <div className="mt-6 border-t border-line pt-5">
                   <h3 className="text-sm font-semibold text-ink-900">
