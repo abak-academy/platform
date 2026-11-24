@@ -1,13 +1,26 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	_ "embed"
 	"fmt"
+	"html"
+	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
+)
+
+var (
+	//go:embed otp_email.html
+	otpEmailHTML string
+	//go:embed otp_email.txt
+	otpEmailText string
 )
 
 type SMTPConfig struct {
@@ -64,15 +77,18 @@ func (p *SMTPProvider) SendOTP(_ context.Context, channel, to, code string) erro
 	if channel != "email" {
 		return fmt.Errorf("smtp provider: unsupported OTP channel %q (email only)", channel)
 	}
-	body := fmt.Sprintf("Kode OTP kamu: %s\n\nBerlaku singkat, jangan bagikan ke siapa pun.", code)
-	return p.send(to, "Kode OTP Abak Academy", body)
+	msg, err := buildOTPMessage(p.headerFrom, to, code)
+	if err != nil {
+		return err
+	}
+	return p.send(to, msg)
 }
 
 func (p *SMTPProvider) SendEmail(_ context.Context, to, subject, body string) error {
-	return p.send(to, subject, body)
+	return p.send(to, buildMessage(p.headerFrom, to, subject, body))
 }
 
-func (p *SMTPProvider) send(to, subject, body string) error {
+func (p *SMTPProvider) send(to string, msg []byte) error {
 	conn, err := net.DialTimeout("tcp", p.addr, smtpDialTimeout)
 	if err != nil {
 		return fmt.Errorf("smtp dial %s: %w", p.addr, err)
@@ -112,7 +128,7 @@ func (p *SMTPProvider) send(to, subject, body string) error {
 	if err != nil {
 		return fmt.Errorf("smtp data: %w", err)
 	}
-	if _, err = w.Write(buildMessage(p.headerFrom, to, subject, body)); err != nil {
+	if _, err = w.Write(msg); err != nil {
 		return fmt.Errorf("smtp write message: %w", err)
 	}
 	if err = w.Close(); err != nil {
@@ -131,4 +147,42 @@ func buildMessage(from, to, subject, body string) []byte {
 	b.WriteString("\r\n")
 	b.WriteString(body)
 	return []byte(b.String())
+}
+
+// buildOTPMessage renders the OTP as multipart/alternative: the text part first, so clients that can't show HTML still get the code.
+func buildOTPMessage(from, to, code string) ([]byte, error) {
+	var parts bytes.Buffer
+	mw := multipart.NewWriter(&parts)
+	for _, part := range []struct{ ctype, body string }{
+		{"text/plain", strings.ReplaceAll(otpEmailText, "{{CODE}}", code)},
+		{"text/html", strings.ReplaceAll(otpEmailHTML, "{{CODE}}", html.EscapeString(code))},
+	} {
+		pw, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {part.ctype + `; charset="UTF-8"`},
+			"Content-Transfer-Encoding": {"quoted-printable"},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("otp email part: %w", err)
+		}
+		qw := quotedprintable.NewWriter(pw)
+		if _, err := qw.Write([]byte(part.body)); err != nil {
+			return nil, fmt.Errorf("otp email part: %w", err)
+		}
+		if err := qw.Close(); err != nil {
+			return nil, fmt.Errorf("otp email part: %w", err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("otp email: %w", err)
+	}
+
+	var b strings.Builder
+	b.WriteString("From: " + from + "\r\n")
+	b.WriteString("To: " + to + "\r\n")
+	b.WriteString("Subject: Kode OTP Abak Academy\r\n")
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString("Content-Type: multipart/alternative; boundary=\"" + mw.Boundary() + "\"\r\n")
+	b.WriteString("\r\n")
+	b.Write(parts.Bytes())
+	return []byte(b.String()), nil
 }
