@@ -4,7 +4,6 @@ import (
 	"akademi-bimbel/config"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -73,12 +72,6 @@ func main() {
 	storeRepo := repository.New(pool)
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	otpProvider, emailProvider := newNotifyProviders(cfg)
-	// Noop reports success and prints the code to stdout: in prod that is silent OTP loss plus a code leak.
-	if _, noop := otpProvider.(*adapter.NoopOTPProvider); noop && cfg.Env == "prod" {
-		logger.Error("refusing to start: no OTP provider in prod — set smtp_host in secrets.yaml")
-		os.Exit(1)
-	}
-	logger.Info("notify provider", "otp", fmt.Sprintf("%T", otpProvider), "smtp_host", cfg.SMTPHost)
 	paymentClient := adapter.ResolvePaymentClient(ctx, storeRepo, &cfg)
 	logisticsClient := adapter.ResolveShippingClient(ctx, storeRepo, &cfg)
 	storageClient := newStorageClient(cfg)
@@ -124,19 +117,23 @@ func main() {
 }
 
 func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailProvider) {
+	sm := adapter.NewSMTPProvider(adapter.SMTPConfig{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		Username: cfg.SMTPUsername,
+		Password: cfg.SMTPPassword,
+		From:     cfg.SMTPFrom,
+		FromName: cfg.SMTPFromName,
+	})
 	// SMTP (email OTP) takes precedence when configured — staging uses it.
 	if cfg.SMTPHost != "" {
-		sm := adapter.NewSMTPProvider(adapter.SMTPConfig{
-			Host:     cfg.SMTPHost,
-			Port:     cfg.SMTPPort,
-			Username: cfg.SMTPUsername,
-			Password: cfg.SMTPPassword,
-			From:     cfg.SMTPFrom,
-			FromName: cfg.SMTPFromName,
-		})
 		return sm, sm
 	}
 	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
+		// Prod never falls back to Noop: it reports success and prints the code to stdout.
+		if cfg.Env == "prod" {
+			return sm, sm
+		}
 		return &adapter.NoopOTPProvider{}, &adapter.NoopEmailProvider{}
 	}
 	fz := adapter.NewFazpassProvider(adapter.FazpassConfig{

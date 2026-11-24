@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/tls"
 	_ "embed"
+	"errors"
 	"fmt"
 	"html"
+	"log/slog"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
@@ -91,7 +93,15 @@ func (p *SMTPProvider) SendEmail(_ context.Context, to, subject, body string) er
 	return p.send(to, buildMessage(p.headerFrom, to, subject, body))
 }
 
-func (p *SMTPProvider) send(to string, msg []byte) error {
+func (p *SMTPProvider) send(to string, msg []byte) (err error) {
+	defer func() {
+		if err != nil {
+			slog.Error("smtp send failed", "addr", p.addr, "err", err)
+		}
+	}()
+	if p.host == "" {
+		return errors.New("smtp send: smtp_host is not configured")
+	}
 	conn, err := net.DialTimeout("tcp", p.addr, smtpDialTimeout)
 	if err != nil {
 		return fmt.Errorf("smtp dial %s: %w", p.addr, err)

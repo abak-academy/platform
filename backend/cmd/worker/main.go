@@ -4,7 +4,6 @@ import (
 	"akademi-bimbel/config"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,11 +74,6 @@ func main() {
 	repo := repository.New(pool)
 	jwtSigner := infra.NewJWTSigner(cfg.JWTSecret, cfg.AccessTokenTTL)
 	emailProvider := newEmailProvider(cfg)
-	if _, noop := emailProvider.(*adapter.NoopEmailProvider); noop && cfg.Env == "prod" {
-		logger.Error("refusing to start: no email provider in prod — set smtp_host in secrets.yaml")
-		os.Exit(1)
-	}
-	logger.Info("email provider", "type", fmt.Sprintf("%T", emailProvider), "smtp_host", cfg.SMTPHost)
 	paymentClient := adapter.ResolvePaymentClient(ctx, repo, &cfg)
 	logisticsClient := adapter.ResolveShippingClient(ctx, repo, &cfg)
 	storageClient := newStorageClient(cfg)
@@ -103,17 +97,22 @@ func main() {
 }
 
 func newEmailProvider(cfg config.Config) service.EmailProvider {
+	sm := adapter.NewSMTPProvider(adapter.SMTPConfig{
+		Host:     cfg.SMTPHost,
+		Port:     cfg.SMTPPort,
+		Username: cfg.SMTPUsername,
+		Password: cfg.SMTPPassword,
+		From:     cfg.SMTPFrom,
+		FromName: cfg.SMTPFromName,
+	})
 	if cfg.SMTPHost != "" {
-		return adapter.NewSMTPProvider(adapter.SMTPConfig{
-			Host:     cfg.SMTPHost,
-			Port:     cfg.SMTPPort,
-			Username: cfg.SMTPUsername,
-			Password: cfg.SMTPPassword,
-			From:     cfg.SMTPFrom,
-			FromName: cfg.SMTPFromName,
-		})
+		return sm
 	}
 	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
+		// Prod never falls back to Noop: it reports success and prints the body to stdout.
+		if cfg.Env == "prod" {
+			return sm
+		}
 		return &adapter.NoopEmailProvider{}
 	}
 	return adapter.NewFazpassProvider(adapter.FazpassConfig{

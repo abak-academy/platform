@@ -160,3 +160,15 @@ func serveFakeSTARTTLS(ln net.Listener, cert tls.Certificate) {
 		}
 	}
 }
+
+func TestSMTPProvider_EmptyHostFailsInsteadOfSucceeding(t *testing.T) {
+	p := NewSMTPProvider(SMTPConfig{Port: "587"})
+	for name, err := range map[string]error{
+		"SendOTP":   p.SendOTP(context.Background(), "email", "a@b.c", "123456"),
+		"SendEmail": p.SendEmail(context.Background(), "a@b.c", "s", "b"),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "smtp_host is not configured") {
+			t.Errorf("%s with no smtp_host: got %v, want the not-configured error", name, err)
+		}
+	}
+}
