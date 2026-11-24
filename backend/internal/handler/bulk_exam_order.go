@@ -119,7 +119,8 @@ func (h *Handler) AdminCheckoutBulkOrder(c echo.Context) error {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
 
-	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, "")
+	// Admin bulk exam order checkout deliberately never collects agreement checkboxes — skip the gate.
+	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, "", nil, true)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

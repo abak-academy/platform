@@ -18,9 +18,9 @@ func seedAffiliateCheckoutOrder(t *testing.T, svc *Service, repo *repository.Rep
 	key := "aff-checkout-" + uniqueSuffix()
 	var err error
 	if code == "" {
-		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key, "")
+		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key, "", nil, false)
 	} else {
-		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key, code)
+		_, err = svc.Checkout(ctx, buyerID, orderID.String(), key, code, nil, false)
 	}
 	if err != nil {
 		t.Fatalf("Checkout: %v", err)
@@ -133,7 +133,7 @@ func TestCheckout_FreeOrder_WithAffiliateCode_BindsAtSettlement(t *testing.T) {
 	if err := svc.AddItem(ctx, buyerID, order.ID.String(), productID, 1); err != nil {
 		t.Fatalf("AddItem: %v", err)
 	}
-	if _, err := svc.Checkout(ctx, buyerID, order.ID.String(), "free-aff-"+uniqueSuffix(), owner.code); err != nil {
+	if _, err := svc.Checkout(ctx, buyerID, order.ID.String(), "free-aff-"+uniqueSuffix(), owner.code, nil, false); err != nil {
 		t.Fatalf("Checkout: %v", err)
 	}
 

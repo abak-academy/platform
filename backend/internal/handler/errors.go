@@ -68,6 +68,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_request", Message: err.Error(), Details: "password must be at least 8 characters"}
 	case errors.Is(err, service.ErrInvalidSpecs):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_specs", Message: err.Error()}
+	case errors.Is(err, service.ErrInvalidAgreementCheckboxes):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "invalid_agreement_checkboxes", Message: err.Error()}
 	case errors.Is(err, service.ErrProductNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "product_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrProductGroupingNotFound):
@@ -276,6 +278,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_grant_student", Message: err.Error()}
 	case errors.Is(err, service.ErrShippingRequired):
 		status, apiErr = http.StatusBadRequest, APIError{Code: "shipping_required", Message: err.Error()}
+	case errors.Is(err, service.ErrAgreementNotAccepted):
+		status, apiErr = http.StatusBadRequest, APIError{Code: "agreement_not_accepted", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCourierSelection):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_courier_selection", Message: err.Error()}
 	case errors.Is(err, service.ErrBiodataIncomplete):

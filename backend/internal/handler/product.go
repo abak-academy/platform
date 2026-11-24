@@ -80,18 +80,19 @@ func (h *Handler) AdminListProducts(c echo.Context) error {
 
 func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	var req struct {
-		Type           string              `json:"type"`
-		Name           string              `json:"name"`
-		Description    string              `json:"description"`
-		Price          int64               `json:"price"`
-		Stock          *int                `json:"stock"`
-		WeightGrams    int                 `json:"weight_grams"`
-		ImageURL       string              `json:"image_url"`
-		Specs          []model.ProductSpec `json:"specs"`
-		AvailableFrom  *time.Time          `json:"available_from"`
-		AvailableUntil *time.Time          `json:"available_until"`
-		CourseIDs      []string            `json:"course_ids"`
-		ExamIDs        []string            `json:"exam_ids"`
+		Type                string                           `json:"type"`
+		Name                string                           `json:"name"`
+		Description         string                           `json:"description"`
+		Price               int64                            `json:"price"`
+		Stock               *int                             `json:"stock"`
+		WeightGrams         int                              `json:"weight_grams"`
+		ImageURL            string                           `json:"image_url"`
+		Specs               []model.ProductSpec              `json:"specs"`
+		AgreementCheckboxes []model.ProductAgreementCheckbox `json:"agreement_checkboxes"`
+		AvailableFrom       *time.Time                       `json:"available_from"`
+		AvailableUntil      *time.Time                       `json:"available_until"`
+		CourseIDs           []string                         `json:"course_ids"`
+		ExamIDs             []string                         `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -102,6 +103,9 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	if err := service.ValidateSpecs(req.Specs); err != nil {
 		return mapServiceError(c, err)
 	}
+	if err := service.ValidateAgreementCheckboxes(req.AgreementCheckboxes); err != nil {
+		return mapServiceError(c, err)
+	}
 
 	claims, _ := c.Get("claims").(*infra.Claims)
 	role := ""
@@ -110,16 +114,17 @@ func (h *Handler) AdminCreateProduct(c echo.Context) error {
 	}
 
 	p := model.Product{
-		Type:           req.Type,
-		Name:           req.Name,
-		Description:    req.Description,
-		Price:          req.Price,
-		WeightGrams:    req.WeightGrams,
-		ImageURL:       req.ImageURL,
-		Specs:          req.Specs,
-		AvailableFrom:  req.AvailableFrom,
-		AvailableUntil: req.AvailableUntil,
-		Status:         "draft",
+		Type:                req.Type,
+		Name:                req.Name,
+		Description:         req.Description,
+		Price:               req.Price,
+		WeightGrams:         req.WeightGrams,
+		ImageURL:            req.ImageURL,
+		Specs:               req.Specs,
+		AgreementCheckboxes: service.NormalizeAgreementCheckboxIDs(req.AgreementCheckboxes),
+		AvailableFrom:       req.AvailableFrom,
+		AvailableUntil:      req.AvailableUntil,
+		Status:              "draft",
 	}
 	p.Stock, p.StockLimited = requestStock(req.Stock)
 
@@ -159,18 +164,19 @@ func (h *Handler) AdminGetProduct(c echo.Context) error {
 func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	id := c.Param("id")
 	var req struct {
-		Name           string               `json:"name"`
-		Description    string               `json:"description"`
-		Price          int64                `json:"price"`
-		Stock          *int                 `json:"stock"`
-		WeightGrams    *int                 `json:"weight_grams"`
-		ImageURL       *string              `json:"image_url"`
-		Specs          *[]model.ProductSpec `json:"specs"`          // pointer: absent preserves existing specs, present replaces them
-		Status         Nullable[string]     `json:"status"`         // published ↔ hidden visibility flip only; absent preserves existing
-		AvailableFrom  Nullable[time.Time]  `json:"available_from"` // absent preserves; null clears; value sets
-		AvailableUntil Nullable[time.Time]  `json:"available_until"`
-		CourseIDs      Nullable[[]string]   `json:"course_ids"`
-		ExamIDs        Nullable[[]string]   `json:"exam_ids"`
+		Name                string                            `json:"name"`
+		Description         string                            `json:"description"`
+		Price               int64                             `json:"price"`
+		Stock               *int                              `json:"stock"`
+		WeightGrams         *int                              `json:"weight_grams"`
+		ImageURL            *string                           `json:"image_url"`
+		Specs               *[]model.ProductSpec              `json:"specs"`                // pointer: absent preserves existing specs, present replaces them
+		AgreementCheckboxes *[]model.ProductAgreementCheckbox `json:"agreement_checkboxes"` // pointer: absent preserves existing checkboxes, present replaces them
+		Status              Nullable[string]                  `json:"status"`               // published ↔ hidden visibility flip only; absent preserves existing
+		AvailableFrom       Nullable[time.Time]               `json:"available_from"`       // absent preserves; null clears; value sets
+		AvailableUntil      Nullable[time.Time]               `json:"available_until"`
+		CourseIDs           Nullable[[]string]                `json:"course_ids"`
+		ExamIDs             Nullable[[]string]                `json:"exam_ids"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -180,6 +186,11 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	}
 	if req.Specs != nil {
 		if err := service.ValidateSpecs(*req.Specs); err != nil {
+			return mapServiceError(c, err)
+		}
+	}
+	if req.AgreementCheckboxes != nil {
+		if err := service.ValidateAgreementCheckboxes(*req.AgreementCheckboxes); err != nil {
 			return mapServiceError(c, err)
 		}
 	}
@@ -224,6 +235,15 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 			return mapServiceError(c, err)
 		}
 		p.Specs = existing.Specs
+	}
+	if req.AgreementCheckboxes != nil {
+		p.AgreementCheckboxes = service.NormalizeAgreementCheckboxIDs(*req.AgreementCheckboxes)
+	} else {
+		existing, err := h.svc.GetProduct(c.Request().Context(), id, role)
+		if err != nil {
+			return mapServiceError(c, err)
+		}
+		p.AgreementCheckboxes = existing.AgreementCheckboxes
 	}
 	// Set → overlay (value or explicit clear); absent → preserved in the service.
 	if req.AvailableFrom.Set && req.AvailableFrom.Valid {

@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"errors"
+	"io"
 	"net/http"
 	"slices"
 
 	"akademi-bimbel/internal/repository"
+	"akademi-bimbel/internal/service"
 
 	"github.com/labstack/echo/v4"
 )
@@ -96,7 +99,17 @@ func (h *Handler) PartnerCheckoutOrder(c echo.Context) error {
 	if key == "" {
 		return badRequest(c, "Idempotency-Key header is required")
 	}
-	result, err := h.svc.CheckoutPartnerOrder(c.Request().Context(), claims.Sub, c.Param("id"), key)
+
+	// The body is optional: a Mitra order with no agreement checkboxes
+	// configured on any of its products sends none.
+	var req struct {
+		Agreements service.CheckoutAgreements `json:"agreements"`
+	}
+	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
+		return badRequest(c, "invalid request body")
+	}
+
+	result, err := h.svc.CheckoutPartnerOrder(c.Request().Context(), claims.Sub, c.Param("id"), key, req.Agreements)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

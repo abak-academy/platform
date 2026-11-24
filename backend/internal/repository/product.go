@@ -20,10 +20,10 @@ var ErrNotFound = errors.New("not found")
 func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) error {
 	var description, imageURL *string
 	var weightGrams *int
-	var specs []byte
+	var specs, agreementCheckboxes []byte
 	err := row.Scan(
 		&p.ID, &p.Type, &p.Name, &description, &p.Price, &p.Stock, &p.StockLimited, &p.Status,
-		&weightGrams, &imageURL, &specs, &p.AvailableFrom, &p.AvailableUntil,
+		&weightGrams, &imageURL, &specs, &agreementCheckboxes, &p.AvailableFrom, &p.AvailableUntil,
 		&p.GroupingID, &p.GroupingOrder, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
@@ -41,6 +41,12 @@ func scanProduct(row interface{ Scan(dest ...any) error }, p *model.Product) err
 	p.Specs = []model.ProductSpec{}
 	if len(specs) > 0 {
 		if err := json.Unmarshal(specs, &p.Specs); err != nil {
+			return err
+		}
+	}
+	p.AgreementCheckboxes = []model.ProductAgreementCheckbox{}
+	if len(agreementCheckboxes) > 0 {
+		if err := json.Unmarshal(agreementCheckboxes, &p.AgreementCheckboxes); err != nil {
 			return err
 		}
 	}
@@ -105,11 +111,15 @@ func (r *Repository) CreateProduct(ctx context.Context, p *model.Product) error 
 	if err != nil {
 		return err
 	}
+	agreementCheckboxes, err := marshalAgreementCheckboxes(p.AgreementCheckboxes)
+	if err != nil {
+		return err
+	}
 	err = r.pool.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, specs, available_from, available_until)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, specs, agreement_checkboxes, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, p.AvailableFrom, p.AvailableUntil,
+		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, agreementCheckboxes, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	return err
 }
@@ -123,10 +133,18 @@ func marshalSpecs(specs []model.ProductSpec) ([]byte, error) {
 	return json.Marshal(specs)
 }
 
+// marshalAgreementCheckboxes mirrors marshalSpecs for the agreement_checkboxes column.
+func marshalAgreementCheckboxes(checkboxes []model.ProductAgreementCheckbox) ([]byte, error) {
+	if checkboxes == nil {
+		checkboxes = []model.ProductAgreementCheckbox{}
+	}
+	return json.Marshal(checkboxes)
+}
+
 func (r *Repository) GetProductByID(ctx context.Context, id string) (*model.Product, error) {
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
-		`SELECT id, type, name, description, price, COALESCE(stock, 0), (stock IS NOT NULL), status, weight_grams, image_url, specs, available_from, available_until, grouping_id, grouping_order, created_at, updated_at
+		`SELECT id, type, name, description, price, COALESCE(stock, 0), (stock IS NOT NULL), status, weight_grams, image_url, specs, agreement_checkboxes, available_from, available_until, grouping_id, grouping_order, created_at, updated_at
 		FROM product
 		WHERE id = $1`,
 		id,
@@ -147,7 +165,7 @@ func (r *Repository) GetProductByExamID(ctx context.Context, examID uuid.UUID) (
 	p := &model.Product{}
 	err := scanProduct(r.pool.QueryRow(ctx,
 		`SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status,
-		        p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
+		        p.weight_grams, p.image_url, p.specs, p.agreement_checkboxes, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
 		 FROM product p
 		 JOIN product_exam pe ON pe.product_id = p.id
 		 JOIN exam e ON e.id = pe.exam_id
@@ -171,7 +189,7 @@ func (r *Repository) ListProducts(ctx context.Context, filter ProductFilter) ([]
 	}
 
 	products := []model.Product{}
-	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
+	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.agreement_checkboxes, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
 	FROM product p WHERE 1=1`
 	args := []interface{}{}
 	argIdx := 1
@@ -302,11 +320,15 @@ func (r *Repository) UpdateProduct(ctx context.Context, id string, p *model.Prod
 	if err != nil {
 		return err
 	}
+	agreementCheckboxes, err := marshalAgreementCheckboxes(p.AgreementCheckboxes)
+	if err != nil {
+		return err
+	}
 	_, err = r.pool.Exec(ctx,
 		`UPDATE product
-		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, specs = $9, available_from = $10, available_until = $11, updated_at = now()
-		WHERE id = $12`,
-		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, p.AvailableFrom, p.AvailableUntil, id,
+		SET type = $1, name = $2, description = $3, price = $4, stock = $5, status = $6, weight_grams = $7, image_url = $8, specs = $9, agreement_checkboxes = $10, available_from = $11, available_until = $12, updated_at = now()
+		WHERE id = $13`,
+		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, agreementCheckboxes, p.AvailableFrom, p.AvailableUntil, id,
 	)
 	return err
 }
@@ -377,11 +399,15 @@ func (r *Repository) CreateProductWithCourses(ctx context.Context, tx pgx.Tx, p 
 	if err != nil {
 		return err
 	}
+	agreementCheckboxes, err := marshalAgreementCheckboxes(p.AgreementCheckboxes)
+	if err != nil {
+		return err
+	}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, specs, available_from, available_until)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, specs, agreement_checkboxes, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, p.AvailableFrom, p.AvailableUntil,
+		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, agreementCheckboxes, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return err
@@ -427,11 +453,15 @@ func (r *Repository) CreateProductWithExams(ctx context.Context, tx pgx.Tx, p *m
 	if err != nil {
 		return err
 	}
+	agreementCheckboxes, err := marshalAgreementCheckboxes(p.AgreementCheckboxes)
+	if err != nil {
+		return err
+	}
 	err = tx.QueryRow(ctx,
-		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, specs, available_from, available_until)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		`INSERT INTO product (type, name, description, price, stock, status, weight_grams, image_url, specs, agreement_checkboxes, available_from, available_until)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id, created_at, updated_at`,
-		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, p.AvailableFrom, p.AvailableUntil,
+		p.Type, p.Name, p.Description, p.Price, stockValue(p), p.Status, p.WeightGrams, p.ImageURL, specs, agreementCheckboxes, p.AvailableFrom, p.AvailableUntil,
 	).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt)
 	if err != nil {
 		return err

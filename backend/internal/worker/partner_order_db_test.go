@@ -56,7 +56,7 @@ func TestOrderPaidPartnerOrder_everyParticipantGetsTheCourseAndARefundTakesItBac
 	if err != nil {
 		t.Fatalf("create partner order: %v", err)
 	}
-	if res, err := env.svc.CheckoutPartnerOrder(ctx, partnerID.String(), order.ID.String(), "key-"+uniqueWorkerSuffix()); err != nil || !res.Free {
+	if res, err := env.svc.CheckoutPartnerOrder(ctx, partnerID.String(), order.ID.String(), "key-"+uniqueWorkerSuffix(), nil); err != nil || !res.Free {
 		t.Fatalf("checkout = %+v, %v; want a free settlement", res, err)
 	}
 	pollAllWithWorker(t, env, &Worker{repo: env.repo, commissionSvc: env.svc})

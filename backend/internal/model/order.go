@@ -63,15 +63,24 @@ type OrderShipmentEvent struct {
 }
 
 type OrderItem struct {
-	ID          uuid.UUID  `json:"id"`
-	OrderID     uuid.UUID  `json:"order_id"`
-	ProductID   uuid.UUID  `json:"product_id"`
-	ProductType string     `json:"product_type"`
-	Name        string     `json:"name"`
-	UnitPrice   float64    `json:"unit_price"`
-	Qty         int        `json:"qty"`
-	Jumlah      float64    `json:"jumlah"`
-	WeightGrams int        `json:"weight_grams"`
-	FulfilledAt *time.Time `json:"fulfilled_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID                uuid.UUID            `json:"id"`
+	OrderID           uuid.UUID            `json:"order_id"`
+	ProductID         uuid.UUID            `json:"product_id"`
+	ProductType       string               `json:"product_type"`
+	Name              string               `json:"name"`
+	UnitPrice         float64              `json:"unit_price"`
+	Qty               int                  `json:"qty"`
+	Jumlah            float64              `json:"jumlah"`
+	WeightGrams       int                  `json:"weight_grams"`
+	AgreementSnapshot []OrderItemAgreement `json:"agreement_snapshot"`
+	FulfilledAt       *time.Time           `json:"fulfilled_at"`
+	CreatedAt         time.Time            `json:"created_at"`
+}
+
+// OrderItemAgreement is one checkbox agreed to at checkout time, snapshotted so a later edit to product.agreement_checkboxes never rewrites a past order.
+type OrderItemAgreement struct {
+	CheckboxID string    `json:"checkbox_id"`
+	Title      string    `json:"title"`
+	Body       string    `json:"body"`
+	AgreedAt   time.Time `json:"agreed_at"`
 }

@@ -384,7 +384,7 @@ func TestCheckoutBulkOrder_ReusesExistingCheckout_Integration(t *testing.T) {
 	}
 
 	t.Run("checkout returns snap token via existing Checkout", func(t *testing.T) {
-		result, err := svc.Checkout(ctx, adminID, order.ID.String(), "test-key-"+uniqueSuffix(), "")
+		result, err := svc.Checkout(ctx, adminID, order.ID.String(), "test-key-"+uniqueSuffix(), "", nil, false)
 		if err != nil {
 			t.Fatalf("Checkout: %v", err)
 		}

@@ -373,7 +373,7 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 
 	t.Run("another Mitra cannot pay it or read it", func(t *testing.T) {
 		other := seedProgramAccount(t, env.repo, "active", "active", "", partnerOnlyPrograms).String()
-		_, err := env.svc.CheckoutPartnerOrder(ctx, other, order.ID.String(), "key-"+uniqueSuffix())
+		_, err := env.svc.CheckoutPartnerOrder(ctx, other, order.ID.String(), "key-"+uniqueSuffix(), nil)
 		require.ErrorIs(t, err, ErrOrderNotFound)
 		_, err = env.svc.GetPartnerOrder(ctx, other, order.ID.String())
 		require.ErrorIs(t, err, ErrOrderNotFound)
@@ -392,7 +392,7 @@ func TestCreateAndCheckoutPartnerOrder(t *testing.T) {
 	t.Run("a fully discounted order is paid at once and takes one voucher use per student", func(t *testing.T) {
 		withVoucher, err := env.svc.CreatePartnerOrder(ctx, env.partner, []string{product.String()}, []string{a, b}, full.Code)
 		require.NoError(t, err)
-		res, err := env.svc.CheckoutPartnerOrder(ctx, env.partner, withVoucher.ID.String(), "key-"+uniqueSuffix())
+		res, err := env.svc.CheckoutPartnerOrder(ctx, env.partner, withVoucher.ID.String(), "key-"+uniqueSuffix(), nil)
 		require.NoError(t, err)
 		require.True(t, res.Free)
 		var status string
@@ -470,7 +470,7 @@ func TestCheckoutPartnerOrder_revalidatesWhatChangedSinceTheOrderWasCreated(t *t
 
 			tt.change(t, env, product, course, students, v)
 
-			_, err = env.svc.CheckoutPartnerOrder(ctx, env.partner, order.ID.String(), "key-"+uniqueSuffix())
+			_, err = env.svc.CheckoutPartnerOrder(ctx, env.partner, order.ID.String(), "key-"+uniqueSuffix(), nil)
 			require.Error(t, err)
 			tt.check(t, err)
 
@@ -505,7 +505,7 @@ func TestCheckoutPartnerOrder_revalidatesEachItemIndependently(t *testing.T) {
 	// Ani buys product A herself before the Mitra pays — only A's item is affected.
 	env.enroll(t, ani, courseA)
 
-	_, err = env.svc.CheckoutPartnerOrder(ctx, env.partner, order.ID.String(), "key-"+uniqueSuffix())
+	_, err = env.svc.CheckoutPartnerOrder(ctx, env.partner, order.ID.String(), "key-"+uniqueSuffix(), nil)
 	var owns *ParticipantAlreadyOwnsError
 	require.ErrorAs(t, err, &owns)
 	require.Len(t, owns.Students, 1, "only Ani, only on A")
@@ -536,7 +536,7 @@ func TestCheckout_aParticipantOrderMayHaveManySeatsButASelfOrderMayNot(t *testin
 	}
 
 	selfOrder := cart(nil)
-	_, err := env.svc.Checkout(ctx, buyer, selfOrder.String(), "key-"+uniqueSuffix(), "")
+	_, err := env.svc.Checkout(ctx, buyer, selfOrder.String(), "key-"+uniqueSuffix(), "", nil, false)
 	require.True(t, errors.Is(err, ErrDigitalQtyLimit), "a digital line bought for oneself is still one seat: %v", err)
 
 	_, err = env.repo.Pool().Exec(ctx, `UPDATE orders SET status = 'cancelled' WHERE id = $1`, selfOrder)
@@ -544,7 +544,7 @@ func TestCheckout_aParticipantOrderMayHaveManySeatsButASelfOrderMayNot(t *testin
 
 	three := []uuid.UUID{uuid.MustParse(env.student(t, "A", env.schoolA, "")), uuid.MustParse(env.student(t, "B", env.schoolA, "")), uuid.MustParse(env.student(t, "C", env.schoolA, ""))}
 	seats := cart(three)
-	res, err := env.svc.Checkout(ctx, buyer, seats.String(), "key-"+uniqueSuffix(), "")
+	res, err := env.svc.Checkout(ctx, buyer, seats.String(), "key-"+uniqueSuffix(), "", nil, false)
 	require.NoError(t, err, "with participants qty is the seat count")
 	require.True(t, res.Free)
 }

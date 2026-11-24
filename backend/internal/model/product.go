@@ -16,23 +16,31 @@ type ProductRelation struct {
 	Title string `json:"title"`
 }
 
+// ProductAgreementCheckbox is one checkout agreement row for a product; its ID stays stable so an order snapshot can reference it after the product's copy changes.
+type ProductAgreementCheckbox struct {
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
 type Product struct {
-	ID             string            `json:"id"`
-	Type           string            `json:"type"`
-	Name           string            `json:"name"`
-	Description    string            `json:"description"`
-	Price          int64             `json:"price"`
-	Stock          int               `json:"stock"`
-	StockLimited   bool              `json:"stock_limited"`
-	Status         string            `json:"status"`
-	WeightGrams    int               `json:"weight_grams"`
-	ImageURL       string            `json:"image_url"`
-	Specs          []ProductSpec     `json:"specs"`
-	WeightGramsSet bool              `json:"-"`
-	ImageURLSet    bool              `json:"-"`
-	CourseIDs      []string          `json:"course_ids"`
-	ExamIDs        []string          `json:"exam_ids"`
-	Relations      []ProductRelation `json:"relations,omitempty"`
+	ID                  string                     `json:"id"`
+	Type                string                     `json:"type"`
+	Name                string                     `json:"name"`
+	Description         string                     `json:"description"`
+	Price               int64                      `json:"price"`
+	Stock               int                        `json:"stock"`
+	StockLimited        bool                       `json:"stock_limited"`
+	Status              string                     `json:"status"`
+	WeightGrams         int                        `json:"weight_grams"`
+	ImageURL            string                     `json:"image_url"`
+	Specs               []ProductSpec              `json:"specs"`
+	AgreementCheckboxes []ProductAgreementCheckbox `json:"agreement_checkboxes"`
+	WeightGramsSet      bool                       `json:"-"`
+	ImageURLSet         bool                       `json:"-"`
+	CourseIDs           []string                   `json:"course_ids"`
+	ExamIDs             []string                   `json:"exam_ids"`
+	Relations           []ProductRelation          `json:"relations,omitempty"`
 	// AvailableFrom/AvailableUntil bound the marketplace listing window. NULL on
 	// either side means unbounded on that side. The *Set flags mark whether an
 	// update request touched the field, so an omitted field preserves the
