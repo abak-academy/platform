@@ -26,6 +26,12 @@ func TestBuildOTPMessage_MultipartWithCodeInBothParts(t *testing.T) {
 	if _, err := msg.Header.Date(); err != nil {
 		t.Errorf("Date header missing or unparseable: %v", err)
 	}
+	if id := msg.Header.Get("Message-ID"); !strings.HasPrefix(id, "<") || !strings.HasSuffix(id, "@abakacademy.id>") {
+		t.Errorf("Message-ID: got %q, want <...@abakacademy.id>", id)
+	}
+	if again, _ := buildOTPMessage("noreply@abakacademy.id", "x@example.com", "1", time.Minute); bytes.Contains(again, []byte(msg.Header.Get("Message-ID"))) {
+		t.Error("two messages share a Message-ID")
+	}
 	mediaType, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/alternative" {
 		t.Fatalf("Content-Type: got %q (%v), want multipart/alternative", mediaType, err)

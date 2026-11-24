@@ -3,8 +3,10 @@ package adapter
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html"
@@ -12,6 +14,7 @@ import (
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
 	"strings"
@@ -156,9 +159,22 @@ func writeHeaders(b *strings.Builder, from, to, subject, contentType string) {
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
 	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
+	b.WriteString("Message-ID: " + messageID(from) + "\r\n")
 	b.WriteString("Subject: " + subject + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: " + contentType + "\r\n")
+}
+
+func messageID(from string) string {
+	domain := "localhost"
+	if a, err := mail.ParseAddress(from); err == nil {
+		if i := strings.LastIndex(a.Address, "@"); i >= 0 {
+			domain = a.Address[i+1:]
+		}
+	}
+	id := make([]byte, 16)
+	_, _ = rand.Read(id) // crypto/rand.Read never returns an error since Go 1.24
+	return "<" + hex.EncodeToString(id) + "@" + domain + ">"
 }
 
 func buildMessage(from, to, subject, body string) []byte {
