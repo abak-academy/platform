@@ -8,7 +8,16 @@ import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExams } from "@/lib/hooks/admin-exams";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
+import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
+import { useExams, useExamRegistrantDiversity } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
@@ -51,6 +60,34 @@ export default function ExamPackagesPage() {
   );
 
   const { data, isLoading, isFetching, isError, error } = useExams(filters);
+
+  // Registrant diversity (Feature 1/Opsi A) is lazy by design: it must never
+  // fire on mount or on a plain search, only once the admin sets one of
+  // these filters — that's what keeps this list's eager load cheap. No
+  // "load more" pairing with the main list's cursor: one best-effort page of
+  // diversity numbers (limit above what the list itself ever shows at once)
+  // is enough for the rows currently on screen.
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(provinceFilter || null);
+  const hasDiversityFilter = Boolean(provinceFilter || cityFilter || schoolFilter);
+  const diversity = useExamRegistrantDiversity(
+    {
+      q: q || undefined,
+      limit: 100,
+      province_id: provinceFilter || undefined,
+      city_id: cityFilter || undefined,
+      school_id: schoolFilter || undefined,
+    },
+    hasDiversityFilter,
+  );
+  const diversityByExamId = useMemo(() => {
+    const map = new Map<string, { registration_count: number; province_count: number; city_count: number; school_count: number }>();
+    for (const item of diversity.data?.data ?? []) map.set(item.exam_id, item);
+    return map;
+  }, [diversity.data]);
 
   useEffect(() => {
     if (!data) return;
@@ -107,6 +144,50 @@ export default function ExamPackagesPage() {
             {t("exam_packages_count").replace("{n}", `${items.length}${nextCursor ? "+" : ""}`)}
           </span>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" data-testid="exam-list-diversity-filters">
+        <Select
+          value={provinceFilter || "__all__"}
+          onValueChange={(v) => {
+            const next = v === "__all__" ? "" : v;
+            setProvinceFilter(next);
+            setCityFilter("");
+          }}
+        >
+          <SelectTrigger className="h-9 w-[180px] text-xs" aria-label={t("exam_roster_filter_province")}>
+            <SelectValue placeholder={t("exam_roster_filter_province")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_roster_filter_province")}</SelectItem>
+            {(provinces ?? []).map((province) => (
+              <SelectItem key={province.id} value={province.id}>{province.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={cityFilter || "__all__"}
+          onValueChange={(v) => setCityFilter(v === "__all__" ? "" : v)}
+          disabled={!provinceFilter}
+        >
+          <SelectTrigger className="h-9 w-[180px] text-xs" aria-label={t("exam_roster_filter_city")}>
+            <SelectValue placeholder={t("exam_roster_filter_city")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_roster_filter_city")}</SelectItem>
+            {(cities ?? []).map((city) => (
+              <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <SchoolFilterPicker
+          value={schoolFilter}
+          onChange={setSchoolFilter}
+          label={t("exam_roster_filter_school")}
+          allLabel={t("exam_roster_filter_school")}
+          compact
+          className="w-[200px]"
+        />
       </div>
 
       {isLoading && (
@@ -177,6 +258,29 @@ export default function ExamPackagesPage() {
                             </>
                           )}
                         </Sub>
+                        {/* Only rendered once the admin sets a diversity
+                            filter — never on a plain page load, per Feature
+                            1/Opsi A's lazy design. */}
+                        {hasDiversityFilter && diversityByExamId.has(exam.id) && (
+                          <div className="mt-1 flex flex-wrap gap-1" data-testid="exam-row-diversity">
+                            {(() => {
+                              const d = diversityByExamId.get(exam.id)!;
+                              return (
+                                <>
+                                  <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info">
+                                    {d.province_count} {t("exam_roster_stat_provinces")}
+                                  </span>
+                                  <span className="rounded-full bg-violet-bg px-2 py-0.5 text-[11px] font-semibold text-violet">
+                                    {d.city_count} {t("exam_roster_stat_cities")}
+                                  </span>
+                                  <span className="rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-semibold text-success">
+                                    {d.school_count} {t("exam_roster_stat_schools")}
+                                  </span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         {composable ? (

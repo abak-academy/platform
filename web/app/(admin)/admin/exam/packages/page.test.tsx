@@ -21,6 +21,13 @@ let examsQuery: ((filter?: Record<string, unknown>) => typeof examsState) | unde
 
 const useExamsSpy = vi.fn();
 
+const useExamRegistrantDiversitySpy = vi.fn();
+let diversityState = {
+  data: undefined as { data: unknown[]; next_cursor?: string } | undefined,
+  isLoading: false,
+  isError: false,
+};
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExams: (...args: unknown[]) => {
     useExamsSpy(...args);
@@ -28,6 +35,27 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   },
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useExamRegistrantDiversity: (...args: unknown[]) => {
+    useExamRegistrantDiversitySpy(...args);
+    return diversityState;
+  },
+}));
+
+vi.mock("@/lib/hooks/regions", () => ({
+  useProvinces: () => ({ data: [{ id: "31", name: "DKI JAKARTA" }] }),
+  useCitiesByProvince: () => ({ data: [] }),
+}));
+
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
+    <div>
+      <label>{label}</label>
+      <select aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{allLabel}</option>
+        <option value="sch-1">SMAN 1 Jakarta</option>
+      </select>
+    </div>
+  ),
 }));
 
 vi.mock("@/stores/ui", () => ({
@@ -108,6 +136,8 @@ describe("ExamPackagesPage", () => {
     mockRole = undefined;
     useExamsSpy.mockClear();
     examsQuery = undefined;
+    useExamRegistrantDiversitySpy.mockClear();
+    diversityState = { data: undefined, isLoading: false, isError: false };
   });
 
   it("navigates to the exam detail page when a row is clicked", async () => {
@@ -210,7 +240,10 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
     await screen.findByText("UTS Matematika");
 
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    // Registrant diversity filters (province/city/school) are comboboxes too,
+    // so this asserts there's specifically no *status* filter, not "no
+    // combobox at all" — the diversity filters are intentional and unrelated.
+    expect(screen.queryByLabelText(/status/i)).not.toBeInTheDocument();
     for (const row of screen.getAllByTestId("package-row")) {
       expect(within(row).queryByText(/^(draft|published)$/)).not.toBeInTheDocument();
     }
@@ -461,5 +494,47 @@ describe("ExamPackagesPage", () => {
     expect(search).toHaveValue("");
     expect(search).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Hapus pencarian" })).not.toBeInTheDocument();
+  });
+
+  it("never fetches registrant diversity on mount or on a plain search — only once a province/city/school filter is set", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    expect(useExamRegistrantDiversitySpy).toHaveBeenCalled();
+    // Called every render, but always disabled until a filter is set.
+    for (const call of useExamRegistrantDiversitySpy.mock.calls) {
+      expect(call[1]).toBe(false);
+    }
+
+    fireEvent.click(screen.getByLabelText("Semua Sekolah"));
+    fireEvent.change(screen.getByLabelText("Semua Sekolah"), { target: { value: "sch-1" } });
+
+    await waitFor(() => {
+      const lastCall = useExamRegistrantDiversitySpy.mock.calls.at(-1);
+      expect(lastCall?.[1]).toBe(true);
+      expect(lastCall?.[0]).toMatchObject({ school_id: "sch-1" });
+    });
+  });
+
+  it("renders province/city/school diversity pills only for exams the diversity endpoint returned, once a filter is set", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    diversityState = {
+      data: { data: [{ exam_id: "e1", registration_count: 10, province_count: 2, city_count: 3, school_count: 4 }] },
+      isLoading: false,
+      isError: false,
+    };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    expect(screen.queryByTestId("exam-row-diversity")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Semua Sekolah"), { target: { value: "sch-1" } });
+
+    const diversityBadges = await screen.findAllByTestId("exam-row-diversity");
+    expect(diversityBadges).toHaveLength(1);
+    expect(within(diversityBadges[0]).getByText("2 Provinsi")).toBeInTheDocument();
+    expect(within(diversityBadges[0]).getByText("3 Kota")).toBeInTheDocument();
+    expect(within(diversityBadges[0]).getByText("4 Sekolah")).toBeInTheDocument();
   });
 });

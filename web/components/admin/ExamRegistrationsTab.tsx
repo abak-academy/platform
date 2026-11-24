@@ -18,6 +18,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
+import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
 import { formatRupiah } from "@/lib/format";
 import {
   usePreviewBulkExamOrder,
@@ -70,9 +79,22 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
   const [revealedTokens, setRevealedTokens] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
-  const counts = useExamRegistrationCounts(examId);
+  // Registrant diversity filter (Feature 1/Opsi B) — always on for this tab,
+  // since it's already scoped to one exam's roster (unlike the exam list's
+  // lazy Opsi A, which must stay unfiltered by default).
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(provinceFilter || null);
+  const diversityFilter = {
+    province_id: provinceFilter || undefined,
+    city_id: cityFilter || undefined,
+    school_id: schoolFilter || undefined,
+  };
+  const counts = useExamRegistrationCounts(examId, true, diversityFilter);
 
-  const filterKey = `${examId}:${sortDir}:${debouncedSearch}`;
+  const filterKey = `${examId}:${sortDir}:${debouncedSearch}:${provinceFilter}:${cityFilter}:${schoolFilter}`;
   const filterKeyRef = useRef(filterKey);
 
   // A search, sort or exam change restarts the keyset walk — accumulated rows
@@ -93,6 +115,7 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
     limit: 20,
     sort: sortDir,
     q: debouncedSearch || undefined,
+    ...diversityFilter,
   });
 
   useEffect(() => {
@@ -171,6 +194,24 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
       ),
     },
     {
+      key: "school",
+      header: t("exam_roster_th_school"),
+      cell: (r) =>
+        r.school_name ? (
+          <span className="text-ink-900">
+            {r.school_name}
+            {r.school_kota && (
+              <span className="ml-1 text-ink-500">
+                · {r.school_kota}
+                {r.school_provinsi ? `, ${r.school_provinsi}` : ""}
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-ink-500">—</span>
+        ),
+    },
+    {
       key: "status",
       header: t("exam_roster_th_status"),
       cell: (r) => r.status,
@@ -206,14 +247,61 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
   return (
     <div className="space-y-4">
       {counts.data && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5" data-testid="roster-counts">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-4" data-testid="roster-counts">
           <RosterSummaryCard testId="roster-count-total" label={t("exam_roster_stat_total")} value={counts.data.total} />
           <RosterSummaryCard testId="roster-count-registered" label={t("exam_roster_stat_registered")} value={counts.data.registered} />
           <RosterSummaryCard testId="roster-count-checked-in" label={t("exam_roster_stat_checkedin")} value={counts.data.checked_in} />
           <RosterSummaryCard testId="roster-count-submitted" label={t("exam_roster_stat_submitted")} value={counts.data.submitted} />
           <RosterSummaryCard testId="roster-count-revoked" label={t("exam_roster_stat_revoked")} value={counts.data.revoked} />
+          <RosterSummaryCard testId="roster-count-provinces" label={t("exam_roster_stat_provinces")} value={counts.data.province_count} />
+          <RosterSummaryCard testId="roster-count-cities" label={t("exam_roster_stat_cities")} value={counts.data.city_count} />
+          <RosterSummaryCard testId="roster-count-schools" label={t("exam_roster_stat_schools")} value={counts.data.school_count} />
         </div>
       )}
+
+      <div className="flex flex-wrap items-center gap-2" data-testid="roster-diversity-filters">
+        <Select
+          value={provinceFilter || "__all__"}
+          onValueChange={(v) => {
+            const next = v === "__all__" ? "" : v;
+            setProvinceFilter(next);
+            setCityFilter("");
+          }}
+        >
+          <SelectTrigger className="h-9 w-[180px] text-xs" aria-label={t("exam_roster_filter_province")}>
+            <SelectValue placeholder={t("exam_roster_filter_province")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_roster_filter_province")}</SelectItem>
+            {(provinces ?? []).map((province) => (
+              <SelectItem key={province.id} value={province.id}>{province.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={cityFilter || "__all__"}
+          onValueChange={(v) => setCityFilter(v === "__all__" ? "" : v)}
+          disabled={!provinceFilter}
+        >
+          <SelectTrigger className="h-9 w-[180px] text-xs" aria-label={t("exam_roster_filter_city")}>
+            <SelectValue placeholder={t("exam_roster_filter_city")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_roster_filter_city")}</SelectItem>
+            {(cities ?? []).map((city) => (
+              <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <SchoolFilterPicker
+          value={schoolFilter}
+          onChange={setSchoolFilter}
+          label={t("exam_roster_filter_school")}
+          allLabel={t("exam_roster_filter_school")}
+          compact
+          className="w-[200px]"
+        />
+      </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-xs">

@@ -1370,6 +1370,12 @@ export interface ExamRosterEntry {
   // token is the exam check-in credential (FR-47/FR-48, NFR-S7) — masked by
   // default in the roster UI and revealed only via an explicit per-row toggle.
   token: string;
+  // Already sent by the backend (ExamRosterEntry.SchoolName/SchoolProvinsi/
+  // SchoolKota) but unused by the UI until the registrant diversity feature's
+  // "Asal sekolah" column.
+  school_name?: string | null;
+  school_provinsi?: string | null;
+  school_kota?: string | null;
 }
 
 export interface ScoreBucket {
