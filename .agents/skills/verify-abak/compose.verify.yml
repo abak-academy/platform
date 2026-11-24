@@ -1,0 +1,16 @@
+# Overlay on deploy/compose/local.yml for the disposable verification stack.
+# Run with `-p abak-verify` so volumes and containers never touch the dev stack.
+services:
+  postgres:
+    ports: !override
+      - "55432:5432"
+  redis:
+    ports: !override
+      - "56379:6379"
+  minio:
+    ports: !override
+      - "59000:9000"
+      - "59001:9001"
+  gotenberg:
+    ports: !override
+      - "53001:3000"

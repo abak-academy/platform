@@ -1,0 +1,1018 @@
+[
+  {
+    "slug": "stemco",
+    "name": "STEMCO",
+    "scope": "international",
+    "subjects": [
+      "Sains"
+    ],
+    "tone": "teal",
+    "illustration": "science",
+    "official_url": "https://abakacademy.id/stemcoindonesia/",
+    "content": {
+      "id": {
+        "full_name": "STEM Competition",
+        "tagline": "Sains kelas dunia, dalam bahasa Inggris.",
+        "levels_label": "Kelas 1–12",
+        "story": [
+          "STEMCO mengajak siswa kelas 1 sampai 12 menjajal sains dengan silabus yang mengacu pada kurikulum Singapura. Semua soal disajikan dalam bahasa Inggris, jadi sekalian melatih cara berpikir ilmiah dalam bahasa sains internasional.",
+          "Peraih medali emas, perak, dan perunggu di National Round diundang ke Global Round untuk mengukur kemampuan bersama peserta dari negara lain."
+        ],
+        "rounds": [
+          "Daftar online",
+          "National Round",
+          "Global Round"
+        ],
+        "categories": [
+          {
+            "name": "Science",
+            "detail": "Kelas 1–8"
+          },
+          {
+            "name": "Chemistry · Physics · Biology",
+            "detail": "Kelas 9–12, pilih satu"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Biaya",
+            "value": "Rp150.000 / peserta / level"
+          },
+          {
+            "label": "Termasuk",
+            "value": "E-sertifikat"
+          },
+          {
+            "label": "Bahasa",
+            "value": "Inggris"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "STEM Competition",
+        "tagline": "World-class science, in English.",
+        "levels_label": "Grades 1–12",
+        "story": [
+          "STEMCO invites students from grade 1 to 12 to take on science with a syllabus based on the Singapore curriculum. Every question is in English, so students also practise scientific thinking in the international language of science.",
+          "Gold, silver, and bronze medallists in the National Round are invited to the Global Round to measure themselves against students from other countries."
+        ],
+        "rounds": [
+          "Register online",
+          "National Round",
+          "Global Round"
+        ],
+        "categories": [
+          {
+            "name": "Science",
+            "detail": "Grades 1–8"
+          },
+          {
+            "name": "Chemistry · Physics · Biology",
+            "detail": "Grades 9–12, choose one"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Fee",
+            "value": "IDR 150,000 / participant / level"
+          },
+          {
+            "label": "Includes",
+            "value": "E-certificate"
+          },
+          {
+            "label": "Language",
+            "value": "English"
+          }
+        ]
+      }
+    },
+    "schedule": [],
+    "is_visible": false,
+    "sort_order": 1,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "einstein",
+    "name": "Einstein Olympiad",
+    "scope": "international",
+    "subjects": [
+      "Matematika",
+      "Sains"
+    ],
+    "tone": "brand",
+    "illustration": "math",
+    "official_url": "https://abakacademy.id/einsteinolympiad/",
+    "content": {
+      "id": {
+        "full_name": "Einstein Olympiad",
+        "tagline": "Berpikir seperti ilmuwan, sejak SD.",
+        "levels_label": "Kelas 1–11",
+        "story": [
+          "Einstein Olympiad punya dua bidang: Einstein Math untuk kelas 1–11 dan Einstein Sciences untuk kelas 3–11. Soalnya menantang logika dan pemahaman konsep, bukan sekadar hafalan, dan dikerjakan dalam bahasa Inggris.",
+          "Setiap peserta fokus di satu bidang. Hasil terbaik di National Round membuka jalan ke Global Round."
+        ],
+        "rounds": [
+          "Daftar online",
+          "National Round",
+          "Global Round"
+        ],
+        "categories": [
+          {
+            "name": "Einstein Math",
+            "detail": "Kelas 1–11"
+          },
+          {
+            "name": "Einstein Sciences",
+            "detail": "Kelas 3–11"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Biaya",
+            "value": "Rp200.000 / peserta / level"
+          },
+          {
+            "label": "Bidang",
+            "value": "Pilih satu"
+          },
+          {
+            "label": "Bahasa",
+            "value": "Inggris"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "Einstein Olympiad",
+        "tagline": "Think like a scientist, from primary school.",
+        "levels_label": "Grades 1–11",
+        "story": [
+          "Einstein Olympiad has two subjects: Einstein Math for grades 1–11 and Einstein Sciences for grades 3–11. Questions test logic and understanding of concepts, not memorisation, and are answered in English.",
+          "Each participant focuses on one subject. The best results in the National Round open the way to the Global Round."
+        ],
+        "rounds": [
+          "Register online",
+          "National Round",
+          "Global Round"
+        ],
+        "categories": [
+          {
+            "name": "Einstein Math",
+            "detail": "Grades 1–11"
+          },
+          {
+            "name": "Einstein Sciences",
+            "detail": "Grades 3–11"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Fee",
+            "value": "IDR 200,000 / participant / level"
+          },
+          {
+            "label": "Subject",
+            "value": "Choose one"
+          },
+          {
+            "label": "Language",
+            "value": "English"
+          }
+        ]
+      }
+    },
+    "schedule": [
+      {
+        "label": "National Round",
+        "starts_on": "2026-06-13",
+        "ends_on": "2026-06-14",
+        "label_en": "National Round"
+      },
+      {
+        "label": "Global Round",
+        "starts_on": "2026-10-26",
+        "ends_on": "2026-10-30",
+        "label_en": "Global Round"
+      }
+    ],
+    "is_visible": false,
+    "sort_order": 2,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "esolio",
+    "name": "ESOLIO",
+    "scope": "international",
+    "subjects": [
+      "Bahasa Inggris"
+    ],
+    "tone": "sky",
+    "illustration": "language",
+    "official_url": "https://esolio.org/",
+    "content": {
+      "id": {
+        "full_name": "English for Speakers of Other Languages International Olympiad",
+        "tagline": "Dari kelas di Indonesia ke panggung internasional di Bali.",
+        "levels_label": "Kelas 3–12",
+        "story": [
+          "ESOLIO adalah olimpiade bahasa Inggris untuk penutur non-native. Empat kemampuan diuji sekaligus, yaitu Reading, Writing, Listening, dan Speaking, dengan standar CEFR. Jadi hasilnya bukan cuma peringkat, tapi juga gambaran level kemampuan yang diakui internasional.",
+          "Puncaknya International Round secara offline di Bali, termasuk sesi Speaking: 20 menit persiapan lalu pidato 3 menit. Semua peserta International Round mendapat sertifikat cetak, medali, dan merchandise resmi ESOLIO."
+        ],
+        "rounds": [
+          "Preliminary (online)",
+          "National Round",
+          "International Round · Bali"
+        ],
+        "categories": [
+          {
+            "name": "Bright Explorers",
+            "detail": "Kelas 3–4 · A1–A2"
+          },
+          {
+            "name": "Curious Walkers",
+            "detail": "Kelas 5–6 · A2–B1"
+          },
+          {
+            "name": "Determined Runners",
+            "detail": "Kelas 7–9 · B1–B2"
+          },
+          {
+            "name": "Visionary Flyers",
+            "detail": "Kelas 10–12 · B2–C1"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Medali",
+            "value": "Gold ≤10% · Silver ≤20% · Bronze ≤30%"
+          },
+          {
+            "label": "Standar",
+            "value": "CEFR"
+          },
+          {
+            "label": "Final",
+            "value": "Offline, PBT + CBT"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "English for Speakers of Other Languages International Olympiad",
+        "tagline": "From an Indonesian classroom to the international stage in Bali.",
+        "levels_label": "Grades 3–12",
+        "story": [
+          "ESOLIO is an English olympiad for non-native speakers. It tests four skills at once — Reading, Writing, Listening, and Speaking — against the CEFR standard, so the result is not just a ranking but an internationally recognised picture of your level.",
+          "The highlight is the offline International Round in Bali, including a Speaking session: 20 minutes of preparation, then a 3-minute speech. Every International Round participant receives a printed certificate, a medal, and official ESOLIO merchandise."
+        ],
+        "rounds": [
+          "Preliminary (online)",
+          "National Round",
+          "International Round · Bali"
+        ],
+        "categories": [
+          {
+            "name": "Bright Explorers",
+            "detail": "Grades 3–4 · A1–A2"
+          },
+          {
+            "name": "Curious Walkers",
+            "detail": "Grades 5–6 · A2–B1"
+          },
+          {
+            "name": "Determined Runners",
+            "detail": "Grades 7–9 · B1–B2"
+          },
+          {
+            "name": "Visionary Flyers",
+            "detail": "Grades 10–12 · B2–C1"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Medals",
+            "value": "Gold ≤10% · Silver ≤20% · Bronze ≤30%"
+          },
+          {
+            "label": "Standard",
+            "value": "CEFR"
+          },
+          {
+            "label": "Final",
+            "value": "Offline, paper + computer based"
+          }
+        ]
+      }
+    },
+    "schedule": [
+      {
+        "label": "Pendaftaran batch 1",
+        "starts_on": "2026-10-28",
+        "ends_on": "2026-11-30",
+        "label_en": "Registration batch 1"
+      },
+      {
+        "label": "Pendaftaran batch 2",
+        "starts_on": "2026-12-01",
+        "ends_on": "2027-01-08",
+        "label_en": "Registration batch 2"
+      },
+      {
+        "label": "Preliminary Round (online)",
+        "starts_on": "2027-01-30",
+        "ends_on": "2027-01-31",
+        "label_en": "Preliminary Round (online)"
+      },
+      {
+        "label": "International Round · Bali",
+        "starts_on": "2027-07-02",
+        "ends_on": "2027-07-06",
+        "label_en": "International Round · Bali"
+      }
+    ],
+    "is_visible": false,
+    "sort_order": 3,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "iklc",
+    "name": "IKLC",
+    "scope": "international",
+    "subjects": [
+      "Bahasa Inggris"
+    ],
+    "tone": "sky",
+    "illustration": "language",
+    "official_url": "https://iklcindonesia.com/",
+    "content": {
+      "id": {
+        "full_name": "International Kangaroo Linguistic Contest",
+        "tagline": "Bahasa Inggris, logika, dan kecepatan berpikir.",
+        "levels_label": "Kelas 1–12",
+        "story": [
+          "IKLC menguji lebih dari sekadar grammar. Peserta ditantang memahami bahasa dan budaya, memakai intuisi dan logika, lalu menganalisis informasi dalam bahasa Inggris dengan cepat.",
+          "Enam divisi bertema kanguru menyesuaikan level setiap jenjang, dari The Start untuk kelas 1–2 sampai The Red Kangaroo untuk kelas 11–12."
+        ],
+        "rounds": [
+          "Pendaftaran per batch",
+          "National Round",
+          "Awarding"
+        ],
+        "categories": [
+          {
+            "name": "The Start",
+            "detail": "Kelas 1–2 · Pre A1"
+          },
+          {
+            "name": "The Story",
+            "detail": "Kelas 3–4 · A1"
+          },
+          {
+            "name": "The Joey",
+            "detail": "Kelas 5–6 · A1–A2"
+          },
+          {
+            "name": "The Wallaby",
+            "detail": "Kelas 7–8 · A2–B1"
+          },
+          {
+            "name": "The Gray Kangaroo",
+            "detail": "Kelas 9–10 · B1–B2"
+          },
+          {
+            "name": "The Red Kangaroo",
+            "detail": "Kelas 11–12 · B2–C1"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Divisi",
+            "value": "6 level"
+          },
+          {
+            "label": "Fokus",
+            "value": "Bahasa + logika"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "International Kangaroo Linguistic Contest",
+        "tagline": "English, logic, and quick thinking.",
+        "levels_label": "Grades 1–12",
+        "story": [
+          "IKLC tests more than grammar. Participants are challenged to understand language and culture, use intuition and logic, and analyse information in English quickly.",
+          "Six kangaroo-themed divisions match each level, from The Start for grades 1–2 to The Red Kangaroo for grades 11–12."
+        ],
+        "rounds": [
+          "Registration by batch",
+          "National Round",
+          "Awarding"
+        ],
+        "categories": [
+          {
+            "name": "The Start",
+            "detail": "Grades 1–2 · Pre A1"
+          },
+          {
+            "name": "The Story",
+            "detail": "Grades 3–4 · A1"
+          },
+          {
+            "name": "The Joey",
+            "detail": "Grades 5–6 · A1–A2"
+          },
+          {
+            "name": "The Wallaby",
+            "detail": "Grades 7–8 · A2–B1"
+          },
+          {
+            "name": "The Gray Kangaroo",
+            "detail": "Grades 9–10 · B1–B2"
+          },
+          {
+            "name": "The Red Kangaroo",
+            "detail": "Grades 11–12 · B2–C1"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Divisions",
+            "value": "6 levels"
+          },
+          {
+            "label": "Focus",
+            "value": "Language + logic"
+          }
+        ]
+      }
+    },
+    "schedule": [],
+    "is_visible": false,
+    "sort_order": 4,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "hippo",
+    "name": "HIPPO",
+    "scope": "international",
+    "subjects": [
+      "Bahasa Inggris"
+    ],
+    "tone": "sky",
+    "illustration": "language",
+    "official_url": "https://abakacademy.id/hippoindonesia/",
+    "content": {
+      "id": {
+        "full_name": "HIPPO English Without Borders",
+        "tagline": "Jalan panjang menuju World Final di Italia.",
+        "levels_label": "TK–Kelas 12",
+        "story": [
+          "HIPPO adalah kontes bahasa Inggris internasional berstandar CEFR yang menguji Reading, Writing, Listening, Speaking, dan Use of English. Peserta bisa mulai sejak TK lewat kategori Baby Hippo.",
+          "Perjalanannya berjenjang: dari babak Preliminary, National, Regional, dan Play-off, sampai World Final di Italia."
+        ],
+        "rounds": [
+          "Preliminary",
+          "National",
+          "Regional & Play-off",
+          "World Final · Italia"
+        ],
+        "categories": [
+          {
+            "name": "Baby Hippo",
+            "detail": "TK–Kelas 2"
+          },
+          {
+            "name": "Little Hippo",
+            "detail": "Kelas 3–4"
+          },
+          {
+            "name": "Hippo 1",
+            "detail": "Kelas 5–6"
+          },
+          {
+            "name": "Hippo 2",
+            "detail": "Kelas 7–8"
+          },
+          {
+            "name": "Hippo 3",
+            "detail": "Kelas 9"
+          },
+          {
+            "name": "Hippo 4–5",
+            "detail": "Kelas 10–12"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Standar",
+            "value": "CEFR"
+          },
+          {
+            "label": "Mulai dari",
+            "value": "TK"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "HIPPO English Without Borders",
+        "tagline": "A long road to the World Final in Italy.",
+        "levels_label": "Kindergarten–Grade 12",
+        "story": [
+          "HIPPO is an international CEFR-based English contest testing Reading, Writing, Listening, Speaking, and Use of English. Children can start as early as kindergarten in the Baby Hippo category.",
+          "The journey is tiered: Preliminary, National, Regional, and Play-off rounds, all the way to the World Final in Italy."
+        ],
+        "rounds": [
+          "Preliminary",
+          "National",
+          "Regional & Play-off",
+          "World Final · Italy"
+        ],
+        "categories": [
+          {
+            "name": "Baby Hippo",
+            "detail": "Kindergarten–Grade 2"
+          },
+          {
+            "name": "Little Hippo",
+            "detail": "Grades 3–4"
+          },
+          {
+            "name": "Hippo 1",
+            "detail": "Grades 5–6"
+          },
+          {
+            "name": "Hippo 2",
+            "detail": "Grades 7–8"
+          },
+          {
+            "name": "Hippo 3",
+            "detail": "Grade 9"
+          },
+          {
+            "name": "Hippo 4–5",
+            "detail": "Grades 10–12"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Standard",
+            "value": "CEFR"
+          },
+          {
+            "label": "Starts from",
+            "value": "Kindergarten"
+          }
+        ]
+      }
+    },
+    "schedule": [],
+    "is_visible": false,
+    "sort_order": 5,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "kossmi",
+    "name": "KoSSMI",
+    "scope": "national",
+    "subjects": [
+      "Matematika",
+      "Sains"
+    ],
+    "tone": "teal",
+    "illustration": "science",
+    "official_url": "https://kossmi.com/",
+    "content": {
+      "id": {
+        "full_name": "Kompetisi Sains Siswa Muslim Indonesia",
+        "tagline": "Meneruskan jejak ilmuwan muslim.",
+        "levels_label": "Kelas 1–12",
+        "story": [
+          "KoSSMI adalah kompetisi sains dan matematika untuk siswa muslim Indonesia, dari madrasah, pesantren, sekolah umum, sampai homeschooling. Diselenggarakan bersama Artificial Intelligence Center Indonesia dan Lembaga Sains Terapan Universitas Indonesia.",
+          "Setiap level memakai nama ilmuwan muslim, dari Ibnu Sina untuk kelas 1–2 sampai Ibnu Haitham untuk SMA. Peserta bisa ikut sendiri atau sebagai delegasi sekolah."
+        ],
+        "rounds": [],
+        "categories": [
+          {
+            "name": "Ibnu Sina",
+            "detail": "Kelas 1–2 SD/MI"
+          },
+          {
+            "name": "Al-Biruni",
+            "detail": "Kelas 3–4 SD/MI"
+          },
+          {
+            "name": "Al-Khawārizmī",
+            "detail": "Kelas 5–6 SD/MI"
+          },
+          {
+            "name": "Jabir Ibnu Hayyan",
+            "detail": "Kelas 7–9 SMP/MTs"
+          },
+          {
+            "name": "Ibnu Haitham",
+            "detail": "Kelas 10–12 SMA/MA"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Peserta",
+            "value": "Individu atau delegasi"
+          },
+          {
+            "label": "Mitra",
+            "value": "AI Center Indonesia · LST UI"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "Indonesian Muslim Students Science Competition",
+        "tagline": "Following in the footsteps of Muslim scientists.",
+        "levels_label": "Grades 1–12",
+        "story": [
+          "KoSSMI is a science and mathematics competition for Muslim students in Indonesia — from madrasahs, pesantren, regular schools, and homeschooling. It is organised with the Artificial Intelligence Center Indonesia and the Institute of Applied Sciences, Universitas Indonesia.",
+          "Each level is named after a Muslim scientist, from Ibnu Sina for grades 1–2 to Ibnu Haitham for senior high school. Students can join individually or as a school delegation."
+        ],
+        "rounds": [],
+        "categories": [
+          {
+            "name": "Ibnu Sina",
+            "detail": "Grades 1–2 SD/MI"
+          },
+          {
+            "name": "Al-Biruni",
+            "detail": "Grades 3–4 SD/MI"
+          },
+          {
+            "name": "Al-Khawārizmī",
+            "detail": "Grades 5–6 SD/MI"
+          },
+          {
+            "name": "Jabir Ibnu Hayyan",
+            "detail": "Grades 7–9 SMP/MTs"
+          },
+          {
+            "name": "Ibnu Haitham",
+            "detail": "Grades 10–12 SMA/MA"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Participants",
+            "value": "Individual or delegation"
+          },
+          {
+            "label": "Partners",
+            "value": "AI Center Indonesia · LST UI"
+          }
+        ]
+      }
+    },
+    "schedule": [],
+    "is_visible": false,
+    "sort_order": 6,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "lokasia",
+    "name": "LOKASIA",
+    "scope": "national",
+    "subjects": [
+      "Literasi",
+      "Matematika",
+      "Sains"
+    ],
+    "tone": "berry",
+    "illustration": "language",
+    "official_url": "https://abakacademy.id/lokasia/",
+    "content": {
+      "id": {
+        "full_name": "Lomba Kompetensi Akademik Siswa Indonesia",
+        "tagline": "Dari kabupaten sampai final nasional.",
+        "levels_label": "SD–SMA",
+        "story": [
+          "LOKASIA menguji kompetensi akademik secara utuh: literasi, numerasi, sains, IPS, dan teknologi. Peserta bisa maju sendiri atau bertiga dalam satu tim, bahkan dari sekolah yang berbeda.",
+          "Babak kabupaten/kota dan provinsi dikerjakan online lewat CBT dengan pengawasan Zoom. Finalis nasional bertemu langsung: individu mengerjakan tes tertulis, tim beradu di cerdas cermat."
+        ],
+        "rounds": [
+          "Kab/Kota · CBT online",
+          "Provinsi · CBT online",
+          "Final nasional · offline"
+        ],
+        "categories": [
+          {
+            "name": "SD/MI",
+            "detail": "Kelas 5–6 (kelas 4 boleh)"
+          },
+          {
+            "name": "SMP/MTs",
+            "detail": "Kelas 8–9 (kelas 7 boleh)"
+          },
+          {
+            "name": "SMA/MA",
+            "detail": "Kelas 11–12 (kelas 10 boleh)"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Kategori",
+            "value": "Individu atau tim 3 orang"
+          },
+          {
+            "label": "Terbuka untuk",
+            "value": "Sekolah, pesantren, homeschooling"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "Indonesian Students Academic Competency Contest",
+        "tagline": "From the regency all the way to the national final.",
+        "levels_label": "Primary–High school",
+        "story": [
+          "LOKASIA tests academic competency as a whole: literacy, numeracy, science, social studies, and technology. Students can compete alone or in a team of three, even from different schools.",
+          "The regency/city and provincial rounds are online computer-based tests proctored over Zoom. National finalists meet in person: individuals sit a written test, teams battle in a quiz contest."
+        ],
+        "rounds": [
+          "Regency/City · online CBT",
+          "Province · online CBT",
+          "National final · offline"
+        ],
+        "categories": [
+          {
+            "name": "SD/MI",
+            "detail": "Grades 5–6 (grade 4 welcome)"
+          },
+          {
+            "name": "SMP/MTs",
+            "detail": "Grades 8–9 (grade 7 welcome)"
+          },
+          {
+            "name": "SMA/MA",
+            "detail": "Grades 11–12 (grade 10 welcome)"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Category",
+            "value": "Individual or team of 3"
+          },
+          {
+            "label": "Open to",
+            "value": "Schools, pesantren, homeschooling"
+          }
+        ]
+      }
+    },
+    "schedule": [
+      {
+        "label": "Pendaftaran dibuka",
+        "starts_on": "2026-09-25",
+        "ends_on": null,
+        "label_en": "Registration opens"
+      },
+      {
+        "label": "Technical meeting (online)",
+        "starts_on": "2026-10-03",
+        "ends_on": "2026-10-04",
+        "label_en": "Technical meeting (online)"
+      },
+      {
+        "label": "Seleksi kab/kota",
+        "starts_on": "2026-11-21",
+        "ends_on": "2026-11-22",
+        "label_en": "Regency/city selection"
+      }
+    ],
+    "is_visible": false,
+    "sort_order": 7,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "kreasi",
+    "name": "KREASI",
+    "scope": "national",
+    "subjects": [
+      "Coding",
+      "AI"
+    ],
+    "tone": "gold",
+    "illustration": "coding",
+    "official_url": "https://kreasi.or.id/",
+    "content": {
+      "id": {
+        "full_name": "Kompetisi Riset dan Inovasi Siswa Indonesia",
+        "tagline": "Ruang untuk peneliti muda.",
+        "levels_label": "Pelajar",
+        "story": [
+          "KREASI adalah panggung untuk siswa yang punya rasa ingin tahu besar dan ide yang ingin diuji. Mulai dari pertanyaan sederhana, kembangkan jadi riset atau inovasi, lalu presentasikan di babak final.",
+          "Pendaftaran dibuka bertahap per batch. Cocok dipadukan dengan program Pelatihan Karya Tulis Abak."
+        ],
+        "rounds": [
+          "Daftar per batch",
+          "Babak final"
+        ],
+        "categories": [
+          {
+            "name": "Riset",
+            "detail": "Penelitian siswa"
+          },
+          {
+            "name": "Inovasi",
+            "detail": "Produk & solusi"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Fokus",
+            "value": "Riset & inovasi"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "Indonesian Student Research and Innovation Competition",
+        "tagline": "A stage for young researchers.",
+        "levels_label": "Students",
+        "story": [
+          "KREASI is a stage for curious students with ideas worth testing. Start with a simple question, develop it into research or an innovation, and present it in the final.",
+          "Registration opens in batches. It pairs well with Abak's Research Writing program."
+        ],
+        "rounds": [
+          "Register by batch",
+          "Final round"
+        ],
+        "categories": [
+          {
+            "name": "Research",
+            "detail": "Student research"
+          },
+          {
+            "name": "Innovation",
+            "detail": "Products & solutions"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Focus",
+            "value": "Research & innovation"
+          }
+        ]
+      }
+    },
+    "schedule": [],
+    "is_visible": false,
+    "sort_order": 8,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "ramsco",
+    "name": "RAMSCO",
+    "scope": "national",
+    "subjects": [
+      "Agama Islam"
+    ],
+    "tone": "ember",
+    "illustration": "trophy",
+    "official_url": "https://abakacademy.id/ramsco-2026/",
+    "content": {
+      "id": {
+        "full_name": "Ramadhan Spectacular Competition",
+        "tagline": "Merayakan Ramadhan lewat prestasi.",
+        "levels_label": "SD–SMA",
+        "story": [
+          "RAMSCO menghadirkan empat cabang lomba selama Ramadhan untuk siswa muslim dari SD sampai SMA. Peserta boleh ikut satu sampai tiga cabang sekaligus.",
+          "Olimpiade Agama Islam dikerjakan pada tanggal yang ditentukan. Storytelling, MTQ, dan Nasyid dikirim dalam bentuk video, jadi bisa disiapkan dengan matang dari rumah."
+        ],
+        "rounds": [
+          "Daftar",
+          "Kirim video / ikut olimpiade",
+          "Pengumuman & awarding"
+        ],
+        "categories": [
+          {
+            "name": "Olimpiade Agama Islam",
+            "detail": "SD · SMP · SMA"
+          },
+          {
+            "name": "Islamic Storytelling",
+            "detail": "SD · SMP"
+          },
+          {
+            "name": "MTQ",
+            "detail": "SMP · SMA"
+          },
+          {
+            "name": "Nasyid",
+            "detail": "SD · SMP · SMA (tim)"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Biaya",
+            "value": "Rp75.000 / cabang · Nasyid Rp100.000 / tim"
+          },
+          {
+            "label": "Boleh ikut",
+            "value": "1–3 cabang"
+          }
+        ]
+      },
+      "en": {
+        "full_name": "Ramadhan Spectacular Competition",
+        "tagline": "Celebrating Ramadan through achievement.",
+        "levels_label": "Primary–High school",
+        "story": [
+          "RAMSCO brings four competition branches during Ramadan for Muslim students from primary to senior high school. Students can enter one to three branches.",
+          "The Islamic Studies Olympiad is held on a set date. Storytelling, Quran recitation (MTQ), and Nasyid are submitted as videos, so they can be prepared carefully at home."
+        ],
+        "rounds": [
+          "Register",
+          "Submit video / sit the olympiad",
+          "Announcement & awarding"
+        ],
+        "categories": [
+          {
+            "name": "Islamic Studies Olympiad",
+            "detail": "Primary · Junior · Senior high"
+          },
+          {
+            "name": "Islamic Storytelling",
+            "detail": "Primary · Junior high"
+          },
+          {
+            "name": "MTQ",
+            "detail": "Junior · Senior high"
+          },
+          {
+            "name": "Nasyid",
+            "detail": "Primary · Junior · Senior high (team)"
+          }
+        ],
+        "facts": [
+          {
+            "label": "Fee",
+            "value": "IDR 75,000 / branch · Nasyid IDR 100,000 / team"
+          },
+          {
+            "label": "Enter",
+            "value": "1–3 branches"
+          }
+        ]
+      }
+    },
+    "schedule": [
+      {
+        "label": "Pendaftaran",
+        "starts_on": "2026-01-01",
+        "ends_on": "2026-01-31",
+        "label_en": "Registration"
+      },
+      {
+        "label": "Batas kirim video",
+        "starts_on": "2026-02-21",
+        "ends_on": null,
+        "label_en": "Video submission deadline"
+      },
+      {
+        "label": "Olimpiade Agama Islam",
+        "starts_on": "2026-02-25",
+        "ends_on": null,
+        "label_en": "Islamic Studies Olympiad"
+      }
+    ],
+    "is_visible": false,
+    "sort_order": 9,
+    "content_status": "from official site, verify before publishing",
+    "content_status_en": "draft translation by Claude, review before publishing"
+  },
+  {
+    "slug": "inysia",
+    "name": "INYSIA",
+    "scope": null,
+    "subjects": [],
+    "tone": "navy",
+    "illustration": "trophy",
+    "official_url": "https://abakacademy.id/?page_id=1015",
+    "content": {
+      "id": {
+        "full_name": "INYSIA",
+        "tagline": null,
+        "story": [],
+        "rounds": [],
+        "categories": [],
+        "facts": []
+      },
+      "en": null
+    },
+    "schedule": [],
+    "is_visible": false,
+    "sort_order": 10,
+    "content_status": "missing: official page failed to load",
+    "content_status_en": "missing"
+  }
+]

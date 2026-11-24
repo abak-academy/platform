@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+# Disposable Abak Academy stack for verification: own compose project, own ports, own DB.
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REPO="$(cd "$SKILL_DIR/../../.." && pwd)"
+STATE="${ABAK_VERIFY_STATE:-$HOME/.cache/abak-verify/state}"
+EVIDENCE_ROOT="${ABAK_VERIFY_EVIDENCE:-$HOME/.cache/abak-verify/evidence}"
+PROJECT=abak-verify
+API_PORT=58080
+WEB_PORT=53000
+PG_PORT=55432
+API_URL="http://localhost:$API_PORT/api/v1"
+WEB_URL="http://localhost:$WEB_PORT"
+COMPOSE=(docker compose -p "$PROJECT" -f "$REPO/deploy/compose/local.yml" -f "$SKILL_DIR/compose.verify.yml")
+
+die() { echo "abak-verify: $*" >&2; exit 1; }
+log() { echo "abak-verify: $*"; }
+
+port_busy() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1; }
+
+pid_alive() { [[ -f "$1" ]] && kill -0 "$(cat "$1")" 2>/dev/null; }
+
+start_bg() { # start_bg <name> <dir> <cmd...>: pid file holds the real process, not a wrapper subshell
+  local name=$1 dir=$2; shift 2
+  pushd "$dir" >/dev/null
+  nohup "$@" >"$STATE/$name.log" 2>&1 </dev/null &
+  echo $! >"$STATE/$name.pid"
+  popd >/dev/null
+}
+
+wait_for() { # wait_for <seconds> <description> <cmd...>
+  local secs=$1 what=$2; shift 2
+  for ((i = 0; i < secs; i++)); do "$@" >/dev/null 2>&1 && return 0; sleep 1; done
+  die "timed out after ${secs}s waiting for $what"
+}
+
+psql_verify() { "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U akademi -d akademi -tAq "$@"; }
+
+write_config() {
+  local src="$REPO/backend/config/env/dev"
+  [[ -f "$src/config.yaml" && -f "$src/secrets.yaml" ]] ||
+    die "missing $src (gitignored). Copy it from the main platform checkout first."
+  mkdir -p "$STATE/cfg/dev"
+  perl -pe '
+    s#^http_port:.*#http_port: "'"$API_PORT"'"#;
+    s#redis:6379#localhost:56379#;
+    s#"minio:9000"#"localhost:59000"#;
+    s#^object_storage_public_endpoint:.*#object_storage_public_endpoint: "localhost:59000"#;
+    s#http://gotenberg:3000#http://localhost:53001#;
+    s#^cors_origins:[ \t]*$#cors_origins:\n  - "'"$WEB_URL"'"#;
+  ' "$src/config.yaml" >"$STATE/cfg/dev/config.yaml"
+  perl -pe 's#\@postgres:5432/#\@localhost:'"$PG_PORT"'/#g; s#^redis_password:.*#redis_password: ""#' \
+    "$src/secrets.yaml" >"$STATE/cfg/dev/secrets.yaml"
+  if grep -nE 'postgres:5432|redis:6379|minio:9000|gotenberg:3000' "$STATE/cfg/dev/"*.yaml; then
+    die "config rewrite left a compose hostname behind (lines above)"
+  fi
+}
+
+seed_users() {
+  [[ -f "$STATE/creds.env" ]] || {
+    printf 'VERIFY_ADMIN_EMAIL=verify-admin@example.test\nVERIFY_ADMIN_PASSWORD=%s\nVERIFY_STUDENT_EMAIL=verify-student@example.test\nVERIFY_STUDENT_PASSWORD=%s\n' \
+      "$(openssl rand -hex 12)" "$(openssl rand -hex 12)" >"$STATE/creds.env"
+    chmod 600 "$STATE/creds.env"
+  }
+  # shellcheck disable=SC1091
+  source "$STATE/creds.env"
+  # users.email has no unique constraint, so delete-then-insert keeps this idempotent.
+  psql_verify \
+    -v admin_email="$VERIFY_ADMIN_EMAIL" -v admin_pw="$VERIFY_ADMIN_PASSWORD" \
+    -v student_email="$VERIFY_STUDENT_EMAIL" -v student_pw="$VERIFY_STUDENT_PASSWORD" <<'SQL'
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+DELETE FROM users WHERE email IN (:'admin_email', :'student_email');
+INSERT INTO users (email, name, password_hash, role, status)
+VALUES (:'admin_email', 'Verify Admin', crypt(:'admin_pw', gen_salt('bf', 12)), 'super_admin', 'active'),
+       (:'student_email', 'Verify Student', crypt(:'student_pw', gen_salt('bf', 12)), 'student', 'active');
+SQL
+  local code
+  code=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+    -d "{\"identifier\":\"$VERIFY_ADMIN_EMAIL\",\"password\":\"$VERIFY_ADMIN_PASSWORD\"}" "$API_URL/auth/login")
+  [[ "$code" == 200 ]] || die "seeded admin cannot log in via the API (HTTP $code)"
+  log "seeded verify-admin (super_admin) and verify-student; credentials in $STATE/creds.env"
+}
+
+cmd_up() {
+  [[ -d "$STATE" ]] && die "state dir $STATE exists: another run is live or was not cleaned. Run 'doctor', then 'down'."
+  docker info >/dev/null 2>&1 || die "docker is not reachable (open -a OrbStack)"
+  for p in $PG_PORT 56379 59000 59001 53001 $API_PORT $WEB_PORT; do
+    port_busy "$p" && die "port $p is already in use; refusing to share it"
+  done
+  mkdir -p "$STATE"
+  write_config
+
+  log "starting infra (project $PROJECT)"
+  "${COMPOSE[@]}" up -d --wait postgres redis minio gotenberg >"$STATE/compose-up.log" 2>&1 ||
+    die "compose up failed, see $STATE/compose-up.log"
+  "${COMPOSE[@]}" run --rm createbuckets >>"$STATE/compose-up.log" 2>&1 ||
+    die "bucket creation failed, see $STATE/compose-up.log"
+
+  log "building api from source"
+  (cd "$REPO/backend" && env -u GOROOT go build -o "$STATE/api" ./cmd/api) >"$STATE/build.log" 2>&1 ||
+    die "api build failed, see $STATE/build.log"
+  start_bg api "$REPO/backend" env CONFIG_DIR="$STATE/cfg" APP_ENV=dev "$STATE/api"
+  wait_for 90 "api /health (migrations run at boot; see $STATE/api.log)" \
+    bash -c "curl -sf '$API_URL/health' | grep -q '\"status\":\"ok\"'"
+  seed_users
+
+  log "starting web dev server from a scratch copy of web/"
+  rsync -a --delete --exclude node_modules --exclude .next --exclude test-results \
+    --exclude playwright-report --exclude .env.local "$REPO/web/" "$STATE/web/"
+  ln -sfn "$REPO/web/node_modules" "$STATE/web/node_modules"
+  start_bg web "$STATE/web" env NEXT_PUBLIC_API_BASE_URL="$API_URL" ./node_modules/.bin/next dev -p "$WEB_PORT"
+  wait_for 180 "web /login to compile" curl -sf "$WEB_URL/login"
+  # A route's first dev compile mid-journey stranded the student shell on "Memuat…"; compile them up front.
+  for route in / /admin /admin/login /catalog /exam /admin/exam; do
+    curl -s -o /dev/null --max-time 120 "$WEB_URL$route" || true
+  done
+  git -C "$REPO" rev-parse HEAD >"$STATE/revision"
+  log "ready: web $WEB_URL  api $API_URL  revision $(cat "$STATE/revision")"
+}
+
+cmd_doctor() {
+  local ok=1
+  [[ -d "$STATE" ]] || { echo "FAIL no state dir $STATE: nothing launched by abak-verify"; exit 1; }
+  echo "state     $STATE"
+  echo "revision  $(cat "$STATE/revision" 2>/dev/null || echo '?') (HEAD now $(git -C "$REPO" rev-parse HEAD))"
+  if pid_alive "$STATE/api.pid"; then echo "api pid   $(cat "$STATE/api.pid") alive"; else echo "FAIL api process not running"; ok=0; fi
+  if pid_alive "$STATE/web.pid"; then echo "web pid   $(cat "$STATE/web.pid") alive"; else echo "FAIL web process not running"; ok=0; fi
+  local owner
+  owner=$(lsof -nP -tiTCP:$API_PORT -sTCP:LISTEN 2>/dev/null | head -1 || true)
+  [[ -n "$owner" && "$owner" == "$(cat "$STATE/api.pid" 2>/dev/null)" ]] && echo "port      $API_PORT owned by our api" ||
+    { echo "FAIL port $API_PORT owned by pid '${owner:-none}', not our api"; ok=0; }
+  local health
+  health=$(curl -s "$API_URL/health" || true)
+  echo "health    ${health:-unreachable}"
+  [[ "$health" == *'"status":"ok"'* ]] || ok=0
+  local web
+  web=$(curl -s -o /dev/null -w '%{http_code}' "$WEB_URL/login" || true)
+  echo "web       /login HTTP $web"
+  [[ "$web" == 200 ]] || ok=0
+  echo "infra     $("${COMPOSE[@]}" ps --format '{{.Service}}={{.State}}' 2>/dev/null | tr '\n' ' ')"
+  ((ok)) && echo "OK" || { echo "NOT HEALTHY"; exit 1; }
+}
+
+cmd_journey() {
+  local spec=${1:?usage: abak-verify journey <name> [playwright args] (a file in journeys/, without .spec.ts)}
+  shift
+  [[ -f "$SKILL_DIR/journeys/$spec.spec.ts" ]] || die "no journeys/$spec.spec.ts"
+  cmd_doctor >/dev/null || die "doctor failed; run 'abak-verify doctor' for details"
+  local run_id out
+  run_id="$(date +%Y%m%d-%H%M%S)-$spec"
+  out="$EVIDENCE_ROOT/$run_id"
+  mkdir -p "$out"
+  set -a; source "$STATE/creds.env"; set +a
+  log "evidence -> $out"
+  # NODE_PATH lets the config and journeys, which live outside web/, resolve @playwright/test.
+  (cd "$REPO/web" && NODE_PATH="$REPO/web/node_modules" VERIFY_WEB_URL="$WEB_URL" VERIFY_API_URL="$API_URL" VERIFY_EVIDENCE_DIR="$out" \
+    VERIFY_REVISION="$(cat "$STATE/revision")" \
+    ./node_modules/.bin/playwright test --config "$SKILL_DIR/playwright.verify.config.ts" "$spec" "$@" 2>&1 |
+    tee "$out/playwright.log"; exit "${PIPESTATUS[0]}")
+}
+
+cmd_down() {
+  for svc in web api; do
+    if pid_alive "$STATE/$svc.pid"; then
+      local pid; pid=$(cat "$STATE/$svc.pid")
+      pkill -TERM -P "$pid" 2>/dev/null || true
+      kill -TERM "$pid" 2>/dev/null || true
+      log "stopped $svc (pid $pid)"
+    fi
+  done
+  "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  sleep 2
+  for p in $API_PORT $WEB_PORT $PG_PORT; do
+    port_busy "$p" && echo "abak-verify: WARNING port $p still listening; inspect with: lsof -nP -iTCP:$p -sTCP:LISTEN" >&2
+  done
+  rm -rf "$STATE"
+  log "torn down; evidence kept in $EVIDENCE_ROOT"
+}
+
+case "${1:-}" in
+  up) cmd_up ;;
+  doctor) cmd_doctor ;;
+  seed) seed_users ;;
+  journey) shift; cmd_journey "$@" ;;
+  down) cmd_down ;;
+  *) echo "usage: abak-verify up|doctor|seed|journey <name>|down" >&2; exit 2 ;;
+esac
