@@ -24,7 +24,7 @@ app/
 │   ├── cmd/api/            REST API server (:8080); runs DB migrations at boot
 │   ├── cmd/worker/         outbox, announcements, bulk-student jobs
 │   ├── internal/
-│   │   ├── adapter/        external service clients — midtrans, biteship, smtp, notify, fazpass
+│   │   ├── adapter/        external service clients — midtrans, biteship, smtp, notify
 │   │   ├── handler/        HTTP layer (echo)
 │   │   ├── infra/          postgres + redis wiring, JWT, migration runner
 │   │   ├── model/          shared types

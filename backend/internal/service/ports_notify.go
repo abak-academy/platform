@@ -7,7 +7,7 @@ import (
 )
 
 // Notification ports the service depends on. Real implementations live in
-// internal/adapter (Fazpass, SMTP); the Noop variants let the app run with no
+// internal/adapter (SMTP); the Noop variants let the app run with no
 // provider configured.
 
 type OTPProvider interface {

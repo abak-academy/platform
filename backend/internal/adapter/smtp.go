@@ -45,8 +45,7 @@ const (
 
 // SMTPProvider sends OTP codes and emails over SMTP (STARTTLS on :587). It
 // satisfies both service.OTPProvider and service.EmailProvider, so a single
-// instance can back both. Delivery is email-only — phone/WhatsApp OTP still
-// needs a real gateway (Fazpass).
+// instance can back both. Delivery is email-only.
 type SMTPProvider struct {
 	host string
 	addr string

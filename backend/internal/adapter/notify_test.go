@@ -48,6 +48,6 @@ func TestNoopEmailProvider(t *testing.T) {
 	}
 }
 
-// Compile-time interface checks for FazpassProvider.
-var _ service.OTPProvider = (*FazpassProvider)(nil)
-var _ service.EmailProvider = (*FazpassProvider)(nil)
+// Compile-time interface checks for SMTPProvider.
+var _ service.OTPProvider = (*SMTPProvider)(nil)
+var _ service.EmailProvider = (*SMTPProvider)(nil)

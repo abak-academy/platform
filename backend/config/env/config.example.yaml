@@ -24,7 +24,6 @@ otp_vfail_day: 20
 otp_vfail_ip_hour: 30
 otp_attempts: 3
 google_client_id: ""
-fazpass_base_url: "https://api.fazpass.com"
 midtrans_env: "sandbox"
 # Announcement email fan-out pacing in the worker (emails per minute). Keeps a
 # large broadcast from bursting past the SMTP relay's rate limit. Default 30.

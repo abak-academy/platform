@@ -117,6 +117,10 @@ func main() {
 }
 
 func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailProvider) {
+	// Prod never falls back to Noop: it reports success and prints the code to stdout.
+	if cfg.SMTPHost == "" && cfg.Env != "prod" {
+		return &adapter.NoopOTPProvider{}, &adapter.NoopEmailProvider{}
+	}
 	sm := adapter.NewSMTPProvider(adapter.SMTPConfig{
 		Host:     cfg.SMTPHost,
 		Port:     cfg.SMTPPort,
@@ -126,23 +130,7 @@ func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailPr
 		FromName: cfg.SMTPFromName,
 		OTPTTL:   cfg.OTPTTL,
 	})
-	// SMTP (email OTP) takes precedence when configured — staging uses it.
-	if cfg.SMTPHost != "" {
-		return sm, sm
-	}
-	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
-		// Prod never falls back to Noop: it reports success and prints the code to stdout.
-		if cfg.Env == "prod" {
-			return sm, sm
-		}
-		return &adapter.NoopOTPProvider{}, &adapter.NoopEmailProvider{}
-	}
-	fz := adapter.NewFazpassProvider(adapter.FazpassConfig{
-		MerchantKey: cfg.FazpassMerchantKey,
-		APIKey:      cfg.FazpassAPIKey,
-		BaseURL:     cfg.FazpassBaseURL,
-	})
-	return fz, fz
+	return sm, sm
 }
 
 func newStorageClient(cfg config.Config) *minio.Client {

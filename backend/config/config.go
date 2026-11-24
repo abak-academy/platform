@@ -46,9 +46,6 @@ type Config struct {
 	OTPTTL              time.Duration
 	GoogleClientID      string
 	ConfigEncryptionKey string
-	FazpassMerchantKey  string
-	FazpassAPIKey       string
-	FazpassBaseURL      string
 	MidtransServerKey   string
 	MidtransClientKey   string
 	MidtransEnv         string
@@ -94,7 +91,6 @@ type fileConfig struct {
 	RefreshTokenTTL                string   `yaml:"refresh_token_ttl"`
 	OTPTTL                         string   `yaml:"otp_ttl"`
 	GoogleClientID                 string   `yaml:"google_client_id"`
-	FazpassBaseURL                 string   `yaml:"fazpass_base_url"`
 	MidtransEnv                    string   `yaml:"midtrans_env"`
 	ObjectStorageEndpoint          string   `yaml:"object_storage_endpoint"`
 	ObjectStoragePublicEndpoint    string   `yaml:"object_storage_public_endpoint"`
@@ -114,8 +110,6 @@ type fileSecrets struct {
 	ObjectStorageAccessKey string `yaml:"object_storage_access_key"`
 	ObjectStorageSecretKey string `yaml:"object_storage_secret_key"`
 	RedisPassword          string `yaml:"redis_password"`
-	FazpassMerchantKey     string `yaml:"fazpass_merchant_key"`
-	FazpassAPIKey          string `yaml:"fazpass_api_key"`
 	MidtransServerKey      string `yaml:"midtrans_server_key"`
 	MidtransClientKey      string `yaml:"midtrans_client_key"`
 	BiteshipAPIKey         string `yaml:"biteship_api_key"`
@@ -266,7 +260,6 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		RefreshTokenTTL: refreshTTL,
 		OTPTTL:          otpTTL,
 		GoogleClientID:  fc.GoogleClientID,
-		FazpassBaseURL:  fc.FazpassBaseURL,
 		MidtransEnv:     fc.MidtransEnv,
 
 		ObjectStorageEndpoint:          fc.ObjectStorageEndpoint,
@@ -286,8 +279,6 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		ObjectStorageAccessKey: s.ObjectStorageAccessKey,
 		ObjectStorageSecretKey: s.ObjectStorageSecretKey,
 		RedisPassword:          s.RedisPassword,
-		FazpassMerchantKey:     s.FazpassMerchantKey,
-		FazpassAPIKey:          s.FazpassAPIKey,
 		MidtransServerKey:      s.MidtransServerKey,
 		MidtransClientKey:      s.MidtransClientKey,
 		BiteshipAPIKey:         s.BiteshipAPIKey,

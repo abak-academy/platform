@@ -97,7 +97,11 @@ func main() {
 }
 
 func newEmailProvider(cfg config.Config) service.EmailProvider {
-	sm := adapter.NewSMTPProvider(adapter.SMTPConfig{
+	// Prod never falls back to Noop: it reports success and prints the body to stdout.
+	if cfg.SMTPHost == "" && cfg.Env != "prod" {
+		return &adapter.NoopEmailProvider{}
+	}
+	return adapter.NewSMTPProvider(adapter.SMTPConfig{
 		Host:     cfg.SMTPHost,
 		Port:     cfg.SMTPPort,
 		Username: cfg.SMTPUsername,
@@ -105,21 +109,6 @@ func newEmailProvider(cfg config.Config) service.EmailProvider {
 		From:     cfg.SMTPFrom,
 		FromName: cfg.SMTPFromName,
 		OTPTTL:   cfg.OTPTTL,
-	})
-	if cfg.SMTPHost != "" {
-		return sm
-	}
-	if cfg.FazpassMerchantKey == "" || cfg.FazpassAPIKey == "" {
-		// Prod never falls back to Noop: it reports success and prints the body to stdout.
-		if cfg.Env == "prod" {
-			return sm
-		}
-		return &adapter.NoopEmailProvider{}
-	}
-	return adapter.NewFazpassProvider(adapter.FazpassConfig{
-		MerchantKey: cfg.FazpassMerchantKey,
-		APIKey:      cfg.FazpassAPIKey,
-		BaseURL:     cfg.FazpassBaseURL,
 	})
 }
 
