@@ -32,6 +32,7 @@ type SMTPConfig struct {
 	Password string
 	From     string // full "Name <addr>" override; falls back below when empty
 	FromName string // display name paired with Username when From is empty
+	OTPTTL   time.Duration
 }
 
 // smtpDialTimeout bounds the TCP connect; smtpSessionTimeout bounds the whole
@@ -55,6 +56,7 @@ type SMTPProvider struct {
 	// header, which may carry a display name.
 	envelopeFrom string
 	headerFrom   string
+	otpTTL       time.Duration
 }
 
 func NewSMTPProvider(cfg SMTPConfig) *SMTPProvider {
@@ -75,6 +77,7 @@ func NewSMTPProvider(cfg SMTPConfig) *SMTPProvider {
 		auth:         smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host),
 		envelopeFrom: cfg.Username,
 		headerFrom:   headerFrom,
+		otpTTL:       cfg.OTPTTL,
 	}
 }
 
@@ -82,7 +85,7 @@ func (p *SMTPProvider) SendOTP(_ context.Context, channel, to, code string) erro
 	if channel != "email" {
 		return fmt.Errorf("smtp provider: unsupported OTP channel %q (email only)", channel)
 	}
-	msg, err := buildOTPMessage(p.headerFrom, to, code)
+	msg, err := buildOTPMessage(p.headerFrom, to, code, p.otpTTL)
 	if err != nil {
 		return err
 	}
@@ -164,12 +167,13 @@ func buildMessage(from, to, subject, body string) []byte {
 }
 
 // buildOTPMessage renders the OTP as multipart/alternative: the text part first, so clients that can't show HTML still get the code.
-func buildOTPMessage(from, to, code string) ([]byte, error) {
+func buildOTPMessage(from, to, code string, ttl time.Duration) ([]byte, error) {
+	r := strings.NewReplacer("{{TTL}}", fmt.Sprintf("%d menit", int(ttl.Minutes())))
 	var parts bytes.Buffer
 	mw := multipart.NewWriter(&parts)
 	for _, part := range []struct{ ctype, body string }{
-		{"text/plain", strings.ReplaceAll(otpEmailText, "{{CODE}}", code)},
-		{"text/html", strings.ReplaceAll(otpEmailHTML, "{{CODE}}", html.EscapeString(code))},
+		{"text/plain", r.Replace(strings.ReplaceAll(otpEmailText, "{{CODE}}", code))},
+		{"text/html", r.Replace(strings.ReplaceAll(otpEmailHTML, "{{CODE}}", html.EscapeString(code)))},
 	} {
 		pw, err := mw.CreatePart(textproto.MIMEHeader{
 			"Content-Type":              {part.ctype + `; charset="UTF-8"`},

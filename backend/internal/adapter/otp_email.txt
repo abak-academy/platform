@@ -3,7 +3,7 @@ Abak Academy
 Kode verifikasi kamu: {{CODE}}
 
 Masukkan kode ini di halaman masuk atau pendaftaran Abak Academy.
-Berlaku 5 menit.
+Berlaku {{TTL}}.
 
 Jangan bagikan kode ini ke siapa pun, termasuk yang mengaku dari Abak Academy.
 

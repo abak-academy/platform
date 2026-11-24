@@ -86,7 +86,6 @@ type fileConfig struct {
 	OTPQuotaIPHour                 int      `yaml:"otp_quota_ip_hour"`
 	OTPSendfailMax                 int      `yaml:"otp_sendfail_max"`
 	OTPSendfailPause               string   `yaml:"otp_sendfail_pause"`
-	SMTPQuotaDay                   int      `yaml:"smtp_quota_day"`
 	OTPVfailHour                   int      `yaml:"otp_vfail_hour"`
 	OTPVfailDay                    int      `yaml:"otp_vfail_day"`
 	OTPVfailIPHour                 int      `yaml:"otp_vfail_ip_hour"`
@@ -124,6 +123,7 @@ type fileSecrets struct {
 	SMTPPort               string `yaml:"smtp_port"`
 	SMTPFrom               string `yaml:"smtp_from"`
 	SMTPFromName           string `yaml:"smtp_from_name"`
+	SMTPQuotaDay           int    `yaml:"smtp_quota_day"`
 	SMTPUsername           string `yaml:"smtp_username"`
 	SMTPPassword           string `yaml:"smtp_password"`
 }
@@ -257,7 +257,6 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		OTPQuotaIPHour:                fc.OTPQuotaIPHour,
 		OTPSendfailMax:                fc.OTPSendfailMax,
 		OTPSendfailPause:              otpSendfailPause,
-		SMTPQuotaDay:                  fc.SMTPQuotaDay,
 		OTPVfailHour:                  fc.OTPVfailHour,
 		OTPVfailDay:                   fc.OTPVfailDay,
 		OTPVfailIPHour:                fc.OTPVfailIPHour,
@@ -296,6 +295,7 @@ func merge(env string, fc fileConfig, s fileSecrets) (Config, error) {
 		SMTPPort:               s.SMTPPort,
 		SMTPFrom:               s.SMTPFrom,
 		SMTPFromName:           s.SMTPFromName,
+		SMTPQuotaDay:           s.SMTPQuotaDay,
 		SMTPUsername:           s.SMTPUsername,
 		SMTPPassword:           s.SMTPPassword,
 	}, nil

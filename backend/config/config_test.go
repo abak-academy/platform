@@ -295,6 +295,7 @@ smtp_host: "smtp.gmail.com"
 smtp_port: "587"
 smtp_from: "no-reply@example.com"
 smtp_from_name: "Abak Academy"
+smtp_quota_day: 300
 smtp_username: "smtp-user"
 smtp_password: "smtp-pass"
 `)
@@ -339,6 +340,9 @@ smtp_password: "smtp-pass"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "my-bucket"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "my-private-bucket"},
 		{"GotenbergURL", cfg.GotenbergURL, "http://gotenberg:3000"},
+	}
+	if cfg.SMTPQuotaDay != 300 {
+		t.Errorf("SMTPQuotaDay: got %d want 300", cfg.SMTPQuotaDay)
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -791,7 +795,7 @@ func TestCommittedConfigYAMLHasNoSMTPRelayKeys(t *testing.T) {
 		if err := yaml.Unmarshal(data, &keys); err != nil {
 			t.Fatalf("parse %s config.yaml: %v", env, err)
 		}
-		for _, k := range []string{"smtp_host", "smtp_port", "smtp_from", "smtp_from_name", "smtp_username", "smtp_password"} {
+		for _, k := range []string{"smtp_host", "smtp_port", "smtp_from", "smtp_from_name", "smtp_quota_day", "smtp_username", "smtp_password"} {
 			if _, ok := keys[k]; ok {
 				t.Errorf("%s/config.yaml sets %s; SMTP relay settings belong in secrets.yaml", env, k)
 			}

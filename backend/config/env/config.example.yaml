@@ -23,9 +23,6 @@ otp_vfail_hour: 10
 otp_vfail_day: 20
 otp_vfail_ip_hour: 30
 otp_attempts: 3
-# Global daily email-send ceiling shared by every OTP password-reset flow
-# (announcements are not counted). Resets at WIB midnight. Default 500.
-smtp_quota_day: 500
 google_client_id: ""
 fazpass_base_url: "https://api.fazpass.com"
 midtrans_env: "sandbox"

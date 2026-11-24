@@ -8,10 +8,11 @@ import (
 	"net/mail"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestBuildOTPMessage_MultipartWithCodeInBothParts(t *testing.T) {
-	raw, err := buildOTPMessage("Abak Academy <noreply@abakacademy.id>", "siswa@example.com", "482913")
+	raw, err := buildOTPMessage("Abak Academy <noreply@abakacademy.id>", "siswa@example.com", "482913", 10*time.Minute)
 	if err != nil {
 		t.Fatalf("buildOTPMessage: %v", err)
 	}
@@ -52,8 +53,11 @@ func TestBuildOTPMessage_MultipartWithCodeInBothParts(t *testing.T) {
 		if !strings.Contains(string(body), "482913") {
 			t.Errorf("part %q does not contain the code", ct)
 		}
-		if strings.Contains(string(body), "{{CODE}}") {
-			t.Errorf("part %q still contains the {{CODE}} placeholder", ct)
+		if strings.Contains(string(body), "{{") {
+			t.Errorf("part %q still contains a {{...}} placeholder", ct)
+		}
+		if !strings.Contains(string(body), "10 menit") {
+			t.Errorf("part %q does not show the configured TTL", ct)
 		}
 	}
 	// RFC 2046: the richest alternative goes last, so text/plain must come first.

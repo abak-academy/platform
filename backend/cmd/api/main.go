@@ -124,6 +124,7 @@ func newNotifyProviders(cfg config.Config) (service.OTPProvider, service.EmailPr
 		Password: cfg.SMTPPassword,
 		From:     cfg.SMTPFrom,
 		FromName: cfg.SMTPFromName,
+		OTPTTL:   cfg.OTPTTL,
 	})
 	// SMTP (email OTP) takes precedence when configured — staging uses it.
 	if cfg.SMTPHost != "" {

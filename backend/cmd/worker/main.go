@@ -104,6 +104,7 @@ func newEmailProvider(cfg config.Config) service.EmailProvider {
 		Password: cfg.SMTPPassword,
 		From:     cfg.SMTPFrom,
 		FromName: cfg.SMTPFromName,
+		OTPTTL:   cfg.OTPTTL,
 	})
 	if cfg.SMTPHost != "" {
 		return sm
