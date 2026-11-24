@@ -15,7 +15,8 @@ func TestPreferredOTPChannel(t *testing.T) {
 		wantChannel string
 		wantDest    string
 	}{
-		{"phone present", "+6281234567890", "user@example.com", "whatsapp", "+6281234567890"},
+		{"both present", "+6281234567890", "user@example.com", "email", "user@example.com"},
+		{"phone only", "+6281234567890", "", "whatsapp", "+6281234567890"},
 		{"phone empty email present", "", "user@example.com", "email", "user@example.com"},
 		{"both empty", "", "", "email", ""},
 	}
@@ -48,6 +49,6 @@ func TestNoopEmailProvider(t *testing.T) {
 	}
 }
 
-// Compile-time interface checks for FazpassProvider.
-var _ service.OTPProvider = (*FazpassProvider)(nil)
-var _ service.EmailProvider = (*FazpassProvider)(nil)
+// Compile-time interface checks for SMTPProvider.
+var _ service.OTPProvider = (*SMTPProvider)(nil)
+var _ service.EmailProvider = (*SMTPProvider)(nil)

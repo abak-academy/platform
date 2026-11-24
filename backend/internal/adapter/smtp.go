@@ -1,13 +1,31 @@
 package adapter
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	_ "embed"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"html"
+	"log/slog"
+	"mime/multipart"
+	"mime/quotedprintable"
 	"net"
+	"net/mail"
 	"net/smtp"
+	"net/textproto"
 	"strings"
 	"time"
+)
+
+var (
+	//go:embed otp_email.html
+	otpEmailHTML string
+	//go:embed otp_email.txt
+	otpEmailText string
 )
 
 type SMTPConfig struct {
@@ -17,6 +35,7 @@ type SMTPConfig struct {
 	Password string
 	From     string // full "Name <addr>" override; falls back below when empty
 	FromName string // display name paired with Username when From is empty
+	OTPTTL   time.Duration
 }
 
 // smtpDialTimeout bounds the TCP connect; smtpSessionTimeout bounds the whole
@@ -29,8 +48,7 @@ const (
 
 // SMTPProvider sends OTP codes and emails over SMTP (STARTTLS on :587). It
 // satisfies both service.OTPProvider and service.EmailProvider, so a single
-// instance can back both. Delivery is email-only — phone/WhatsApp OTP still
-// needs a real gateway (Fazpass).
+// instance can back both. Delivery is email-only.
 type SMTPProvider struct {
 	host string
 	addr string
@@ -40,10 +58,14 @@ type SMTPProvider struct {
 	// header, which may carry a display name.
 	envelopeFrom string
 	headerFrom   string
+	otpTTL       time.Duration
 }
 
 func NewSMTPProvider(cfg SMTPConfig) *SMTPProvider {
 	headerFrom := cfg.From
+	if headerFrom != "" && cfg.FromName != "" && !strings.Contains(headerFrom, "<") {
+		headerFrom = fmt.Sprintf("%s <%s>", cfg.FromName, headerFrom)
+	}
 	if headerFrom == "" {
 		if cfg.FromName != "" {
 			headerFrom = fmt.Sprintf("%s <%s>", cfg.FromName, cfg.Username)
@@ -57,6 +79,7 @@ func NewSMTPProvider(cfg SMTPConfig) *SMTPProvider {
 		auth:         smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host),
 		envelopeFrom: cfg.Username,
 		headerFrom:   headerFrom,
+		otpTTL:       cfg.OTPTTL,
 	}
 }
 
@@ -64,15 +87,26 @@ func (p *SMTPProvider) SendOTP(_ context.Context, channel, to, code string) erro
 	if channel != "email" {
 		return fmt.Errorf("smtp provider: unsupported OTP channel %q (email only)", channel)
 	}
-	body := fmt.Sprintf("Kode OTP kamu: %s\n\nBerlaku singkat, jangan bagikan ke siapa pun.", code)
-	return p.send(to, "Kode OTP Abak Academy", body)
+	msg, err := buildOTPMessage(p.headerFrom, to, code, p.otpTTL)
+	if err != nil {
+		return err
+	}
+	return p.send(to, msg)
 }
 
 func (p *SMTPProvider) SendEmail(_ context.Context, to, subject, body string) error {
-	return p.send(to, subject, body)
+	return p.send(to, buildMessage(p.headerFrom, to, subject, body))
 }
 
-func (p *SMTPProvider) send(to, subject, body string) error {
+func (p *SMTPProvider) send(to string, msg []byte) (err error) {
+	defer func() {
+		if err != nil {
+			slog.Error("smtp send failed", "addr", p.addr, "err", err)
+		}
+	}()
+	if p.host == "" {
+		return errors.New("smtp send: smtp_host is not configured")
+	}
 	conn, err := net.DialTimeout("tcp", p.addr, smtpDialTimeout)
 	if err != nil {
 		return fmt.Errorf("smtp dial %s: %w", p.addr, err)
@@ -112,7 +146,7 @@ func (p *SMTPProvider) send(to, subject, body string) error {
 	if err != nil {
 		return fmt.Errorf("smtp data: %w", err)
 	}
-	if _, err = w.Write(buildMessage(p.headerFrom, to, subject, body)); err != nil {
+	if _, err = w.Write(msg); err != nil {
 		return fmt.Errorf("smtp write message: %w", err)
 	}
 	if err = w.Close(); err != nil {
@@ -121,14 +155,67 @@ func (p *SMTPProvider) send(to, subject, body string) error {
 	return c.Quit()
 }
 
-func buildMessage(from, to, subject, body string) []byte {
-	var b strings.Builder
+func writeHeaders(b *strings.Builder, from, to, subject, contentType string) {
 	b.WriteString("From: " + from + "\r\n")
 	b.WriteString("To: " + to + "\r\n")
+	b.WriteString("Date: " + time.Now().Format(time.RFC1123Z) + "\r\n")
+	b.WriteString("Message-ID: " + messageID(from) + "\r\n")
 	b.WriteString("Subject: " + subject + "\r\n")
 	b.WriteString("MIME-Version: 1.0\r\n")
-	b.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")
+	b.WriteString("Content-Type: " + contentType + "\r\n")
+}
+
+func messageID(from string) string {
+	domain := "localhost"
+	if a, err := mail.ParseAddress(from); err == nil {
+		if i := strings.LastIndex(a.Address, "@"); i >= 0 {
+			domain = a.Address[i+1:]
+		}
+	}
+	id := make([]byte, 16)
+	_, _ = rand.Read(id) // crypto/rand.Read never returns an error since Go 1.24
+	return "<" + hex.EncodeToString(id) + "@" + domain + ">"
+}
+
+func buildMessage(from, to, subject, body string) []byte {
+	var b strings.Builder
+	writeHeaders(&b, from, to, subject, `text/plain; charset="UTF-8"`)
 	b.WriteString("\r\n")
 	b.WriteString(body)
 	return []byte(b.String())
+}
+
+// buildOTPMessage renders the OTP as multipart/alternative: the text part first, so clients that can't show HTML still get the code.
+func buildOTPMessage(from, to, code string, ttl time.Duration) ([]byte, error) {
+	r := strings.NewReplacer("{{TTL}}", fmt.Sprintf("%d menit", int(ttl.Minutes())))
+	var parts bytes.Buffer
+	mw := multipart.NewWriter(&parts)
+	for _, part := range []struct{ ctype, body string }{
+		{"text/plain", r.Replace(strings.ReplaceAll(otpEmailText, "{{CODE}}", code))},
+		{"text/html", r.Replace(strings.ReplaceAll(otpEmailHTML, "{{CODE}}", html.EscapeString(code)))},
+	} {
+		pw, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {part.ctype + `; charset="UTF-8"`},
+			"Content-Transfer-Encoding": {"quoted-printable"},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("otp email part: %w", err)
+		}
+		qw := quotedprintable.NewWriter(pw)
+		if _, err := qw.Write([]byte(part.body)); err != nil {
+			return nil, fmt.Errorf("otp email part: %w", err)
+		}
+		if err := qw.Close(); err != nil {
+			return nil, fmt.Errorf("otp email part: %w", err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		return nil, fmt.Errorf("otp email: %w", err)
+	}
+
+	var b strings.Builder
+	writeHeaders(&b, from, to, "Kode OTP Abak Academy", `multipart/alternative; boundary="`+mw.Boundary()+`"`)
+	b.WriteString("\r\n")
+	b.Write(parts.Bytes())
+	return []byte(b.String()), nil
 }

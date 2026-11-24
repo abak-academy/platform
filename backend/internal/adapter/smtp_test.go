@@ -38,7 +38,13 @@ func TestNewSMTPProvider_HeaderFrom(t *testing.T) {
 		t.Errorf("headerFrom: got %q, want display name paired with username", pn.headerFrom)
 	}
 
-	// explicit From overrides everything
+	// bare From address still gets FromName as its display name
+	pb := NewSMTPProvider(SMTPConfig{Host: "h", Port: "587", Username: "login@smtp-brevo.com", From: "noreply@abakacademy.id", FromName: "Abak Academy"})
+	if pb.headerFrom != "Abak Academy <noreply@abakacademy.id>" {
+		t.Errorf("headerFrom: got %q, want FromName paired with the bare From", pb.headerFrom)
+	}
+
+	// explicit From with its own display name overrides FromName
 	po := NewSMTPProvider(SMTPConfig{Host: "h", Port: "587", Username: "u@x.com", From: "Abak <no-reply@x.com>", FromName: "Ignored"})
 	if po.headerFrom != "Abak <no-reply@x.com>" {
 		t.Errorf("headerFrom: got %q, want the explicit From", po.headerFrom)
@@ -56,6 +62,7 @@ func TestBuildMessage_HasHeadersAndBody(t *testing.T) {
 		"From: from@x.com\r\n",
 		"To: to@y.com\r\n",
 		"Subject: Kode OTP\r\n",
+		"Date: ",
 		"Content-Type: text/plain; charset=\"UTF-8\"\r\n",
 	} {
 		if !strings.Contains(msg, want) {
@@ -150,6 +157,18 @@ func serveFakeSTARTTLS(ln net.Listener, cert tls.Certificate) {
 			}
 			// session terminates when the client finishes verifying the cert
 			return
+		}
+	}
+}
+
+func TestSMTPProvider_EmptyHostFailsInsteadOfSucceeding(t *testing.T) {
+	p := NewSMTPProvider(SMTPConfig{Port: "587"})
+	for name, err := range map[string]error{
+		"SendOTP":   p.SendOTP(context.Background(), "email", "a@b.c", "123456"),
+		"SendEmail": p.SendEmail(context.Background(), "a@b.c", "s", "b"),
+	} {
+		if err == nil || !strings.Contains(err.Error(), "smtp_host is not configured") {
+			t.Errorf("%s with no smtp_host: got %v, want the not-configured error", name, err)
 		}
 	}
 }

@@ -1057,9 +1057,9 @@ func TestOTPSendfail_PerChannelIsolation(t *testing.T) {
 		Role:  RoleStudent, Status: "active", OTPEnabled: true,
 	})
 	svc, mr := newTestService(t, repo)
-	// The user has a phone, so PreferredOTPChannel resolves to WhatsApp —
-	// fail only that channel and leave email healthy.
-	svc.otpProvider = &stubOTPProvider{err: errors.New("gateway down"), failChannel: "whatsapp"}
+	// The user has an email, so PreferredOTPChannel resolves to email even with
+	// a phone on file — fail only that channel and leave whatsapp untouched.
+	svc.otpProvider = &stubOTPProvider{err: errors.New("gateway down"), failChannel: "email"}
 
 	for i := 0; i < 3; i++ {
 		if i > 0 {
@@ -1068,23 +1068,23 @@ func TestOTPSendfail_PerChannelIsolation(t *testing.T) {
 		// The register/login path swallows the send failure, so drive the
 		// failures through the resend endpoint which surfaces them.
 		if err := resendFor(ctx, svc, "user@example.com", "1.1.1.1"); !errors.Is(err, ErrEmailDeliveryFailed) {
-			t.Fatalf("whatsapp failure %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
+			t.Fatalf("email failure %d: want ErrEmailDeliveryFailed, got %v", i+1, err)
 		}
 	}
-	if !mr.Exists(otpSendfailKey("u1", "whatsapp")) {
-		t.Error("whatsapp sendfail counter should exist after 3 failures")
+	if !mr.Exists(otpSendfailKey("u1", "email")) {
+		t.Error("email sendfail counter should exist after 3 failures")
 	}
-	if mr.Exists(otpSendfailKey("u1", "email")) {
-		t.Error("email channel must not be flagged by whatsapp failures")
+	if mr.Exists(otpSendfailKey("u1", "whatsapp")) {
+		t.Error("whatsapp channel must not be flagged by email failures")
 	}
-	// Step past the pause the last failure armed. The email channel's claim
-	// then passes while whatsapp stays gated.
+	// Step past the pause the last failure armed. The whatsapp channel's claim
+	// then passes while email stays gated.
 	mr.FastForward(otpSendfailPause + time.Second)
-	if err := svc.claimOTPSend(ctx, loginOTPSendKeys("u1", "email", "1.1.1.1")); err != nil {
-		t.Errorf("email claim after whatsapp sendfail: want nil, got %v", err)
+	if err := svc.claimOTPSend(ctx, loginOTPSendKeys("u1", "whatsapp", "1.1.1.1")); err != nil {
+		t.Errorf("whatsapp claim after email sendfail: want nil, got %v", err)
 	}
-	if err := svc.claimOTPSend(ctx, loginOTPSendKeys("u1", "whatsapp", "1.1.1.1")); !errors.Is(err, ErrOTPRateLimit) {
-		t.Errorf("whatsapp claim: want ErrOTPRateLimit, got %v", err)
+	if err := svc.claimOTPSend(ctx, loginOTPSendKeys("u1", "email", "1.1.1.1")); !errors.Is(err, ErrOTPRateLimit) {
+		t.Errorf("email claim: want ErrOTPRateLimit, got %v", err)
 	}
 }
 

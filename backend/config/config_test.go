@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 func writeYAML(t *testing.T, dir, name, content string) {
@@ -32,7 +34,6 @@ access_token_ttl: "30m"
 refresh_token_ttl: "720h"
 otp_ttl: "10m"
 google_client_id: "gcid-test"
-fazpass_base_url: "https://fazpass.test"
 midtrans_env: "sandbox"
 object_storage_endpoint: "minio:9000"
 object_storage_public_endpoint: "minio.public:9000"
@@ -49,8 +50,6 @@ otp_secret: "otp-secret-val"
 object_storage_access_key: "minio-ak"
 object_storage_secret_key: "minio-sk"
 redis_password: "redis-pw"
-fazpass_merchant_key: "fz-mk"
-fazpass_api_key: "fz-ak"
 midtrans_server_key: "mt-sk"
 midtrans_client_key: "mt-ck"
 `)
@@ -77,9 +76,6 @@ midtrans_client_key: "mt-ck"
 	}
 	if cfg.RedisPassword != "redis-pw" {
 		t.Errorf("RedisPassword: got %q", cfg.RedisPassword)
-	}
-	if cfg.FazpassMerchantKey != "fz-mk" {
-		t.Errorf("FazpassMerchantKey: got %q", cfg.FazpassMerchantKey)
 	}
 	if cfg.ObjectStorageUseSSL != true {
 		t.Errorf("ObjectStorageUseSSL: got %v want true", cfg.ObjectStorageUseSSL)
@@ -109,7 +105,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -146,7 +141,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -177,7 +171,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -219,7 +212,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -266,12 +258,7 @@ access_token_ttl: "5m"
 refresh_token_ttl: "24h"
 otp_ttl: "3m"
 google_client_id: "gcid"
-fazpass_base_url: "https://fazpass.example.com"
 midtrans_env: "production"
-smtp_host: "smtp.gmail.com"
-smtp_port: "587"
-smtp_from: "no-reply@example.com"
-smtp_from_name: "Abak Academy"
 object_storage_endpoint: "s3.example.com"
 object_storage_public_endpoint: "s3-public.example.com"
 object_storage_use_ssl: true
@@ -288,11 +275,14 @@ otp_secret: "otp-secret-789"
 object_storage_access_key: "AK123"
 object_storage_secret_key: "SK456"
 redis_password: "redis-pass"
-fazpass_merchant_key: "fz-merchant"
-fazpass_api_key: "fz-api"
 midtrans_server_key: "mt-server"
 midtrans_client_key: "mt-client"
 biteship_api_key: "bs-key-xyz"
+smtp_host: "smtp.gmail.com"
+smtp_port: "587"
+smtp_from: "no-reply@example.com"
+smtp_from_name: "Abak Academy"
+smtp_quota_day: 300
 smtp_username: "smtp-user"
 smtp_password: "smtp-pass"
 `)
@@ -316,9 +306,6 @@ smtp_password: "smtp-pass"
 		{"ConfigEncryptionKey", cfg.ConfigEncryptionKey, "enc-key-456"},
 		{"OTPSecret", cfg.OTPSecret, "otp-secret-789"},
 		{"GoogleClientID", cfg.GoogleClientID, "gcid"},
-		{"FazpassMerchantKey", cfg.FazpassMerchantKey, "fz-merchant"},
-		{"FazpassAPIKey", cfg.FazpassAPIKey, "fz-api"},
-		{"FazpassBaseURL", cfg.FazpassBaseURL, "https://fazpass.example.com"},
 		{"MidtransServerKey", cfg.MidtransServerKey, "mt-server"},
 		{"MidtransClientKey", cfg.MidtransClientKey, "mt-client"},
 		{"BiteshipAPIKey", cfg.BiteshipAPIKey, "bs-key-xyz"},
@@ -337,6 +324,9 @@ smtp_password: "smtp-pass"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "my-bucket"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "my-private-bucket"},
 		{"GotenbergURL", cfg.GotenbergURL, "http://gotenberg:3000"},
+	}
+	if cfg.SMTPQuotaDay != 300 {
+		t.Errorf("SMTPQuotaDay: got %d want 300", cfg.SMTPQuotaDay)
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -377,7 +367,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -419,7 +408,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -462,7 +450,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -504,7 +491,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -547,7 +533,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -609,8 +594,6 @@ object_storage_secret_key: "sk"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
-		{"SMTPHost", cfg.SMTPHost, "smtp.hostinger.com"},
-		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
 	}
 	for _, c := range checks {
@@ -640,7 +623,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -675,7 +657,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -709,7 +690,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -753,7 +733,6 @@ access_token_ttl: "15m"
 refresh_token_ttl: "168h"
 otp_ttl: "5m"
 google_client_id: ""
-fazpass_base_url: ""
 midtrans_env: ""
 object_storage_endpoint: ""
 object_storage_public_endpoint: ""
@@ -776,5 +755,25 @@ object_storage_secret_key: "minio-sk"
 	}
 	if !contains(err.Error(), "otp_secret") {
 		t.Errorf("error should name otp_secret, got: %v", err)
+	}
+}
+
+// fileConfig silently drops unknown keys, so an SMTP key left in an image-baked
+// config.yaml would load fine and never take effect; read the files raw instead.
+func TestCommittedConfigYAMLHasNoSMTPRelayKeys(t *testing.T) {
+	for _, env := range []string{"prod", "staging"} {
+		data, err := os.ReadFile(filepath.Join("env", env, "config.yaml"))
+		if err != nil {
+			t.Fatalf("read %s config.yaml: %v", env, err)
+		}
+		var keys map[string]any
+		if err := yaml.Unmarshal(data, &keys); err != nil {
+			t.Fatalf("parse %s config.yaml: %v", env, err)
+		}
+		for _, k := range []string{"smtp_host", "smtp_port", "smtp_from", "smtp_from_name", "smtp_quota_day", "smtp_username", "smtp_password"} {
+			if _, ok := keys[k]; ok {
+				t.Errorf("%s/config.yaml sets %s; SMTP relay settings belong in secrets.yaml", env, k)
+			}
+		}
 	}
 }

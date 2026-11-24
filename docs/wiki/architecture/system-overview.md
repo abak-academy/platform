@@ -34,7 +34,7 @@ Strict `handler → service → repository` chain; `model` is the shared struct 
 | Service | `backend/internal/service` | Business rules, orchestration, RBAC capability table (`rbac.go`), ports (`ports_payment.go`, `ports_logistics.go`, `ports_notify.go`, `ports_storage.go`) |
 | Repository | `backend/internal/repository` | SQL persistence via `pgxpool`, cursor-based pagination (`cursor.go`) |
 | Model | `backend/internal/model` | Shared domain structs (`Exam`, `Order`, `Product`, `School`, `User`, `PromoCode`, …) |
-| Adapter | `backend/internal/adapter` | Biteship, Midtrans, SMTP, Fazpass (OTP fallback) |
+| Adapter | `backend/internal/adapter` | Biteship, Midtrans, SMTP |
 
 All three layers are flat packages (no per-domain subpackages) — a file per feature (e.g. `service/exam_grading.go`, `repository/exam.go`, `handler/exam.go`).
 

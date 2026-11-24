@@ -7,7 +7,7 @@ import (
 )
 
 // Notification ports the service depends on. Real implementations live in
-// internal/adapter (Fazpass, SMTP); the Noop variants let the app run with no
+// internal/adapter (SMTP); the Noop variants let the app run with no
 // provider configured.
 
 type OTPProvider interface {
@@ -23,14 +23,12 @@ type NotifClient interface {
 }
 
 // PreferredOTPChannel returns the best channel+destination given available contact info.
+// Email wins: SMTP is the only OTP gateway, so a phone-first pick fails every send.
 func PreferredOTPChannel(phone, email string) (channel, destination string) {
-	if phone != "" {
+	if email == "" && phone != "" {
 		return "whatsapp", phone
 	}
-	if email != "" {
-		return "email", email
-	}
-	return "email", ""
+	return "email", email
 }
 
 type NoopOTPProvider struct{}

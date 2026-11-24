@@ -55,7 +55,7 @@ case errors.Is(err, service.ErrSchoolDeactivated):
 
 // adapter: wrap the provider failure; the service sees an error, not an HTTP body.
 if resp.StatusCode >= 300 {
-	return fmt.Errorf("fazpass: unexpected status %d", resp.StatusCode)
+	return fmt.Errorf("provider: unexpected status %d", resp.StatusCode)
 }
 ```
 
@@ -98,7 +98,7 @@ When a struct becomes reused or starts representing stored business state, move 
 Interfaces only at a real seam: an external provider, or a dependency a unit test must replace. Keep them narrow and owned by the service that consumes them. No abstractions for hypothetical variants.
 
 ```go
-// service/ports_notify.go: consumer-owned, one method, implemented by adapter.FazpassProvider
+// service/ports_notify.go: consumer-owned, one method, implemented by adapter.SMTPProvider
 type OTPProvider interface {
 	SendOTP(ctx context.Context, channel, to, code string) error
 }

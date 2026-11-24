@@ -1,0 +1,14 @@
+Abak Academy
+
+Kode verifikasi kamu: {{CODE}}
+
+Masukkan kode ini di halaman masuk atau pendaftaran Abak Academy.
+Berlaku {{TTL}}.
+
+Jangan bagikan kode ini ke siapa pun, termasuk yang mengaku dari Abak Academy.
+
+Kalau kamu tidak meminta kode ini, abaikan email ini.
+
+--
+Abak Academy · hub.abakacademy.id
+Email ini dikirim otomatis. Mohon tidak membalas email ini.
