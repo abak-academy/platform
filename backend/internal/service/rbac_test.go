@@ -106,6 +106,33 @@ func TestHasCapability_SuperAdminSchoolsWrite(t *testing.T) {
 	}
 }
 
+// TestHasCapability_SchoolsCreate pins the Feature 2 grant: admin_exam/admin_store
+// may create and bulk-import schools but not update or deactivate them, and
+// admin_school's capabilities are untouched.
+func TestHasCapability_SchoolsCreate(t *testing.T) {
+	tests := []struct {
+		role       string
+		wantCreate bool
+		wantWrite  bool
+	}{
+		{RoleAdminExam, true, false},
+		{RoleAdminStore, true, false},
+		{RoleAdminSchool, false, false},
+		{RoleStudent, false, false},
+		{RoleSuperAdmin, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.role, func(t *testing.T) {
+			if got := HasCapability(tt.role, "schools:create"); got != tt.wantCreate {
+				t.Errorf("HasCapability(%q, schools:create) = %v, want %v", tt.role, got, tt.wantCreate)
+			}
+			if got := HasCapability(tt.role, "schools:write"); got != tt.wantWrite {
+				t.Errorf("HasCapability(%q, schools:write) = %v, want %v", tt.role, got, tt.wantWrite)
+			}
+		})
+	}
+}
+
 func TestCapabilities_SuperAdminCount(t *testing.T) {
 	caps := Capabilities(RoleSuperAdmin)
 	if len(caps) < 2 {
@@ -150,6 +177,7 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"exam-grants:write",
 		"product-relations:write",
 		"schools:read",
+		"schools:create",
 		"exam-preview:read",
 	}
 	got := Capabilities(RoleAdminExam)

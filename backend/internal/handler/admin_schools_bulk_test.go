@@ -25,15 +25,16 @@ import (
 // schoolBulkKeyRe pins spec §D-5: no school segment in the key.
 var schoolBulkKeyRe = regexp.MustCompile(`^school-bulk/[0-9a-f-]{36}-`)
 
-// newSchoolBulkRouter mirrors routes.go's adminSchools group — the
-// RBACMiddleware("schools:write") guard is the whole point of NFR-4, so these
-// tests drive the real router rather than calling the handler directly.
+// newSchoolBulkRouter mirrors routes.go's adminSchoolsCreate group — the
+// RBACMiddleware("schools:create") guard is the whole point of NFR-4 (and, per
+// Feature 2, lets admin_exam/admin_store through too), so these tests drive
+// the real router rather than calling the handler directly.
 func newSchoolBulkRouter(t *testing.T, h *handler.Handler) *echo.Echo {
 	t.Helper()
 	e := echo.New()
 	e.HideBanner = true
 	g := e.Group("/admin/schools")
-	g.Use(handler.RBACMiddleware("schools:write"))
+	g.Use(handler.RBACMiddleware("schools:create"))
 	g.POST("/bulk/presign", h.AdminPresignSchoolBulkUpload)
 	g.POST("/bulk", h.AdminBulkImportSchools)
 	return e
@@ -90,13 +91,12 @@ func TestAdminPresignSchoolBulkUpload_SuperAdmin_200_KeyHasNoSchoolSegment(t *te
 
 // TestAdminSchoolBulkRoutes_NonSuperAdmin_403 is the NFR-4 guard: an
 // admin_school administers students within a school and must not be able to
-// create schools in bulk.
+// create schools in bulk. (admin_exam/admin_store now hold schools:create per
+// Feature 2 and are covered separately below.)
 func TestAdminSchoolBulkRoutes_NonSuperAdmin_403(t *testing.T) {
 	schoolID := "11111111-1111-1111-1111-111111111111"
 	roles := map[string]*infra.Claims{
 		"admin_school": {Sub: "as1", Role: "admin_school", SchoolID: &schoolID},
-		"admin_exam":   {Sub: "ae1", Role: "admin_exam"},
-		"admin_store":  {Sub: "at1", Role: "admin_store"},
 		"student":      {Sub: "st1", Role: "student"},
 	}
 	targets := []struct {
@@ -122,6 +122,43 @@ func TestAdminSchoolBulkRoutes_NonSuperAdmin_403(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestAdminSchoolBulkRoutes_AdminExamAdminStore_PassRBAC proves Feature 2's
+// schools:create grant: admin_exam/admin_store reach the bulk handlers instead
+// of being rejected by RBACMiddleware. Presign runs end-to-end (200); enqueue
+// is driven only up to the handler's own validation (400 for a missing
+// file_key), since the RBAC outcome — not the enqueue pipeline — is what this
+// test pins.
+func TestAdminSchoolBulkRoutes_AdminExamAdminStore_PassRBAC(t *testing.T) {
+	for _, role := range []string{"admin_exam", "admin_store"} {
+		t.Run(role+"/presign_200", func(t *testing.T) {
+			e := newSchoolBulkRouter(t, newSchoolBulkPresignHandler(t))
+			e.Use(claimsInjector(&infra.Claims{Sub: "u1", Role: role}))
+
+			req := httptest.NewRequest(http.MethodPost, "/admin/schools/bulk/presign?filename=schools.csv&content_type=text/csv", nil)
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("want 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+
+		t.Run(role+"/enqueue_past_rbac_400", func(t *testing.T) {
+			e := newSchoolBulkRouter(t, newSchoolBulkPresignHandler(t))
+			e.Use(claimsInjector(&infra.Claims{Sub: "u1", Role: role}))
+
+			req := httptest.NewRequest(http.MethodPost, "/admin/schools/bulk", strings.NewReader(`{}`))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			e.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("want 400 (past RBAC, missing file_key), got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
 	}
 }
 
