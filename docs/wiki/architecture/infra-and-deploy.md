@@ -81,7 +81,7 @@ Config is loaded per environment directory under `backend/config/env/<env>/` (`b
 | `staging/config.yaml` | yes (no secrets file committed) | baked into `deploy/images/Dockerfile.api`/`.worker`; no compose manifest currently deploys it |
 | `prod/config.yaml` | yes (no secrets file committed) | baked into the same images; secrets mounted at runtime from `deploy/secrets/prod-secrets.yaml` (gitignored, hand-placed on the box) |
 
-Selected differences (`prod/config.yaml` vs `staging/config.yaml`): `midtrans_env` (`production` vs `sandbox`), `cors_origins` (`hub.abakacademy.id` vs `stg.abakacademy.id`), separate Google OAuth client IDs, separate SMTP relays, separate GCS bucket names (`abak-academy-media` vs `abak_std`). Both set `db_max_conns: 10` (comment: 10 api + 10 worker = 20 clients against PgBouncer's `default_pool_size=20` on `vm-db`) and `enforce_school_npsn_registration: false`.
+Selected differences (`prod/config.yaml` vs `staging/config.yaml`): `midtrans_env` (`production` vs `sandbox`), `cors_origins` (`hub.abakacademy.id` vs `stg.abakacademy.id`), separate Google OAuth client IDs, separate GCS bucket names (`abak-academy-media` vs `abak_std`). Both set `db_max_conns: 10` (comment: 10 api + 10 worker = 20 clients against PgBouncer's `default_pool_size=20` on `vm-db`) and `enforce_school_npsn_registration: false`. SMTP (`smtp_host`, `smtp_port`, `smtp_from`, `smtp_from_name`, credentials) lives entirely in `secrets.yaml`, so the relay can change without a new image.
 
 `api`/`worker` containers mount their secrets file read-only (`deploy/compose/production.yml`); `APP_ENV` selects the env directory at runtime (`environment: APP_ENV: prod`).
 

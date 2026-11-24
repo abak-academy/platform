@@ -268,10 +268,6 @@ otp_ttl: "3m"
 google_client_id: "gcid"
 fazpass_base_url: "https://fazpass.example.com"
 midtrans_env: "production"
-smtp_host: "smtp.gmail.com"
-smtp_port: "587"
-smtp_from: "no-reply@example.com"
-smtp_from_name: "Abak Academy"
 object_storage_endpoint: "s3.example.com"
 object_storage_public_endpoint: "s3-public.example.com"
 object_storage_use_ssl: true
@@ -293,6 +289,10 @@ fazpass_api_key: "fz-api"
 midtrans_server_key: "mt-server"
 midtrans_client_key: "mt-client"
 biteship_api_key: "bs-key-xyz"
+smtp_host: "smtp.gmail.com"
+smtp_port: "587"
+smtp_from: "no-reply@example.com"
+smtp_from_name: "Abak Academy"
 smtp_username: "smtp-user"
 smtp_password: "smtp-pass"
 `)
@@ -609,8 +609,7 @@ object_storage_secret_key: "sk"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
-		{"SMTPHost", cfg.SMTPHost, "smtp-relay.brevo.com"},
-		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
+		{"SMTPHost", cfg.SMTPHost, ""},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
 	}
 	for _, c := range checks {
