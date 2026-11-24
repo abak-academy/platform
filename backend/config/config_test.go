@@ -609,7 +609,7 @@ object_storage_secret_key: "sk"
 		{"ObjectStorageBucketName", cfg.ObjectStorageBucketName, "abak-academy-media"},
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
-		{"SMTPHost", cfg.SMTPHost, "smtp.hostinger.com"},
+		{"SMTPHost", cfg.SMTPHost, "smtp-relay.brevo.com"},
 		{"SMTPFromName", cfg.SMTPFromName, "Abak Academy"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
 	}
