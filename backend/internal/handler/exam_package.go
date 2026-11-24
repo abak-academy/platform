@@ -54,6 +54,69 @@ func (h *Handler) AdminListExams(c echo.Context) error {
 	})
 }
 
+// AdminListExamRegistrantDiversity returns, per exam matching the same q/
+// status/cursor filter as AdminListExams, the registrant count and distinct
+// province/city/school counts scoped to a required province_id/city_id/
+// school_id (Feature 1/Opsi A). Unlike AdminListExams's eager, unconditional
+// registration_count, this always runs a COUNT(DISTINCT …) per exam, so at
+// least one of the three filters is required rather than left to default to
+// an unscoped (and expensive) computation on every list load.
+func (h *Handler) AdminListExamRegistrantDiversity(c echo.Context) error {
+	provinceID := c.QueryParam("province_id")
+	cityID := c.QueryParam("city_id")
+	schoolID := c.QueryParam("school_id")
+	if provinceID == "" && cityID == "" && schoolID == "" {
+		return badRequest(c, "at least one of province_id, city_id, or school_id is required")
+	}
+	if schoolID != "" {
+		if _, err := uuid.Parse(schoolID); err != nil {
+			return badRequest(c, "invalid school_id")
+		}
+	}
+	limit := 20
+	if l := c.QueryParam("limit"); l != "" {
+		if n, err := strconv.Atoi(l); err == nil && n > 0 {
+			limit = n
+		}
+	}
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var schoolFilter *string
+	if claims.Role == "admin_school" {
+		if claims.SchoolID == nil {
+			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+		}
+		schoolFilter = claims.SchoolID
+	}
+	filter := repository.ExamRegistrantDiversityFilter{
+		Cursor:       c.QueryParam("cursor"),
+		Limit:        limit,
+		Q:            c.QueryParam("q"),
+		Status:       c.QueryParam("status"),
+		SchoolFilter: schoolFilter,
+	}
+	if provinceID != "" {
+		filter.ProvinceID = &provinceID
+	}
+	if cityID != "" {
+		filter.CityID = &cityID
+	}
+	if schoolID != "" {
+		filter.SchoolID = &schoolID
+	}
+
+	items, nextCursor, err := h.svc.ListExamRegistrantDiversity(c.Request().Context(), filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":        items,
+		"next_cursor": nextCursor,
+	})
+}
+
 func (h *Handler) AdminCreateExam(c echo.Context) error {
 	var req model.Exam
 	if err := c.Bind(&req); err != nil {
@@ -137,6 +200,9 @@ func (h *Handler) AdminListExamRegistrations(c echo.Context) error {
 	} else if filter.Cursor != "" {
 		filter.Limit = 20
 	}
+	if err := bindExamRosterDiversityFilter(c, &filter); err != nil {
+		return err
+	}
 	rows, nextCursor, err := h.svc.AdminListExamRoster(c.Request().Context(), id, schoolFilter, filter)
 	if err != nil {
 		return mapServiceError(c, err)
@@ -163,11 +229,35 @@ func (h *Handler) AdminExamRegistrationCounts(c echo.Context) error {
 		}
 		schoolFilter = claims.SchoolID
 	}
-	counts, err := h.svc.AdminExamRegistrationCounts(c.Request().Context(), id, schoolFilter)
+	var filter model.ExamRosterFilter
+	if err := bindExamRosterDiversityFilter(c, &filter); err != nil {
+		return err
+	}
+	counts, err := h.svc.AdminExamRegistrationCounts(c.Request().Context(), id, schoolFilter, filter)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, counts)
+}
+
+// bindExamRosterDiversityFilter parses the shared province_id/city_id/
+// school_id diversity-narrowing query params (Feature 1/Opsi B) into filter,
+// validating school_id is a well-formed id. province_id/city_id aren't
+// UUIDs (province/city ids are plain text codes), so they're taken as-is.
+func bindExamRosterDiversityFilter(c echo.Context, filter *model.ExamRosterFilter) error {
+	if raw := c.QueryParam("province_id"); raw != "" {
+		filter.ProvinceID = &raw
+	}
+	if raw := c.QueryParam("city_id"); raw != "" {
+		filter.CityID = &raw
+	}
+	if raw := c.QueryParam("school_id"); raw != "" {
+		if _, err := uuid.Parse(raw); err != nil {
+			return badRequest(c, "invalid school_id")
+		}
+		filter.SchoolID = &raw
+	}
+	return nil
 }
 
 func (h *Handler) AdminExportExamRegistrations(c echo.Context) error {

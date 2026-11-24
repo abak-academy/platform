@@ -1183,6 +1183,23 @@ type ExamFilter struct {
 	SchoolFilter *string
 }
 
+// ExamRegistrantDiversityFilter mirrors ExamFilter's Q/Cursor/Limit/Status
+// exam-list filter and SchoolFilter tenant scoping, plus the
+// ProvinceID/CityID/SchoolID registrant-diversity narrowing (Feature 1/Opsi
+// A) that ListExamRegistrantDiversity's registration/diversity counts are
+// scoped by. The handler requires at least one of ProvinceID/CityID/SchoolID
+// to be set, so the plain exam list (ListExams) never pays for this.
+type ExamRegistrantDiversityFilter struct {
+	Cursor       string
+	Limit        int
+	Q            string
+	Status       string
+	SchoolFilter *string
+	ProvinceID   *string
+	CityID       *string
+	SchoolID     *string
+}
+
 // decodeCardNotes turns the card_notes jsonb column into []string. pgx would
 // otherwise treat a []string destination as a Postgres text[], not jsonb.
 func decodeCardNotes(raw []byte, dst *[]string) error {
@@ -1443,6 +1460,135 @@ func (r *Repository) ListExams(ctx context.Context, filter ExamFilter) ([]model.
 		items = items[:filter.Limit]
 		last := items[len(items)-1]
 		nextCursor = last.CreatedAt.Format(time.RFC3339Nano) + "," + last.ID.String()
+	}
+
+	return items, nextCursor, nil
+}
+
+// ListExamRegistrantDiversity returns, for the exams matching filter's
+// Q/Status/Cursor pagination (the same exam-list filter ListExams uses), each
+// exam's registrant count and distinct province/city/school counts, scoped
+// to filter's ProvinceID/CityID/SchoolID (Feature 1/Opsi A). Unlike ListExams
+// this always runs a COUNT(DISTINCT …) per row, which is why the handler
+// requires at least one of ProvinceID/CityID/SchoolID rather than exposing
+// this on the always-on exam list.
+func (r *Repository) ListExamRegistrantDiversity(ctx context.Context, filter ExamRegistrantDiversityFilter) ([]model.ExamRegistrantDiversityItem, string, error) {
+	if filter.Limit == 0 {
+		filter.Limit = 20
+	}
+	var cursorID uuid.UUID
+	var cursorCreatedAt time.Time
+	if filter.Cursor != "" {
+		createdAtRaw, idRaw, ok := strings.Cut(filter.Cursor, ",")
+		if !ok {
+			return nil, "", ErrInvalidCursor
+		}
+		var err error
+		cursorCreatedAt, err = time.Parse(time.RFC3339Nano, createdAtRaw)
+		if err != nil {
+			return nil, "", ErrInvalidCursor
+		}
+		cursorID, err = uuid.Parse(idRaw)
+		if err != nil {
+			return nil, "", ErrInvalidCursor
+		}
+	}
+
+	query := `SELECT e.id, e.created_at,
+		(
+			SELECT COUNT(*) FROM exam_registration r
+			JOIN users u ON u.id = r.student_id
+			LEFT JOIN school sch ON sch.id = u.school_id
+			WHERE r.exam_id = e.id AND r.status <> 'revoked'
+				AND ($1::uuid IS NULL OR u.school_id = $1)
+				AND ($2::text IS NULL OR sch.provinsi_id = $2)
+				AND ($3::text IS NULL OR sch.kota_id = $3)
+				AND ($4::uuid IS NULL OR u.school_id = $4)
+		) AS registration_count,
+		(
+			SELECT COUNT(DISTINCT sch.provinsi_id) FROM exam_registration r
+			JOIN users u ON u.id = r.student_id
+			LEFT JOIN school sch ON sch.id = u.school_id
+			WHERE r.exam_id = e.id AND r.status <> 'revoked'
+				AND ($1::uuid IS NULL OR u.school_id = $1)
+				AND ($2::text IS NULL OR sch.provinsi_id = $2)
+				AND ($3::text IS NULL OR sch.kota_id = $3)
+				AND ($4::uuid IS NULL OR u.school_id = $4)
+		) AS province_count,
+		(
+			SELECT COUNT(DISTINCT sch.kota_id) FROM exam_registration r
+			JOIN users u ON u.id = r.student_id
+			LEFT JOIN school sch ON sch.id = u.school_id
+			WHERE r.exam_id = e.id AND r.status <> 'revoked'
+				AND ($1::uuid IS NULL OR u.school_id = $1)
+				AND ($2::text IS NULL OR sch.provinsi_id = $2)
+				AND ($3::text IS NULL OR sch.kota_id = $3)
+				AND ($4::uuid IS NULL OR u.school_id = $4)
+		) AS city_count,
+		(
+			SELECT COUNT(DISTINCT u.school_id) FROM exam_registration r
+			JOIN users u ON u.id = r.student_id
+			LEFT JOIN school sch ON sch.id = u.school_id
+			WHERE r.exam_id = e.id AND r.status <> 'revoked'
+				AND ($1::uuid IS NULL OR u.school_id = $1)
+				AND ($2::text IS NULL OR sch.provinsi_id = $2)
+				AND ($3::text IS NULL OR sch.kota_id = $3)
+				AND ($4::uuid IS NULL OR u.school_id = $4)
+		) AS school_count
+	FROM exam e
+	WHERE 1=1`
+	args := []interface{}{filter.SchoolFilter, filter.ProvinceID, filter.CityID, filter.SchoolID}
+	argIdx := 5
+
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND e.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
+		argIdx++
+	}
+	if filter.Status != "" {
+		query += fmt.Sprintf(` AND e.status = $%d`, argIdx)
+		args = append(args, filter.Status)
+		argIdx++
+	}
+	if filter.Cursor != "" {
+		query += fmt.Sprintf(` AND (e.created_at < $%d OR (e.created_at = $%d AND e.id > $%d))`, argIdx, argIdx, argIdx+1)
+		args = append(args, cursorCreatedAt, cursorID)
+		argIdx += 2
+	}
+
+	query += ` ORDER BY e.created_at DESC, e.id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
+	args = append(args, filter.Limit+1)
+
+	rows, err := r.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, "", err
+	}
+	defer rows.Close()
+
+	var items []model.ExamRegistrantDiversityItem
+	var createdAts []time.Time
+	for rows.Next() {
+		var item model.ExamRegistrantDiversityItem
+		var createdAt time.Time
+		if err := rows.Scan(&item.ExamID, &createdAt, &item.RegistrationCount,
+			&item.ProvinceCount, &item.CityCount, &item.SchoolCount); err != nil {
+			return nil, "", err
+		}
+		items = append(items, item)
+		createdAts = append(createdAts, createdAt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, "", err
+	}
+
+	var nextCursor string
+	if len(items) > filter.Limit {
+		items = items[:filter.Limit]
+		createdAts = createdAts[:filter.Limit]
+		nextCursor = createdAts[len(createdAts)-1].Format(time.RFC3339Nano) + "," + items[len(items)-1].ExamID.String()
+	}
+	if items == nil {
+		items = []model.ExamRegistrantDiversityItem{}
 	}
 
 	return items, nextCursor, nil
@@ -2074,6 +2220,9 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 			)
 			AND ($9::text = '' OR u.name ILIKE '%' || $9::text || '%'
 				OR COALESCE(u.username, '') ILIKE '%' || $9::text || '%')
+			AND ($10::text IS NULL OR sc.provinsi_id = $10)
+			AND ($11::text IS NULL OR sc.kota_id = $11)
+			AND ($12::uuid IS NULL OR u.school_id = $12)
 		ORDER BY
 			CASE WHEN $7 = 'asc' THEN reg.participant_number END ASC NULLS LAST,
 			CASE WHEN $7 = 'desc' THEN reg.participant_number END DESC NULLS LAST,
@@ -2081,6 +2230,7 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 			CASE WHEN $7 = 'desc' THEN reg.id END DESC
 		LIMIT NULLIF($8, 0)`,
 		examID, schoolFilter, filter.Cursor != "", cursorIsNull, cursorNumber, cursorID, sortDirection, limit, filter.Q,
+		filter.ProvinceID, filter.CityID, filter.SchoolID,
 	)
 	if err != nil {
 		return nil, "", err
@@ -2118,20 +2268,32 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 
 // CountExamRegistrationsByStatus aggregates an exam's registrations by status
 // plus the total, scoped like ListExamRoster (schoolFilter non-nil constrains
-// rows to that school's students).
-func (r *Repository) CountExamRegistrationsByStatus(ctx context.Context, examID uuid.UUID, schoolFilter *string) (model.ExamRegistrationCounts, error) {
+// rows to that school's students). filter's ProvinceID/CityID/SchoolID narrow
+// both the status counts and the ProvinceCount/CityCount/SchoolCount registrant
+// diversity numbers to the same province/city/school, so the stat cards stay
+// consistent with a filtered roster; filter's other fields (Q/Cursor/Sort/
+// Limit) are ignored here.
+func (r *Repository) CountExamRegistrationsByStatus(ctx context.Context, examID uuid.UUID, schoolFilter *string, filter model.ExamRosterFilter) (model.ExamRegistrationCounts, error) {
 	var counts model.ExamRegistrationCounts
 	err := r.pool.QueryRow(ctx,
 		`SELECT COUNT(*),
 			COUNT(*) FILTER (WHERE reg.status = 'registered'),
 			COUNT(*) FILTER (WHERE reg.status = 'checked_in'),
 			COUNT(*) FILTER (WHERE reg.status = 'submitted'),
-			COUNT(*) FILTER (WHERE reg.status = 'revoked')
+			COUNT(*) FILTER (WHERE reg.status = 'revoked'),
+			COUNT(DISTINCT sch.provinsi_id),
+			COUNT(DISTINCT sch.kota_id),
+			COUNT(DISTINCT u.school_id)
 		FROM exam_registration reg
 		JOIN users u ON u.id = reg.student_id
-		WHERE reg.exam_id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)`,
-		examID, schoolFilter,
-	).Scan(&counts.Total, &counts.Registered, &counts.CheckedIn, &counts.Submitted, &counts.Revoked)
+		LEFT JOIN school sch ON sch.id = u.school_id
+		WHERE reg.exam_id = $1 AND ($2::uuid IS NULL OR u.school_id = $2)
+			AND ($3::text IS NULL OR sch.provinsi_id = $3)
+			AND ($4::text IS NULL OR sch.kota_id = $4)
+			AND ($5::uuid IS NULL OR u.school_id = $5)`,
+		examID, schoolFilter, filter.ProvinceID, filter.CityID, filter.SchoolID,
+	).Scan(&counts.Total, &counts.Registered, &counts.CheckedIn, &counts.Submitted, &counts.Revoked,
+		&counts.ProvinceCount, &counts.CityCount, &counts.SchoolCount)
 	if err != nil {
 		return model.ExamRegistrationCounts{}, err
 	}
