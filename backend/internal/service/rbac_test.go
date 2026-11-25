@@ -218,7 +218,7 @@ func TestExamModuleCapabilities(t *testing.T) {
 	}{
 		{RoleStudent, false, false, false, false},
 		{RoleAdminExam, true, false, true, true},
-		{RoleAdminStore, false, false, false, false},
+		{RoleAdminStore, false, false, false, true},
 		{RoleAdminSchool, false, false, false, false},
 		{RoleSuperAdmin, true, true, true, true},
 	}

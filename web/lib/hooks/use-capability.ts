@@ -10,7 +10,7 @@ import type { UserRole } from "@/lib/nav-config";
 const ROLE_CAPABILITIES: Record<string, string[]> = {
   student: [],
   admin_exam: ["questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "students:*", "student-passwords:write", "student-scope:all", "results-answers:read", "results-workspace:read", "exam-grants:write", "product-relations:write", "schools:read", "schools:create", "exam-preview:read"],
-  admin_store: ["products(book|course):write", "sections:*", "orders:*", "promos:*", "notifications:*", "uploads:write", "schools:create"],
+  admin_store: ["products(book|course):write", "sections:*", "orders:*", "promos:*", "notifications:*", "uploads:write", "schools:create", "schools:read"],
   admin_school: ["students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"],
   super_admin: ["*", "schools:write"],
 };

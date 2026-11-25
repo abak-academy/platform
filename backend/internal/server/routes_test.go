@@ -292,7 +292,7 @@ func TestRegisterRoutes_ExamModuleGates(t *testing.T) {
 		{"bulk grant", http.MethodPost, grants + "/bulk", "{}", []string{service.RoleSuperAdmin}},
 		{"bulk revoke presign", http.MethodPost, grants + "/revoke/bulk/presign", "", []string{service.RoleSuperAdmin}},
 		{"bulk revoke", http.MethodPost, grants + "/revoke/bulk", "{}", []string{service.RoleSuperAdmin}},
-		{"list schools", http.MethodGet, "/api/v1/admin/schools?status=bad", "", []string{service.RoleAdminExam, service.RoleSuperAdmin}},
+		{"list schools", http.MethodGet, "/api/v1/admin/schools?status=bad", "", []string{service.RoleAdminExam, service.RoleAdminStore, service.RoleSuperAdmin}},
 		// admin_exam/admin_store hold schools:create (Feature: school self-service) —
 		// they may register schools, but not edit/deactivate them (no schools:write).
 		{"create school", http.MethodPost, "/api/v1/admin/schools", "{bad", []string{service.RoleSuperAdmin, service.RoleAdminExam, service.RoleAdminStore}},
