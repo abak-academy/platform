@@ -182,6 +182,8 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
         side="top"
         align="start"
         sideOffset={8}
+        // The mobile drawer closes on any document Escape; this one belongs to the menu.
+        onEscapeKeyDown={(e) => e.stopPropagation()}
         className="w-(--radix-dropdown-menu-trigger-width) min-w-menu rounded-lg p-2"
       >
         <div className="flex items-center gap-2.5 border-b border-dashed border-line px-2.5 pb-3 pt-2">

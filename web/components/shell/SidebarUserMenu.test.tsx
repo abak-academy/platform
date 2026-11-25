@@ -128,6 +128,22 @@ describe("SidebarUserMenu", () => {
     expect(card).toHaveFocus();
   });
 
+  it("keeps Escape from reaching the drawer behind the menu", async () => {
+    const user = userEvent.setup();
+    const drawerEscape = vi.fn();
+    const onKeyDown = (e: KeyboardEvent) => e.key === "Escape" && drawerEscape();
+    document.addEventListener("keydown", onKeyDown);
+    try {
+      render(<SidebarUserMenu role="super_admin" />);
+      await openMenu(user);
+      await user.keyboard("{Escape}");
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(drawerEscape).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", onKeyDown);
+    }
+  });
+
   it.each(["super_admin", "admin_store", "admin_exam", "admin_school"] as const)(
     "Keluar logs %s out to /admin/login",
     async (role) => {
