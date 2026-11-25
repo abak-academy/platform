@@ -100,6 +100,21 @@ vi.mock("@/lib/i18n", () => ({
         promo_change: "Change",
         promo_remove: "Remove promo",
         cart_shipping_address_changed: "Shipping selection cleared because the address changed",
+        cart_complete_profile_title: "Complete Your Profile to Checkout",
+        cart_complete_profile_subtitle: "Required to register for exam products",
+        cart_complete_profile_warning: "Your profile is incomplete",
+        cart_complete_profile_email_hint: "Editable because it was never set before",
+        cart_complete_profile_required_note: "* Required before continuing to payment",
+        cart_complete_profile_submit: "Save & Continue Checkout",
+        cart_complete_profile_error: "Failed to save data, try again",
+        email_locked: "Contact admin to change email",
+        full_name: "Full name",
+        phone: "Phone",
+        email: "Email",
+        school: "School",
+        grade: "Grade",
+        select_grade: "Select grade",
+        students_field_dob: "Date of Birth",
       };
       return dict[key] || key;
     },
@@ -117,6 +132,31 @@ vi.mock("sonner", () => ({
     error: vi.fn(),
     success: vi.fn(),
   },
+}));
+
+// Same fake-combobox pattern as app/(student)/profile/page.test.tsx — the
+// complete-profile modal reuses the real SchoolPicker, which needs hooks this
+// file's @/lib/hooks/students mock does not stub.
+vi.mock("@/components/SchoolPicker", () => ({
+  SchoolPicker: ({
+    id = "school",
+    value = "",
+    onChange,
+  }: {
+    id?: string;
+    value?: string;
+    onChange: (school: { id: string; name: string } | null) => void;
+  }) => (
+    <button
+      type="button"
+      id={id}
+      role="combobox"
+      aria-label="Asal Sekolah"
+      onClick={() => onChange(value ? null : { id: "school-1", name: "SMA Test" })}
+    >
+      {value ? "SMA Test" : "Cari & pilih sekolah"}
+    </button>
+  ),
 }));
 
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
@@ -145,6 +185,18 @@ const digitalItem: OrderItem = {
   unit_price: 100000,
   qty: 1,
   jumlah: 100000,
+  weight_grams: 0,
+};
+
+const examItem: OrderItem = {
+  id: "i3",
+  order_id: "o1",
+  product_id: "p3",
+  product_type: "exam",
+  name: "Exam Item",
+  unit_price: 75000,
+  qty: 1,
+  jumlah: 75000,
   weight_grams: 0,
 };
 
@@ -1566,6 +1618,121 @@ describe("CartPage with Shipping", () => {
       renderWithQueryClient(<CartPage />);
 
       expect(await screen.findByLabelText("register_referral_label")).toBeInTheDocument();
+    });
+  });
+
+  // Diskusi improvement tambahan, item 1: a student self-purchasing an exam
+  // product with an incomplete profile must complete it on /cart before
+  // checkout — mirrors the backend's hasExam && self-purchase biodata gate.
+  describe("complete-profile gate", () => {
+    const examCart = {
+      id: "o1",
+      student_id: "s1",
+      status: "cart",
+      subtotal: 75000,
+      discount: 0,
+      shipping_cost: 0,
+      total: 75000,
+      items: [examItem],
+    } as Order;
+
+    const completeProfile = {
+      id: "user1",
+      name: "Test User",
+      email: "student@example.com",
+      phone: "081200000000",
+      school_id: "school-1",
+      grade: 12,
+      dob: "2008-01-01",
+    };
+
+    it("shows the gate and blocks payment when an exam item is in the cart and the profile is incomplete", async () => {
+      mockUseCart.mockReturnValue({ data: examCart, isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseProfile.mockReturnValue({
+        data: { id: "user1", name: "Test User" },
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      expect(await screen.findByText("Complete Your Profile to Checkout")).toBeInTheDocument();
+      // Radix marks the rest of the page aria-hidden while the dialog is open
+      // (good — it's actually inert, not just visually disabled), so this
+      // query opts into hidden nodes to still confirm the disabled wiring.
+      expect(screen.getByRole("button", { name: "Bayar", hidden: true })).toBeDisabled();
+    });
+
+    it("does not show the gate once the profile is complete", async () => {
+      mockUseCart.mockReturnValue({ data: examCart, isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseProfile.mockReturnValue({ data: completeProfile, isLoading: false, isError: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Exam Item")).toBeInTheDocument());
+      expect(screen.queryByText("Complete Your Profile to Checkout")).not.toBeInTheDocument();
+    });
+
+    it("does not show the gate for a cart with no exam item, even with an incomplete profile", async () => {
+      mockUseCart.mockReturnValue({
+        data: { id: "o1", student_id: "s1", status: "cart", subtotal: 100000, discount: 0, shipping_cost: 0, total: 100000, items: [digitalItem] } as Order,
+        isLoading: false,
+        isError: false,
+        refetch: vi.fn(),
+      });
+      mockUseProfile.mockReturnValue({
+        data: { id: "user1", name: "Test User" },
+        isLoading: false,
+        isError: false,
+      });
+
+      renderWithQueryClient(<CartPage />);
+
+      await waitFor(() => expect(screen.getByText("Course Item")).toBeInTheDocument());
+      expect(screen.queryByText("Complete Your Profile to Checkout")).not.toBeInTheDocument();
+    });
+
+    it("locks email once it is already set, and submits the missing fields filled in by the student", async () => {
+      const user = userEvent.setup();
+      const mutate = vi.fn();
+      mockUseCart.mockReturnValue({ data: examCart, isLoading: false, isError: false, refetch: vi.fn() });
+      mockUseProfile.mockReturnValue({
+        data: { id: "user1", name: "Test User", email: "already@example.com" },
+        isLoading: false,
+        isError: false,
+      });
+      mockUseUpdateProfile.mockReturnValue({ mutate, isPending: false });
+
+      renderWithQueryClient(<CartPage />);
+
+      await screen.findByText("Complete Your Profile to Checkout");
+      const emailInput = screen.getByLabelText("Email") as HTMLInputElement;
+      expect(emailInput).toBeDisabled();
+
+      await user.type(screen.getByLabelText("Phone"), "081234567890");
+      await user.type(screen.getByLabelText("Date of Birth"), "2008-05-01");
+      fireEvent.click(screen.getByRole("combobox", { name: "Asal Sekolah" }));
+
+      fireEvent.click(screen.getByLabelText("Grade"));
+      fireEvent.click(await screen.findByRole("option", { name: "Grade 12" }));
+
+      const submit = screen.getByRole("button", { name: "Save & Continue Checkout" });
+      await waitFor(() => expect(submit).toBeEnabled());
+      await user.click(submit);
+
+      expect(mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          phone: "081234567890",
+          dob: "2008-05-01",
+          grade: 12,
+          school_id: "school-1",
+        }),
+        expect.anything()
+      );
+      expect(mutate).toHaveBeenCalledWith(
+        expect.not.objectContaining({ email: expect.anything() }),
+        expect.anything()
+      );
     });
   });
 });

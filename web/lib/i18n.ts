@@ -1071,6 +1071,16 @@ export const DICT = {
     cart_total: "Total",
     cart_agreement_title: "Syarat & Ketentuan (wajib)",
     cart_agreement_required: "Centang semua syarat di atas untuk melanjutkan pembayaran.",
+    cart_complete_profile_title: "Lengkapi Profil untuk Checkout",
+    cart_complete_profile_subtitle:
+      "Diperlukan untuk mendaftar produk ujian — data ini jadi data pendaftaran ujianmu.",
+    cart_complete_profile_warning:
+      "Data kamu belum lengkap — isi dulu field bertanda (*) sebelum lanjut ke pembayaran.",
+    cart_complete_profile_email_hint:
+      "Bisa diisi karena belum pernah diisi sebelumnya. Setelah disimpan, email hanya bisa diubah lewat admin.",
+    cart_complete_profile_required_note: "* Wajib diisi sebelum lanjut ke pembayaran.",
+    cart_complete_profile_submit: "Simpan & Lanjut Checkout",
+    cart_complete_profile_error: "Gagal menyimpan data, coba lagi.",
     cart_secure_payment: "Midtrans · pembayaran aman terenkripsi",
     cart_shipping_title: "Alamat Pengiriman",
     cart_check_shipping_cost: "Cek Ongkir",
@@ -3996,6 +4006,16 @@ export const DICT = {
     cart_total: "Total",
     cart_agreement_title: "Terms & Conditions (required)",
     cart_agreement_required: "Check all the terms above to continue to payment.",
+    cart_complete_profile_title: "Complete Your Profile to Checkout",
+    cart_complete_profile_subtitle:
+      "Required to register for exam products — this data becomes your exam registration data.",
+    cart_complete_profile_warning:
+      "Your profile is incomplete — fill in the fields marked (*) before continuing to payment.",
+    cart_complete_profile_email_hint:
+      "Editable because it was never set before. Once saved, email can only be changed via admin.",
+    cart_complete_profile_required_note: "* Required before continuing to payment.",
+    cart_complete_profile_submit: "Save & Continue Checkout",
+    cart_complete_profile_error: "Failed to save data, try again.",
     cart_secure_payment: "Midtrans · secure encrypted payment",
     cart_shipping_title: "Shipping Address",
     cart_check_shipping_cost: "Check Shipping Cost",

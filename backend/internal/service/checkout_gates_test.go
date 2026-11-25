@@ -28,13 +28,17 @@ func newCheckoutTestService(t *testing.T) (*Service, *repository.Repository) {
 	return svc, repo
 }
 
+// insertCheckoutStudent seeds a student with name/email/phone already set,
+// since those are now part of the exam biodata gate too — tests that mean to
+// exercise a specific missing field null that one column out afterwards.
 func insertCheckoutStudent(t *testing.T, repo *repository.Repository, name, prefix string) string {
 	t.Helper()
 	var id string
+	suffix := prefix + uniqueSuffix()
 	if err := repo.Pool().QueryRow(context.Background(),
-		`INSERT INTO users (name, role, status, username, password_hash)
-		 VALUES ($1, 'student', 'active', $2, '') RETURNING id`,
-		name, prefix+uniqueSuffix(),
+		`INSERT INTO users (name, email, phone, role, status, username, password_hash)
+		 VALUES ($1, $2, $3, 'student', 'active', $4, '') RETURNING id`,
+		name, suffix+"@example.com", "0812"+uniqueSuffix()[:8], suffix,
 	).Scan(&id); err != nil {
 		t.Fatalf("insert student: %v", err)
 	}

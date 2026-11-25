@@ -2,6 +2,7 @@ package service
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -15,12 +16,29 @@ import (
 func TestBiodataMissingFields_OnlyGradeMissing(t *testing.T) {
 	dob := time.Date(2008, 1, 1, 0, 0, 0, 0, time.UTC)
 	school := "school-uuid"
-	u := &model.User{SchoolID: &school, DOB: &dob}
+	email := "student@example.com"
+	phone := "081200000000"
+	u := &model.User{Name: "Siswa Uji", Email: &email, Phone: &phone, SchoolID: &school, DOB: &dob}
 
 	missing := biodataMissingFields(u)
 
 	if len(missing) != 1 || missing[0] != "grade" {
 		t.Fatalf("want [grade], got %v", missing)
+	}
+}
+
+// TestBiodataMissingFields_NameEmailPhoneAlsoChecked pins that the gate now
+// also requires name/email/phone for the checkout-completion-profile
+// improvement, not just school/grade/dob.
+func TestBiodataMissingFields_NameEmailPhoneAlsoChecked(t *testing.T) {
+	u := &model.User{Name: "  ", Email: nil, Phone: nil}
+
+	missing := biodataMissingFields(u)
+
+	for _, want := range []string{"name", "email", "phone"} {
+		if !slices.Contains(missing, want) {
+			t.Errorf("want %q in missing fields, got %v", want, missing)
+		}
 	}
 }
 

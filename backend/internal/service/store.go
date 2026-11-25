@@ -19,18 +19,30 @@ import (
 // biodataFieldLabels maps a biodataMissingFields key to the Indonesian label
 // used in BiodataIncompleteError's message.
 var biodataFieldLabels = map[string]string{
+	"name":   "nama",
+	"email":  "email",
+	"phone":  "nomor HP",
 	"school": "sekolah",
 	"grade":  "kelas",
 	"dob":    "tanggal lahir",
 }
 
-// biodataMissingFields reports which of school/grade/dob a student is missing
-// for exam registration, in the order the message lists them.
+// biodataMissingFields reports which of name/email/phone/school/grade/dob a
+// student is missing for exam registration, in the order the message lists them.
 func biodataMissingFields(u *model.User) []string {
 	if u == nil {
-		return []string{"school", "grade", "dob"}
+		return []string{"name", "email", "phone", "school", "grade", "dob"}
 	}
 	var missing []string
+	if strings.TrimSpace(u.Name) == "" {
+		missing = append(missing, "name")
+	}
+	if u.Email == nil || strings.TrimSpace(*u.Email) == "" {
+		missing = append(missing, "email")
+	}
+	if u.Phone == nil || strings.TrimSpace(*u.Phone) == "" {
+		missing = append(missing, "phone")
+	}
 	hasSchool := (u.SchoolID != nil && *u.SchoolID != "") ||
 		(u.UnlistedSchoolName != nil && *u.UnlistedSchoolName != "")
 	if !hasSchool {
@@ -46,7 +58,8 @@ func biodataMissingFields(u *model.User) []string {
 }
 
 // biodataComplete reports whether a student has the biodata required to register
-// for an exam: a school (listed or unlisted), a class/grade, and a date of birth.
+// for an exam: name, email, phone, a school (listed or unlisted), a class/grade,
+// and a date of birth.
 func biodataComplete(u *model.User) bool {
 	return len(biodataMissingFields(u)) == 0
 }
@@ -56,7 +69,7 @@ func biodataComplete(u *model.User) bool {
 // It satisfies errors.Is(err, ErrBiodataIncomplete) so existing callers that
 // only check the sentinel keep working.
 type BiodataIncompleteError struct {
-	Missing []string // subset of "school", "grade", "dob", in that order
+	Missing []string // subset of "name", "email", "phone", "school", "grade", "dob", in that order
 }
 
 func (e *BiodataIncompleteError) Error() string {
