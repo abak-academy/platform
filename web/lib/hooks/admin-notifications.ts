@@ -39,7 +39,7 @@ function buildNotifsQuery(cursor: string, filters?: AdminNotifsFilters): string 
 // Paging lives in react-query rather than in component state: the feed used to
 // accumulate pages by hand, and marking one row read re-ran the fetch and
 // appended the same page a second time.
-export function useAdminNotifications(filters?: AdminNotifsFilters) {
+export function useAdminNotifications(filters?: AdminNotifsFilters, options?: { refetchInterval?: number }) {
   const query = useInfiniteQuery({
     queryKey: adminNotifsKeys.list(filters),
     initialPageParam: "",
@@ -47,6 +47,7 @@ export function useAdminNotifications(filters?: AdminNotifsFilters) {
       authFetch<AdminNotificationsResponse>(buildNotifsQuery(pageParam, filters)),
     // The server omits the cursor on the final page, which is what ends this.
     getNextPageParam: (last) => last.next_cursor || undefined,
+    refetchInterval: options?.refetchInterval,
   });
 
   const items = query.data?.pages.flatMap((page) => page.data ?? []) ?? [];

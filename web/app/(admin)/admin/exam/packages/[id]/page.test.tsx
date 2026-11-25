@@ -471,7 +471,7 @@ describe("ExamPackageDetailPage — grading tab", () => {
     render(<ExamPackageDetailPage />);
 
     expect(screen.queryByText("Budi Santoso")).toBeNull();
-    expect(screen.getByRole("button", { name: /ringkasan/i })).toHaveClass("border-primary");
+    expect(screen.getByText("Informasi ujian")).toBeInTheDocument();
   });
 
   it("shows an empty state when no sessions need grading, via DataTable's single colSpan row", async () => {

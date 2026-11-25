@@ -56,6 +56,7 @@ vi.mock("@/lib/hooks/auth", async () => {
   };
 });
 
+const notifCalls: unknown[][] = [];
 let notifState: {
   items: { id: string; type: string; order_id: string; student_name: string; amount: number; created_at: string; read: boolean }[];
   isLoading: boolean;
@@ -63,7 +64,10 @@ let notifState: {
 } = { items: [], isLoading: false, isError: false };
 
 vi.mock("@/lib/hooks/admin-notifications", () => ({
-  useAdminNotifications: () => notifState,
+  useAdminNotifications: (...args: unknown[]) => {
+    notifCalls.push(args);
+    return notifState;
+  },
 }));
 
 let dashboardState: {
@@ -297,11 +301,17 @@ describe("AdminIndexPage — v2 dashboard", () => {
     expect(screen.getByTestId("kpi-row")).toBeInTheDocument();
   });
 
+  it("polls the purchase feed every 30s", () => {
+    render(<AdminIndexPage />);
+    expect(notifCalls.at(-1)).toEqual([undefined, { refetchInterval: 30_000 }]);
+  });
+
   it("ranks top products with quantity, revenue and a bar relative to the best seller", () => {
     render(<AdminIndexPage />);
     const rows = screen.getAllByTestId("top-product");
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toHaveTextContent("1");
+    expect(within(rows[0]).getByText("1", { selector: "span" })).toBeInTheDocument();
+    expect(within(rows[1]).getByText("2", { selector: "span" })).toBeInTheDocument();
     expect(rows[0]).toHaveTextContent("Matematika Penalaran UTBK");
     expect(rows[0]).toHaveTextContent("412");
     expect(rows[0]).toHaveTextContent("8.200.000");

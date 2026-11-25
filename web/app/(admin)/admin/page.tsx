@@ -28,7 +28,7 @@ import type { UserRole } from "@/lib/nav-config";
 import type { AdminDashboard } from "@/lib/types";
 
 // Series colours, verified 3:1 against BOTH the light surface (#FFFFFF) and
-// the dark surface (--md-sys-color-surface, #27213b) — the mockup's own
+// the dark surface (--md-sys-color-surface, #211b34) — the mockup's own
 // hexes fail this on one surface or the other (#F5A623 2.03:1 light,
 // #1A5CFF 2.94:1 dark). None of these six ever puts blue next to purple in
 // the same chart, the flagged risky pair under protanopia/deuteranopia.
@@ -127,7 +127,7 @@ function KpiCard({
     <div className={`flex items-start justify-between gap-3 rounded-[var(--radius-card)] p-5 ${tn.card}`}>
       <div className="flex min-w-0 flex-col gap-1">
         <div className="type-label text-ink-600">{label}</div>
-        <div className="type-h2 text-ink-900">{value}</div>
+        <div className="type-h1 text-ink-900">{value}</div>
         {delta !== null && (
           <div className={`flex items-center gap-1 type-caption ${deltaColor}`}>
             {delta !== 0 && <DeltaIcon aria-hidden className="size-3" />}
@@ -169,7 +169,7 @@ function AttentionCard({
       </span>
       <div className="min-w-0 flex-1">
         <div className="type-caption text-ink-600">{label}</div>
-        <div className="type-h2 text-ink-900">{value}</div>
+        <div className="type-h1 text-ink-900">{value}</div>
       </div>
       {href && <ArrowRight aria-hidden className="size-4 text-ink-600" />}
     </>
@@ -237,7 +237,7 @@ export default function AdminIndexPage() {
   // instead of dash_load_failed. Folding in isPaused (only when we have
   // nothing to show yet) catches that stuck state too.
   const dashboardError = dashboardIsError || (dashboardIsPaused && !dashboard);
-  const notifications = useAdminNotifications();
+  const notifications = useAdminNotifications(undefined, { refetchInterval: 30_000 });
   const canReadRevenue = useHasCapability("revenue:read");
 
   useEffect(() => {

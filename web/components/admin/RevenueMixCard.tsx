@@ -7,17 +7,22 @@ import { useTranslation } from "@/lib/i18n";
 
 type Amount = { value: number; prev?: number };
 
-const share = (digital: number, physical: number) => Math.round((digital / (digital + physical)) * 100);
+const positive = (n: number) => Math.max(0, n);
+const share = (digital: number, physical: number) => {
+  const d = positive(digital);
+  const total = d + positive(physical);
+  return total > 0 ? Math.round((d / total) * 100) : 0;
+};
 
 export function RevenueMixCard({ digital, physical }: { digital: Amount; physical: Amount }) {
   const { t } = useTranslation();
-  const total = digital.value + physical.value;
-  const digitalShare = total > 0 ? share(digital.value, physical.value) : 0;
-  const physicalShare = 100 - digitalShare;
+  const hasRevenue = positive(digital.value) + positive(physical.value) > 0;
+  const digitalShare = share(digital.value, physical.value);
+  const physicalShare = hasRevenue ? 100 - digitalShare : 0;
 
   const prevDigital = digital.prev ?? 0;
   const prevPhysical = physical.prev ?? 0;
-  const delta = prevDigital + prevPhysical > 0 ? digitalShare - share(prevDigital, prevPhysical) : null;
+  const delta = positive(prevDigital) + positive(prevPhysical) > 0 ? digitalShare - share(prevDigital, prevPhysical) : null;
   const changeKey =
     delta === null ? null : delta > 0 ? "admin_home_mix_share_up" : delta < 0 ? "admin_home_mix_share_down" : "admin_home_mix_share_same";
 
@@ -33,13 +38,13 @@ export function RevenueMixCard({ digital, physical }: { digital: Amount; physica
         <CardDescription>{t("admin_home_chart_mix_sub")}</CardDescription>
       </CardHeader>
       <CardContent>
-        {total <= 0 ? (
+        {digital.value === 0 && physical.value === 0 ? (
           <div className="py-12 text-center text-ink-600">{t("admin_home_chart_empty")}</div>
         ) : (
           <div className="flex flex-col gap-4">
             <div className="flex flex-col items-center gap-6 sm:flex-row">
               <Ring value={digitalShare} track="var(--color-berry-600)" label={`${t("admin_home_series_digital")} ${digitalShare}%`}>
-                <span className="type-h3">{digitalShare}%</span>
+                <span className="type-h1">{digitalShare}%</span>
               </Ring>
               <ul className="flex w-full min-w-0 flex-1 flex-col gap-3">
                 {rows.map((r) => (

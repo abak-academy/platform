@@ -73,4 +73,23 @@ describe("RevenueMixCard", () => {
       screen.getByText("Komposisi pendapatan periode ini. Fisik = buku, merchandise, medali."),
     ).toBeTruthy();
   });
+
+  it("clamps a refunded (negative) side to 0 for shares but shows the real amount", () => {
+    render(mix(-100_000, 300_000));
+    expect(screen.getByTestId("mix-digital-share")).toHaveTextContent("0%");
+    expect(screen.getByTestId("mix-physical-share")).toHaveTextContent("100%");
+    expect(screen.getByRole("img")).toHaveTextContent("0%");
+    expect(screen.getByText(formatRupiah(-100_000))).toBeTruthy();
+  });
+
+  it("compares against a clamped previous share when the previous digital side was negative", () => {
+    render(mix(500, 500, -100, 300));
+    expect(screen.getByTestId("mix-change")).toHaveTextContent("naik 50 poin");
+  });
+
+  it("renders a refund-only window instead of the empty label", () => {
+    render(mix(-100_000, 0));
+    expect(screen.queryByText(/Belum ada data/)).toBeNull();
+    expect(screen.getByText(formatRupiah(-100_000))).toBeTruthy();
+  });
 });

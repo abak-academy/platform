@@ -55,6 +55,21 @@ describe("admin-notifications hooks", () => {
     mockAuthFetch.mockReset();
   });
 
+  describe("polling", () => {
+    it("refetches on the given interval", async () => {
+      mockAuthFetch
+        .mockResolvedValueOnce({ data: [sampleNotification] })
+        .mockResolvedValue({ data: [sampleNotification, { ...sampleNotification, id: "notif-2" }] });
+      const { wrapper } = wrapperFactory();
+      const { result } = renderHook(
+        () => useAdminNotifications(undefined, { refetchInterval: 20 }),
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.items).toHaveLength(2));
+      expect(mockAuthFetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
   describe("query keys", () => {
     it("adminNotifsKeys.all is stable", () => {
       expect(adminNotifsKeys.all).toEqual(["admin", "notifications"]);
