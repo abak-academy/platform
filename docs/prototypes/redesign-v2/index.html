@@ -2241,12 +2241,14 @@ function totals(lines) {
 function summaryBox(t) {
   return `<div class="sumbox"><div><span>Subtotal</span><b>${rp(t.subtotal)}</b></div>${t.discount ? `<div class="t-teal"><span>Diskon ${t.promo?.code || ''}</span><b>−${rp(t.discount)}</b></div>` : ''}${t.physical ? `<div><span>Ongkos kirim</span><b>${t.shipping ? rp(t.shipping) : '—'}</b></div>` : ''}<div class="tot"><span>Total</span><b>${rp(t.total)}</b></div></div>`;
 }
+// A logged-in student pays inside their own dashboard shell; a guest sees the public site.
+const cartShell = body => S.role === 'student' ? stu('keranjang', body) : pub('katalog', body);
 route(/^\/keranjang$/, () => {
   const lines = cartLines();
-  if (!lines.length) return pub('katalog', `<section class="wrap narrow">${empty('cart', 'Keranjang masih kosong', 'Yuk jelajahi toko dan tambahkan buku atau kursus favoritmu.', '<a class="ab-btn primary" href="#/katalog">Ke toko</a>')}</section>`);
+  if (!lines.length) return cartShell(`<section class="wrap narrow">${empty('cart', 'Keranjang masih kosong', 'Yuk jelajahi toko dan tambahkan buku atau kursus favoritmu.', '<a class="ab-btn primary" href="#/katalog">Ke toko</a>')}</section>`);
   const t = totals(lines); const addr = S.user?.address; const me = S.role === 'student';
   const avail = S.promos.filter(p => p.active && new Date(p.until) > new Date());
-  return pub('katalog', `<section class="wrap page-head"><span class="eyebrow">KERANJANG · ${lines.length} ITEM</span><h1 class="h-display">Keranjang</h1></section>
+  return cartShell(`${S.role === 'student' ? appHead('Keranjang', `${lines.length} item`) : `<section class="wrap page-head"><span class="eyebrow">KERANJANG · ${lines.length} ITEM</span><h1 class="h-display">Keranjang</h1></section>`}
   <section class="wrap checkout">
     <div class="stack">
       <div class="card pad"><h2>Item</h2>${lines.map((l, i) => `<div class="line"><span class="thumb p-${l.tone}">${ic(l.icon, 'sm')}</span><div class="grow"><b>${esc(l.name)}</b><small class="muted">${esc(l.sub)}</small></div>
