@@ -989,7 +989,7 @@ button.opt:hover, .sres:hover { border-color: var(--brand); }
 .hero.hero-photo { --nav-h: 78px; margin-top: calc(-1 * var(--nav-h)); padding-top: var(--nav-h); min-height: min(980px, 100svh); display: flex; flex-direction: column; justify-content: center; background: #0b1620; color: #fff; overflow: hidden; isolation: isolate; }
 .hero-photo .hero-stage { padding: 48px 0 170px; transform: translateY(calc(var(--py, 0px) * .4)); opacity: var(--fade, 1); }
 .hp-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
-.hp-img { position: absolute; inset: -6% -3% 0; background: url(hero-award.webp) no-repeat 50% 100% / cover; transform: translate3d(calc(var(--dx, 0) * -14px), calc(var(--py, 0px) + var(--dy, 0) * -10px), 0) scale(1.04); transition: transform .25s linear; }
+.hp-img { position: absolute; left: 50%; bottom: 0; height: 88%; aspect-ratio: 880 / 658; background: url(hero-award.webp) no-repeat center / cover; transform: translate3d(calc(-50% + var(--dx, 0) * -14px), calc(var(--py, 0px) + var(--dy, 0) * -10px), 0); transition: transform .25s linear; -webkit-mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent), linear-gradient(180deg, transparent, #000 26%); -webkit-mask-composite: source-in; mask-image: linear-gradient(90deg, transparent, #000 14%, #000 86%, transparent), linear-gradient(180deg, transparent, #000 26%); mask-composite: intersect; }
 .hp-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 14, 22, .82) 0%, rgba(8, 14, 22, .55) 34%, rgba(8, 14, 22, .5) 58%, rgba(8, 14, 22, .62) 72%, color-mix(in srgb, var(--canvas) 55%, rgba(8, 14, 22, .6)) 86%, var(--canvas) 100%); }
 .hp-spot { position: absolute; inset: 0; z-index: 1; background: radial-gradient(520px circle at var(--mx, 50%) var(--my, 35%), rgba(255, 255, 255, .13), transparent 62%); transition: background-position .2s; pointer-events: none; }
 .hero-photo .hs-title { color: #fff; } .hero-photo .hs-rot { color: #f59a6b; } .hero-photo .lede { color: rgba(255, 255, 255, .86); }
@@ -1006,7 +1006,7 @@ body:has(.hero-photo):not(.scrolled) .pubnav .right .ab-iconbtn, body:has(.hero-
 body:has(.hero-photo):not(.scrolled) .pubnav .lang-btn { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .3); } body:has(.hero-photo):not(.scrolled) .pubnav .lang-btn span:not(.on) { color: rgba(255, 255, 255, .8); }
 @media (max-width: 760px) {
   .hero.hero-photo { min-height: 0; } .hero-photo .hero-stage { padding: 28px 0 110px; }
-  .hp-img { inset: auto 0 0; height: 58%; background-size: auto 150%; transform: translate3d(0, calc(var(--py, 0px) * .5), 0); }
+  .hp-img { left: 0; right: 0; width: auto; height: 58%; aspect-ratio: auto; background-size: auto 150%; background-position: 50% 100%; transform: translate3d(0, calc(var(--py, 0px) * .5), 0); -webkit-mask-image: none; mask-image: none; }
   .hp-bg::after { background: linear-gradient(180deg, #0b1620 0%, #0b1620 38%, rgba(8, 14, 22, .55) 58%, rgba(8, 14, 22, .7) 76%, color-mix(in srgb, var(--canvas) 55%, rgba(8, 14, 22, .6)) 89%, var(--canvas) 100%); }
   .hp-stats { gap: 18px; justify-content: space-between; margin-top: 200px; } .hp-stats b { font-size: 22px; } .hp-stats span { font-size: 12px; } .hp-cap { display: none; }
 }
@@ -1026,8 +1026,7 @@ section.reveal.done .rv-kid { transition: transform .25s var(--ease), box-shadow
 section.reveal.done .rv-tiltable.tilting { transform: perspective(900px) rotateX(var(--ty, 0deg)) rotateY(var(--tx, 0deg)) translateY(-4px); box-shadow: var(--shadow-pop); z-index: 1; }
 #cur-swarm { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60; image-rendering: pixelated; }
 @media (prefers-reduced-motion: reduce), (pointer: coarse) { #cur-swarm { display: none; } }
-.about-sec { display: grid; grid-template-columns: 220px 1fr; gap: 24px; align-items: baseline; } .about-sec .eyebrow { color: var(--ember-ink); } .about-sec .about-q { color: var(--ink); font-size: clamp(24px, 3vw, 38px); line-height: 1.3; text-wrap: balance; }
-@media (max-width: 1024px) { .about-sec { grid-template-columns: 1fr; gap: 10px; } }
+.about-sec { text-align: center; } .about-sec .about-q { max-width: 26ch; margin-inline: auto; color: var(--ink); font-size: clamp(24px, 3vw, 38px); line-height: 1.3; text-wrap: balance; }
 .auth-pill { display: inline-flex; align-items: center; height: 44px; padding: 4px; border-radius: 999px; background: color-mix(in srgb, var(--paper) 70%, transparent); border: 1px solid var(--line); }
 .auth-pill a { display: inline-flex; align-items: center; gap: 8px; height: 100%; padding: 0 14px; border-radius: 999px; font: 700 14px var(--font-display); text-decoration: none; color: var(--ink-2); transition: background .2s, color .2s; }
 .auth-pill .ap-in:hover { background: var(--surface-sunken); color: var(--ink); }
@@ -1944,7 +1943,7 @@ route(/^\/$/, () => {
 
 ${programSec()}
 
-  <section class="wrap section about-sec" id="tentang"><span class="eyebrow">${L("TENTANG ABAK ACADEMY", "ABOUT ABAK ACADEMY")}</span><p class="about-q">${L("Setiap anak punya kapasitas, potensi, dan bakat yang unik. Kalau dirawat dan dikembangkan, dari situlah lahir para ahli di bidangnya.", "Every child has a unique capacity, potential, and talent. Nurture and develop it, and that is where experts are born.")}</p></section>
+  <section class="wrap section about-sec" id="tentang" aria-label="${L('Tentang Abak Academy', 'About Abak Academy')}"><p class="about-q">${L("Setiap anak punya kapasitas, potensi, dan bakat yang unik. Kalau dirawat dan dikembangkan, dari situlah lahir para ahli di bidangnya.", "Every child has a unique capacity, potential, and talent. Nurture and develop it, and that is where experts are born.")}</p></section>
 
 ${seriesSec()}
 
