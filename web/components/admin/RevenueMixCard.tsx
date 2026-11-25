@@ -34,18 +34,18 @@ export function RevenueMixCard({ digital, physical }: { digital: Amount; physica
       </CardHeader>
       <CardContent>
         {total <= 0 ? (
-          <div className="py-12 text-center text-ink-500">{t("admin_home_chart_empty")}</div>
+          <div className="py-12 text-center text-ink-600">{t("admin_home_chart_empty")}</div>
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="flex items-center gap-6">
+            <div className="flex flex-col items-center gap-6 sm:flex-row">
               <Ring value={digitalShare} track="var(--color-berry-600)" label={`${t("admin_home_series_digital")} ${digitalShare}%`}>
                 <span className="type-h3">{digitalShare}%</span>
               </Ring>
-              <ul className="flex flex-1 flex-col gap-3">
+              <ul className="flex w-full min-w-0 flex-1 flex-col gap-3">
                 {rows.map((r) => (
                   <li key={r.id} className="flex items-center gap-3">
                     <span aria-hidden className={`size-3 shrink-0 rounded-full ${r.dot}`} />
-                    <div className="flex-1">
+                    <div className="min-w-0 flex-1">
                       <div className="type-label">{r.name}</div>
                       <div className="type-caption text-ink-600">{r.hint}</div>
                     </div>
