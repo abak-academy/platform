@@ -1,12 +1,15 @@
 ---
 title: Seamless student shell (top navigation) and navigation cleanup
 issue: none yet
-status: proposed
+status: deprecated
+superseded_by: docs/specs/student-dashboard-v2.md
 created: 2026-11-17
 sources: ["docs/specs/redesign-v2-roadmap.md", "docs/specs/landing-v2.md", "docs/prototypes/redesign-v2/index.html", "web/app/(student)/layout.tsx", "web/app/(student)/page.tsx", "web/components/shell/AppShell.tsx", "web/components/shell/AppHeader.tsx", "web/components/shell/AppSidebar.tsx", "web/lib/nav-config.ts", "web/components/dashboard", "web/components/catalog/CategoryRail.tsx", "web/lib/i18n.ts"]
 ---
 
 # Seamless student shell
+
+> Superseded 2026-11-25 by [student-dashboard-v2.md](student-dashboard-v2.md): students keep an admin-style sidebar, not the public top navbar.
 
 ## Problem and outcome
 

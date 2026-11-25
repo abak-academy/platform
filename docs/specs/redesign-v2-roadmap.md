@@ -20,7 +20,7 @@ The prototype is the reference for **behavior, layout, hierarchy, and copy**. It
 - **Type:** Plus Jakarta Sans 800 for display, Public Sans for body, Spline Sans Mono for overlines.
 - **Visuals:** the custom icon set and the floating math symbols (∑ π ∞ √ θ ∫) are kept, and symbols never overlap text. Avatars come from the 35-face sheet.
 - **Public navbar:** Event · Program · Katalog · Tentang. Transparent at the top, blurred on scroll, active item marked with a dot. ID/EN toggle.
-- **Student experience:** the same navbar and footer as the public site, with no sidebar. Student navbar: Beranda · Kompetisi Saya · Event · Belajar · Katalog. The avatar menu has Tagihan, Profil & akun, and Keluar. Home is a dashboard only.
+- **Student experience:** *(superseded 2026-11-25 by `student-dashboard-v2.md`: students keep a sidebar in the admin style, no Katalog in it)* the same navbar and footer as the public site, with no sidebar. Student navbar: Beranda · Kompetisi Saya · Event · Belajar · Katalog. The avatar menu has Tagihan, Profil & akun, and Keluar. Home is a dashboard only.
 - **Landing:** competitions are grouped per event, with a story card per event (narrative, schedule, rounds, categories, facts, official site) instead of a list of every edition.
 - **Admin sidebar:** an accordion, one group open at a time. Event + Ujian + Sekolah merge into **Akademik**. Group order: Akademik, Toko, Affiliator, Sistem.
 - **Admin lists:** every list uses one toolbar (search · Filter popover · sort · active chips · count). Tabs only switch views of a single record.
@@ -37,8 +37,10 @@ The prototype is the reference for **behavior, layout, hierarchy, and copy**. It
 | 3 | `event-series.md` | Event entity (ID + EN narrative), admin Event menu, public API, exam ↔ event link | migration + API + web | 1, 2a |
 | 3b | `testimonials.md` | Testimonial CMS with consent gate, public API | migration + API + web | 1, 2a |
 | 4 | `landing-v2.md` | Public landing + Event page in Next.js, ID/EN | web | 1, 3, 3b |
-| 5 | `student-shell-v2.md` | Top-nav student shell, nav renames, dashboard home, catalog cleanup | web | 1, 4 |
+| 5 | `student-dashboard-v2.md` (supersedes `student-shell-v2.md`) | Student sidebar shell, dashboard home, order detail + invoice | web | 1, 2a (PR 1 `admin-dashboard-v2.md`) |
 | 6 | `profile-avatars.md` | Avatar sheet, photo upload with preview, password modal | web + small API + ops | 1 |
+
+Update 2026-11-25: phases 1, 2a, and 2c ship as one PR, specified in `admin-dashboard-v2.md` (2c needs a small backend change, no migration); the student work follows in `student-dashboard-v2.md`.
 
 Phases 2a, 2b, 2c, and 6 can run in parallel once 1 is merged; 3 and 3b can run in parallel after 2a. Phases 3 and 3b are the only ones with migrations.
 

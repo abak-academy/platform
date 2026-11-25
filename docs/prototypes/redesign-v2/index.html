@@ -469,17 +469,35 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .pending-banner { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: 22px; background: linear-gradient(100deg, var(--gold), #f3cd6b); color: #3d2b08; text-decoration: none; transition: transform .3s var(--spring); }
 .pending-banner:hover { transform: translateY(-2px); } .pending-banner b { display: block; font: 800 15px var(--font-display); } .pending-banner span { font-size: 13px; }
 .pb-ico { width: 44px; height: 44px; border-radius: 14px; background: rgba(255, 255, 255, .5); display: grid; place-items: center; flex: none; }
-.dash-hero { position: relative; display: grid; grid-template-columns: 1fr 240px; gap: 20px; align-items: center; padding: 30px 32px; border-radius: var(--r-big); background: radial-gradient(120% 140% at 100% 0%, #f59a6b, var(--ember) 55%, #a33f1d); color: #fff; overflow: hidden; }
+.dash-hero { position: relative; display: flex; flex-direction: column; justify-content: center; padding: 30px 32px; border-radius: var(--r-big); background: radial-gradient(120% 140% at 100% 0%, #f59a6b, var(--ember) 55%, #a33f1d); color: #fff; overflow: hidden; }
 .dash-hero h2 { color: #fff; font: 800 clamp(26px, 3vw, 36px)/1.1 var(--font-display); letter-spacing: -0.035em; margin-bottom: 10px; }
 .dash-hero p { color: rgba(255, 255, 255, .9); max-width: 520px; margin-bottom: 18px; }
+.dh-dots { display: flex; align-items: center; margin: 14px 0 0 -4px; } .dh-dot { height: 24px; padding: 8px 4px; border: 0; background: none; cursor: pointer; } .dh-dot::before { content: ""; display: block; width: 8px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, .45); transition: width .35s var(--ease), background-color .35s var(--ease); }
+.dh-track { display: grid; } .dh-slide { grid-area: 1 / 1; display: grid; grid-template-columns: 1fr 240px; gap: 20px; align-items: center; opacity: 0; visibility: hidden; transform: translateX(32px); transition: opacity .5s var(--ease), transform .5s var(--ease), visibility 0s .5s; } .dh-slide.out { transform: translateX(-32px); } .dh-slide.on { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
+@media (prefers-reduced-motion: reduce) { .dh-slide { transition: none; transform: none !important; } } .dh-dot.on::before { width: 22px; background: #fff; } .dh-dot:focus-visible { outline: 2px solid #fff; outline-offset: 2px; border-radius: 6px; }
 .dh-art { position: relative; } .dh-art > svg { width: 100%; height: auto; filter: drop-shadow(0 16px 24px rgba(0, 0, 0, .25)); animation: float 6s ease-in-out infinite; --r: 3deg; }
-.dash-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.top-row { display: grid; grid-template-columns: 65fr 35fr; gap: 16px; align-items: stretch; } .top-row .dh-slide { grid-template-columns: 1fr 170px; } .top-row .d-events { min-width: 0; }
+.learn-row { display: grid; grid-template-columns: 40fr 60fr; gap: 16px; align-items: stretch; } .learn-row > * { min-width: 0; }
+.learn-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; } .learn-list li + li { border-top: 1px solid var(--line); }
+.learn-list a { display: flex; align-items: center; gap: 12px; padding: 10px 0; color: var(--ink); text-decoration: none; } .lr-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.lr-cover { position: relative; flex: none; width: 76px; height: 58px; border-radius: 12px; overflow: hidden; display: grid; place-items: center; background: radial-gradient(120% 110% at 100% 0%, var(--b), var(--a)); } .lr-cover > svg { width: 46px; height: 46px; } .lr-cover .play { position: absolute; right: 5px; bottom: 5px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: #fff; color: #14202b; } .lr-cover .play .ab-i { width: 10px; height: 10px; } .learn-list a:hover b { color: var(--brand-ink); }
+.lr-top { display: flex; gap: 10px; align-items: baseline; } .lr-top b { flex: 1; min-width: 0; font: 700 13.5px var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .lr-top span { font: 800 13px var(--font-display); }
+.learn-list small { font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .learn-list .ab-progress { height: 6px; }
+.ship-card { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; padding: 14px 18px; border-radius: 20px; background: var(--paper); border: 1px solid var(--line); }
+.ship-info { display: flex; align-items: center; gap: 10px; min-width: 200px; } .ship-info b { display: block; font: 800 14px var(--font-display); } .ship-info small { font-size: 12px; color: var(--ink-muted); }
+.ship-steps { flex: 1; min-width: 300px; list-style: none; padding: 0; margin: 0; display: flex; }
+.ship-steps li { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; font-size: 11px; color: var(--ink-muted); }
+.ship-steps li::before { content: ""; position: absolute; top: 10px; left: calc(-50% + 15px); width: calc(100% - 30px); height: 2px; border-radius: 1px; background: var(--line); } .ship-steps li:first-child::before { display: none; } .ship-steps li.on::before { background: var(--teal); }
+.ship-steps i { position: relative; box-sizing: border-box; width: 22px; height: 22px; margin-bottom: 4px; border-radius: 50%; display: grid; place-items: center; background: var(--paper); border: 2px solid var(--line); color: #fff; } .ship-steps li.on i { background: var(--teal); border-color: var(--teal); } .ship-steps i .ab-i { width: 12px; height: 12px; stroke-width: 2.5; }
+.ship-steps b { font: 700 12px/1.2 var(--font-display); color: var(--ink); } .ship-steps small { font-size: 11px; line-height: 1.2; } .ship-steps li:not(.on) b { color: var(--ink-muted); }
+.ship-resi { display: flex; align-items: center; gap: 10px; } .ship-resi small { font-size: 11px; color: var(--ink-muted); } .resi-box { display: flex; flex-direction: column; gap: 3px; }
+.resi-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 10px; border: 1px dashed var(--line); background: var(--surface-sunken); font: 700 12.5px var(--font-mono); color: var(--ink); cursor: pointer; }
 .dcard { padding: 20px; border-radius: var(--r-card); background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow-card); display: flex; flex-direction: column; gap: 14px; }
 .dcard-head { display: flex; align-items: center; gap: 10px; font: 800 15px var(--font-display); } .dcard-head b { flex: 1; }
 .dico { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; }
-.rank-big { display: flex; align-items: center; gap: 14px; } .rank-big > b { font: 800 46px/1 var(--font-display); letter-spacing: -0.04em; color: var(--gold-ink); } .rank-big span { font-size: 13px; font-weight: 600; }
-.mini-board { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-.mini-board li { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 12px; font-size: 13px; } .mini-board li.me { background: var(--ember-soft); font-weight: 700; } .mini-board .av { box-shadow: none; }
+.ev-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; } .ev-list li { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); } .ev-list li:first-child { border-top: 0; }
+.ev-date { flex: none; width: 40px; padding: 4px 0; border-radius: 10px; background: var(--surface-sunken); text-align: center; font: 700 10.5px var(--font-mono); text-transform: uppercase; color: var(--ink-muted); } .ev-date b { display: block; font: 800 16px/1.1 var(--font-display); color: var(--ink); }
+.ev-list .grow { min-width: 0; } .ev-list .grow > b { display: block; font: 700 13px var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ev-list small { display: block; font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .ev-list small .ab-i { vertical-align: -2px; margin-right: 3px; } .ev-list .live-t { color: var(--ember); font-weight: 700; } .ev-list .ab-btn, .ev-list .chip { flex: none; }
 .medal-n { min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; display: inline-grid; place-items: center; font: 800 11px var(--font-display); background: var(--surface-sunken); color: var(--ink-2); }
 .medal-n.m1 { background: #f3cd6b; color: #5b3f05; } .medal-n.m2 { background: #d5dbe0; color: #3a4650; } .medal-n.m3 { background: #f2b48e; color: #6b2f13; }
 .study { display: flex; align-items: center; gap: 18px; }
@@ -490,11 +508,6 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .study ul, .mix ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; color: var(--ink-muted); flex: 1; }
 .study li, .mix li { display: flex; align-items: center; gap: 7px; } .study li b, .mix li b { margin-left: auto; color: var(--ink); }
 .study li i, .mix li i { width: 10px; height: 10px; border-radius: 3px; } .lg-teal { background: var(--teal); } .lg-mute { background: var(--surface-sunken); border: 1px solid var(--line); } .lg-ember { background: var(--ember); }
-.prog-bars { display: flex; gap: 14px; align-items: flex-end; height: 140px; }
-.pbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; height: 100%; }
-.pbar-track { flex: 1; width: 100%; max-width: 54px; border-radius: 14px; background: var(--surface-sunken); display: flex; align-items: flex-end; overflow: hidden; }
-.pbar-track i { width: 100%; border-radius: 14px; transition: height .6s var(--spring); } .b-teal { background: var(--teal); } .b-ember { background: repeating-linear-gradient(135deg, var(--ember-bright) 0 5px, var(--ember) 5px 9px); } .b-sky { background: var(--sky); }
-.pbar b { font: 800 18px var(--font-display); } .pbar span { font-size: 11.5px; color: var(--ink-muted); }
 .add-card { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 8px; min-height: 280px; padding: 20px; border-radius: var(--r-card); border: 2px dashed var(--line); color: var(--ink-muted); text-decoration: none; transition: border-color .2s, transform .3s var(--spring); }
 .add-card:hover { border-color: var(--ember); transform: translateY(-4px); } .add-card span { width: 60px; height: 60px; border-radius: 20px; display: grid; place-items: center; background: var(--ember-soft); color: var(--ember-ink); } .add-card b { color: var(--ink); font-family: var(--font-display); }
 .pop-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -622,7 +635,7 @@ button.opt:hover { border-color: var(--ember); transform: translateX(3px); }
 .order-list { display: flex; flex-direction: column; gap: 10px; }
 .orow { display: flex; align-items: center; gap: 14px; padding: 14px 18px; text-decoration: none; color: var(--ink); transition: transform .3s var(--spring); }
 .orow:hover { transform: translateX(4px); } .orow b { display: block; font: 700 14px var(--font-display); } .orow small { font-size: 12px; }
-.order-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr; gap: 16px; align-items: start; }
+.order-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) 1fr; gap: 16px; align-items: start; } .order-grid.even { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); }
 .tl { list-style: none; margin: 0 0 14px; padding: 0; }
 .tl li { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; position: relative; padding-bottom: 18px; }
 .tl li::before { content: ""; position: absolute; left: 16px; top: 34px; bottom: 0; width: 2px; background: var(--line); }
@@ -716,12 +729,23 @@ button.opt:hover { border-color: var(--ember); transform: translateX(3px); }
 #modal.on { display: flex; }
 .modal-card { width: min(480px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; background: var(--paper); border-radius: 28px; padding: 26px; box-shadow: var(--shadow-pop); animation: pop .4s var(--spring); }
 @keyframes pop { from { transform: translateY(18px) scale(.96); opacity: 0; } }
-.modal-card.wide { width: min(740px, 100%); } .modal-card h2 { margin-bottom: 8px; }
+.modal-card.wide { width: min(740px, 100%); }
+.inv-stage { margin: 4px -6px 16px; padding: 14px; border-radius: 18px; background: var(--surface-sunken); max-height: 62vh; overflow: auto; } .inv-actions { justify-content: flex-end; }
+.inv-paper { --i: #14202b; --m: #5b6573; --l: #e4e7ec; background: #fff; color: var(--i); width: 100%; max-width: 640px; margin: 0 auto; padding: 36px 38px; border-radius: 6px; box-shadow: 0 6px 24px rgba(20, 32, 43, .12); font: 400 12.5px/1.5 var(--font-body); }
+.inv-top { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid var(--i); } .inv-brand { display: flex; align-items: center; gap: 10px; } .inv-brand .mark img { width: 38px; height: 38px; } .inv-brand .mark .on-dark { display: none; } .inv-brand b { display: block; font: 800 15px var(--font-display); } .inv-brand small, .inv-paper small { color: var(--m); font-size: 11px; }
+.inv-title { text-align: right; } .inv-title h3 { font: 800 22px/1 var(--font-display); letter-spacing: .08em; margin: 0 0 4px; color: var(--i); } .inv-title small { font-family: var(--font-mono); }
+.inv-meta { display: flex; justify-content: space-between; gap: 24px; padding: 18px 0; } .inv-meta > div { display: flex; flex-direction: column; gap: 2px; } .inv-meta b { font: 700 13.5px var(--font-display); } .inv-meta .pre { white-space: pre-line; color: var(--m); }
+.inv-dates { text-align: right; gap: 8px !important; } .inv-dates span { display: flex; flex-direction: column; align-items: flex-end; }
+.inv-stamp { display: inline-block; margin-top: 2px; padding: 2px 10px; border: 2px solid #c24e26; border-radius: 6px; color: #c24e26; font: 800 11px var(--font-display) !important; letter-spacing: .1em; } .inv-stamp.ok { border-color: #1e978a; color: #146b61; }
+.inv-table { width: 100%; border-collapse: collapse; } .inv-table th { text-align: left; padding: 8px 6px; background: #f3f4f6; font: 700 11px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--m); } .inv-table td { padding: 10px 6px; border-bottom: 1px solid var(--l); } .inv-table th:nth-child(n+2), .inv-table td:nth-child(n+2) { text-align: right; white-space: nowrap; } .inv-table th:nth-child(2), .inv-table td:nth-child(2) { text-align: center; }
+.inv-sum { margin: 14px 0 0 auto; width: 260px; display: flex; flex-direction: column; gap: 6px; } .inv-sum div { display: flex; justify-content: space-between; } .inv-sum .tot { margin-top: 4px; padding-top: 8px; border-top: 2px solid var(--i); font: 800 15px var(--font-display); }
+.inv-foot { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--l); color: var(--m); font-size: 11px; }
+@media print { @page { size: A4; margin: 12mm; } body > :not(#modal) { display: none !important; } #modal, #modal.on { position: static !important; display: block !important; background: none !important; padding: 0 !important; } #modal .modal-card { width: auto !important; max-height: none !important; overflow: visible !important; box-shadow: none !important; padding: 0 !important; animation: none !important; } #modal .modal-card > :not(.inv-stage) { display: none !important; } .inv-stage { background: none !important; padding: 0 !important; margin: 0 !important; max-height: none !important; overflow: visible !important; } .inv-paper { box-shadow: none !important; max-width: none !important; } } .modal-card h2 { margin-bottom: 8px; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; } .modal-head h2 { margin: 0; }
 .modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
 
 /* responsive */
-@media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } .feat-grid { grid-template-columns: 1fr 1fr; } .dash-grid { grid-template-columns: 1fr 1fr; } .d-prog { grid-column: span 2; } }
+@media (max-width: 1200px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } .feat-grid { grid-template-columns: 1fr 1fr; } .top-row, .learn-row { grid-template-columns: 1fr; } }
 @media (max-width: 1024px) {
   .pubnav .links { display: none; } .pubnav { justify-content: space-between; } .show-sm { display: inline-grid; }
   .nav-open .mobile-links { display: flex; flex-direction: column; width: min(1200px, calc(100% - 32px)); margin: 8px auto 0; padding: 8px; border-radius: 24px; background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow-pop); }
@@ -751,8 +775,8 @@ button.opt:hover { border-color: var(--ember); transform: translateX(3px); }
   .f-row { flex-direction: column; align-items: flex-start; gap: 6px; } .f-chips { flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
   .school-band { padding: 28px 22px; } .story-copy { padding: 24px; } .cta-inner { padding: 64px 0; }
   .ev-hero { padding: 24px; } .facts { grid-template-columns: 1fr 1fr; } .tl-h { grid-template-columns: 1fr 1fr; row-gap: 16px; } .tl-h::before { display: none; }
-  .kpi-row, .kpi-row.four { grid-template-columns: 1fr 1fr; } .kpi b { font-size: 22px; } .dash-grid { grid-template-columns: 1fr; } .d-prog { grid-column: auto; }
-  .dash-hero { grid-template-columns: 1fr; padding: 24px; } .dh-art { display: none; } .pop-list { grid-template-columns: 1fr; }
+  .kpi-row, .kpi-row.four { grid-template-columns: 1fr 1fr; } .kpi b { font-size: 22px; }
+  .dh-slide, .top-row .dh-slide { grid-template-columns: 1fr; } .dash-hero { padding: 24px; } .dh-art { display: none; } .pop-list { grid-template-columns: 1fr; }
   .app-head h1 { font-size: 24px; } .head-actions { width: 100%; }
   .score-hero { grid-template-columns: 1fr; } .score-ring { width: 120px; height: 120px; } .podium { gap: 8px; } .pod > small { display: none; } .pod-bar b { font-size: 22px; }
   .qcard { padding: 18px; } .stem { font-size: 16px; } .timer b { font-size: 15px; } .exam-top { gap: 8px; padding: 8px 10px; } .exam-top .ab-logo { display: none; }
@@ -817,7 +841,7 @@ a, .linkbtn { color: var(--brand-ink); }
 button.opt:hover, .sres:hover { border-color: var(--brand); }
 .qc.now { border-color: var(--brand); color: var(--brand-ink); box-shadow: 0 0 0 4px var(--brand-soft); } .legend i.now { border-color: var(--brand); }
 .av-opt.on { box-shadow: 0 0 0 3px var(--brand); }
-.cur-item.on, .mini-board li.me, .board li.me { background: var(--brand-soft); color: var(--brand-ink); }
+.cur-item.on, .board li.me { background: var(--brand-soft); color: var(--brand-ink); }
 .timer, .bars .tip { background: var(--brand-deep); color: #fff; }
 [data-theme="dark"] .timer, [data-theme="dark"] .bars .tip { background: var(--brand); color: #10132e; }
 .bars .bar, [data-theme="dark"] .bars .bar { background: var(--brand); }
@@ -1012,7 +1036,7 @@ body.scrolled .pubnav { padding: 10px 0; }
 .side-umenu summary .grow b { display: block; font: 700 13px var(--font-display); } .side-umenu summary .grow small { display: block; font-size: 11.5px; color: var(--ink-muted); font-weight: 500; }
 .side-umenu .um-pop { top: auto; bottom: calc(100% + 8px); left: 0; right: auto; width: 100%; min-width: 236px; }
 .side-umenu[open] summary .ab-i { transform: rotate(180deg); }
-.um-pop > a { flex-wrap: wrap; } .um-hint { flex-basis: 100%; padding-left: 26px; font: 500 11.5px var(--font-body); color: var(--ink-muted); margin-top: -2px; }
+.um-pop > a, .um-pop > button { flex-wrap: wrap; } .um-pop > button { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 0; border-radius: 14px; background: none; color: var(--ink); font: 700 13.5px var(--font-display); cursor: pointer; text-align: left; } .um-pop > button:hover { background: var(--brand-soft); color: var(--brand-ink); } .um-pop > button .ab-i { color: var(--ink-muted); } .um-hint { flex-basis: 100%; padding-left: 26px; font: 500 11.5px var(--font-body); color: var(--ink-muted); margin-top: -2px; }
 /* admin accordion nav */
 .side-grp { margin-top: 4px; }
 .side-grp-head { width: 100%; display: flex; align-items: center; gap: 11px; height: 44px; padding: 0 10px; border: 0; border-radius: 14px; background: none; cursor: pointer; font: 800 13.5px var(--font-display); color: var(--ink); text-align: left; transition: background .15s; }
@@ -1099,7 +1123,7 @@ const DAY = 864e5;
 const at = (days, h = 8, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return new Date(d.getTime() + days * DAY).toISOString(); };
 
 const SEED = () => ({
-  v: 9,
+  v: 11,
   testimonials: JSON.parse(JSON.stringify(TESTIMONIALS_SEED)),
   series: JSON.parse(JSON.stringify(SERIES_SEED)),
   theme: null,
@@ -1139,6 +1163,7 @@ const SEED = () => ({
   ],
   events: [
     { id: 'ev-utbk4', series: 'tryout', scope: 'Nasional', subjects: ['Penalaran', 'Literasi'], nav: 'free', timer: 'overall', maxAttempts: 1, result: 'immediate', wa: 'https://chat.whatsapp.com/abak-utbk4', extra: { desc: 'Siapkan kertas coretan dan kalkulator tidak diperbolehkan.', link: '' }, card: true, popular: 98, city: 'Online', name: 'Tryout Nasional UTBK #4', kind: 'Tryout', level: 'SMA / sederajat', testId: 't-utbk', price: 0, regClose: at(2, 23, 59), start: at(-1, 6), end: at(3, 22), quota: 5000, registered: 3812, published: true, token: '', tone: 'ember', desc: 'Simulasi UTBK lengkap dengan waktu pengerjaan, pembahasan tiap soal, dan peringkat nasional. Gratis untuk semua siswa terdaftar.', prizes: ['Peringkat nasional & per sekolah', 'Pembahasan video', 'Sertifikat digital'] },
+    { id: 'ev-utbk3', series: 'tryout', scope: 'Nasional', subjects: ['Penalaran', 'Literasi'], nav: 'free', timer: 'overall', maxAttempts: 1, result: 'immediate', wa: 'https://chat.whatsapp.com/abak-utbk3', extra: { desc: 'Siapkan kertas coretan dan kalkulator tidak diperbolehkan.', link: '' }, card: true, popular: 60, city: 'Online', name: 'Tryout Nasional UTBK #3', kind: 'Tryout', level: 'SMA / sederajat', testId: 't-utbk', price: 0, regClose: at(-33, 23, 59), start: at(-32, 6), end: at(-28, 22), quota: 5000, registered: 4120, published: true, token: '', tone: 'ember', desc: 'Simulasi UTBK lengkap dengan waktu pengerjaan, pembahasan tiap soal, dan peringkat nasional. Gratis untuk semua siswa terdaftar.', prizes: ['Peringkat nasional & per sekolah', 'Pembahasan video', 'Sertifikat digital'] },
     { id: 'ev-osn', series: 'einstein', scope: 'Internasional', subjects: ['Matematika'], nav: 'free', timer: 'overall', maxAttempts: 1, result: 'after_close', wa: 'https://chat.whatsapp.com/abak-osn26', extra: { desc: 'Peserta wajib menyalakan kamera selama ujian.', link: 'https://abakacademy.id/panduan-osn' }, card: true, popular: 91, city: 'National Round · Global Round', name: 'Einstein Olympiad 2026 · Math', kind: 'Olimpiade', level: 'SMP / sederajat', testId: 't-math', price: 200000, regClose: at(11, 17), start: at(19, 8), end: at(19, 10), quota: 1500, registered: 1204, published: true, token: 'DEMO', tone: 'gold', desc: 'Einstein Math untuk kelas 1–11, dikerjakan dalam bahasa Inggris. Peraih medali National Round diundang ke Global Round.', prizes: ['Medali emas, perak, perunggu', 'Undangan Global Round', 'Sertifikat'] },
     { id: 'ev-sains', series: 'stemco', scope: 'Internasional', subjects: ['Sains'], nav: 'sequential', timer: 'per_test', maxAttempts: 1, result: 'after_close', wa: '', extra: null, card: true, popular: 64, city: 'National Round · Global Round', name: 'STEMCO 2026 · Physics', kind: 'Kompetisi', level: 'SMA / sederajat', testId: 't-sains', price: 150000, regClose: at(24, 17), start: at(30, 9), end: at(30, 11), quota: 2000, registered: 486, published: true, token: 'DEMO', tone: 'teal', desc: 'STEMCO Physics untuk kelas 9–12 dengan silabus berbasis kurikulum Singapura, dalam bahasa Inggris. Medalis National Round lanjut ke Global Round.', prizes: ['Medali emas, perak, perunggu', 'Undangan Global Round', 'E-sertifikat'] },
     { id: 'ev-eng', series: 'esolio', scope: 'Internasional', subjects: ['Bahasa Inggris'], nav: 'free', timer: 'overall', maxAttempts: 1, result: 'after_close', wa: '', extra: null, card: true, popular: 77, city: 'International Round di Bali', name: 'ESOLIO 2026 · Visionary Flyers', kind: 'Olimpiade', level: 'SMA / sederajat', testId: 't-eng', price: 45000, regClose: at(-20, 17), start: at(-12, 9), end: at(-12, 11), quota: 1000, registered: 912, published: true, token: '', tone: 'info', desc: 'Olimpiade bahasa Inggris berstandar CEFR (Reading, Writing, Listening, Speaking) untuk kelas 10–12. Hasil sudah diumumkan.', prizes: ['Medali & sertifikat'] },
@@ -2281,10 +2306,11 @@ window.addEventListener('scroll', navScroll, { passive: true });
 // ================= STUDENT =================
 function seedStudent() {
   S.enrolled = { 'c-mat': { done: ['l1', 'l2', 'l3', 'l4'], last: 'l5', at: at(-20) }, 'c-lit': { done: ['l1', 'l2', 'l3', 'l4', 'l5', 'l6', 'l7'], last: 'l7', at: at(-40) } };
-  S.registrations = { 'ev-utbk4': { at: at(-3), no: 'ABK-418273', free: true }, 'ev-eng': { at: at(-25), no: 'ABK-301552' }, 'ev-osn': { at: at(-2), no: 'ABK-552810' } };
+  S.registrations = { 'ev-utbk4': { at: at(-3), no: 'ABK-418273', free: true }, 'ev-eng': { at: at(-25), no: 'ABK-301552' }, 'ev-osn': { at: at(-2), no: 'ABK-552810' }, 'ev-utbk3': { at: at(-34), no: 'ABK-277104', free: true } };
   S.attempts = S.attempts.filter(a => !a.mine);
   S.attempts.push({ id: 'att-eng', mine: true, user: S.user.name, school: S.user.school, eventId: 'ev-eng', testId: 't-eng', answers: { e1: 1, e2: 1, e3: 3 }, flags: {}, started: at(-12, 9, 2), submitted: at(-12, 9, 16), essay: {} });
   evt('ev-eng').released = true;
+  S.attempts.push({ id: 'att-utbk3', mine: true, user: S.user.name, school: S.user.school, eventId: 'ev-utbk3', testId: 't-utbk', answers: { q7: 2, q8: 3, q1: 2, q2: '24', q3: 1 }, flags: {}, started: at(-30, 19, 5), submitted: at(-30, 19, 31), essay: {} });
   S.orders = S.orders.filter(o => !o.mine);
   S.orders.push({ id: 'ABK-26111602X', mine: true, buyer: S.user.name, email: S.user.email, items: [{ type: 'event', id: 'ev-sains', name: 'STEMCO 2026 · Physics', price: 150000, qty: 1 }], subtotal: 150000, discount: 0, shipping: 0, total: 150000, method: 'QRIS', status: 'payment_pending', physical: false, created: at(0, 7, 15), deadline: at(1, 7, 15), log: [{ s: 'created', at: at(0, 7, 15) }] });
   S.orders.push({ id: 'ABK-26102801', mine: true, buyer: S.user.name, email: S.user.email, items: [{ type: 'course', id: 'c-mat', name: 'Matematika Penalaran UTBK', price: 149000, qty: 1 }, { type: 'product', id: 'p-book', name: 'Buku Latihan Penalaran', price: 89000, qty: 1 }], subtotal: 238000, discount: 47600, promo: 'BELAJAR20', shipping: 18000, total: 208400, method: 'QRIS', status: 'shipped', physical: true, address: 'Nadia Aulia · 081234568812\nJl. Pajajaran No. 41, Bogor Tengah, Kota Bogor, Jawa Barat 16129', courier: 'JNE REG', resi: 'JNE0126 7781 4402', created: at(-3, 20, 41), log: [{ s: 'created', at: at(-3, 20, 41) }, { s: 'paid', at: at(-3, 20, 44) }, { s: 'processing', at: at(-2, 8, 10) }, { s: 'shipped', at: at(-1, 13, 25) }] });
@@ -2322,69 +2348,104 @@ function sidebar(items, active, foot) {
 function studentNav(active) {
   const live = Object.keys(S.registrations).filter(id => evt(id) && evPhase(evt(id)) === 'live' && !myAttempt(id)?.submitted).length;
   const pend = S.orders.filter(o => o.mine && o.status === 'payment_pending').length;
-  return sidebar([['dash', '#/app', 'home', 'Beranda'], ['komp', '#/app/kompetisi', 'trophy', 'Kompetisi', live], ['kursus', '#/app/kursus', 'book', 'Kursus Saya'], ['toko', '#/katalog', 'bag', 'Toko'], ['tagihan', '#/app/tagihan', 'receipt', 'Tagihan', pend], ['profil', '#/app/profil', 'user', 'Profil']], active,
+  return sidebar([['dash', '#/app', 'home', 'Beranda'], ['komp', '#/app/kompetisi', 'trophy', 'Kompetisi', live], ['kursus', '#/app/kursus', 'book', 'Kursus Saya'], ['tagihan', '#/app/tagihan', 'receipt', 'Tagihan', pend]], active,
     `<div class="side-promo"><span class="mono">KODE REFERRAL</span><b>${esc(S.user.referral || 'NADIA26')}</b><small>Ajak teman, dapat poin.</small></div>
-     <a class="side-user" href="#/app/profil">${avatar(S.user.name, 'sm')}<span class="grow"><b>${esc(S.user.name)}</b><small>Kelas ${esc(S.user.grade)} · ${esc(S.user.school)}</small></span></a>
-     <a class="side-row" href="#/" data-act="logout"><span class="side-ico">${ic('logout')}</span><span class="label">Keluar</span></a>`);
+     <details class="umenu side-umenu"><summary aria-label="Menu akun">${avatar(S.user.name, 'sm')}<span class="grow"><b>${esc(S.user.name)}</b><small>Kelas ${esc(S.user.grade)} · ${esc(S.user.school)}</small></span>${cartCount() ? `<span class="um-dot">${cartCount()}</span>` : ''}${ic('chev-d', 'sm')}</summary>
+      <div class="um-pop"><div class="um-head">${avatar(S.user.name, 'md')}<div><b>${esc(S.user.name)}</b><small>${esc(S.user.email)}</small></div></div>
+        <button type="button" data-act="notifStu">${ic('bell', 'sm')}Notifikasi<span class="count">${S.announcements.length}</span></button>
+        <a href="#/keranjang">${ic('cart', 'sm')}Keranjang${cartCount() ? `<span class="count">${cartCount()}</span>` : ''}</a>
+        <button type="button" data-act="theme">${ic(S.theme === 'dark' ? 'sun' : 'moon', 'sm')}${S.theme === 'dark' ? 'Mode terang' : 'Mode gelap'}</button>
+        <a href="#/app/profil">${ic('user', 'sm')}Profil & akun</a>
+        <a href="#/" data-act="logout" class="um-out">${ic('logout', 'sm')}Keluar</a></div></details>`);
 }
 function appHead(title, sub, actions = '') {
-  const n = cartCount();
-  if (S.role === 'student') return `<header class="app-head"><div class="grow"><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>${actions ? `<div class="head-actions">${actions}</div>` : ''}</header>`;
   return `<header class="app-head"><button class="ab-iconbtn menu-btn" data-act="menu" aria-label="Buka menu">${ic('menu')}</button>
     <div class="grow"><h1>${title}</h1>${sub ? `<p>${sub}</p>` : ''}</div>
-    <div class="head-actions">${actions}${themeBtn()}${S.role === 'student' ? `<a class="ab-iconbtn" href="#/keranjang" aria-label="Keranjang">${ic('cart')}${n ? `<span class="cnt">${n}</span>` : ''}</a><button class="ab-iconbtn" data-act="notifStu" aria-label="Notifikasi">${ic('bell')}<span class="dot"></span></button>` : `<button class="ab-iconbtn" data-act="notif" aria-label="Notifikasi">${ic('bell')}<span class="dot"></span></button>`}</div></header>`;
+    <div class="head-actions">${actions}${S.role === 'student' ? '' : `${themeBtn()}<button class="ab-iconbtn" data-act="notif" aria-label="Notifikasi">${ic('bell')}<span class="dot"></span></button>`}</div></header>`;
 }
 const shell = (nav, body) => `<div class="shell">${nav}<div class="scrim" data-act="menu"></div><main class="shell-main" id="main">${body}</main></div>${demoBar()}`;
-const STU_NAV = { dash: 'home', komp: 'mine', kursus: 'kursus', toko: 'katalog', tagihan: '', profil: '' };
-const stu = (active, body, wide) => `<div class="page app-top">${publicNav(STU_NAV[active])}<main id="main" class="wrap app-main ${wide ? 'wide' : ''}">${body}</main>${footer()}</div>${demoBar()}`;
+const stu = (active, body) => shell(studentNav(active), body);
 function greet() { const h = new Date().getHours(); return h < 11 ? L('Selamat pagi', 'Good morning') : h < 15 ? L('Selamat siang', 'Good afternoon') : h < 18 ? L('Selamat sore', 'Good afternoon') : L('Selamat malam', 'Good evening'); }
 const todayLine = () => { const d = new Date(); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`; };
 ACT.notifStu = () => modal(`<div class="modal-head"><h2>Notifikasi</h2><button class="ab-iconbtn" data-act="close" aria-label="Tutup">${ic('x')}</button></div><div class="list">${S.announcements.map(a => `<div class="nrow"><span class="nico c-ember">${ic('megaphone', 'sm')}</span><div><b>${esc(a.title)}</b><p class="muted small">${esc(a.body)}</p><small class="muted">${fShort(a.sent)}</small></div></div>`).join('')}</div>`);
 
 // ---------- Beranda ----------
 route(/^\/app$/, () => studentHome());
+// Hero = carousel of open/live events the student hasn't joined; content comes from admin Event, no separate banner CMS.
+const HERO_EVENTS = () => S.events.filter(e => e.published && ['open', 'live'].includes(evPhase(e)) && !S.registrations[e.id]).sort((a, b) => b.popular - a.popular);
+function heroSlide(e) {
+  const ph = e && evPhase(e);
+  return `<div class="dh-copy"><span class="eyebrow light">${e ? esc(e.kind.toUpperCase()) + ' · ' + esc(e.scope.toUpperCase()) : 'KOMPETISI'}</span><h2>${e ? PHASE[ph][0] : 'Ujian terbaru sudah hadir'}</h2><p>${e ? `${esc(e.name)} · ${esc(e.level)} · ${e.price ? rp(e.price) : 'Gratis'}. ` : ''}Persiapkan ujianmu dengan paket terbaru — latihan, cek hasilmu, dan raih peringkat tertinggi.</p>
+      <div class="row-wrap"><a class="ab-btn light" href="${e ? '#/kompetisi/' + e.id : '#/kompetisi'}">${ph === 'open' ? 'Daftar sekarang' : 'Jelajahi sekarang'} ${ic('arrow-r', 'sm')}</a><a class="ab-btn line-light" href="#/app/kompetisi">${L("Kompetisi Saya", "My Competitions")}</a></div></div>
+    <div class="dh-art">${spotFor(e?.subjects[0])}<div class="floaters" aria-hidden="true"><span class="floater light" style="left:6%;top:12%;--r:-12deg">∑</span><span class="floater light" style="left:78%;top:70%;--r:10deg">π</span></div></div>`;
+}
+// All slides share one grid cell, so the hero keeps the tallest slide's height and the dots never move.
+function heroHtml(i) {
+  const list = HERO_EVENTS(); i = list.length ? i % list.length : 0;
+  const slides = list.length ? list : [null];
+  return `<div class="dh-track">${slides.map((e, j) => `<div class="dh-slide ${j === i ? 'on' : ''}" ${j === i ? '' : 'inert aria-hidden="true"'}>${heroSlide(e)}</div>`).join('')}</div>
+    ${list.length > 1 ? `<div class="dh-dots">${list.map((x, j) => `<button class="dh-dot ${j === i ? 'on' : ''}" data-act="hero" data-i="${j}" aria-label="Event ${j + 1} dari ${list.length}: ${esc(x.name)}" ${j === i ? 'aria-current="true"' : ''}></button>`).join('')}</div>` : ''}`;
+}
+// Upcoming/live first by start; finished after, newest first.
+const evListOrder = (a, b) => { const da = evPhase(a) === 'done', db = evPhase(b) === 'done'; return da !== db ? da - db : da ? new Date(b.end) - new Date(a.end) : new Date(a.start) - new Date(b.start); };
+function evListRow(e) {
+  const att = myAttempt(e.id); const ph = evPhase(e);
+  const action = att?.submitted && released(att) ? `<a class="ab-btn primary sm" href="#/app/peringkat/${att.id}">${L('Lihat hasil', 'See results')}</a>`
+    : att?.submitted ? `<span class="chip c-mute">${L('Menunggu hasil', 'Awaiting results')}</span>`
+    : ph === 'done' ? `<span class="chip c-mute">${L('Terlewat', 'Missed')}</span>`
+    : `<a class="ab-btn outline sm" href="#/app/kompetisi/${e.id}">${ph === 'live' ? L('Mulai', 'Start') : L('Detail', 'Details')}</a>`;
+  return `<li><span class="ev-date"><b>${new Date(e.start).getDate()}</b>${MONTHS[new Date(e.start).getMonth()].slice(0, 3)}</span><div class="grow"><b>${esc(e.name)}</b><small>${ic('timer', 'sm')}${workMinutes(e)} menit${ph === 'live' ? ` · <span class="live-t">${L('Sedang berlangsung', 'Live now')}</span>` : ''}</small></div>${action}</li>`;
+}
+const showHero = i => {
+  const el = document.getElementById('dash-hero'); if (!el) return; i = i % (HERO_EVENTS().length || 1); S.heroIdx = i;
+  el.querySelectorAll('.dh-slide').forEach((sl, j) => { const was = sl.classList.contains('on'); sl.classList.toggle('on', j === i); sl.classList.toggle('out', was && j !== i); sl.toggleAttribute('inert', j !== i); j === i ? sl.removeAttribute('aria-hidden') : sl.setAttribute('aria-hidden', 'true'); });
+  el.querySelectorAll('.dh-dot').forEach((d, j) => { d.classList.toggle('on', j === i); j === i ? d.setAttribute('aria-current', 'true') : d.removeAttribute('aria-current'); });
+};
+ACT.hero = el => showHero(+el.dataset.i);
+function heroAutoplay() {
+  if (HERO_EVENTS().length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  timers.push(setInterval(() => { const el = document.getElementById('dash-hero'); if (el && !el.matches(':hover, :focus-within')) showHero(((S.heroIdx || 0) + 1) % HERO_EVENTS().length); }, 6000));
+}
 function studentHome() {
   const first = S.user.name.split(' ')[0];
   const pend = S.orders.filter(o => o.mine && o.status === 'payment_pending');
-  const done = S.attempts.filter(a => a.mine && a.submitted);
-  const best = done.filter(released).sort((a, b) => scoreOf(b).score - scoreOf(a).score)[0];
   const myCourses = Object.keys(S.enrolled).map(course).filter(Boolean);
   const watched = Object.values(S.enrolled).reduce((a, e) => a + e.done.length, 0);
   const totalLessons = myCourses.reduce((a, c) => a + c.sections.reduce((b, s) => b + s.lessons.length, 0), 0);
   const hours = Object.keys(S.enrolled).reduce((a, cid) => a + course(cid).sections.flatMap(s => s.lessons).filter(l => S.enrolled[cid].done.includes(l.id)).reduce((b, l) => b + l.dur, 0), 0) / 60;
   const completedCourses = myCourses.filter(c => coursePct(c) === 100).length;
   const regs = Object.keys(S.registrations).map(evt).filter(Boolean);
-  const examDone = done.length, examRun = regs.filter(e => evPhase(e) === 'live' && !myAttempt(e.id)?.submitted).length, examUp = regs.filter(e => ['open', 'closed'].includes(evPhase(e))).length;
-  const latest = S.events.filter(e => e.published && ['open', 'live'].includes(evPhase(e))).sort((a, b) => b.popular - a.popular)[0];
-  const board = best ? leaderRows(best).slice(0, 3) : [];
+  AFTER.push(heroAutoplay);
   const pct = totalLessons ? Math.round(watched / totalLessons * 100) : 0;
-  return stu('dash', `<section class="home-hi"><div class="grow"><span class="mono">${esc(todayLine().toUpperCase())}</span><h1>${greet()}, <span class="hl">${esc(first)}${squiggle}</span></h1><p class="muted">${L('Siap naik panggung hari ini? Ini ringkasan perjalananmu.', 'Ready to take the stage today? Here is your journey so far.')}</p></div></section>
+  return stu('dash', `<section class="home-hi"><div class="grow"><span class="mono">${esc(todayLine().toUpperCase())}</span><h1>${greet()}, <span class="hl">${esc(first)}${squiggle}</span></h1><p class="muted">${L('Siap naik panggung hari ini? Ini ringkasan perjalananmu.', 'Ready to take the stage today? Here is your journey so far.')}</p></div><button class="ab-iconbtn menu-btn" data-act="menu" aria-label="Buka menu">${ic('menu')}</button></section>
   ${S.welcome ? `<div class="welcome"><div class="grow"><b>Selamat datang di Abak Academy!</b><span class="muted">Ikut tryout gratis pertamamu untuk tahu posisimu.</span></div><a class="ab-btn primary sm" href="#/kompetisi/ev-utbk4">Coba tryout</a><button class="ab-iconbtn sm" data-act="dismissWelcome" aria-label="Tutup">${ic('x', 'sm')}</button></div>` : ''}
   ${pend.length ? `<a class="pending-banner" href="#/app/tagihan/${pend[0].id}"><span class="pb-ico">${ic('hourglass')}</span><div class="grow"><b>${pend.length} tagihan menunggu pembayaran</b><span>${esc(pend[0].items[0].name)} · ${rp(pend[0].total)} — bayar sebelum ${fShort(pend[0].deadline || pend[0].created)}</span></div><span class="ab-btn light sm">Bayar sekarang</span></a>` : ''}
-  <section class="dash-hero">
-    <div class="dh-copy"><span class="eyebrow light">${latest ? esc(latest.kind.toUpperCase()) + ' · ' + esc(latest.scope.toUpperCase()) : 'KOMPETISI'}</span><h2>Ujian terbaru sudah hadir</h2><p>${latest ? `${esc(latest.name)} — ${PHASE[evPhase(latest)][0].toLowerCase()}. ` : ''}Persiapkan ujianmu dengan paket terbaru — latihan, cek hasilmu, dan raih peringkat tertinggi.</p>
-      <div class="row-wrap"><a class="ab-btn light" href="${latest ? '#/kompetisi/' + latest.id : '#/kompetisi'}">Jelajahi sekarang ${ic('arrow-r', 'sm')}</a><a class="ab-btn line-light" href="#/app/kompetisi">${L("Kompetisi Saya", "My Competitions")}</a></div></div>
-    <div class="dh-art">${spotFor(latest?.subjects[0])}<div class="floaters" aria-hidden="true"><span class="floater light" style="left:6%;top:12%;--r:-12deg">∑</span><span class="floater light" style="left:78%;top:70%;--r:10deg">π</span></div></div>
-  </section>
-  <div class="dash-grid">
-    <section class="dcard d-rank"><div class="dcard-head"><span class="dico c-gold">${ic('crown')}</span><b>Peringkat saya</b>${best ? `<a class="more" href="#/app/peringkat/${best.id}">Lihat semua</a>` : ''}</div>
-      ${best ? `<div class="rank-big"><b>#${num(rankOf(best))}</b><span>${esc(evt(best.eventId).name)}<br><small class="muted">${scoreOf(best).score} poin</small></span></div>
-        <ol class="mini-board">${board.map((r, i) => `<li>${['🥇', '🥈', '🥉'][i] ? `<span class="medal-n m${i + 1}">${i + 1}</span>` : ''}${avatar(r.name, 'xs')}<span class="grow">${esc(r.name)}</span><b>${r.score}</b></li>`).join('')}<li class="me"><span class="medal-n">${num(rankOf(best))}</span>${avatar(S.user.name, 'xs')}<span class="grow">Anda</span><b>${scoreOf(best).score}</b></li></ol>`
-        : `<p class="muted">Peringkat akan tersedia setelah ujian pertama.</p><a class="ab-btn outline sm" href="#/kompetisi/ev-utbk4">Ikut tryout gratis</a>`}</section>
-    <section class="dcard d-study"><div class="dcard-head"><span class="dico c-teal">${ic('clock')}</span><b>Total jam belajar</b></div>
-      <div class="study"><div class="donut" style="--p:${pct}"><b>${hours.toFixed(1).replace('.', ',')}</b><span>jam</span></div>
-      <ul><li><i class="lg-teal"></i>Materi <b>${watched}</b></li><li><i class="lg-mute"></i>Sisa <b>${Math.max(0, totalLessons - watched)}</b></li><li>${ic('play-circle', 'sm')}Pertemuan ditonton <b>${watched}</b></li><li>${ic('certificate', 'sm')}Kursus selesai <b>${completedCourses}</b></li></ul></div></section>
-    <section class="dcard d-prog"><div class="dcard-head"><span class="dico c-ember">${ic('target')}</span><b>Progress ujian</b></div>
-      <div class="prog-bars">${[['Selesai', examDone, 'teal'], ['Berjalan', examRun, 'ember'], ['Akan datang', examUp, 'sky']].map(([l, v, t]) => `<div class="pbar"><div class="pbar-track"><i class="b-${t}" style="height:${Math.max(8, v / Math.max(1, examDone + examRun + examUp) * 100)}%"></i></div><b>${v}</b><span>${l}</span></div>`).join('')}</div>
-      <a class="ab-btn ghost sm full" href="#/app/kompetisi">${L('Buka Kompetisi Saya', 'Open My Competitions')} ${ic('arrow-r', 'sm')}</a></section>
+  ${shipCard()}
+  <div class="top-row"><section class="dash-hero" id="dash-hero" aria-roledescription="carousel" aria-label="Event yang sedang buka">${heroHtml(S.heroIdx || 0)}</section>
+  <section class="dcard d-events"><div class="dcard-head"><span class="dico c-gold">${ic('trophy')}</span><b>${L('Event & kompetisi', 'Events & competitions')}</b><a class="more" href="#/app/kompetisi">${L('Lihat semua', 'See all')}</a></div>
+      ${regs.length ? `<ul class="ev-list">${regs.sort(evListOrder).slice(0, 4).map(evListRow).join('')}</ul>` : `<p class="muted">${L('Belum ada event yang kamu ikuti.', 'You have not joined any event yet.')}</p><a class="ab-btn outline sm" href="#/kompetisi">${L('Lihat event', 'Browse events')}</a>`}</section>
   </div>
-  ${(() => { const mineRegs = regs.filter(e => evPhase(e) !== 'done' || (myAttempt(e.id) && !myAttempt(e.id).submitted)).sort((a, b) => new Date(a.start) - new Date(b.start));
-    return `<section class="block"><div class="block-head"><h2>${L('Kompetisi terdaftar', 'Registered competitions')} <span class="chip c-mute">${regs.length}</span></h2><a class="ab-btn ghost sm" href="#/app/kompetisi">${L('Lihat semua', 'See all')}</a></div>
-    ${mineRegs.length ? `<div class="pkg-grid">${mineRegs.slice(0, 3).map(pkgCard).join('')}</div>` : `<div class="card pad">${empty('trophy', L('Belum ada kompetisi aktif', 'No active competitions'), L('Semua kompetisimu sudah selesai. Cek hasilnya di Kompetisi Saya, atau pilih event baru.', 'All your competitions are done. Check results in My Competitions, or pick a new event.'), `<a class="ab-btn primary" href="#/kompetisi">${L('Lihat event', 'Browse events')}</a>`)}</div>`}</section>`; })()}
-  <section class="block"><div class="block-head"><h2>${L('Lanjut belajar', 'Continue learning')}</h2><a class="ab-btn ghost sm" href="#/app/kursus">${L('Buka Belajar', 'Open Learn')}</a></div>
-    <div class="card-grid">${myCourses.map(continueCard).join('')}<a class="add-card" href="#/katalog" data-act="catTab" data-t="course"><span>${ic('plus', 'lg')}</span><b>Tambah kursus</b><small>Temukan buku, kursus, dan paket kompetisi baru.</small></a></div></section>`);
+  <div class="learn-row"><section class="dcard d-learn"><div class="dcard-head"><span class="dico c-sky">${ic('book')}</span><b>${L('Lanjut belajar', 'Continue learning')}</b><a class="more" href="#/app/kursus">${L('Lihat semua', 'See all')}</a></div>
+    ${myCourses.length ? `<ul class="learn-list">${myCourses.map(learnRow).join('')}</ul>` : `<p class="muted">${L('Belum ada kursus.', 'No courses yet.')}</p>`}<a class="ab-btn ghost sm full" href="#/katalog" data-act="catTab" data-t="course">${ic('plus', 'sm')}${L('Tambah kursus', 'Add a course')}</a></section>
+  <section class="dcard d-study"><div class="dcard-head"><span class="dico c-teal">${ic('clock')}</span><b>Total jam belajar</b></div>
+      <div class="study"><div class="donut" style="--p:${pct}"><b>${hours.toFixed(1).replace('.', ',')}</b><span>jam</span></div>
+      <ul><li><i class="lg-teal"></i>Materi <b>${watched}</b></li><li><i class="lg-mute"></i>Sisa <b>${Math.max(0, totalLessons - watched)}</b></li><li>${ic('play-circle', 'sm')}Pertemuan ditonton <b>${watched}</b></li><li>${ic('certificate', 'sm')}Kursus selesai <b>${completedCourses}</b></li></ul></div></section></div>`);
 }
 ACT.dismissWelcome = () => { S.welcome = false; save(); render(); };
+function learnRow(c) {
+  const en = S.enrolled[c.id]; const all = c.sections.flatMap(s => s.lessons); const next = all.find(l => !en.done.includes(l.id)) || all[0]; const pct = coursePct(c); const tone = c.tone === 'ink' ? 'navy' : c.tone;
+  return `<li><a href="#/app/kursus/${c.id}/${next.id}"><span class="lr-cover p-${tone}" aria-hidden="true">${spotFor(c.subject)}<span class="play">${ic('play', 'sm')}</span></span><div class="lr-body"><div class="lr-top"><b>${esc(c.title)}</b><span class="t-teal">${pct}%</span></div><small>${pct === 100 ? 'Kursus selesai' : `Materi ${all.indexOf(next) + 1} dari ${all.length} · Lanjut: ${esc(next.title)}`}</small><div class="ab-progress"><i style="width:${pct}%"></i></div></div></a></li>`;
+}
+// Shown only while a physical order is on its way; disappears once completed.
+function shipCard() {
+  const o = S.orders.filter(x => x.mine && x.physical && ['processing', 'shipped'].includes(x.status)).sort((a, b) => new Date(b.created) - new Date(a.created))[0]; if (!o) return '';
+  const when = st => o.log.find(l => l.s === st)?.at;
+  const steps = [['paid', 'Dibayar'], ['processing', 'Dikemas'], ['shipped', 'Dikirim'], ['completed', 'Diterima']];
+  const goods = o.items.filter(it => it.type === 'product').map(it => it.name).join(', ');
+  return `<section class="ship-card"><div class="ship-info"><span class="dico c-ember">${ic('truck')}</span><div><b>${o.status === 'shipped' ? 'Paketmu sedang dikirim' : 'Pesananmu sedang dikemas'}</b><small>${esc(goods)}</small></div></div>
+    <ol class="ship-steps">${steps.map(([k, l]) => `<li class="${when(k) ? 'on' : ''}"><i>${when(k) ? ic('check', 'sm') : ''}</i><b>${l}</b><small>${when(k) ? fShort(when(k)).split(',')[0] : '—'}</small></li>`).join('')}</ol>
+    <div class="ship-resi">${o.resi ? `<span class="resi-box"><small>${esc(o.courier)} · No. resi</small><button class="resi-btn" data-act="copy" data-t="${esc(o.resi)}" aria-label="Salin nomor resi">${esc(o.resi)}${ic('copy', 'sm')}</button></span>` : '<small>Resi muncul setelah paket diserahkan ke kurir</small>'}<a class="ab-btn outline sm" href="#/app/tagihan/${o.id}">Detail</a></div></section>`;
+}
 function continueCard(c) {
   const en = S.enrolled[c.id]; const all = c.sections.flatMap(s => s.lessons); const next = all.find(l => !en.done.includes(l.id)) || all[0]; const pct = coursePct(c); const tone = c.tone === 'ink' ? 'navy' : c.tone;
   return `<article class="ccard"><a href="#/app/kursus/${c.id}/${next.id}" class="ccover p-${tone}" aria-label="${esc(c.title)}">${spotFor(c.subject)}<span class="poster-glyph">${esc(c.glyph)}</span><span class="chip glassy">${pct === 100 ? 'Selesai' : `Materi ${all.indexOf(next) + 1} dari ${all.length}`}</span><span class="play">${ic('play', 'sm')}</span></a>
@@ -2614,18 +2675,60 @@ route(/^\/app\/tagihan\/([\w-]+)$/, id => {
   const lg = s => o.log.find(l => l.s === s); const nowStep = steps.find(s => !lg(s));
   const detail = { created: o.promo ? 'Promo ' + o.promo : 'Menunggu pembayaran', paid: o.method || 'Midtrans', processing: 'Gudang Bogor', shipped: `${o.courier}${o.resi ? ' · ' + o.resi : ''}`, completed: o.physical ? 'Pesanan diterima' : 'Akses digital aktif', cancelled: 'Pesanan dibatalkan', payment_expired: 'Batas pembayaran terlewat' };
   const access = ['paid', 'processing', 'shipped', 'completed'].includes(o.status) ? o.items.filter(i => i.type !== 'product' || product(i.id)?.type === 'exam').map(i => i.type === 'course' ? `<a class="ab-btn dark sm" href="#/app/kursus/${i.id}">${ic('play-circle', 'sm')}Buka kursus</a>` : i.type === 'event' ? `<a class="ab-btn dark sm" href="#/app/kompetisi/${i.id}">${ic('trophy', 'sm')}Buka di Kompetisi</a>` : `<a class="ab-btn dark sm" href="#/app/kompetisi">${ic('clipboard', 'sm')}Paket tryout</a>`).join('') : '';
-  return stu('tagihan', `<a class="back" href="#/app/tagihan">${ic('chev-l', 'sm')}Semua pesanan</a>${appHead('Pesanan ' + o.id, 'Dibuat ' + fDT(o.created), `<button class="ab-btn outline" data-act="print">${ic('file', 'sm')}Lihat invoice</button>`)}
+  return stu('tagihan', `<a class="back" href="#/app/tagihan">${ic('chev-l', 'sm')}Semua pesanan</a>${appHead('Pesanan ' + o.id, 'Dibuat ' + fDT(o.created), `<button class="ab-btn outline" data-act="invoice" data-id="${o.id}">${ic('file', 'sm')}Lihat invoice</button>`)}
   ${o.status === 'payment_pending' ? `<section class="pay-pending"><div class="grow"><span class="eyebrow">MENUNGGU PEMBAYARAN</span><h2>${rp(o.total)}</h2><p>Bayar sebelum <b>${fDT(o.deadline || o.created)}</b>. Pesanan dibatalkan otomatis jika lewat batas.</p></div><div class="cdown sm" data-cd="${o.deadline || o.created}">${cdCells(o.deadline || o.created)}</div><button class="ab-btn primary lg" data-act="snapOpen" data-id="${o.id}">Lanjutkan pembayaran</button></section>` : ''}
-  <div class="order-grid">
-    <section class="card pad"><div class="block-head"><h2>Riwayat status</h2>${orderBadge(o.status)}</div>
-      <ol class="tl">${steps.map(s => { const l = lg(s); const cls = l ? 'done' : s === nowStep && !['cancelled', 'payment_expired'].includes(o.status) ? 'now' : ''; return `<li class="${cls}"><span class="node">${ic(LOG_LABEL[s][1], 'sm')}</span><div><b>${LOG_LABEL[s][0]}</b><p>${l ? esc(detail[s]) : s === 'paid' ? 'Menunggu pembayaran' : s === 'processing' ? 'Dikemas maks. 1×24 jam' : s === 'shipped' ? 'Nomor resi muncul setelah dikirim' : 'Otomatis selesai setelah paket diterima'}</p></div><time>${l ? fShort(l.at) : '—'}</time></li>`; }).join('')}</ol>
-      ${o.resi ? `<div class="resi">${ic('truck', 'sm')}<span>No. resi <b class="num">${o.resi}</b></span><button class="ab-btn ghost sm" data-act="copy" data-t="${o.resi}">${ic('copy', 'sm')}Salin</button></div>` : ''}
-      <div class="row-wrap">${o.status === 'shipped' ? `<button class="ab-btn primary" data-act="received" data-id="${o.id}">${ic('check-circle', 'sm')}Pesanan sudah diterima</button>` : ''}${access}</div></section>
+  <div class="order-grid even">
     <section class="card pad"><h2>Ringkasan pesanan</h2><div class="mini-lines">${o.items.map(i => { const inf = lineInfo({ type: i.type === 'event' ? 'exam' : i.type, id: i.id }); return `<div><span class="thumb p-${inf.tone}">${ic(inf.icon, 'sm')}</span><span class="grow">${esc(i.name)}${i.qty > 1 ? ' ×' + i.qty : ''}</span><b class="num">${rp(i.price * i.qty)}</b></div>`; }).join('')}</div>
       ${summaryBox({ subtotal: o.subtotal, discount: o.discount, promo: { code: o.promo }, physical: o.physical, shipping: o.shipping, total: o.total })}
       ${o.physical ? `<h3>Dikirim ke</h3><p class="muted pre">${esc(o.address)}</p><p class="muted">${esc(o.courier)}${o.note ? ' · Catatan: ' + esc(o.note) : ''}</p>` : ''}
-      <h3>Pembayaran</h3><p class="muted">${esc(o.method || 'Belum dipilih')} · Midtrans</p></section></div>`);
+      <h3>Pembayaran</h3><p class="muted">${esc(o.method || 'Belum dipilih')} · Midtrans</p></section>
+    <section class="card pad"><div class="block-head"><h2>Riwayat status</h2>${orderBadge(o.status)}</div>
+      <ol class="tl">${steps.map(s => { const l = lg(s); const cls = l ? 'done' : s === nowStep && !['cancelled', 'payment_expired'].includes(o.status) ? 'now' : ''; return `<li class="${cls}"><span class="node">${ic(LOG_LABEL[s][1], 'sm')}</span><div><b>${LOG_LABEL[s][0]}</b><p>${l ? esc(detail[s]) : s === 'paid' ? 'Menunggu pembayaran' : s === 'processing' ? 'Dikemas maks. 1×24 jam' : s === 'shipped' ? 'Nomor resi muncul setelah dikirim' : 'Otomatis selesai setelah paket diterima'}</p></div><time>${l ? fShort(l.at) : '—'}</time></li>`; }).join('')}</ol>
+      ${o.resi ? `<div class="resi">${ic('truck', 'sm')}<span>No. resi <b class="num">${o.resi}</b></span><button class="ab-btn ghost sm" data-act="copy" data-t="${o.resi}">${ic('copy', 'sm')}Salin</button></div>` : ''}
+      <div class="row-wrap">${o.status === 'shipped' ? `<button class="ab-btn primary" data-act="received" data-id="${o.id}">${ic('check-circle', 'sm')}Pesanan sudah diterima</button>` : ''}${access}</div></section></div>`);
 }, { after: () => startCountdowns() });
+function invoicePaper(o) {
+  const paid = o.log.find(l => l.s === 'paid');
+  return `<article class="inv-paper" id="inv-paper">
+    <header class="inv-top"><div class="inv-brand">${LOGO}<span><b>Abak Academy</b><small>hub.abakacademy.id</small></span></div><div class="inv-title"><h3>INVOICE</h3><small>INV/${esc(o.id)}</small></div></header>
+    <div class="inv-meta"><div><small>Ditagihkan kepada</small><b>${esc(o.buyer)}</b><span>${esc(o.email)}</span>${o.physical && o.address ? `<span class="pre">${esc(o.address.split('\n').slice(1).join('\n'))}</span>` : ''}</div>
+      <div class="inv-dates"><span><small>Tanggal pesanan</small>${fDate(o.created)}</span><span><small>Status</small><b class="inv-stamp ${paid ? 'ok' : ''}">${paid ? 'LUNAS' : 'BELUM DIBAYAR'}</b></span></div></div>
+    <table class="inv-table"><thead><tr><th>Item</th><th>Qty</th><th>Harga</th><th>Jumlah</th></tr></thead>
+      <tbody>${o.items.map(i => `<tr><td>${esc(i.name)}</td><td>${i.qty}</td><td>${rp(i.price)}</td><td>${rp(i.price * i.qty)}</td></tr>`).join('')}</tbody></table>
+    <div class="inv-sum"><div><span>Subtotal</span><b>${rp(o.subtotal)}</b></div>${o.discount ? `<div><span>Diskon ${esc(o.promo || '')}</span><b>−${rp(o.discount)}</b></div>` : ''}${o.physical ? `<div><span>Ongkos kirim${o.courier ? ' (' + esc(o.courier) + ')' : ''}</span><b>${rp(o.shipping || 0)}</b></div>` : ''}<div class="tot"><span>Total</span><b>${rp(o.total)}</b></div></div>
+    <footer class="inv-foot"><span>Pembayaran: ${esc(o.method || '—')} · Midtrans${paid ? ' · ' + fShort(paid.at) : ''}</span><span>Terima kasih telah belajar bersama Abak Academy.</span></footer></article>`;
+}
+ACT.invoice = el => { const o = byId(S.orders, el.dataset.id);
+  modal(`<div class="modal-head"><h2>Invoice</h2><button class="ab-iconbtn" data-act="close" aria-label="Tutup">${ic('x')}</button></div>
+    <div class="inv-stage">${invoicePaper(o)}</div>
+    <div class="row-wrap inv-actions"><button class="ab-btn outline" data-act="invPrint">${ic('printer', 'sm')}Cetak</button><button class="ab-btn primary" data-act="invPdf" data-id="${o.id}">${ic('download', 'sm')}Unduh PDF</button></div>`, true); };
+ACT.invPrint = () => window.print();
+// Same approach as Taruna: html-to-image → JPEG → one-page image PDF; no server render. shortcut: text in the PDF is not selectable, switch to a vector renderer if finance needs that.
+ACT.invPdf = async el => {
+  const o = byId(S.orders, el.dataset.id); el.disabled = true;
+  try {
+    if (!window.htmlToImage) await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); });
+    const url = await htmlToImage.toJpeg(document.getElementById('inv-paper'), { quality: 0.95, pixelRatio: 2, backgroundColor: '#ffffff' });
+    const jpeg = new Uint8Array(await (await fetch(url)).arrayBuffer());
+    const bmp = await createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' })); const w = bmp.width, h = bmp.height; bmp.close();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(imagePdf(jpeg, w, h)); a.download = `Invoice-${o.id}.pdf`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Invoice diunduh');
+  } catch (e) { toast('Gagal membuat PDF', 'danger'); } finally { el.disabled = false; }
+};
+function imagePdf(jpeg, imgW, imgH) {
+  const enc = t => new TextEncoder().encode(t); const pageW = 595.28, imgPt = +(pageW * imgH / imgW).toFixed(2), pageH = Math.max(841.89, imgPt);
+  const parts = [], offs = []; let size = 0; const push = c => { parts.push(c); size += c.length; };
+  const obj = (n, head, stream) => { offs[n] = size; push(enc(`${n} 0 obj\n${head}\n`)); if (stream) { push(enc('stream\n')); push(stream); push(enc('\nendstream\n')); } push(enc('endobj\n')); };
+  const content = `q ${pageW} 0 0 ${imgPt} 0 ${(pageH - imgPt).toFixed(2)} cm /Im0 Do Q`;
+  push(enc('%PDF-1.4\n'));
+  obj(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  obj(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  obj(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Contents 4 0 R /Resources << /XObject << /Im0 5 0 R >> >> >>`);
+  obj(4, `<< /Length ${content.length} >>`, enc(content));
+  obj(5, `<< /Type /XObject /Subtype /Image /Width ${imgW} /Height ${imgH} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpeg.length} >>`, jpeg);
+  const xref = size; push(enc(`xref\n0 6\n0000000000 65535 f \n${offs.slice(1).map(x => `${String(x).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`));
+  return new Blob(parts, { type: 'application/pdf' });
+}
 ACT.received = el => { const o = byId(S.orders, el.dataset.id); o.status = 'completed'; o.log.push({ s: 'completed', at: new Date().toISOString() }); save(); render(); toast('Terima kasih! Pesanan selesai.'); };
 
 // ---------- Profil ----------
