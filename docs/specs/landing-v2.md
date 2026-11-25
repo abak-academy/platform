@@ -51,7 +51,7 @@ Decisions already made (Panca, 2026-11-17). The prototype is the layout referenc
 4. **Pilih panggungmu:** event tiles plus one story card for the selected event (`EventSeriesPicker` + `EventStoryCard`). The card shows logo or illustration, scope and levels chips, full name, tagline, story, schedule timeline, rounds, categories, and facts. Its CTA is "Daftar ⟨category⟩ · price" for each open edition (up to 2) or "Tanya jadwal" (WhatsApp), plus "Situs resmi". There is no "all events" tile and no list of every edition.
 5. **Semua di satu akun:** 4 feature cards.
 6. **Kursus online:** 4 published courses.
-7. **Cerita peserta:** testimonial carousel with the award-ceremony photo, fed by `GET /testimonials?lang=` (`testimonials.md`). When the API returns none, the whole section is not rendered. No placeholder quotes ship.
+7. **Cerita peserta:** testimonial carousel with the speaker's own photo per slide, fed by `GET /testimonials?lang=` (`testimonials.md`). When the API returns none, the whole section is not rendered. No placeholder quotes ship.
 8. **Toko:** 4 physical products.
 9. **Untuk sekolah & lembaga:** a band with a partnership CTA (WhatsApp until a lead form exists).
 10. **FAQ** plus the "Belum ketemu jawabannya?" WhatsApp block.

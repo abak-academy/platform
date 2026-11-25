@@ -36,10 +36,10 @@ The prototype is the reference for **behavior, layout, hierarchy, and copy**. It
 | 2b | `admin-list-toolbar.md` | One `ListToolbar` for every admin list | web | 1 | Component built in the event-series PR (event-series D5 = a); migrating existing lists stays a later PR |
 | 2c | *(in `admin-dashboard-v2.md`)* | Admin dashboard: donut, "Esai perlu dinilai" | web + small API | 1 | In PR 1 |
 | 3 | `event-series.md` | Event entity (ID + EN), exam level + link, admin Event menu, public API incl. open editions with phase | migration `0075` + API + web | PR 1 | **In redesign scope**; plan ready |
-| 3b | `testimonials.md` | Testimonial CMS with consent gate, public API, avatar face | migration `0076` + API + web | PR 1; admin `ListToolbar` | **In redesign scope**; plan ready |
+| 3b | `testimonials.md` | Testimonial CMS with consent gate, required 4:5 photo, public API | migration `0076` + API + web | PR 1; admin `ListToolbar` | **In redesign scope**; plan ready |
 | 4 | `landing-v2.md` | Public landing + Event page, ID/EN | web | PR 1, 3, 3b | Spec stale vs the 2026-11-26 hero; under review with Panca |
 | 5 | `student-dashboard-v2.md` (supersedes `student-shell-v2.md`) | Student sidebar shell, home, order detail + invoice | web (+ html-to-image) | PR 1; 3 if RD1 puts it first | PR 2; plan ready |
-| 6 | `profile-avatars.md` | Avatar sheet, photo upload with preview, password modal | web + small API + ops | 1 | Not scheduled; testimonials D2 = a adds the sheet + `AvatarFace` it can reuse |
+| 6 | `profile-avatars.md` | Avatar sheet, photo upload with preview, password modal | web + small API + ops | 1 | Not scheduled; testimonials no longer use the avatar sheet (photo required since 2026-11-26) |
 
 **Branching (Panca, 2026-11-26).** Every redesign PR is cut from `feat/public-landing` and targets it, not `main`, until all redesign work including the landing is done; then `feat/public-landing` goes to `main` as one release. Each PR branch is cut after the PRs it depends on have merged into `feat/public-landing`.
 
@@ -86,7 +86,7 @@ Whatever is picked, `student-dashboard-v2.md` D1–D2 follow it (they are writte
 - **RD1 — PR split and order** (above).
 - Landing hero title is up to 92px, beyond `display-xl` 64: add `display-hero`? (`design-tokens-v2.md` D1)
 - Event-series: admin_school menu (D2), exam level shape (D3), selling product of an edition (D4), `ListToolbar` in that PR (D5), hero `short_name` (D6), media prefix (D7, shared with testimonials D3).
-- Testimonials: who manages them (D1), avatar sheet in that PR (D2).
+- Testimonials: who manages them (D1), photo format and server-side check (D2).
 - Stats numbers on the landing: static config or computed? (landing-v2 D3)
 - EN narrative drafts in the seed need review before events go visible. (event-series, Seed content)
 
