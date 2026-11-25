@@ -343,7 +343,9 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .socials { display: flex; gap: 8px; } .socials a { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .08); color: #fff; font: 800 13px var(--font-display); }
 .wordmark { font: 800 clamp(64px, 14vw, 200px)/.9 var(--font-display); letter-spacing: -0.06em; color: rgba(255, 255, 255, .06); margin-top: 40px; white-space: nowrap; }
 .fine { display: flex; justify-content: space-between; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, .1); font-size: 12.5px; flex-wrap: wrap; gap: 8px; }
-.page-hero { position: relative; padding: 46px 0 34px; background: radial-gradient(50% 80% at 90% 0%, var(--hero-a), transparent 70%), radial-gradient(40% 60% at 0% 100%, var(--hero-b), transparent 70%); }
+.page-hero { position: relative; padding: 46px 0 34px; isolation: isolate; }
+/* The tint extends under the next block and fades out, so it never ends in a hard line above filters or grids. */
+.page-hero::before { content: ""; position: absolute; inset: 0 0 -120px; z-index: -1; pointer-events: none; background: radial-gradient(50% 80% at 90% 0%, var(--hero-a), transparent 70%), radial-gradient(40% 60% at 0% 100%, var(--hero-b), transparent 70%); -webkit-mask-image: linear-gradient(180deg, #000 45%, transparent); mask-image: linear-gradient(180deg, #000 45%, transparent); }
 .page-hero.slim { padding-bottom: 20px; } .page-hero .lede { margin-top: 14px; } .page-head { padding: 34px 0 18px; }
 .crumbs { display: flex; align-items: center; gap: 6px; font: 600 13px var(--font-display); color: var(--ink-muted); padding: 16px 0; flex-wrap: wrap; }
 .crumbs a { color: var(--ink-muted); text-decoration: none; } .crumbs span { color: var(--ink); }
