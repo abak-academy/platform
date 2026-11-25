@@ -1,7 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ArrowUpDown, CheckCircle, Download, Eye, EyeOff, Loader2, Search } from "lucide-react";
+import {
+  ArrowUpDown,
+  Ban,
+  Building2,
+  CheckCircle,
+  ClipboardList,
+  Download,
+  Eye,
+  EyeOff,
+  FileCheck,
+  Loader2,
+  LogIn,
+  MapPin,
+  School,
+  Search,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
@@ -248,14 +265,14 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
     <div className="space-y-4">
       {counts.data && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-4" data-testid="roster-counts">
-          <RosterSummaryCard testId="roster-count-total" label={t("exam_roster_stat_total")} value={counts.data.total} />
-          <RosterSummaryCard testId="roster-count-registered" label={t("exam_roster_stat_registered")} value={counts.data.registered} />
-          <RosterSummaryCard testId="roster-count-checked-in" label={t("exam_roster_stat_checkedin")} value={counts.data.checked_in} />
-          <RosterSummaryCard testId="roster-count-submitted" label={t("exam_roster_stat_submitted")} value={counts.data.submitted} />
-          <RosterSummaryCard testId="roster-count-revoked" label={t("exam_roster_stat_revoked")} value={counts.data.revoked} />
-          <RosterSummaryCard testId="roster-count-provinces" label={t("exam_roster_stat_provinces")} value={counts.data.province_count} />
-          <RosterSummaryCard testId="roster-count-cities" label={t("exam_roster_stat_cities")} value={counts.data.city_count} />
-          <RosterSummaryCard testId="roster-count-schools" label={t("exam_roster_stat_schools")} value={counts.data.school_count} />
+          <RosterSummaryCard testId="roster-count-total" label={t("exam_roster_stat_total")} value={counts.data.total} icon={Users} />
+          <RosterSummaryCard testId="roster-count-registered" label={t("exam_roster_stat_registered")} value={counts.data.registered} icon={ClipboardList} />
+          <RosterSummaryCard testId="roster-count-checked-in" label={t("exam_roster_stat_checkedin")} value={counts.data.checked_in} icon={LogIn} />
+          <RosterSummaryCard testId="roster-count-submitted" label={t("exam_roster_stat_submitted")} value={counts.data.submitted} icon={FileCheck} />
+          <RosterSummaryCard testId="roster-count-revoked" label={t("exam_roster_stat_revoked")} value={counts.data.revoked} icon={Ban} />
+          <RosterSummaryCard testId="roster-count-provinces" label={t("exam_roster_stat_provinces")} value={counts.data.province_count} icon={MapPin} />
+          <RosterSummaryCard testId="roster-count-cities" label={t("exam_roster_stat_cities")} value={counts.data.city_count} icon={Building2} />
+          <RosterSummaryCard testId="roster-count-schools" label={t("exam_roster_stat_schools")} value={counts.data.school_count} icon={School} />
         </div>
       )}
 
@@ -359,12 +376,30 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
 }
 
 // Summary card in the exam results-workspace style (ResultsWorkspaceTab's
-// SummaryCard markup) so both tabs read the same.
-function RosterSummaryCard({ testId, label, value }: { testId: string; label: string; value: number }) {
+// SummaryCard markup) so both tabs read the same, plus an icon (review
+// request) matching the List Ujian page's StatCard treatment.
+function RosterSummaryCard({
+  testId,
+  label,
+  value,
+  icon: Icon,
+}: {
+  testId: string;
+  label: string;
+  value: number;
+  icon: LucideIcon;
+}) {
   return (
     <div data-testid={testId} className="rounded-xl border border-line bg-card p-4 shadow-sm">
-      <div className="text-sm text-ink-600">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm text-ink-600">{label}</div>
+          <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
+        </div>
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-brand-50 text-brand-700">
+          <Icon className="size-4" />
+        </div>
+      </div>
     </div>
   );
 }
