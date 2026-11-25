@@ -424,6 +424,16 @@ export function useExamRegistrantDiversitySummary(
   });
 }
 
+// Extracts `filename="…"` from a Content-Disposition header. The backend is
+// the single source of truth for the exam-name_timestamp naming (it already
+// has to sanitize the admin-authored exam title) — this just reads it back
+// rather than re-deriving a name on the frontend that could drift from it.
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = /filename="?([^";]+)"?/i.exec(header);
+  return match?.[1] ?? fallback;
+}
+
 export async function exportExamRoster(examId: string): Promise<void> {
   const token = useAuthStore.getState().token;
   const res = await fetch(
@@ -441,7 +451,7 @@ export async function exportExamRoster(examId: string): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "roster.csv";
+  a.download = filenameFromContentDisposition(res.headers?.get?.("Content-Disposition") ?? null, "roster.csv");
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

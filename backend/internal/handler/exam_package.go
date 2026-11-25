@@ -2,10 +2,13 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
+	"unicode"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -313,6 +316,36 @@ func bindExamRosterDiversityFilter(c echo.Context, filter *model.ExamRosterFilte
 	return nil
 }
 
+// sanitizeFilenameSegment makes free-text (an admin-authored exam title)
+// safe to embed in a Content-Disposition filename: letters/digits survive,
+// every run of anything else (spaces, slashes, punctuation, emoji) collapses
+// to a single dash, and the result is trimmed of leading/trailing dashes.
+func sanitizeFilenameSegment(s string) string {
+	var b strings.Builder
+	lastDash := false
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+// examExportTimestamp matches the WIB wall-clock time admins already see
+// elsewhere in this app (exam schedules, order times), not the server's own
+// clock — falls back to UTC only if the zone database is somehow missing.
+func examExportTimestamp() string {
+	loc, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		loc = time.UTC
+	}
+	return time.Now().In(loc).Format("20060102-150405")
+}
+
 func (h *Handler) AdminExportExamRegistrations(c echo.Context) error {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
@@ -333,7 +366,12 @@ func (h *Handler) AdminExportExamRegistrations(c echo.Context) error {
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	c.Response().Header().Set("Content-Disposition", `attachment; filename="roster.csv"`)
+	exam, err := h.svc.GetExam(c.Request().Context(), id)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	filename := fmt.Sprintf("%s_%s.csv", sanitizeFilenameSegment(exam.Title), examExportTimestamp())
+	c.Response().Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	return c.Blob(http.StatusOK, "text/csv; charset=utf-8", csvBytes)
 }
 

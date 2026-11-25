@@ -258,6 +258,37 @@ describe("exportExamRoster", () => {
     expect(URL.createObjectURL).toHaveBeenCalledWith(blob);
   });
 
+  it("names the downloaded file from the backend's Content-Disposition header", async () => {
+    const blob = new Blob(["No. Peserta,Nama\n"], { type: "text/csv" });
+    const anchor = document.createElement("a");
+    const createElementSpy = vi.spyOn(document, "createElement").mockReturnValue(anchor);
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(blob),
+      headers: { get: (name: string) => (name === "Content-Disposition" ? 'attachment; filename="Try-Out-UTBK_20261126-153000.csv"' : null) },
+    });
+
+    await exportExamRoster("exam-1");
+
+    expect(anchor.download).toBe("Try-Out-UTBK_20261126-153000.csv");
+    createElementSpy.mockRestore();
+  });
+
+  it("falls back to roster.csv when the response carries no Content-Disposition header", async () => {
+    const blob = new Blob(["No. Peserta,Nama\n"], { type: "text/csv" });
+    const anchor = document.createElement("a");
+    const createElementSpy = vi.spyOn(document, "createElement").mockReturnValue(anchor);
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      ok: true,
+      blob: () => Promise.resolve(blob),
+    });
+
+    await exportExamRoster("exam-1");
+
+    expect(anchor.download).toBe("roster.csv");
+    createElementSpy.mockRestore();
+  });
+
   it("rejects a failed export response without downloading the error body", async () => {
     const blob = vi.fn();
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
