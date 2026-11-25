@@ -1040,6 +1040,18 @@ section.reveal.done .rv-tiltable.tilting { transform: perspective(900px) rotateX
 .auth-pill .cta-dot { width: 28px; height: 28px; }
 body:has(.hero-photo):not(.scrolled) .auth-pill { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .3); } body:has(.hero-photo):not(.scrolled) .auth-pill .ap-in { color: #fff; } body:has(.hero-photo):not(.scrolled) .auth-pill .ap-in:hover { background: rgba(255, 255, 255, .14); }
 @media (max-width: 420px) { .auth-pill .ap-up { font-size: 13px; padding-left: 10px; } .auth-pill .ap-in { padding: 0 10px; font-size: 13px; } }
+
+/* ===== Program page ===== */
+.pg-jump { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; } .pg-jump .chip { text-decoration: none; background: var(--paper); border: 1px solid var(--line); color: var(--ink-2); padding: 8px 14px; font-size: 13px; } .pg-jump .chip:hover { border-color: var(--brand); color: var(--brand-ink); }
+.pg-item { display: grid; grid-template-columns: 320px 1fr; gap: 48px; align-items: start; scroll-margin-top: 90px; } .pg-item:nth-of-type(odd) .pg-art { order: 2; } .pg-item:nth-of-type(odd) { grid-template-columns: 1fr 320px; }
+.pg-art { position: relative; aspect-ratio: 1; border-radius: var(--r-big); display: grid; place-items: center; background: linear-gradient(135deg, color-mix(in srgb, var(--a) 18%, var(--paper)), color-mix(in srgb, var(--b) 26%, var(--paper))); border: 1px solid var(--line); overflow: hidden; }
+.pg-art .prog-ico { width: 120px; height: 120px; border-radius: 34px; } .pg-art .prog-ico .ab-i { width: 56px; height: 56px; }
+.pg-num { position: absolute; right: 22px; bottom: 6px; font: 800 120px/1 var(--font-display); letter-spacing: -0.06em; color: color-mix(in srgb, var(--a) 22%, transparent); }
+.pg-body .lede { margin: 10px 0 22px; }
+.pg-facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 0 0 22px; } .pg-facts div { padding: 14px 16px; border-radius: 16px; background: var(--paper); border: 1px solid var(--line); } .pg-facts dt { font: 600 11px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); } .pg-facts dd { margin: 4px 0 0; font: 700 14px/1.4 var(--font-display); }
+.pg-h { font: 800 16px var(--font-display); margin: 0 0 10px; } .pg-gets { list-style: none; padding: 0; margin: 0 0 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 20px; } .pg-gets li { display: flex; gap: 8px; align-items: flex-start; font-size: 15px; } .pg-gets .ab-i { color: var(--teal); flex: none; margin-top: 2px; }
+.pg-help { text-align: center; padding-bottom: 40px; } .pg-help .lede { margin: 10px auto 22px; } .pg-help .cta-row { justify-content: center; }
+@media (max-width: 900px) { .pg-item, .pg-item:nth-of-type(odd) { grid-template-columns: 1fr; gap: 20px; } .pg-item:nth-of-type(odd) .pg-art { order: 0; } .pg-art { aspect-ratio: 16 / 7; } .pg-facts, .pg-gets { grid-template-columns: 1fr; } }
 /* ===== Seamless navbar ===== */
 .pubnav-wrap { padding: 0; transition: background-color .3s, box-shadow .3s, backdrop-filter .3s; }
 .pubnav { width: min(1200px, calc(100% - 48px)); padding: 18px 0; border-radius: 0; background: transparent; border: 1px solid transparent; box-shadow: none; backdrop-filter: none; transition: width .45s var(--ease), padding .45s var(--ease), border-radius .45s var(--ease), background-color .3s, box-shadow .3s; }
@@ -1757,7 +1769,7 @@ const ctaArrow = (label, href, cls = 'primary') => `<a class="ab-btn ${cls} cta"
 function publicNav(active) {
   const me = S.role === 'student';
   const links = me ? [['#/', L('Beranda', 'Home'), 'home'], ['#/app/kompetisi', L('Kompetisi Saya', 'My Competitions'), 'mine'], ['#/kompetisi', 'Event', 'kompetisi'], ['#/app/kursus', L('Belajar', 'Learn'), 'kursus'], ['#/katalog', L('Toko', 'Shop'), 'katalog']]
-    : [['#/kompetisi', 'Event', 'kompetisi'], ['#/#program', L('Program', 'Programs'), 'program'], ['#/katalog', L('Toko', 'Shop'), 'katalog']];
+    : [['#/kompetisi', 'Event', 'kompetisi'], ['#/program', L('Program', 'Programs'), 'program'], ['#/katalog', L('Toko', 'Shop'), 'katalog']];
   let right;
   if (me) {
     const live = Object.keys(S.registrations).filter(id => evt(id) && evPhase(evt(id)) === 'live' && !myAttempt(id)?.submitted).length;
@@ -1792,6 +1804,28 @@ const PROGRAMS = () => [
   ['home', 'gold', 'Homeschooling', L('Belajar dari rumah tetap terarah: kurikulum jelas, tutor mendampingi, jadwal tetap fleksibel.', 'Learn from home with direction: a clear curriculum, a tutor by your side, and a flexible schedule.')],
   ['globe', 'sky', L('Study Tour & Kuliah Luar Negeri', 'Study Tours & Study Abroad'), L('Lihat langsung kampus impian, lalu susun langkah kuliah ke luar negeri bareng tim kami.', 'See your dream campus up close, then plan your path to studying abroad with our team.')],
 ];
+// Program page detail. Draft copy from the landing cards — the client confirms audiences, formats and what's included before launch.
+const PROGRAM_DETAIL = () => [
+  { id: 'kompetisi', for: L('TK–SMA, guru & orang tua', 'Kindergarten–grade 12, teachers & parents'), format: L('Online & offline, nasional hingga internasional', 'Online & offline, national to international'), when: L('Sepanjang tahun — lihat halaman Event', 'All year — see the Event page'), gets: L(['Sertifikat dan medali', 'Peringkat nasional per subtes', 'Jalur ke babak internasional', 'Seminar dan event parenting'], ['Certificates and medals', 'National ranking per subtest', 'A path to international rounds', 'Seminars and parenting events']) },
+  { id: 'olimpiade', for: 'SD–SMA', format: L('Kelompok kecil atau privat, online/offline', 'Small group or private, online/offline'), when: L('Rutin tiap pekan, mengikuti musim lomba', 'Weekly, following the competition season'), gets: L(['Bedah pola soal olimpiade', 'Tryout berkala dengan pembahasan', 'Pelatih yang paham soal olimpiade', 'Rekomendasi lomba yang pas'], ['Olympiad problem patterns, broken down', 'Regular mock exams with explanations', 'Coaches who know olympiad problems', 'Advice on which competitions to enter']) },
+  { id: 'bimbel', for: 'SD–SMA', format: L('Kelompok kecil atau privat, di rumah atau online', 'Small group or private, at home or online'), when: L('Jadwal fleksibel', 'Flexible schedule'), gets: L(['Matematika, IPA, Bahasa, dan IPS', 'Laporan progres untuk orang tua', 'Persiapan ulangan dan ujian sekolah'], ['Math, Science, Languages, and Social Studies', 'Progress reports for parents', 'Preparation for school tests and exams']) },
+  { id: 'karya-tulis', for: 'SMP–SMA', format: L('Pendampingan individu atau tim', 'One-on-one or team mentoring'), when: L('Mengikuti tenggat lomba', 'Paced to the competition deadline'), gets: L(['Mengasah ide dan metode riset', 'Penulisan sesuai format lomba', 'Latihan presentasi di depan juri'], ['Sharpening the idea and research method', 'Writing to the competition format', 'Presentation practice for the jury']) },
+  { id: 'homeschooling', for: 'SD–SMA', format: L('Tutor datang atau online, kurikulum jelas', 'Tutor visits or online, with a clear curriculum'), when: L('Jadwal fleksibel', 'Flexible schedule'), gets: L(['Rencana belajar per semester', 'Tutor pendamping tetap', 'Pantauan progres berkala'], ['A plan for each semester', 'A dedicated tutor', 'Regular progress check-ins']) },
+  { id: 'study-tour', for: L('SMP–SMA & orang tua', 'Grades 7–12 & parents'), format: L('Tur rombongan + konsultasi', 'Group tour + consultation'), when: L('Sesuai jadwal tur', 'Per tour schedule'), gets: L(['Kunjungan langsung ke kampus', 'Konsultasi jurusan dan beasiswa', 'Persiapan dokumen pendaftaran'], ['Campus visits in person', 'Advice on majors and scholarships', 'Help preparing application documents']) },
+];
+route(/^\/program$/, () => {
+  const det = PROGRAM_DETAIL(); AFTER.push(revealSections);
+  return pub('program', `<section class="page-hero"><div class="floaters" aria-hidden="true">${[['∑', 'brand', 62, 8], ['π', 'teal', 92, 18], ['√', 'gold', 88, 72]].map(([g, t, x, y], i) => `<span class="floater c-${t}" style="left:${x}%;top:${y}%;--r:${i * 7 - 10}deg;--dl:${i * .6}s">${g}</span>`).join('')}</div><div class="wrap">
+    <span class="eyebrow">PROGRAM</span><h1 class="h-display xl">${L(`Pilih <span class="hl">jalurmu${squiggle}</span>`, `Choose <span class="hl">your path${squiggle}</span>`)}</h1><p class="lede">${L("Dari lomba pertama sampai kuliah ke luar negeri. Lihat untuk siapa tiap program, bentuknya seperti apa, dan apa yang kamu dapat.", "From a first competition to studying abroad. See who each program is for, how it runs, and what you get.")}</p>
+    <nav class="pg-jump" aria-label="${L('Lompat ke program', 'Jump to a program')}">${PROGRAMS().map(([i, t, h], k) => `<a class="chip" href="#/program#${det[k].id}">${ic(i, 'sm')}${h}</a>`).join('')}</nav></div></section>
+  ${PROGRAMS().map(([i, t, h, p, href], k) => { const d = det[k]; return `<section class="wrap section pg-item p-${t}" id="${d.id}">
+    <div class="pg-art"><span class="prog-ico">${ic(i, 'xl')}</span><span class="pg-num">0${k + 1}</span></div>
+    <div class="pg-body"><h2 class="h-display">${h}</h2><p class="lede">${p}</p>
+      <dl class="pg-facts"><div><dt>${L('Untuk', 'For')}</dt><dd>${d.for}</dd></div><div><dt>${L('Format', 'Format')}</dt><dd>${d.format}</dd></div><div><dt>${L('Jadwal', 'Schedule')}</dt><dd>${d.when}</dd></div></dl>
+      <h3 class="pg-h">${L('Yang kamu dapat', 'What you get')}</h3><ul class="pg-gets">${d.gets.map(g => `<li>${ic('check', 'sm')}${g}</li>`).join('')}</ul>
+      <div class="cta-row">${href ? ctaArrow(L('Lihat jadwal event', 'See event schedule'), href) : waBtn(L('Tanya via WhatsApp', 'Ask on WhatsApp'), 'Halo Abak Academy, saya tertarik dengan program ' + h + '. Boleh minta info jadwal dan biayanya?', 'primary lg')}</div></div></section>`; }).join('')}
+  <section class="wrap section pg-help"><h2 class="h-display">${L('Masih bingung pilih yang mana?', 'Not sure which one fits?')}</h2><p class="lede">${L('Ceritakan jenjang dan tujuanmu, tim kami bantu pilihkan program yang pas.', 'Tell us your grade and goal, and our team will help you pick.')}</p><div class="cta-row">${waBtn(L('Konsultasi gratis', 'Free consultation'), 'Halo Abak Academy, saya ingin konsultasi program yang cocok.', 'primary lg')}</div></section>`);
+});
 function footer() {
   return `<footer class="site-foot"><div class="wrap foot-grid">
     <div class="fcol brandcol">${logo()}<p>${L("Layanan pendidikan untuk semua kalangan — kompetisi, pelatihan, bimbel, dan kursus dalam satu akun.", "Education for everyone — competitions, training, tutoring, and courses in one account.")}</p>
@@ -1857,7 +1891,7 @@ function productCard(p) {
 // ---------- Landing ----------
 const programSec = () => `<section class="wrap section" id="program">
     <div class="sec-head"><div><span class="eyebrow">${L("PROGRAM ABAK", "ABAK PROGRAMS")}</span><h2 class="h-display">${L(`Semua langkah menuju <span class="hl-soft">prestasi</span>, di satu tempat`, `Every step to <span class="hl-soft">success</span>, in one place`)}</h2><p class="muted">${L("Mau ikut lomba pertama, kejar medali, atau sekadar nilai rapor naik? Jalurnya ada, dari TK sampai SMA, bahkan untuk guru dan orang tua.", "Entering your first competition, chasing a medal, or just raising your grades? There is a path for you, from kindergarten to high school — even for teachers and parents.")}</p></div>${waBtn(L('Tanya program', 'Ask about programs'), 'Halo Abak Academy, saya ingin tahu program yang cocok untuk saya.', 'ghost')}</div>
-    <div class="prog-grid">${PROGRAMS().map(([i, t, h, p, href], k) => `<article class="prog p-${t}"><span class="prog-ico">${ic(i, 'lg')}</span><span class="mono">0${k + 1}</span><h3>${h}</h3><p>${p}</p>${href ? `<a class="go" href="${href}">${L('Lihat jadwal', 'See schedule')} ${ic('arrow-r', 'sm')}</a>` : `<a class="go" href="${waHref('Halo Abak Academy, saya tertarik dengan program ' + h + '.')}" target="_blank" rel="noopener noreferrer">${L('Tanya via WhatsApp', 'Ask on WhatsApp')} ${ic('arrow-ur', 'sm')}</a>`}</article>`).join('')}</div>
+    <div class="prog-grid">${PROGRAMS().map(([i, t, h, p, href], k) => `<article class="prog p-${t}"><span class="prog-ico">${ic(i, 'lg')}</span><span class="mono">0${k + 1}</span><h3>${h}</h3><p>${p}</p><a class="go" href="#/program#${PROGRAM_DETAIL()[k].id}">${L('Selengkapnya', 'Learn more')} ${ic('arrow-r', 'sm')}</a></article>`).join('')}</div>
   </section>`;
 const seriesSec = () => `<section class="wrap section" id="jelajah">
     <div class="sec-head"><div><span class="eyebrow">${L("EVENT ABAK ACADEMY", "ABAK ACADEMY EVENTS")}</span><h2 class="h-display">${L("Pilih panggungmu", "Choose your stage")}</h2><p class="muted">${L("Sains, matematika, bahasa Inggris, riset, sampai lomba Ramadhan — tiap event punya jalur dari tingkat kota hingga final internasional. Klik untuk kenalan.", "Science, math, English, research, even Ramadan contests — every event has a path from city level to international finals. Click to get to know them.")}</p></div></div>
