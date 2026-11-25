@@ -403,6 +403,7 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .specs div { background: var(--surface-sunken); border-radius: 16px; padding: 12px; } .specs dt { font-size: 12px; color: var(--ink-muted); } .specs dd { margin: 0; font-weight: 700; font-size: 14px; }
 .dash-btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 4px 14px 4px 4px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font: 700 14px var(--font-display); transition: border-color .2s, box-shadow .2s; } .dash-btn:hover { border-color: var(--brand); box-shadow: var(--shadow-card); } .dash-btn .av { width: 34px; height: 34px; box-shadow: none; } .dash-btn .count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--ember); color: #fff; font: 800 10.5px/20px var(--font-display); text-align: center; }
 body:has(.hero-photo):not(.scrolled) .dash-btn { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .3); color: #fff; }
+.um-row { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; font: 700 13.5px var(--font-display); color: var(--ink); } .um-row > .ab-i { color: var(--ink-muted); } .um-row .lang-btn { height: 30px; }
 .guest-note { display: flex; gap: 10px; align-items: flex-start; } .guest-note p { margin: 0; }
 .cat-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 32px; }
 .cat-rail { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
@@ -1899,7 +1900,7 @@ const seriesSec = () => `<section class="wrap section" id="jelajah">
     <div id="seriesBox">${seriesBlock()}</div>
   </section>`;
 const shopSec = () => `<section class="wrap section">
-    <div class="sec-head"><div><span class="eyebrow">${L("TOKO ABAK", "ABAK SHOP")}</span><h2 class="h-display">${L("Amunisi buat calon juara", "Gear for future champions")}</h2></div><a class="ab-btn ghost" href="#/katalog">${L("Ke katalog", "Go to catalog")} ${ic('arrow-r', 'sm')}</a></div>
+    <div class="sec-head"><div><span class="eyebrow">${L("TOKO ABAK", "ABAK SHOP")}</span><h2 class="h-display">${L("Amunisi buat calon juara", "Gear for future champions")}</h2></div><a class="ab-btn ghost" href="#/katalog">${L("Ke toko", "Go to shop")} ${ic('arrow-r', 'sm')}</a></div>
     <div class="card-grid">${catalog().filter(p => p.published && ['book', 'merchandise', 'medal'].includes(p.type)).slice(0, 4).map(productCard).join('')}</div>
   </section>`;
 // First word is the default (and the only one under reduced motion); the rest are event names.
@@ -2514,6 +2515,7 @@ function studentNav(active) {
         <button type="button" data-act="notifStu">${ic('bell', 'sm')}Notifikasi<span class="count">${S.announcements.length}</span></button>
         <a href="#/keranjang">${ic('cart', 'sm')}Keranjang${cartCount() ? `<span class="count">${cartCount()}</span>` : ''}</a>
         <button type="button" data-act="theme">${ic(S.theme === 'dark' ? 'sun' : 'moon', 'sm')}${S.theme === 'dark' ? 'Mode terang' : 'Mode gelap'}</button>
+        <div class="um-row">${ic('globe', 'sm')}<span class="grow">${L('Bahasa', 'Language')}</span><button type="button" class="lang-btn" data-act="lang" aria-label="${L('Ganti ke bahasa Inggris', 'Switch to Indonesian')}"><span class="${S.lang === 'en' ? '' : 'on'}">ID</span><span class="${S.lang === 'en' ? 'on' : ''}">EN</span></button></div>
         <a href="#/app/profil">${ic('user', 'sm')}Profil & akun</a>
         <a href="#/" data-act="logout" class="um-out">${ic('logout', 'sm')}Keluar</a></div></details>`);
 }
@@ -2565,6 +2567,11 @@ function heroAutoplay() {
   if (HERO_EVENTS().length < 2 || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   timers.push(setInterval(() => { const el = document.getElementById('dash-hero'); if (el && !el.matches(':hover, :focus-within')) showHero(((S.heroIdx || 0) + 1) % HERO_EVENTS().length); }, 6000));
 }
+// Beranda's way into the public Toko: a few published things the student doesn't own yet (no competitions — the carousel covers those).
+function shopPicks() {
+  const picks = catalog().filter(p => p.published && p.type !== 'exam' && !(p.type === 'course' && S.enrolled[p.ref]) && (p.digital || p.stock !== 0)).slice(0, 4);
+  return picks.length ? `<section class="block"><div class="block-head"><h2>${L('Dari Toko', 'From the shop')}</h2><a class="ab-btn ghost sm" href="#/katalog">${L('Ke toko', 'Go to shop')} ${ic('arrow-r', 'sm')}</a></div><div class="card-grid">${picks.map(productCard).join('')}</div></section>` : '';
+}
 function studentHome() {
   const first = S.user.name.split(' ')[0];
   const pend = S.orders.filter(o => o.mine && o.status === 'payment_pending');
@@ -2588,7 +2595,8 @@ function studentHome() {
     ${myCourses.length ? `<ul class="learn-list">${myCourses.map(learnRow).join('')}</ul>` : `<p class="muted">${L('Belum ada kursus.', 'No courses yet.')}</p>`}<a class="ab-btn ghost sm full" href="#/katalog" data-act="catTab" data-t="course">${ic('plus', 'sm')}${L('Tambah kursus', 'Add a course')}</a></section>
   <section class="dcard d-study"><div class="dcard-head"><span class="dico c-teal">${ic('clock')}</span><b>Total jam belajar</b></div>
       <div class="study"><div class="donut" style="--p:${pct}"><b>${hours.toFixed(1).replace('.', ',')}</b><span>jam</span></div>
-      <ul><li><i class="lg-teal"></i>Materi <b>${watched}</b></li><li><i class="lg-mute"></i>Sisa <b>${Math.max(0, totalLessons - watched)}</b></li><li>${ic('play-circle', 'sm')}Pertemuan ditonton <b>${watched}</b></li><li>${ic('certificate', 'sm')}Kursus selesai <b>${completedCourses}</b></li></ul></div></section></div>`);
+      <ul><li><i class="lg-teal"></i>Materi <b>${watched}</b></li><li><i class="lg-mute"></i>Sisa <b>${Math.max(0, totalLessons - watched)}</b></li><li>${ic('play-circle', 'sm')}Pertemuan ditonton <b>${watched}</b></li><li>${ic('certificate', 'sm')}Kursus selesai <b>${completedCourses}</b></li></ul></div></section></div>
+  ${shopPicks()}`);
 }
 ACT.dismissWelcome = () => { S.welcome = false; save(); render(); };
 function learnRow(c) {
@@ -2956,6 +2964,7 @@ function adminNav(active) {
     `<details class="umenu side-umenu"><summary aria-label="Menu akun">${avatar(ADMIN_NAME, 'sm')}<span class="grow"><b>${ADMIN_NAME}</b><small>Super admin</small></span>${ic('chev-d', 'sm')}</summary>
       <div class="um-pop"><div class="um-head">${avatar(ADMIN_NAME, 'md')}<div><b>${ADMIN_NAME}</b><small>rizky@abakacademy.id · Super admin</small></div></div>
         <a href="#/admin/akun">${ic('key', 'sm')}Akun & peran</a>
+        <div class="um-row">${ic('globe', 'sm')}<span class="grow">${L('Bahasa', 'Language')}</span><button type="button" class="lang-btn" data-act="lang" aria-label="${L('Ganti ke bahasa Inggris', 'Switch to Indonesian')}"><span class="${S.lang === 'en' ? '' : 'on'}">ID</span><span class="${S.lang === 'en' ? 'on' : ''}">EN</span></button></div>
         <a href="#/">${ic('globe', 'sm')}Buka situs publik<small class="um-hint">landing page seperti dilihat pengunjung</small></a>
         <a href="#/" data-act="logout" class="um-out">${ic('logout', 'sm')}Keluar</a></div></details>`);
 }
