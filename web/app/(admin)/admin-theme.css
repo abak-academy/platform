@@ -1,58 +1,47 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
-
 .admin-shell {
-  /* Primary (blue) */
-  --md-sys-color-primary: #1A5CFF;
-  --md-sys-color-on-primary: #FFFFFF;
-  --md-sys-color-primary-container: #E0E8FF;
-  --md-sys-color-on-primary-container: #001A73;
+  /* Primary = brand (selection/navigation); ember stays reserved for the main CTA */
+  --md-sys-color-primary: var(--color-brand-600);
+  --md-sys-color-on-primary: var(--color-on-brand);
+  --md-sys-color-primary-container: var(--color-brand-50);
+  --md-sys-color-on-primary-container: var(--color-brand-ink);
 
-  /* Secondary (teal) */
-  --md-sys-color-secondary: #008080;
-  --md-sys-color-on-secondary: #FFFFFF;
-  --md-sys-color-secondary-container: #CCF2F2;
-  --md-sys-color-on-secondary-container: #003333;
+  --md-sys-color-secondary: var(--color-teal-600);
+  --md-sys-color-on-secondary: var(--color-on-brand);
+  --md-sys-color-secondary-container: var(--color-teal-50);
+  --md-sys-color-on-secondary-container: var(--color-teal-700);
 
-  /* Tertiary (deep indigo accent — hero band + Total Schools stat) */
-  --md-sys-color-tertiary: #5B3FBF;
-  --md-sys-color-on-tertiary: #FFFFFF;
-  --md-sys-color-tertiary-container: #E7DEFF;
-  --md-sys-color-on-tertiary-container: #1E0A66;
+  --md-sys-color-tertiary: var(--color-deep);
+  --md-sys-color-on-tertiary: var(--color-on-deep);
+  --md-sys-color-tertiary-container: var(--color-hero-b);
+  --md-sys-color-on-tertiary-container: var(--color-brand-ink);
 
-  /* Error */
-  --md-sys-color-error: #BA1A1A;
-  --md-sys-color-on-error: #FFFFFF;
-  --md-sys-color-error-container: #FFDAD6;
-  --md-sys-color-on-error-container: #410002;
+  --md-sys-color-error: var(--color-danger-600);
+  --md-sys-color-on-error: var(--color-on-danger);
+  --md-sys-color-error-container: var(--color-danger-50);
+  --md-sys-color-on-error-container: var(--color-danger-600);
 
-  /* Surfaces + background */
-  --md-sys-color-background: #F4F7FE;
-  --md-sys-color-on-background: #2B3674;
-  --md-sys-color-surface: #FFFFFF;
-  --md-sys-color-on-surface: #2B3674;
-  --md-sys-color-surface-variant: #F4F7FE;
-  --md-sys-color-on-surface-variant: #A3AED0;
+  --md-sys-color-background: var(--color-paper);
+  --md-sys-color-on-background: var(--color-ink-900);
+  --md-sys-color-surface: var(--color-surface);
+  --md-sys-color-on-surface: var(--color-ink-900);
+  --md-sys-color-surface-variant: var(--color-surface-sunken);
+  --md-sys-color-on-surface-variant: var(--color-ink-600);
 
-  /* Surface container tonal steps (MD3) */
-  --md-sys-color-surface-container-lowest: #FFFFFF;
-  --md-sys-color-surface-container-low: #F7F9FE;
-  --md-sys-color-surface-container: #F0F4FD;
-  --md-sys-color-surface-container-high: #E9EEFB;
-  --md-sys-color-surface-container-highest: #E2E9F8;
+  --md-sys-color-surface-container-lowest: var(--color-surface-raised);
+  --md-sys-color-surface-container-low: var(--color-surface-2);
+  --md-sys-color-surface-container: var(--color-surface-sunken);
+  --md-sys-color-surface-container-high: var(--color-line-2);
+  --md-sys-color-surface-container-highest: var(--color-line);
 
-  /* Outline */
-  --md-sys-color-outline: #E0E5F2;
-  --md-sys-color-outline-variant: #E9EDF7;
+  --md-sys-color-outline: var(--color-line-strong);
+  --md-sys-color-outline-variant: var(--color-line);
 
-  /* Typography families */
-  --md-sys-typescale-display: 'Outfit', sans-serif;
-  --md-sys-typescale-body: 'Roboto', sans-serif;
+  --md-sys-typescale-display: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  --md-sys-typescale-body: var(--font-sans);
 
-  /* Elevation */
-  --md-sys-elevation-1: 0px 8px 24px rgba(112, 144, 176, 0.15);
-  --md-sys-elevation-2: 0px 18px 40px rgba(112, 144, 176, 0.12);
+  --md-sys-elevation-1: var(--shadow-card);
+  --md-sys-elevation-2: var(--shadow-pop);
 
-  /* Base typography inside the shell */
   font-family: var(--md-sys-typescale-body);
 }
 
@@ -65,7 +54,7 @@
 /* Component classes */
 .admin-shell .md-card-elevated {
   background-color: var(--md-sys-color-surface);
-  border-radius: 20px;
+  border-radius: var(--r-lg);
   box-shadow: var(--md-sys-elevation-1);
   padding: 24px;
   color: var(--md-sys-color-on-surface);
@@ -75,7 +64,7 @@
 
 .admin-shell .md-card-filled {
   background-color: var(--md-sys-color-surface);
-  border-radius: 20px;
+  border-radius: var(--r-lg);
   padding: 24px;
   color: var(--md-sys-color-on-surface);
   border: 1px solid var(--md-sys-color-outline-variant);
@@ -85,7 +74,7 @@
 .admin-shell .md-card-outlined {
   background-color: var(--md-sys-color-surface);
   border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: 20px;
+  border-radius: var(--r-lg);
   padding: 24px;
   color: var(--md-sys-color-on-surface);
   transition: background-color 0.3s ease, border-color 0.3s ease;
@@ -94,7 +83,7 @@
 .admin-shell .md-btn-filled {
   height: 48px;
   padding: 0 28px;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background-color: var(--md-sys-color-primary);
   color: var(--md-sys-color-on-primary);
   font-size: 14px;
@@ -104,14 +93,14 @@
   justify-content: center;
   gap: 8px;
   transition: all 0.2s ease;
-  box-shadow: 0px 4px 12px rgba(26, 92, 255, 0.24);
+  box-shadow: var(--shadow-brand);
 }
-.admin-shell .md-btn-filled:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0px 6px 16px rgba(26, 92, 255, 0.3); }
+.admin-shell .md-btn-filled:not(:disabled):hover { transform: translateY(-2px); box-shadow: var(--shadow-brand); }
 
 .admin-shell .md-btn-tonal {
   height: 48px;
   padding: 0 28px;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background-color: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-primary);
   font-size: 14px;
@@ -127,7 +116,7 @@
 .admin-shell .md-btn-outlined {
   height: 48px;
   padding: 0 28px;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background-color: var(--md-sys-color-surface);
   color: var(--md-sys-color-primary);
   border: 1px solid var(--md-sys-color-outline);
@@ -157,7 +146,7 @@
 .admin-shell .md-chip {
   height: 32px;
   padding: 0 16px;
-  border-radius: 16px;
+  border-radius: var(--r-md);
   background-color: var(--md-sys-color-surface-variant);
   color: var(--md-sys-color-on-surface-variant);
   display: inline-flex;
@@ -208,58 +197,6 @@
   to { transform: rotate(360deg); }
 }
 
-/* Dark mode — mirrors the globals.css html[data-theme="dark"] block.
-   Without this, .admin-shell keeps its light MD3 surfaces and renders
-   bright-white cards on the dark page background. */
-html[data-theme="dark"] .admin-shell {
-  /* Primary (brighter blue, dark on-primary) */
-  --md-sys-color-primary: #7DA0FF;
-  --md-sys-color-on-primary: #001A73;
-  --md-sys-color-primary-container: rgba(26, 92, 255, .28);
-  --md-sys-color-on-primary-container: #C9D8FF;
-
-  /* Secondary (brighter teal) */
-  --md-sys-color-secondary: #5FD6D6;
-  --md-sys-color-on-secondary: #003333;
-  --md-sys-color-secondary-container: rgba(0, 128, 128, .30);
-  --md-sys-color-on-secondary-container: #9EE5E5;
-
-  /* Tertiary (brighter violet) */
-  --md-sys-color-tertiary: #B8A6F7;
-  --md-sys-color-on-tertiary: #1E0A66;
-  --md-sys-color-tertiary-container: rgba(91, 63, 191, .32);
-  --md-sys-color-on-tertiary-container: #D5C8FF;
-
-  /* Error */
-  --md-sys-color-error: #FF8A82;
-  --md-sys-color-on-error: #410002;
-  --md-sys-color-error-container: rgba(186, 26, 26, .32);
-  --md-sys-color-on-error-container: #FFCDC5;
-
-  /* Surfaces — aligned with globals.css dark palette */
-  --md-sys-color-background: #161225;
-  --md-sys-color-on-background: #eeeffc;
-  --md-sys-color-surface: #27213b;
-  --md-sys-color-on-surface: #eeeffc;
-  --md-sys-color-surface-variant: #302848;
-  --md-sys-color-on-surface-variant: #bac0dc;
-
-  /* Surface container tonal steps (dark) */
-  --md-sys-color-surface-container-lowest: #1c1730;
-  --md-sys-color-surface-container-low: #221b35;
-  --md-sys-color-surface-container: #27213b;
-  --md-sys-color-surface-container-high: #2e2845;
-  --md-sys-color-surface-container-highest: #352f50;
-
-  /* Outline */
-  --md-sys-color-outline: #393f60;
-  --md-sys-color-outline-variant: #313654;
-
-  /* Elevation — heavier shadows for depth on dark surfaces */
-  --md-sys-elevation-1: 0px 8px 24px rgba(0, 0, 0, 0.45);
-  --md-sys-elevation-2: 0px 18px 40px rgba(0, 0, 0, 0.55);
-}
-
 /* Chart draw-on. Applied only when prefers-reduced-motion is not set — the
    component omits .chart-draw entirely in that case rather than relying on a
    media query, so the path is never left mid-draw. */
@@ -288,21 +225,6 @@ html[data-theme="dark"] .admin-shell {
   transform: scaleX(0);
   transform-origin: 0 0;
   animation: chart-wipe 1.15s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
-}
-
-/* Grow-up for StackedBarChart's rects. transform-box: fill-box makes
-   transform-origin resolve against the rect's own geometry (its bounding
-   box) rather than the SVG viewport's origin — without it, "bottom" is
-   ambiguous/inconsistent across browsers for SVG shapes. */
-@keyframes chart-grow {
-  from { transform: scaleY(0); }
-  to   { transform: scaleY(1); }
-}
-
-.chart-grow {
-  transform-box: fill-box;
-  transform-origin: bottom;
-  animation: chart-grow 0.55s cubic-bezier(0.22, 0.61, 0.36, 1) backwards;
 }
 
 .chart-tooltip {

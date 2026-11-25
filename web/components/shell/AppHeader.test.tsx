@@ -1,95 +1,61 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import { createRef } from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AppHeader } from "./AppHeader";
-import type { ResolvedRole } from "@/lib/hooks/use-capability";
-import { ADMIN_ROLES } from "@/lib/nav-config";
-
-const replace = vi.fn();
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
-}));
-
-// Runs onSettled the way the real mutation does, so the redirect the component
-// registers actually fires.
-const logoutMutate = vi.fn(
-  (_input: unknown, opts?: { onSettled?: () => void }) => opts?.onSettled?.()
-);
-
-vi.mock("@/lib/hooks/auth", () => ({
-  useLogout: () => ({ mutate: logoutMutate }),
-  useMe: () => ({ data: undefined }),
-}));
+import { ADMIN_ROLES, type UserRole } from "@/lib/nav-config";
 
 vi.mock("@/lib/i18n", () => ({
   useTranslation: () => ({ t: (k: string) => k, lang: "id" }),
 }));
 
-let roleState: ResolvedRole = {
-  role: "student",
-  hydrated: true,
-  meIsError: false,
-};
+const themeBtn = () => screen.queryByRole("button", { name: /dark_mode|light_mode/ });
+const bellBtn = () => screen.queryByRole("button", { name: "Notifikasi" });
 
-vi.mock("@/lib/hooks/use-capability", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/hooks/use-capability")>()),
-  useResolvedRole: () => roleState,
-}));
+describe("AppHeader — admin and affiliator roles", () => {
+  it.each<UserRole>([...ADMIN_ROLES, "affiliator"])(
+    "%s has theme toggle and bell only",
+    (role) => {
+      const { container } = render(<AppHeader role={role} />);
 
-async function openDropdownAndGetProfileLink() {
-  render(<AppHeader />);
-  const trigger = screen.getByRole("button", { name: /account/i });
-  await userEvent.click(trigger);
-  return screen.findByRole("menuitem", { name: /nav_profile/i });
-}
+      expect(themeBtn()).toBeInTheDocument();
+      expect(bellBtn()).toBeInTheDocument();
+      expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
+      expect(container.querySelector("input")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^(ID|EN)$/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /account/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Keranjang" })).not.toBeInTheDocument();
+    }
+  );
 
-describe("AppHeader — account dropdown profile link", () => {
-  beforeEach(() => {
-    roleState = { role: "student", hydrated: true, meIsError: false };
-  });
-
-  it.each(ADMIN_ROLES)("links to /admin/profile for %s", async (role) => {
-    roleState = { role, hydrated: true, meIsError: false };
-    const link = await openDropdownAndGetProfileLink();
-    expect(link).toHaveAttribute("href", "/admin/profile");
-  });
-
-  it("links to /profile for student", async () => {
-    roleState = { role: "student", hydrated: true, meIsError: false };
-    const link = await openDropdownAndGetProfileLink();
-    expect(link).toHaveAttribute("href", "/profile");
+  it("keeps the permanent red dot on the bell", () => {
+    render(<AppHeader role="super_admin" />);
+    expect(bellBtn()?.querySelector(".bg-danger")).not.toBeNull();
   });
 });
 
-describe("AppHeader — logout destination", () => {
-  beforeEach(() => {
-    replace.mockClear();
-    logoutMutate.mockClear();
-    roleState = { role: "student", hydrated: true, meIsError: false };
+describe("AppHeader — student", () => {
+  it("shows no theme, cart, bell, or language control", () => {
+    render(<AppHeader role="student" />);
+
+    expect(themeBtn()).not.toBeInTheDocument();
+    expect(bellBtn()).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Keranjang" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^(ID|EN)$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /account/i })).not.toBeInTheDocument();
   });
+});
 
-  async function clickLogout() {
-    render(<AppHeader />);
-    await userEvent.click(screen.getByRole("button", { name: /account/i }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: /logout/i }));
-  }
+describe("AppHeader — menu button", () => {
+  it("calls onMenuClick and exposes the button through menuButtonRef", async () => {
+    const onMenuClick = vi.fn();
+    const menuButtonRef = createRef<HTMLButtonElement>();
+    render(<AppHeader role="student" onMenuClick={onMenuClick} menuButtonRef={menuButtonRef} />);
 
-  it.each(ADMIN_ROLES)("sends %s to the admin login, not the student one", async (role) => {
-    roleState = { role, hydrated: true, meIsError: false };
+    const button = screen.getByRole("button", { name: "Toggle sidebar" });
+    await userEvent.click(button);
 
-    await clickLogout();
-
-    expect(logoutMutate).toHaveBeenCalled();
-    expect(replace).toHaveBeenCalledWith("/admin/login");
-    expect(replace).not.toHaveBeenCalledWith("/login");
-  });
-
-  it("still sends a student to the student login", async () => {
-    roleState = { role: "student", hydrated: true, meIsError: false };
-
-    await clickLogout();
-
-    expect(replace).toHaveBeenCalledWith("/login");
+    expect(onMenuClick).toHaveBeenCalledTimes(1);
+    expect(menuButtonRef.current).toBe(button);
   });
 });

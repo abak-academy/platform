@@ -1,10 +1,12 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "./AppShell";
+import type { UserRole } from "@/lib/nav-config";
 
-const replace = vi.fn();
+let pathname = "/dashboard";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -20,8 +22,8 @@ beforeAll(() => {
 });
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
-  usePathname: () => "/dashboard",
+  useRouter: () => ({ replace: vi.fn() }),
+  usePathname: () => pathname,
 }));
 
 vi.mock("@/lib/hooks/auth", () => ({
@@ -33,46 +35,161 @@ vi.mock("@/lib/i18n", () => ({
 }));
 
 vi.mock("./AppSidebar", () => ({
-  AppSidebar: () => <div data-testid="sidebar" />,
-}));
-
-vi.mock("./AppHeader", () => ({
-  AppHeader: ({ onMenuClick }: { onMenuClick: () => void }) => (
-    <div data-testid="header" onClick={onMenuClick} />
+  AppSidebar: ({ counts }: { counts?: Record<string, number> }) => (
+    <div data-testid="sidebar" data-counts={JSON.stringify(counts ?? null)}>
+      <a href="/somewhere">go</a>
+    </div>
   ),
 }));
 
-describe("AppShell — admin-shell class", () => {
-  it("adds admin-shell class when role is super_admin", () => {
-    const { container } = render(
-      <AppShell role="super_admin">
+vi.mock("./AppHeader", () => ({
+  AppHeader: ({
+    onMenuClick,
+    menuButtonRef,
+  }: {
+    onMenuClick: () => void;
+    menuButtonRef: React.Ref<HTMLButtonElement>;
+  }) => (
+    <button ref={menuButtonRef} data-testid="menu-button" onClick={onMenuClick}>
+      menu
+    </button>
+  ),
+}));
+
+function renderShell(role: UserRole = "super_admin", counts?: Record<string, number>) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ui = () => (
+    <QueryClientProvider client={qc}>
+      <AppShell role={role} counts={counts}>
         <div>content</div>
       </AppShell>
-    );
-    const root = container.firstElementChild;
-    expect(root?.className).toContain("admin-shell");
+    </QueryClientProvider>
+  );
+  const utils = render(ui());
+  return { ...utils, rerenderShell: () => utils.rerender(ui()) };
+}
+
+describe("AppShell — admin-shell class", () => {
+  beforeEach(() => {
+    pathname = "/dashboard";
   });
 
-  it("adds admin-shell class when role is admin_store", () => {
-    const { container } = render(
-      <AppShell role="admin_store">
-        <div>content</div>
-      </AppShell>
-    );
-    const root = container.firstElementChild;
-    expect(root?.className).toContain("admin-shell");
+  it.each(["super_admin", "admin_store"] as const)("adds admin-shell class when role is %s", (role) => {
+    const { container } = renderShell(role);
+    expect(container.querySelector(".admin-shell")).not.toBeNull();
   });
 
   it("does NOT add admin-shell class when role is student", () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const { container } = render(
-      <QueryClientProvider client={qc}>
-        <AppShell role="student">
-          <div>content</div>
-        </AppShell>
-      </QueryClientProvider>
-    );
-    const root = container.firstElementChild;
-    expect(root?.className).not.toContain("admin-shell");
+    const { container } = renderShell("student");
+    expect(container.querySelector(".admin-shell")).toBeNull();
+  });
+});
+
+describe("AppShell — layout", () => {
+  beforeEach(() => {
+    pathname = "/dashboard";
+  });
+
+  it("renders a fixed 264px sidebar and no icon rail", () => {
+    const { container } = renderShell();
+    const aside = container.querySelector("aside");
+    expect(aside?.className).toContain("w-sidebar");
+    expect(container.innerHTML).not.toMatch(/\bw-16\b|\bpl-16\b|\bw-\[252px\]|\bpl-\[252px\]/);
+  });
+
+  it("caps content at the page width with 32px gutters, 16px below the narrow breakpoint", () => {
+    renderShell();
+    const wrapper = screen.getByText("content").parentElement!;
+    expect(wrapper.className).toContain("mx-auto");
+    expect(wrapper.className).toContain("w-full");
+    expect(wrapper.className).toContain("max-w-page");
+    expect(wrapper.className).toContain("px-4");
+    expect(wrapper.className).toContain("narrow:px-8");
+  });
+
+  it("forwards counts to the sidebar", () => {
+    renderShell("super_admin", { exams: 3 });
+    expect(screen.getAllByTestId("sidebar")[0]).toHaveAttribute("data-counts", '{"exams":3}');
+  });
+});
+
+describe("AppShell — drawer below 1024px", () => {
+  beforeEach(() => {
+    pathname = "/dashboard";
+  });
+
+  const drawer = () => screen.queryByRole("dialog");
+
+  it("makes the main column and desktop aside inert only while open", async () => {
+    const { container } = renderShell();
+    const column = screen.getByRole("main").parentElement!;
+    const desktopAside = container.querySelector("aside")!;
+    expect(column).not.toHaveAttribute("inert");
+    expect(desktopAside).not.toHaveAttribute("inert");
+
+    await userEvent.click(screen.getByTestId("menu-button"));
+    expect(column).toHaveAttribute("inert");
+    expect(desktopAside).toHaveAttribute("inert");
+    expect(drawer()).not.toHaveAttribute("inert");
+
+    await userEvent.keyboard("{Escape}");
+    expect(column).not.toHaveAttribute("inert");
+    expect(desktopAside).not.toHaveAttribute("inert");
+  });
+
+  it("is closed until the menu button is pressed", () => {
+    renderShell();
+    expect(drawer()).not.toBeInTheDocument();
+  });
+
+  it("opens from the menu button with focus inside and a scrim", async () => {
+    renderShell();
+    await userEvent.click(screen.getByTestId("menu-button"));
+
+    const d = drawer()!;
+    expect(d).toBeInTheDocument();
+    expect(d.className).toContain("w-sidebar");
+    expect(d.className).toContain("shadow-pop");
+    expect(d.contains(document.activeElement)).toBe(true);
+    expect(within(d).getByTestId("sidebar")).toBeInTheDocument();
+    expect(screen.getByTestId("drawer-scrim")).toBeInTheDocument();
+  });
+
+  it("closes on Escape and returns focus to the menu button", async () => {
+    renderShell();
+    await userEvent.click(screen.getByTestId("menu-button"));
+    await userEvent.keyboard("{Escape}");
+
+    expect(drawer()).not.toBeInTheDocument();
+    expect(screen.getByTestId("menu-button")).toHaveFocus();
+  });
+
+  it("closes on scrim click and returns focus to the menu button", async () => {
+    renderShell();
+    await userEvent.click(screen.getByTestId("menu-button"));
+    await userEvent.click(screen.getByTestId("drawer-scrim"));
+
+    expect(drawer()).not.toBeInTheDocument();
+    expect(screen.getByTestId("menu-button")).toHaveFocus();
+  });
+
+  it("closes from its close button", async () => {
+    renderShell();
+    await userEvent.click(screen.getByTestId("menu-button"));
+    await userEvent.click(within(drawer()!).getByRole("button", { name: "nav_close_menu" }));
+
+    expect(drawer()).not.toBeInTheDocument();
+    expect(screen.getByTestId("menu-button")).toHaveFocus();
+  });
+
+  it("closes when the pathname changes", async () => {
+    const { rerenderShell } = renderShell();
+    await userEvent.click(screen.getByTestId("menu-button"));
+    expect(drawer()).toBeInTheDocument();
+
+    pathname = "/somewhere";
+    rerenderShell();
+
+    expect(drawer()).not.toBeInTheDocument();
   });
 });

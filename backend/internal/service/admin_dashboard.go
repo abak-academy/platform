@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"akademi-bimbel/internal/repository"
+
+	"github.com/google/uuid"
 )
 
 // jakarta is used to compute the calendar month for AdminOrderBuckets, the
@@ -29,10 +31,12 @@ type DashboardPeriod struct {
 }
 
 type DashboardAttention struct {
-	NeedsConfirm   int `json:"needs_confirm"`
-	ReadyToShip    int `json:"ready_to_ship"`
-	ShipmentFailed int `json:"shipment_failed"`
-	ActiveSessions int `json:"active_sessions"`
+	NeedsConfirm   int        `json:"needs_confirm"`
+	ReadyToShip    int        `json:"ready_to_ship"`
+	ShipmentFailed int        `json:"shipment_failed"`
+	ActiveSessions int        `json:"active_sessions"`
+	EssaysToGrade  int        `json:"essays_to_grade"`
+	EssaysExamID   *uuid.UUID `json:"essays_exam_id"`
 }
 
 type DashboardTopProduct struct {
@@ -128,6 +132,10 @@ func (s *Service) AdminDashboard(
 
 	prevRevenue, prevRevOK := sumSeries(prevSeries, func(p repository.SeriesPoint) float64 { return p.Revenue })
 	prevOrders, prevOrdOK := sumSeries(prevSeries, func(p repository.SeriesPoint) float64 { return float64(p.OrderCount) })
+	revDigital, _ := sumSeries(series, func(p repository.SeriesPoint) float64 { return p.RevenueDigital })
+	revPhysical, _ := sumSeries(series, func(p repository.SeriesPoint) float64 { return p.RevenuePhysical })
+	prevRevDigital, prevDigOK := sumSeries(prevSeries, func(p repository.SeriesPoint) float64 { return p.RevenueDigital })
+	prevRevPhysical, prevPhysOK := sumSeries(prevSeries, func(p repository.SeriesPoint) float64 { return p.RevenuePhysical })
 	prevNew, prevNewOK := sumSeries(prevSeries, func(p repository.SeriesPoint) float64 { return float64(p.NewStudents) })
 
 	studentsTotal, schools, err := s.storeRepo.CountStudentsAndSchools(ctx)
@@ -136,6 +144,11 @@ func (s *Service) AdminDashboard(
 	}
 
 	activeSessions, err := s.storeRepo.CountActiveExamSessions(ctx)
+	if err != nil {
+		return out, err
+	}
+
+	essaysToGrade, essaysExamID, err := s.storeRepo.CountEssaysToGrade(ctx)
 	if err != nil {
 		return out, err
 	}
@@ -183,11 +196,13 @@ func (s *Service) AdminDashboard(
 			Bucket: bucket,
 		},
 		KPI: map[string]KPI{
-			"revenue":        makeKPI(revenue, prevRevenue, prevRevOK),
-			"order_count":    makeKPI(orders, prevOrders, prevOrdOK),
-			"new_students":   makeKPI(newStud, prevNew, prevNewOK),
-			"schools":        {Value: float64(schools)},
-			"students_total": {Value: float64(studentsTotal)},
+			"revenue":          makeKPI(revenue, prevRevenue, prevRevOK),
+			"revenue_digital":  makeKPI(revDigital, prevRevDigital, prevDigOK),
+			"revenue_physical": makeKPI(revPhysical, prevRevPhysical, prevPhysOK),
+			"order_count":      makeKPI(orders, prevOrders, prevOrdOK),
+			"new_students":     makeKPI(newStud, prevNew, prevNewOK),
+			"schools":          {Value: float64(schools)},
+			"students_total":   {Value: float64(studentsTotal)},
 		},
 		Series: series,
 		Attention: DashboardAttention{
@@ -195,6 +210,8 @@ func (s *Service) AdminDashboard(
 			ReadyToShip:    buckets.ReadyToShip,
 			ShipmentFailed: buckets.ShipmentFailed,
 			ActiveSessions: activeSessions,
+			EssaysToGrade:  essaysToGrade,
+			EssaysExamID:   essaysExamID,
 		},
 		TopProducts:   tops,
 		UpcomingExams: upcoming,

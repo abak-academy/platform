@@ -154,6 +154,49 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 		t.Fatalf("seed digital item: %v", err)
 	}
 
+	// previous window (2030-01-14): one physical-only order, so prev digital has no data
+	prevDay := day.AddDate(0, 0, -1)
+	var prevOrderID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, total, created_at, paid_at)
+		 VALUES ($1, 'paid', 25000, 25000, $2, $2) RETURNING id`,
+		studentID, prevDay,
+	).Scan(&prevOrderID); err != nil {
+		t.Fatalf("seed prev order: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams)
+		 VALUES ($1, $2, 'book', 'Dashboard Pipeline Book', 25000, 1, 25000, 0)`,
+		prevOrderID, physicalProductID,
+	); err != nil {
+		t.Fatalf("seed prev item: %v", err)
+	}
+
+	// 1990 submitted_at makes this the oldest pending submission in the shared
+	// container, so essays_exam_id is exact while essays_to_grade can only be >= 1.
+	var essayTestID, essayQuestionID, essayExamID, essayRegID, essaySessionID uuid.UUID
+	for _, step := range []struct {
+		dst *uuid.UUID
+		sql string
+		arg []any
+	}{
+		{&essayTestID, `INSERT INTO test (title, subject, topic, duration_minutes) VALUES ('T', 'math', 'algebra', 60) RETURNING id`, nil},
+		{&essayQuestionID, `INSERT INTO question (format, body, point_correct, point_wrong) VALUES ('essay', 'Essay', 10, 0) RETURNING id`, nil},
+		{&essayExamID, `INSERT INTO exam (title) VALUES ('Dashboard Essay Exam') RETURNING id`, nil},
+		{&essayRegID, `INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`, []any{studentID, &essayExamID, uuid.NewString()}},
+		{&essaySessionID, `INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, status, submitted_at) VALUES ($1, $2, $3, now(), 'submitted', '1990-01-01') RETURNING id`, []any{&essayRegID, studentID, &essayExamID}},
+	} {
+		if err := pool.QueryRow(ctx, step.sql, step.arg...).Scan(step.dst); err != nil {
+			t.Fatalf("seed essay fixture: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO exam_session_answer (session_id, question_id, answer, saved_at) VALUES ($1, $2, 'jawaban', now())`,
+		essaySessionID, essayQuestionID,
+	); err != nil {
+		t.Fatalf("seed ungraded essay answer: %v", err)
+	}
+
 	resp, err := svc.AdminDashboard(ctx, from, to, "day")
 	if err != nil {
 		t.Fatalf("AdminDashboard: %v", err)
@@ -177,6 +220,19 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 	}
 	if seriesDigital != 40000 {
 		t.Errorf("sum(series.revenue_digital) = %v, want 40000 (the course line)", seriesDigital)
+	}
+
+	if got := resp.KPI["revenue_physical"]; got.Value != 60000 || got.Prev == nil || *got.Prev != 25000 {
+		t.Errorf("kpi.revenue_physical = %+v, want value 60000 prev 25000", got)
+	}
+	if got := resp.KPI["revenue_digital"]; got.Value != 40000 || got.Prev != nil {
+		t.Errorf("kpi.revenue_digital = %+v, want value 40000 and no prev", got)
+	}
+	if resp.Attention.EssaysToGrade < 1 {
+		t.Errorf("essays_to_grade = %d, want >= 1 (seeded ungraded submission)", resp.Attention.EssaysToGrade)
+	}
+	if resp.Attention.EssaysExamID == nil || *resp.Attention.EssaysExamID != essayExamID {
+		t.Errorf("essays_exam_id = %v, want %v (oldest pending submission)", resp.Attention.EssaysExamID, essayExamID)
 	}
 
 	byProduct := map[string]DashboardTopProduct{}

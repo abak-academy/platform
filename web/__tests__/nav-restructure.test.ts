@@ -1,164 +1,63 @@
 import { describe, it, expect } from "vitest";
-import {
-  NAV_CONFIG,
-  ROLE_LABEL_KEYS,
-  roleLabelKey,
-  ADMIN_EXAM_NAV,
-  ADMIN_SCHOOL_NAV,
-  CONTENT_MANAGER_NAV,
-} from "@/lib/nav-config";
+import { NAV_CONFIG, ROLE_LABEL_KEYS, roleLabelKey } from "@/lib/nav-config";
 import { DICT } from "@/lib/i18n";
 
 type Dict = Record<string, string>;
 const idDict = DICT.id as Dict;
 const enDict = DICT.en as Dict;
 
-// --- FR-FE-15: New i18n keys are present, distinct from role labels ---
+const hrefsOf = (role: keyof typeof NAV_CONFIG) =>
+  NAV_CONFIG[role].flatMap((g) => g.items.map((i) => i.href));
 
 describe("FR-FE-15: nav group i18n keys are distinct from role-badge keys", () => {
-  it("nav_group_store exists in both id and en with correct values", () => {
+  it("nav_group_store and nav_group_academic exist in both locales", () => {
     expect(idDict["nav_group_store"]).toBe("Toko");
     expect(enDict["nav_group_store"]).toBe("Store");
+    expect(idDict["nav_group_academic"]).toBe("Akademik");
+    expect(enDict["nav_group_academic"]).toBe("Academics");
   });
 
-  it("nav_group_exam exists in both id and en with correct values", () => {
-    expect(idDict["nav_group_exam"]).toBe("Ujian");
-    expect(enDict["nav_group_exam"]).toBe("Exam");
-  });
-
-  it("nav_group_school exists in both id and en", () => {
-    expect(idDict["nav_group_school"]).toBe("Sekolah");
-    expect(enDict["nav_group_school"]).toBe("Schools");
-  });
-
-  it("nav_group_store value is distinct from role_admin_store", () => {
-    // role_admin_store is "Store Manager" (role badge), nav_group_store is "Store" (nav title)
-    expect(idDict["nav_group_store"]).not.toBe(idDict["role_admin_store"]);
-    expect(enDict["nav_group_store"]).not.toBe(enDict["role_admin_store"]);
-  });
-
-  it("nav_group_exam value is distinct from role_admin_exam and role_admin_school", () => {
-    expect(idDict["nav_group_exam"]).not.toBe(idDict["role_admin_exam"]);
-    expect(idDict["nav_group_exam"]).not.toBe(idDict["role_admin_school"]);
-    expect(enDict["nav_group_exam"]).not.toBe(enDict["role_admin_exam"]);
-    expect(enDict["nav_group_exam"]).not.toBe(enDict["role_admin_school"]);
+  it("group titles differ from the role badges", () => {
+    for (const dict of [idDict, enDict]) {
+      expect(dict["nav_group_store"]).not.toBe(dict["role_admin_store"]);
+      expect(dict["nav_group_academic"]).not.toBe(dict["role_admin_exam"]);
+      expect(dict["nav_group_academic"]).not.toBe(dict["role_admin_school"]);
+    }
   });
 });
 
-// --- FR-FE-15b: CONTENT_MANAGER_NAV uses new key ---
-
-describe("FR-FE-15b: CONTENT_MANAGER_NAV titleKey uses nav_group_store", () => {
-  it("uses nav_group_store, not role_admin_store", () => {
-    expect(CONTENT_MANAGER_NAV[0].titleKey).toBe("nav_group_store");
-    expect(CONTENT_MANAGER_NAV[0].titleKey).not.toBe("role_admin_store");
-  });
-});
-
-// --- FR-FE-16: Exam/School nav groups merged under nav_group_exam ---
-
-describe("FR-FE-16: ADMIN_EXAM_NAV and ADMIN_SCHOOL_NAV use nav_group_exam titleKey", () => {
-  it("ADMIN_EXAM_NAV titleKey is nav_group_exam", () => {
-    expect(ADMIN_EXAM_NAV[0].titleKey).toBe("nav_group_exam");
-    expect(ADMIN_EXAM_NAV[0].titleKey).not.toBe("role_admin_exam");
-  });
-
-  it("ADMIN_SCHOOL_NAV titleKey is nav_group_exam", () => {
-    expect(ADMIN_SCHOOL_NAV[0].titleKey).toBe("nav_group_exam");
-    expect(ADMIN_SCHOOL_NAV[0].titleKey).not.toBe("role_admin_school");
-  });
-});
-
-describe("FR-FE-16: admin_exam sees exam items under Exam and catalog items under Katalog", () => {
-  const examNav = NAV_CONFIG["admin_exam"];
-  const examItems = examNav[0].items;
-
-  it("has two nav groups: Exam and Katalog", () => {
-    expect(examNav).toHaveLength(2);
-  });
-
-  it("second group is Katalog with products and courses links", () => {
-    expect(examNav[1].titleKey).toBe("nav_group_catalog");
-    const hrefs = examNav[1].items.map((i) => i.href);
-    expect(hrefs).toEqual(["/admin/products", "/admin/courses"]);
-  });
-
-  it("contains only exam items (tests, packages, question_bank, session_monitor)", () => {
-    const hrefs = examItems.map((i) => i.href);
-    expect(hrefs).toContain("/admin/exam/tests");
-    expect(hrefs).toContain("/admin/exam/packages");
-    expect(hrefs).toContain("/admin/exam/questions");
-    expect(hrefs).toContain("/admin/exam/monitor");
-  });
-
-  it("carries the students roster but still no school reports", () => {
-    const hrefs = examItems.map((i) => i.href);
-    expect(hrefs).toContain("/admin/school/students");
+describe("FR-FE-16: role scoping survives the Akademik merge", () => {
+  it("admin_exam carries the exam tools and students but no school reports", () => {
+    const hrefs = hrefsOf("admin_exam");
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/admin/exam/tests",
+        "/admin/exam/packages",
+        "/admin/exam/questions",
+        "/admin/exam/monitor",
+        "/admin/school/students",
+      ])
+    );
     expect(hrefs).not.toContain("/admin/school/reports");
   });
-});
 
-describe("FR-FE-16: admin_school sees school items + a scoped Exams link under Exam", () => {
-  const schoolNav = NAV_CONFIG["admin_school"];
-  const schoolItems = schoolNav[0].items;
-
-  it("has exactly one nav group", () => {
-    expect(schoolNav).toHaveLength(1);
+  it("admin_school sees students and the exam list, not the content tools", () => {
+    const hrefs = hrefsOf("admin_school");
+    expect(hrefs).toEqual(expect.arrayContaining(["/admin/school/students", "/admin/exam/packages"]));
+    for (const href of ["/admin/exam/tests", "/admin/exam/questions", "/admin/exam/monitor", "/admin/school/reports"]) {
+      expect(hrefs).not.toContain(href);
+    }
   });
 
-  it("contains students plus the exam list without reports", () => {
-    const hrefs = schoolItems.map((i) => i.href);
-    expect(hrefs).toContain("/admin/school/students");
-    expect(hrefs).not.toContain("/admin/school/reports");
-    expect(hrefs).toContain("/admin/exam/packages");
-  });
-
-  it("does NOT contain the content-management exam items", () => {
-    const hrefs = schoolItems.map((i) => i.href);
-    expect(hrefs).not.toContain("/admin/exam/tests");
-    expect(hrefs).not.toContain("/admin/exam/questions");
-    expect(hrefs).not.toContain("/admin/exam/monitor");
-  });
-});
-
-describe("super_admin separates exam, school, and system navigation", () => {
-  const saNav = NAV_CONFIG["super_admin"];
-  const examGroup = saNav.find((g) => g.titleKey === "nav_group_exam");
-  const schoolGroup = saNav.find((g) => g.titleKey === "nav_group_school");
-  const systemGroup = saNav.find((g) => g.titleKey === "system");
-
-  it("has a single Exam nav group (not two separate groups)", () => {
-    const examGroups = saNav.filter((g) => g.titleKey === "nav_group_exam");
-    expect(examGroups).toHaveLength(1);
-  });
-
-  it("keeps only exam destinations in Exam", () => {
-    expect(examGroup).toBeDefined();
-    const hrefs = examGroup!.items.map((i) => i.href);
-    expect(hrefs).toEqual([
-      "/admin/exam/questions",
-      "/admin/exam/tests",
-      "/admin/exam/packages",
-      "/admin/exam/monitor",
-    ]);
-  });
-
-  it("groups schools and students without reports", () => {
-    expect(schoolGroup?.items.map((i) => i.href)).toEqual([
-      "/admin/system/schools",
-      "/admin/school/students",
-    ]);
-  });
-
-  it("keeps System ordered and limited to platform administration", () => {
-    expect(systemGroup?.items.map((i) => i.href)).toEqual([
+  it("super_admin keeps System ordered and limited to platform administration", () => {
+    const system = NAV_CONFIG["super_admin"].find((g) => g.titleKey === "system");
+    expect(system?.items.map((i) => i.href)).toEqual([
       "/admin/system/accounts",
       "/admin/system/config",
       "/admin/system/audit",
     ]);
   });
 });
-
-// --- FR-FE-18: Role badges are UNCHANGED ---
 
 describe("FR-FE-18: role badge keys are unchanged", () => {
   it("ROLE_LABEL_KEYS still uses role_admin_store, role_admin_exam, role_admin_school", () => {
@@ -173,12 +72,5 @@ describe("FR-FE-18: role badge keys are unchanged", () => {
     expect(roleLabelKey("admin_school")).toBe("role_admin_school");
     expect(roleLabelKey("super_admin")).toBe("role_super_admin");
     expect(roleLabelKey("student")).toBe("role_student");
-  });
-
-  it("nav section title keys are NOT the same as ROLE_LABEL_KEYS values", () => {
-    // This is the core of FR-FE-18: the decoupling is real
-    expect(CONTENT_MANAGER_NAV[0].titleKey).not.toBe(ROLE_LABEL_KEYS["admin_store"]);
-    expect(ADMIN_EXAM_NAV[0].titleKey).not.toBe(ROLE_LABEL_KEYS["admin_exam"]);
-    expect(ADMIN_SCHOOL_NAV[0].titleKey).not.toBe(ROLE_LABEL_KEYS["admin_school"]);
   });
 });

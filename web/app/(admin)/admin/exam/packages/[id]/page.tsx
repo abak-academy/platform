@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
@@ -121,7 +121,16 @@ function formatScheduled(iso?: string | null): string {
 }
 
 export default function ExamPackageDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <ExamPackageDetail />
+    </Suspense>
+  );
+}
+
+function ExamPackageDetail() {
   const params = useParams<{ id: string }>();
+  const tabParam = useSearchParams()?.get("tab");
   const id = params?.id ?? "";
   const { t } = useTranslation();
   const role = useAuthStore((s) => s.user?.role);
@@ -131,7 +140,7 @@ export default function ExamPackageDetailPage() {
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
 
-  const [tab, setTab] = useState<Tab>("overview");
+  const [pickedTab, setTab] = useState<Tab | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [confirmDisableCertificate, setConfirmDisableCertificate] = useState(false);
@@ -147,6 +156,7 @@ export default function ExamPackageDetailPage() {
   const visibleTabs = (
     isSchoolScoped ? SCHOOL_SCOPED_TABS : hasResultsWorkspace ? RESULTS_WORKSPACE_TABS : TAB_ORDER
   ).filter((key) => key !== "certificate" || data?.certificate_enabled);
+  const tab: Tab = pickedTab ?? (visibleTabs.find((key) => key === tabParam) ?? "overview");
 
   async function handleEnableCertificate() {
     try {

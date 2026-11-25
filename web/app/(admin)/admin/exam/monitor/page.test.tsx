@@ -247,7 +247,7 @@ describe("ExamMonitorPage", () => {
     await selectExamRow("UTBK 2026");
 
     const dialog = await screen.findByRole("dialog", { name: "UTBK 2026" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Tutup" }));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "UTBK 2026" })).not.toBeInTheDocument();
@@ -262,7 +262,7 @@ describe("ExamMonitorPage", () => {
     await selectExamRow("UTBK 2026");
 
     const firstDialog = await screen.findByRole("dialog", { name: "UTBK 2026" });
-    fireEvent.click(within(firstDialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(firstDialog).getByRole("button", { name: "Tutup" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "UTBK 2026" })).not.toBeInTheDocument();
     });

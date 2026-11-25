@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { AreaLineChart } from "./AreaLineChart";
 import { MultiLineChart } from "./MultiLineChart";
-import { StackedBarChart } from "./StackedBarChart";
 
 vi.mock("./chart-utils", async () => {
   const actual = await vi.importActual<typeof import("./chart-utils")>("./chart-utils");
@@ -24,14 +23,6 @@ describe("chart hover container focus ring", () => {
         <MultiLineChart
           labels={["1 Jul"]}
           series={[{ values: [1], color: "#1A5CFF", label: "Baru" }]}
-          emptyLabel="Belum ada data"
-        />,
-      ),
-      render(
-        <StackedBarChart
-          labels={["1 Jul"]}
-          bottom={{ values: [10], color: "#1A5CFF", label: "Digital" }}
-          top={{ values: [5], color: "#00A37A", label: "Fisik" }}
           emptyLabel="Belum ada data"
         />,
       ),

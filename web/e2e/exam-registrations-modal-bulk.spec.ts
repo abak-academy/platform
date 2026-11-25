@@ -249,7 +249,7 @@ test("super_admin registrations flow is roster-first, manual grant modal works, 
   await expect(dialog.getByText("Andi Saputra")).toBeVisible();
   await expect(dialog.getByText("@andi123")).toBeVisible();
 
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Tutup" }).click();
   await expect(dialog).toBeHidden();
   await page.getByTestId("open-grant-modal").click();
   const reopenedDialog = page.getByRole("dialog", { name: /Beri Akses|Grant Access/i });
@@ -331,7 +331,7 @@ test("admin_exam grants and revokes manually, with no CSV mode and no order flow
   await dialog.getByRole("checkbox", { name: "Andi Saputra" }).click();
   await dialog.getByRole("button", { name: /Beri Akses|Grant Access/i }).last().click();
   await expect(dialog.getByText("@andi123")).toBeVisible();
-  await dialog.getByRole("button", { name: "Close" }).click();
+  await dialog.getByRole("button", { name: "Tutup" }).click();
 
   await page.getByTestId("open-revoke-modal").click();
   await expect(page.getByTestId("revoke-mode-toggle")).toHaveCount(0);

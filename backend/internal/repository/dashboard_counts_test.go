@@ -470,3 +470,77 @@ func TestCountActiveExamSessionsUsesActiveSectionDeadline(t *testing.T) {
 		t.Errorf("delta = %d, want 1 — the expired section must not count even though the exam has no deadline", after-before)
 	}
 }
+
+func TestCountEssaysToGrade(t *testing.T) {
+	pool := newPristineTestPool(t)
+	r := New(pool)
+	ctx := context.Background()
+
+	count, examID, err := r.CountEssaysToGrade(ctx)
+	if err != nil {
+		t.Fatalf("CountEssaysToGrade on empty db: %v", err)
+	}
+	if count != 0 || examID != nil {
+		t.Fatalf("empty db = (%d, %v), want (0, nil)", count, examID)
+	}
+
+	admin := insertGradingUser(t, pool, "admin_exam", "Grader")
+	student := insertGradingUser(t, pool, "student", "Student")
+	testID := insertGradingTest(t, pool)
+	essay := insertGradingEssayQuestion(t, pool, testID, "Essay", 10, 1)
+	essay2 := insertGradingEssayQuestion(t, pool, testID, "Essay 2", 10, 2)
+	examOld := insertGradingExam(t, pool, testID)
+	examNew := insertGradingExam(t, pool, testID)
+	now := time.Now()
+	older, newer := now.Add(-48*time.Hour), now.Add(-24*time.Hour)
+	answer, gradedAt, score := strPtrG("jawaban"), timePtrG(now), f64PtrG(5)
+
+	graded := insertGradingSession(t, pool, insertGradingUser(t, pool, "student", "S2"), examNew, "submitted", timePtrG(older.Add(-time.Hour)), nil)
+	insertGradingAnswer(t, pool, graded, essay, answer, score, &admin, gradedAt)
+
+	inProgress := insertGradingSession(t, pool, insertGradingUser(t, pool, "student", "S3"), examNew, "in_progress", nil, nil)
+	insertGradingAnswer(t, pool, inProgress, essay, answer, nil, nil, nil)
+
+	count, examID, err = r.CountEssaysToGrade(ctx)
+	if err != nil {
+		t.Fatalf("CountEssaysToGrade graded-only: %v", err)
+	}
+	if count != 0 || examID != nil {
+		t.Fatalf("graded/in-progress only = (%d, %v), want (0, nil)", count, examID)
+	}
+
+	// two ungraded essays in one session count once
+	inNew := insertGradingSession(t, pool, student, examNew, "submitted", timePtrG(newer), nil)
+	insertGradingAnswer(t, pool, inNew, essay, answer, nil, nil, nil)
+	insertGradingAnswer(t, pool, inNew, essay2, answer, nil, nil, nil)
+
+	// second attempt on the same registration: ListSessionsNeedingGrading counts every submitted attempt
+	reg := insertGradingRegistration(t, pool, student, examOld)
+	attempt1 := insertGradingSessionForRegistration(t, pool, reg, student, examOld, 1, "submitted", timePtrG(older), nil)
+	attempt2 := insertGradingSessionForRegistration(t, pool, reg, student, examOld, 2, "submitted", timePtrG(now), nil)
+	insertGradingAnswer(t, pool, attempt1, essay, answer, nil, nil, nil)
+	insertGradingAnswer(t, pool, attempt2, essay, answer, nil, nil, nil)
+
+	count, examID, err = r.CountEssaysToGrade(ctx)
+	if err != nil {
+		t.Fatalf("CountEssaysToGrade: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("count = %d, want 3 (inNew + both attempts)", count)
+	}
+	if examID == nil || *examID != examOld {
+		t.Errorf("examID = %v, want %v (oldest ungraded submission)", examID, examOld)
+	}
+
+	var perExam int
+	for _, e := range []uuid.UUID{examOld, examNew} {
+		items, err := r.ListSessionsNeedingGrading(ctx, e)
+		if err != nil {
+			t.Fatalf("ListSessionsNeedingGrading: %v", err)
+		}
+		perExam += len(items)
+	}
+	if perExam != count {
+		t.Errorf("sum of ListSessionsNeedingGrading = %d, count = %d: predicates diverged", perExam, count)
+	}
+}

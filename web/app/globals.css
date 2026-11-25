@@ -2,7 +2,7 @@
 
 /* Brand tokens — see design-app-abak/source/styles.css (CSS vars are named
    --green-* upstream but the actual palette is indigo/violet). */
-@theme {
+@theme static {
   /* ---- Brand: indigo / violet ---- */
   --color-brand-50:  #eef0fe;
   --color-brand-100: #e0e4fd;
@@ -53,13 +53,80 @@
   --color-gold-bg:    #f8f1dd;
   /* --color-gold is 2.97:1 on --color-gold-bg — under AA for anything small.
      Use this for gold text on a gold field. */
-  --color-gold-700:   #6f5209;
+  --color-gold-700:   #7a5410;
+
+  /* ---- v2 tokens (docs/specs/design-tokens-v2.md) ---- */
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: #f0f1fa;
+  --color-line-strong: #9da3c2;
+  --color-brand-ink: #2e3bb8;
+  --color-on-brand: #ffffff;
+  --color-deep: #1a2168;
+  --color-on-deep: #ffffff;
+  --color-ember-50: #fbe6da;
+  --color-ember-500: #e2683c;
+  --color-ember-600: #c24e26;
+  --color-ember-700: #a4401c;
+  --color-on-ember: #ffffff;
+  --color-teal-50: #dcf0ec;
+  --color-teal-600: #1e978a;
+  --color-teal-700: #146b61;
+  --color-gold-50: #fbefd4;
+  --color-gold-600: #d99a2b;
+  --color-danger-50: #fbe7e4;
+  --color-danger-600: #b8352a;
+  --color-on-danger: #ffffff;
+  --color-sky-50: #e6eefc;
+  --color-sky-600: #2f6fde;
+  --color-sky-700: #2153b0;
+  --color-berry-50: #fbe6ee;
+  --color-berry-600: #c23b6b;
+  --color-berry-700: #a02a56;
+  --color-mute-50: #f0f1fa;
+  --color-mute-700: #565c84;
+  --color-hero-a: #fde6d8;
+  --color-hero-b: #e0e4fd;
+  --color-hero-c: #eef0fe;
+  --color-scrim: rgba(10, 24, 32, .5);
 
   /* ---- Radius ---- */
-  --r-sm: 9px;
-  --r-md: 13px;
-  --r-lg: 18px;
-  --r-xl: 26px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 28px;
+  --radius-card: 22px;
+  --radius-modal: 28px;
+  --radius-panel: 30px;
+  --radius-pill: 9999px;
+
+  /* ---- Elevation ---- */
+  --shadow-card: 0 1px 2px rgba(40, 46, 110, .05), 0 6px 18px rgba(40, 46, 110, .07);
+  --shadow-pop: 0 18px 50px rgba(26, 33, 104, .18);
+  --shadow-cta: 0 6px 18px -6px rgba(194, 78, 38, .55);
+  --shadow-cta-hover: 0 12px 26px -8px rgba(194, 78, 38, .6);
+  --shadow-brand: 0 6px 18px -6px rgba(61, 77, 219, .55);
+
+  /* ---- Layout and sizes ---- */
+  --container-page: 1480px;
+  --container-public: 1200px;
+  --container-public-narrow: 820px;
+  --container-dialog: 480px;
+  --container-dialog-wide: 820px;
+  --container-popover: 420px;
+  --container-menu: 280px;
+  --spacing-sidebar: 264px;
+  --spacing-control-sm: 34px;
+  --spacing-control-md: 42px;
+  --spacing-control-lg: 52px;
+  --spacing-input: 46px;
+  --spacing-nav-row: 44px;
+  --breakpoint-wide: 1200px;
+  --breakpoint-narrow: 680px;
+
+  /* ---- Motion ---- */
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-standard: cubic-bezier(.22, 1, .36, 1);
+  --animate-live: livePulse 1.3s ease-in-out infinite;
 
   /* ---- Shadow ---- */
   --sh-sm: 0 1px 2px rgba(40, 46, 110, .06), 0 1px 3px rgba(40, 46, 110, .05);
@@ -76,6 +143,121 @@
 body {
   font-family: var(--font-sans);
   font-size: 15px;
+}
+
+:root {
+  --gradient-hero: linear-gradient(135deg, #6e7cee 0%, #3d4ddb 55%, #1a2168 100%);
+  --z-popover: 30;
+  --z-menu: 40;
+  --z-drawer: 50;
+  --z-dialog: 70;
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .45; transform: scale(.75); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@utility type-display-hero {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(44px, 6.4vw, 92px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.05em;
+}
+@utility type-display-xl {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 64px;
+  line-height: 1.02;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  @media (width < 680px) { font-size: clamp(42px, 5.4vw, 64px); }
+}
+@utility type-display {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 44px;
+  line-height: 1.08;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  @media (width < 680px) { font-size: 30px; }
+}
+@utility type-h1 {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  @media (width < 680px) { font-size: 24px; }
+}
+@utility type-h2 {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+@utility type-h3 {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.35;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+@utility type-label {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+}
+@utility type-label-sm {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+@utility type-label-xs {
+  font-family: var(--font-display), var(--font-public-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+@utility type-body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+}
+@utility type-body-sm {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+}
+@utility type-caption {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 400;
+}
+@utility type-overline {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 /* Tailwind v4 dropped the default gray border/divide color (bare `border`,
@@ -153,11 +335,14 @@ body {
 /* Dark mode — softer navy palette, higher text contrast */
 html[data-theme="dark"] {
   --color-paper:     #161225;
-  --color-surface:   #27213b;
+  --color-surface:   #211b34;
+  --color-surface-raised: #27213b;
+  --color-surface-sunken: #1b162d;
+  --color-line-strong: #848bb0;
   --color-surface-2: #302848;
   --color-ink-900: #eeeffc;
   --color-ink-700: #d6daef;
-  --color-ink-600: #bac0dc;
+  --color-ink-600: #9fa6c6;
   --color-ink-500: #9fa6c6;
   --color-ink-400: #848bb0;
   --color-line:    #393f60;
@@ -165,10 +350,43 @@ html[data-theme="dark"] {
 
   /* brighter brand on dark surfaces */
   --color-brand-50:  rgba(81, 97, 232, .22);
-  --color-brand-100: rgba(81, 97, 232, .34);
+  --color-brand-100: rgba(81, 97, 232, .22);
   --color-brand-200: rgba(81, 97, 232, .48);
+  --color-brand-500: #9ca6f6;
   --color-brand-600: #7d89f2;
-  --color-brand-700: #aab2f8;
+  --color-brand-700: #9ca6f6;
+  --color-brand-800: #c4cafb;
+  --color-brand-900: #0f0c1f;
+  --color-brand-ink: #b3bbf8;
+  --color-on-brand: #10132e;
+  --color-deep: #7d89f2;
+  --color-on-deep: #10132e;
+  --color-ember-50: #3a2620;
+  --color-ember-500: #e8743f;
+  --color-ember-600: #f08a5d;
+  --color-ember-700: #f4a07a;
+  --color-on-ember: #1b0e07;
+  --color-teal-50: #173733;
+  --color-teal-600: #2bb3a3;
+  --color-teal-700: #5cc9b9;
+  --color-gold-50: #3a3020;
+  --color-gold-600: #e2ac48;
+  --color-danger-50: #3d2224;
+  --color-danger-600: #f08c80;
+  --color-on-danger: #1b0e07;
+  --color-sky-50: #172d4a;
+  --color-sky-600: #6fa2f2;
+  --color-sky-700: #9cc0f7;
+  --color-berry-50: #3a1f2c;
+  --color-berry-600: #ec7ea4;
+  --color-berry-700: #f3a6c0;
+  --color-mute-50: #2a2442;
+  --color-mute-700: #bac0dc;
+  --color-hero-a: #2c1a1f;
+  --color-hero-b: #1f1d4f;
+  --color-hero-c: #1c1838;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .28);
+  --shadow-pop: 0 20px 60px rgba(0, 0, 0, .55);
 
   /* status: stronger bg opacity + brighter foregrounds for badge readability */
   --color-info:       #7daff5;
@@ -184,7 +402,7 @@ html[data-theme="dark"] {
   --color-gold:       #ddc46e;
   --color-gold-bg:    rgba(176, 134, 18, .28);
   /* On a dark field the light gold is already 5.9:1 — it is the readable one here. */
-  --color-gold-700:   #ddc46e;
+  --color-gold-700:   #ebc56e;
 }
 
 /* shadcn semantic-token bridge: map shadcn --primary/--background/etc. to

@@ -72,31 +72,19 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo, a
   const { t } = useTranslation();
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-3 rounded-[12px] border border-line px-4 py-3"
-      style={{ backgroundColor: "var(--md-sys-color-surface-container-low)" }}
-    >
-      <span className="text-label uppercase color-on-surface-variant" style={{ letterSpacing: "0.06em" }}>
-        {t("admin_home_period")}
-      </span>
+    <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-line bg-card px-4 py-3 shadow-card">
+      <span className="type-overline text-ink-600">{t("admin_home_period")}</span>
 
-      <div className={`flex ${allowAllTime ? "flex-wrap " : ""}overflow-hidden rounded-[10px] border border-line`} role="group">
+      <div className={`flex ${allowAllTime ? "flex-wrap " : ""}gap-1 rounded-[var(--radius-pill)] bg-surface-sunken p-1`} role="group">
         {(allowAllTime ? [...PRESETS, { id: "all_time" as const, key: "admin_unit_all_time" as const }] : PRESETS).map((p) => (
           <button
             key={p.id}
             type="button"
             aria-pressed={preset === p.id}
             onClick={() => onChange(p.id, p.id === "custom" ? range : presetRange(p.id))}
-            className="px-3 py-1.5 text-label border-r border-line last:border-r-0"
-            style={
-              preset === p.id
-                ? {
-                    backgroundColor: "var(--md-sys-color-primary)",
-                    color: "var(--md-sys-color-on-primary)",
-                    fontWeight: 600,
-                  }
-                : undefined
-            }
+            className={`rounded-[var(--radius-pill)] px-3 py-1.5 type-label-sm transition-colors ${
+              preset === p.id ? "bg-brand-600 text-on-brand shadow-brand" : "text-ink-600 hover:text-ink-900"
+            }`}
           >
             {t(p.key)}
           </button>
@@ -125,7 +113,7 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo, a
       )}
 
       {resolvedFrom && resolvedTo && (
-        <span className="ml-auto text-label color-on-surface-variant">
+        <span className="ml-auto type-body-sm text-ink-600">
           {t("admin_home_period_showing")
             .replace("{from}", resolvedFrom)
             .replace("{to}", resolvedTo)}
