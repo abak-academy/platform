@@ -33,30 +33,32 @@ export function AgreementCheckboxEditor({ value, onChange }: AgreementCheckboxEd
       )}
 
       {value.map((row, i) => (
-        <div key={row.id || `new-${i}`} className="relative rounded-md border border-input p-3">
-          <Input
-            aria-label={`Judul checkbox ${i + 1}`}
-            placeholder="Judul checkbox"
-            value={row.title}
-            onChange={(e) => setAt(i, { title: e.target.value })}
-            className="mb-2 h-8"
-          />
+        <div key={row.id || `new-${i}`} className="rounded-md border border-input p-3">
+          <div className="flex items-start gap-2">
+            <Input
+              aria-label={`Judul checkbox ${i + 1}`}
+              placeholder="Judul checkbox"
+              value={row.title}
+              onChange={(e) => setAt(i, { title: e.target.value })}
+              className="h-8 flex-1"
+            />
+            <button
+              type="button"
+              aria-label={`Hapus checkbox ${i + 1}`}
+              onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+              className="flex size-8 shrink-0 items-center justify-center rounded text-ink-400 hover:bg-danger-bg hover:text-danger"
+            >
+              <Trash2 className="size-4" />
+            </button>
+          </div>
           <textarea
             aria-label={`Isi checkbox ${i + 1}`}
             placeholder="Isi (ditampilkan ke pembeli)"
             value={row.body}
             onChange={(e) => setAt(i, { body: e.target.value })}
             rows={2}
-            className="w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            className="mt-2 w-full resize-none rounded-md border border-input bg-transparent px-2 py-1.5 text-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
-          <button
-            type="button"
-            aria-label={`Hapus checkbox ${i + 1}`}
-            onClick={() => onChange(value.filter((_, idx) => idx !== i))}
-            className="absolute right-2 top-2 flex size-6 items-center justify-center rounded text-ink-400 hover:bg-danger-bg hover:text-danger"
-          >
-            <Trash2 className="size-4" />
-          </button>
         </div>
       ))}
 
