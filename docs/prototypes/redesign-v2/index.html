@@ -1756,8 +1756,8 @@ function cartCount() { return S.cart.reduce((a, c) => a + c.qty, 0); }
 const ctaArrow = (label, href, cls = 'primary') => `<a class="ab-btn ${cls} cta" href="${href}">${label}<span class="cta-dot">${ic('arrow-ur', 'sm')}</span></a>`;
 function publicNav(active) {
   const me = S.role === 'student';
-  const links = me ? [['#/', L('Beranda', 'Home'), 'home'], ['#/app/kompetisi', L('Kompetisi Saya', 'My Competitions'), 'mine'], ['#/kompetisi', 'Event', 'kompetisi'], ['#/app/kursus', L('Belajar', 'Learn'), 'kursus'], ['#/katalog', L('Katalog', 'Catalog'), 'katalog']]
-    : [['#/kompetisi', 'Event', 'kompetisi'], ['#/#program', L('Program', 'Programs'), 'program'], ['#/katalog', L('Katalog', 'Catalog'), 'katalog'], ['#/#tentang', L('Tentang', 'About'), 'tentang']];
+  const links = me ? [['#/', L('Beranda', 'Home'), 'home'], ['#/app/kompetisi', L('Kompetisi Saya', 'My Competitions'), 'mine'], ['#/kompetisi', 'Event', 'kompetisi'], ['#/app/kursus', L('Belajar', 'Learn'), 'kursus'], ['#/katalog', L('Toko', 'Shop'), 'katalog']]
+    : [['#/kompetisi', 'Event', 'kompetisi'], ['#/#program', L('Program', 'Programs'), 'program'], ['#/katalog', L('Toko', 'Shop'), 'katalog']];
   let right;
   if (me) {
     const live = Object.keys(S.registrations).filter(id => evt(id) && evPhase(evt(id)) === 'live' && !myAttempt(id)?.submitted).length;
@@ -1896,7 +1896,7 @@ function revealSections() {
     io.observe(el);
   });
 }
-// Cursor across the whole landing: a swarm of pixels that scatters when the pointer moves and regroups into a square when it stops; grid cards tilt toward it.
+// Cursor across every public page: a swarm of pixels that scatters when the pointer moves and regroups into a square when it stops; grid cards tilt toward it.
 const SW = { cv: null, ctx: null, ps: [], x: 0, y: 0, px: 0, py: 0, raf: 0, dark: false };
 function swarmInit(x, y) {
   const cv = document.createElement('canvas'); cv.id = 'cur-swarm'; cv.setAttribute('aria-hidden', 'true'); document.body.appendChild(cv);
@@ -1918,7 +1918,7 @@ function swarmStep() {
   SW.raf = moving ? requestAnimationFrame(swarmStep) : 0;
 }
 document.addEventListener('pointermove', e => {
-  if (!document.querySelector('.hero-photo')) { if (SW.cv) { SW.cv.remove(); SW.cv = SW.ctx = null; } return; }
+  if (!document.querySelector('.pubnav') || document.querySelector('.shell')) { if (SW.cv) { SW.cv.remove(); SW.cv = SW.ctx = null; } return; }
   if (e.pointerType !== 'mouse' || !heroMotionOK()) return;
   if (!SW.cv) swarmInit(e.clientX, e.clientY);
   SW.x = e.clientX; SW.y = e.clientY; SW.dark = !!e.target.closest?.('.hero-photo, .cta-band, .site-foot'); if (!SW.raf) SW.raf = requestAnimationFrame(swarmStep);
@@ -2122,10 +2122,10 @@ route(/^\/katalog$/, () => {
   const owned = catalog().filter(p => p.published && isOwned(p)).length;
   const all = catalog().filter(p => p.published && p.type !== 'exam' && !isOwned(p));
   const list = all.filter(p => (tab === 'all' || p.type === tab) && (!q || p.name.toLowerCase().includes(q)));
-  return pub('katalog', `<section class="page-hero slim"><div class="wrap"><span class="eyebrow">KATALOG</span><h1 class="h-display xl">Buku, kursus & perlengkapan belajar</h1><p class="lede">Pakai kode <b>BELAJAR20</b> untuk diskon 20% semua kursus dan buku.</p></div></section>
+  return pub('katalog', `<section class="page-hero slim"><div class="wrap"><span class="eyebrow">${L('TOKO ABAK', 'ABAK SHOP')}</span><h1 class="h-display xl">Buku, kursus & perlengkapan belajar</h1><p class="lede">Pakai kode <b>BELAJAR20</b> untuk diskon 20% semua kursus dan buku.</p></div></section>
   <section class="wrap"><div class="cat-bar">
     <div class="cat-rail" role="tablist">${Object.entries(TYPE_TAB).filter(([k]) => k !== 'exam').map(([k, v]) => `<button class="cat-tab ${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-act="catTab" data-t="${k}">${ic({ all: 'grid', book: 'book', course: 'play-circle', exam: 'trophy', merchandise: 'shirt', medal: 'medal' }[k], 'sm')}${v}<span>${k === 'all' ? all.length : all.filter(p => p.type === k).length}</span></button>`).join('')}</div>
-    <label class="ab-field pill search">${ic('search', 'sm')}<input data-input="catQ" value="${esc(S.catQ || '')}" placeholder="Cari di katalog" aria-label="Cari di katalog"></label></div>
+    <label class="ab-field pill search">${ic('search', 'sm')}<input data-input="catQ" value="${esc(S.catQ || '')}" placeholder="Cari di toko" aria-label="Cari di toko"></label></div>
     ${owned ? `<p class="note owned-note">${ic('info', 'sm')}${L(`${owned} kursus yang sudah kamu miliki tidak ditampilkan.`, `${owned} courses you already own are hidden.`)} <a href="#/app/kursus">${L('Buka Belajar', 'Open Learn')}</a></p>` : ''}<div class="card-grid">${list.map(p => p.type === 'course' ? courseCard(course(p.ref)) : productCard(p)).join('') || empty('bag', 'Belum ada produk pada kategori ini', '')}</div></section>`);
 });
 ACT.catTab = el => { S.catTab = el.dataset.t; save(); if (current.path !== '/katalog') go('#/katalog'); else render(); };
@@ -2159,7 +2159,7 @@ ACT.preview = el => { const c = course(el.dataset.c); const l = c.sections.flatM
 route(/^\/produk\/([\w-]+)$/, id => {
   const p = product(id); if (!p) return pub('katalog', `<div class="wrap">${empty('package', 'Produk tidak ditemukan', '')}</div>`);
   const out = p.type !== 'exam' && p.stock === 0; const ico = { 'book-marked': 'book', library: 'library', 'book-open': 'book', 'shopping-bag': 'bag', 'clipboard-list': 'clipboard', medal: 'medal' }[p.icon] || p.icon;
-  return pub('katalog', `<div class="wrap crumbs"><a href="#/katalog">Katalog</a>${ic('chev-r', 'sm')}<span>${esc(p.name)}</span></div>
+  return pub('katalog', `<div class="wrap crumbs"><a href="#/katalog">${L('Toko', 'Shop')}</a>${ic('chev-r', 'sm')}<span>${esc(p.name)}</span></div>
   <section class="wrap prod-detail"><div class="prod-shot p-${p.tone}"><span class="pcard-ico xl">${ic(ico)}</span></div>
     <div class="prod-info"><span class="chip c-mute">${p.kind}</span><h1 class="h-display xl">${esc(p.name)}</h1><p class="lede">${esc(p.desc)}</p>
       <div class="price-row big"><b>${rp(p.price)}</b></div>
@@ -2204,7 +2204,7 @@ function summaryBox(t) {
 }
 route(/^\/keranjang$/, () => {
   const lines = cartLines();
-  if (!lines.length) return pub('katalog', `<section class="wrap narrow">${empty('cart', 'Keranjang masih kosong', 'Yuk jelajahi katalog dan tambahkan buku atau kursus favoritmu.', '<a class="ab-btn primary" href="#/katalog">Lihat katalog</a>')}</section>`);
+  if (!lines.length) return pub('katalog', `<section class="wrap narrow">${empty('cart', 'Keranjang masih kosong', 'Yuk jelajahi toko dan tambahkan buku atau kursus favoritmu.', '<a class="ab-btn primary" href="#/katalog">Ke toko</a>')}</section>`);
   const t = totals(lines); const addr = S.user?.address;
   const avail = S.promos.filter(p => p.active && new Date(p.until) > new Date());
   return pub('katalog', `<section class="wrap page-head"><span class="eyebrow">KERANJANG · ${lines.length} ITEM</span><h1 class="h-display">Keranjang</h1></section>
@@ -2755,7 +2755,7 @@ ACT.cert = el => { const att = byId(S.attempts, el.dataset.id); const e = evt(at
 // ---------- Kursus Saya & player ----------
 route(/^\/app\/kursus$/, () => { const mine = Object.keys(S.enrolled).map(course).filter(Boolean);
   return stu('kursus', `${appHead(L('Belajar', 'Learn'), mine.length ? L(`${mine.length} kursus aktif`, `${mine.length} active courses`) : L('Belum ada kursus', 'No courses yet'), `<a class="ab-btn dark" href="#/katalog" data-act="catTab" data-t="course">${ic('plus', 'sm')}Tambah kursus</a>`)}
-  ${mine.length ? `<div class="card-grid">${mine.map(continueCard).join('')}</div>` : `<div class="card pad">${empty('book', 'Belum ada kursus', 'Mulai belajar dengan menjelajahi katalog kami.', '<a class="ab-btn primary" href="#/katalog">Jelajahi katalog</a>')}</div>`}`); });
+  ${mine.length ? `<div class="card-grid">${mine.map(continueCard).join('')}</div>` : `<div class="card pad">${empty('book', 'Belum ada kursus', 'Mulai belajar dengan menjelajahi toko kami.', '<a class="ab-btn primary" href="#/katalog">Jelajahi katalog</a>')}</div>`}`); });
 function player(c, l) {
   if (l.type === 'kuis') { const qs = S.questions.filter(q => q.type === 'pg').slice(0, 2);
     return `<div class="card pad quiz"><span class="chip c-ember">${ic('clipboard', 'sm')}Kuis</span><h2>${esc(l.title)}</h2>${qs.map((q, qi) => `<div class="mini-q"><p><b>${qi + 1}.</b> ${esc(q.stem)}</p><div class="opts">${q.options.slice(0, 4).map((o, i) => `<button class="opt" data-act="quizPick" data-right="${q.answer === i}" data-ex="${esc(q.explanation)}"><span class="key">${'ABCD'[i]}</span>${esc(o)}</button>`).join('')}</div><div class="quiz-ex"></div></div>`).join('')}</div>`; }
@@ -2789,7 +2789,7 @@ const LOG_LABEL = { created: ['Pesanan dibuat', 'receipt'], proof: ['Bukti trans
 route(/^\/app\/tagihan$/, () => { const mine = S.orders.filter(o => o.mine);
   return stu('tagihan', `${appHead('Tagihan', `${mine.length} pesanan`)}
   ${mine.length ? `<div class="order-list">${mine.map(o => { const l = o.items[0]; return `<a class="orow card" href="#/app/tagihan/${o.id}"><span class="thumb p-${o.physical ? 'gold' : 'teal'}">${ic(o.physical ? 'package' : l.type === 'event' ? 'trophy' : 'play-circle', 'sm')}</span><span class="grow"><b>${esc(l.name)}${o.items.length > 1 ? ` <span class="muted">+${o.items.length - 1}</span>` : ''}</b><small class="muted">${o.id} · ${fShort(o.created)}</small></span><b class="num">${rp(o.total)}</b>${orderBadge(o.status)}${ic('chev-r', 'sm')}</a>`; }).join('')}</div>`
-    : `<div class="card pad">${empty('receipt', 'Belum ada tagihan', 'Pesananmu akan muncul di sini.', '<a class="ab-btn primary" href="#/katalog">Lihat katalog</a>')}</div>`}`); });
+    : `<div class="card pad">${empty('receipt', 'Belum ada tagihan', 'Pesananmu akan muncul di sini.', '<a class="ab-btn primary" href="#/katalog">Ke toko</a>')}</div>`}`); });
 route(/^\/app\/tagihan\/([\w-]+)$/, id => {
   const o = byId(S.orders, id); if (!o || !o.mine) return stu('tagihan', empty('receipt', 'Pesanan tidak ditemukan', '', '<a class="ab-btn dark" href="#/app/tagihan">Semua pesanan</a>'));
   const steps = ['cancelled', 'payment_expired'].includes(o.status) ? ['created', o.status] : o.physical ? ['created', 'paid', 'processing', 'shipped', 'completed'] : ['created', 'paid', 'completed'];
@@ -3064,7 +3064,7 @@ route(/^\/admin\/toko$/, () => {
 });
 
 // ---------- Produk ----------
-INPUT.pubToggle = el => { const [t, id] = el.dataset.pid.split(':'); const x = t === 'course' ? course(id) : t === 'exam' ? evt(id) : product(id); x.published = el.checked; save(); toast(el.checked ? 'Terbit — tampil di katalog & landing page' : 'Disembunyikan dari katalog'); };
+INPUT.pubToggle = el => { const [t, id] = el.dataset.pid.split(':'); const x = t === 'course' ? course(id) : t === 'exam' ? evt(id) : product(id); x.published = el.checked; save(); toast(el.checked ? 'Terbit — tampil di toko & landing page' : 'Disembunyikan dari toko'); };
 ACT.stock = el => { const p = product(el.dataset.id); p.stock = Math.max(0, p.stock + +el.dataset.d); save(); render(); };
 ACT.prodEdit = el => {
   const p = el.dataset.id ? product(el.dataset.id) : { id: '', name: '', type: 'book', kind: 'Buku', cat: '', price: 50000, stock: 10, weight: 300, tone: 'gold', icon: 'book-marked', desc: '', examId: '' };
@@ -3090,7 +3090,7 @@ FORM.prodSave = (d, f) => {
 // ---------- Kursus ----------
 ACT.courseNew = () => { const c = { id: uid('c-'), title: 'Kursus baru', subject: 'Matematika', level: 'SMA', instructor: '', price: 99000, was: 0, rating: 0, reviews: 0, students: 0, tone: 'teal', glyph: 'K', published: false, desc: '', outcomes: [], sections: [{ title: 'Bab 1', lessons: [{ id: 'l1', title: 'Pengantar', dur: 5, type: 'video', free: true }] }] }; S.courses.push(c); save(); go('#/admin/kursus/' + c.id); };
 route(/^\/admin\/kursus\/([\w-]+)$/, id => { const c = course(id); if (!c) return adm('kursus', empty('book', 'Kursus tidak ditemukan', ''));
-  return adm('kursus', `<a class="back" href="#/admin/kursus">${ic('chev-l', 'sm')}Kursus</a>${appHead(esc(c.title), `${num(c.students)} siswa · ${c.published ? 'terbit' : 'draf'}`, `<a class="ab-btn outline" href="#/kursus/${c.id}">${ic('eye', 'sm')}Lihat di katalog</a>`)}
+  return adm('kursus', `<a class="back" href="#/admin/kursus">${ic('chev-l', 'sm')}Kursus</a>${appHead(esc(c.title), `${num(c.students)} siswa · ${c.published ? 'terbit' : 'draf'}`, `<a class="ab-btn outline" href="#/kursus/${c.id}">${ic('eye', 'sm')}Lihat di toko</a>`)}
   <form class="split" data-form="courseSave" data-id="${c.id}"><div class="stack">
     <section class="card pad"><h2>Informasi</h2><div class="form-grid"><div class="full"><label class="ab-label" for="k1">Judul</label><input id="k1" class="ab-input" name="title" value="${esc(c.title)}" required></div>
       <div><label class="ab-label" for="k2">Mata pelajaran</label><select id="k2" class="ab-input" name="subject">${Object.keys(SUBJ).map(s => `<option ${s === c.subject ? 'selected' : ''}>${s}</option>`).join('')}</select></div><div><label class="ab-label" for="k3">Jenjang</label><select id="k3" class="ab-input" name="level">${['SD', 'SMP', 'SMA'].map(l => `<option ${l === c.level ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
@@ -3100,7 +3100,7 @@ route(/^\/admin\/kursus\/([\w-]+)$/, id => { const c = course(id); if (!c) retur
       ${c.sections.map((s, si) => `<div class="cur-edit"><div class="row-wrap"><span class="grip">${ic('grip', 'sm')}</span><b class="grow">Bab ${si + 1} · ${esc(s.title)}</b><button type="button" class="ab-btn ghost sm" data-act="lessonAdd" data-c="${c.id}" data-s="${si}">${ic('plus', 'sm')}Materi</button></div><ul>${s.lessons.map((l, li) => `<li>${ic(l.type === 'video' ? 'play-circle' : l.type === 'kuis' ? 'clipboard' : 'file', 'sm')}<span class="grow">${esc(l.title)}</span>${l.free ? '<span class="chip c-teal">Gratis</span>' : ''}<small class="muted">${l.dur} mnt</small><button type="button" class="ab-iconbtn sm" data-act="lessonDel" data-c="${c.id}" data-s="${si}" data-l="${li}" aria-label="Hapus materi">${ic('x', 'sm')}</button></li>`).join('')}</ul></div>`).join('')}</section></div>
     <aside class="stack"><section class="card pad stack-sm"><h2>Harga & publikasi</h2><div><label class="ab-label" for="k8">Harga (Rp)</label><input id="k8" class="ab-input" type="number" min="0" step="1000" name="price" value="${c.price}"></div><div><label class="ab-label" for="k9">Harga coret (Rp)</label><input id="k9" class="ab-input" type="number" min="0" step="1000" name="was" value="${c.was}"></div>
       <div><label class="ab-label" for="k10">Warna sampul</label><select id="k10" class="ab-input" name="tone">${[['ember', 'Ember'], ['teal', 'Teal'], ['gold', 'Gold'], ['sky', 'Langit'], ['berry', 'Berry'], ['navy', 'Navy']].map(([k, v]) => `<option value="${k}" ${k === c.tone ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
-      <label class="switch"><input type="checkbox" name="published" ${c.published ? 'checked' : ''}><span class="track"></span>Terbit di katalog</label><button class="ab-btn primary full">Simpan kursus</button></section></aside></form>`); });
+      <label class="switch"><input type="checkbox" name="published" ${c.published ? 'checked' : ''}><span class="track"></span>Terbit di toko</label><button class="ab-btn primary full">Simpan kursus</button></section></aside></form>`); });
 FORM.courseSave = (d, f) => { const c = course(f.dataset.id); Object.assign(c, { title: d.title, subject: d.subject, level: d.level, instructor: d.instructor, glyph: d.glyph || c.title[0], desc: d.desc, outcomes: d.outcomes.split('\n').map(s => s.trim()).filter(Boolean), price: +d.price, was: +d.was, tone: d.tone, published: !!d.published }); save(); render(); toast('Kursus disimpan'); };
 ACT.secAddCourse = el => { const c = course(el.dataset.id); c.sections.push({ title: 'Bab ' + (c.sections.length + 1), lessons: [] }); save(); render(); };
 ACT.lessonAdd = el => modal(`<h2>Tambah materi</h2><form data-form="lessonAdd" data-c="${el.dataset.c}" data-s="${el.dataset.s}" class="form-grid"><div class="full"><label class="ab-label" for="m1">Judul materi</label><input id="m1" class="ab-input" name="title" required></div>
@@ -3402,7 +3402,7 @@ route(/^\/admin\/produk$/, () => {
   const { bar, rows } = lst('produk', catalog(), { ph: 'Cari nama atau kategori produk', unit: 'produk', text: p => p.name + ' ' + p.cat,
     filters: [{ k: 'type', label: 'Jenis', opts: Object.entries(TYPE_TAB).filter(([k]) => k !== 'all'), test: (p, v) => p.type === v }, { k: 'pub', label: 'Status', opts: [['on', 'Terbit'], ['off', 'Draf']], test: (p, v) => (v === 'on') === !!p.published }],
     sorts: [['name', 'Nama A–Z', byName('name')], ['pd', 'Harga tertinggi', (a, b) => b.price - a.price], ['pa', 'Harga terendah', (a, b) => a.price - b.price]] });
-  return adm('produk', `${appHead('Produk', 'Semua yang dijual di katalog. Publikasi kompetisi & kursus diatur di sini.', `<button class="ab-btn dark" data-act="prodEdit">${ic('plus', 'sm')}Tambah produk</button>`)}
+  return adm('produk', `${appHead('Produk', 'Semua yang dijual di toko. Publikasi kompetisi & kursus diatur di sini.', `<button class="ab-btn dark" data-act="prodEdit">${ic('plus', 'sm')}Tambah produk</button>`)}
   ${tableCard(bar, '<th>Produk</th><th>Jenis</th><th class="num">Harga</th><th>Stok / tertaut</th><th>Terbit</th><th></th>', rows.map(p => `<tr><td><span class="item"><span class="thumb p-${p.tone}">${p.glyph ? `<b>${esc(p.glyph)}</b>` : ic('package', 'sm')}</span><span><b>${esc(p.name)}</b><small class="muted">${esc(p.cat)}</small></span></span></td><td><span class="chip c-mute">${p.kind}</span></td><td class="num">${rp(p.price)}</td>
     <td>${p.type === 'course' ? `<a href="#/admin/kursus/${p.ref}">${ic('link', 'sm')}Kursus</a>` : p.type === 'exam' ? `<a href="#/admin/ujian/${p.pid.startsWith('exam:') ? p.ref : product(p.ref).examId}">${ic('link', 'sm')}Ujian</a>` : `<div class="qty sm"><button data-act="stock" data-id="${p.ref}" data-d="-1" aria-label="Kurangi stok">${ic('minus', 'sm')}</button><output class="${p.stock === 0 ? 't-danger' : p.stock < 5 ? 't-gold' : ''}">${p.stock}</output><button data-act="stock" data-id="${p.ref}" data-d="1" aria-label="Tambah stok">${ic('plus', 'sm')}</button></div>`}</td>
     <td><label class="switch sm"><input type="checkbox" data-input="pubToggle" data-pid="${p.pid}" ${p.published ? 'checked' : ''} aria-label="Terbitkan ${esc(p.name)}"><span class="track"></span></label></td>
