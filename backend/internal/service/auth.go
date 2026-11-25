@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"math"
 	"math/big"
+	"net/url"
 	"strings"
 	"time"
 
@@ -509,8 +510,7 @@ func (s *Service) ForgotPassword(ctx context.Context, email, ip string) error {
 	if _, err := pipe.Exec(ctx); err != nil {
 		return err
 	}
-	body := fmt.Sprintf("Your password reset code is %s. Token: %s", code, token)
-	if err := s.emailProvider.SendEmail(ctx, deref(user.Email), "Password reset", body); err != nil {
+	if err := s.emailProvider.SendEmail(ctx, deref(user.Email), passwordResetSubject, s.passwordResetEmailBody(code, token)); err != nil {
 		s.rollbackOTPClaim(ctx, keys)
 		s.recordOTPSendFailureOn(ctx, keys)
 		metrics.ObserveOTPSend("delivery_failed")
@@ -743,4 +743,12 @@ func (s *Service) ResendOTP(ctx context.Context, pendingToken, email, ip string)
 		return ResendOTPResult{}, err
 	}
 	return ResendOTPResult{PendingToken: token, ResendAfter: s.resendAfter(ctx, userID)}, nil
+}
+
+const passwordResetSubject = "Reset kata sandi Abak Academy"
+
+func (s *Service) passwordResetEmailBody(code, token string) string {
+	link := strings.TrimRight(s.cfg.WebBaseURL, "/") + "/reset-password?token=" + url.QueryEscape(token)
+	return fmt.Sprintf("Kode reset kata sandi kamu: %s\n\nBuka tautan ini, lalu masukkan kode di atas dan kata sandi baru:\n%s\n\nKode berlaku %d menit. Abaikan email ini jika kamu tidak meminta reset kata sandi.\n",
+		code, link, int(s.cfg.OTPTTL.Minutes()))
 }

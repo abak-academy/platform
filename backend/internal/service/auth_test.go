@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -2045,4 +2047,34 @@ func TestResendOTP_ReArmsTokenOnSuccess(t *testing.T) {
 func resendFor(ctx context.Context, svc *Service, email, ip string) error {
 	_, err := svc.ResendOTP(ctx, "", email, ip)
 	return err
+}
+
+func TestForgotPassword_EmailLinkCarriesAUsableToken(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeUserRepo()
+	repo.seed(&model.User{ID: "u1", Email: strptr("user@example.com"), Role: RoleStudent, Status: "active", OTPEnabled: true})
+	svc, _ := newTestService(t, repo)
+	svc.cfg.WebBaseURL = "https://hub.example.id/"
+	email := &fakeEmailProvider{}
+	svc.emailProvider = email
+
+	if err := svc.ForgotPassword(ctx, "user@example.com", "1.1.1.1"); err != nil {
+		t.Fatalf("ForgotPassword: %v", err)
+	}
+	if len(email.sent) != 1 {
+		t.Fatalf("emails sent: got %d, want 1", len(email.sent))
+	}
+	body := email.sent[0].body
+	m := regexp.MustCompile(`https://hub\.example\.id/reset-password\?token=(\S+)`).FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no reset link in body:\n%s", body)
+	}
+	token, err := url.QueryUnescape(m[1])
+	if err != nil {
+		t.Fatalf("unescape token: %v", err)
+	}
+	code := regexp.MustCompile(`\b\d{6}\b`).FindString(body)
+	if err := svc.ResetPassword(ctx, token, code, "newpassword123", "1.1.1.1"); err != nil {
+		t.Fatalf("ResetPassword with the emailed link token and code: %v", err)
+	}
 }

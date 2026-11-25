@@ -185,3 +185,28 @@ export function useMe(options?: { enabled?: boolean }) {
     staleTime: 5 * 60 * 1000,
   });
 }
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (email: string) =>
+      apiFetch<{ message: string }>(`/auth/password/forgot`, {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      }),
+  });
+}
+
+export interface ResetPasswordInput {
+  token: string;
+  otp: string;
+  new_password: string;
+}
+
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (input: ResetPasswordInput) =>
+      apiFetch<{ message: string }>(`/auth/password/reset`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+  });
+}

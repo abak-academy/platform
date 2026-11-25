@@ -311,8 +311,7 @@ func (s *Service) TriggerAccountPasswordReset(ctx context.Context, actorID, targ
 		return err
 	}
 
-	body := fmt.Sprintf("Your password reset code is %s. Token: %s", code, token)
-	if err := s.emailProvider.SendEmail(ctx, email, "Password reset", body); err != nil {
+	if err := s.emailProvider.SendEmail(ctx, email, passwordResetSubject, s.passwordResetEmailBody(code, token)); err != nil {
 		s.rollbackOTPClaim(ctx, keys)
 		s.recordOTPSendFailureOn(ctx, keys)
 		metrics.ObserveOTPSend("delivery_failed")

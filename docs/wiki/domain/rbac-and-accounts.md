@@ -214,9 +214,9 @@ Relevant fields: `Role`, `SchoolID *string` (only meaningful for `admin_school` 
   `/auth/password/reset`. `AdminResetAccountPassword` (`/admin/system/accounts/:id/reset-password`)
   triggers the identical code+token-via-email flow against the *target's own* email
   (`TriggerAccountPasswordReset`, `admin_users.go:270-`) rather than setting a password directly —
-  it fails with `ErrAccountNoEmail` for an account with no email on file. There is still no
-  frontend page for the forgot-password flow (no route under `web/app` references it) — backend
-  endpoints exist and are exercised only via direct API calls today.
+  it fails with `ErrAccountNoEmail` for an account with no email on file. The email carries a
+  `<web_base_url>/reset-password?token=…` link (`passwordResetEmailBody`, `service/auth.go`); the
+  user types the code there. Web: `/forgot-password` (linked from `/login`) and `/reset-password`.
 
 ## Login rate limiting
 
