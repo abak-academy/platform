@@ -5,30 +5,31 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-[var(--radius-pill)] whitespace-nowrap transition-all duration-150 ease-spring outline-none focus-visible:outline-[2.5px] focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-brand-600 disabled:pointer-events-none disabled:opacity-45 disabled:shadow-none aria-invalid:outline-danger-600 motion-reduce:hover:translate-y-0 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
-        destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
-        outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+        default:
+          "bg-ember-600 text-on-ember shadow-cta hover:-translate-y-0.5 hover:shadow-cta-hover",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
-        ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-brand-600 text-on-brand shadow-brand hover:-translate-y-0.5 hover:bg-brand-700",
+        outline:
+          "border-[1.5px] border-line bg-surface text-ink-900 hover:border-ink-900",
+        ghost: "text-ink-900 hover:bg-surface-sunken",
+        destructive: "bg-danger-600 text-on-danger hover:bg-danger-600/90",
+        light: "bg-white text-brand-900 hover:-translate-y-0.5",
+        "line-light": "border-[1.5px] border-white/60 text-white hover:bg-white/10",
+        link: "text-brand-ink underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-9 px-4 py-2 has-[>svg]:px-3",
-        xs: "h-6 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-8 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
-        lg: "h-10 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-9",
-        "icon-xs": "size-6 rounded-md [&_svg:not([class*='size-'])]:size-3",
+        default: "h-[var(--spacing-control-md)] px-[18px] type-label has-[>svg]:px-4",
+        xs: "h-6 gap-1 px-2 text-xs font-semibold has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-[var(--spacing-control-sm)] gap-1.5 px-4 type-label-sm has-[>svg]:px-3",
+        lg: "h-[var(--spacing-control-lg)] px-7 type-h3 has-[>svg]:px-5",
+        icon: "size-[var(--spacing-control-md)]",
+        "icon-xs": "size-6 [&_svg:not([class*='size-'])]:size-3",
         "icon-sm": "size-8",
-        "icon-lg": "size-10",
+        "icon-lg": "size-[var(--spacing-control-lg)]",
       },
     },
     defaultVariants: {

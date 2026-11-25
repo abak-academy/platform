@@ -416,7 +416,7 @@ describe("ExamRegistrationsTab — admin_school order flow (no exam picker, exam
       expect(dialog.getByText("bulk_exam_order_created")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     const reopened = openOrderModal();
@@ -529,7 +529,7 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
       expect(dialog.getByText("Andi Saputra")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     const reopened = openGrantModal();
@@ -548,7 +548,7 @@ describe("ExamRegistrationsTab — super_admin grant flow (cross-school, no orde
     fireEvent.click(await dialog.findByText("exam_grant_grant"));
     expect(heldGrantOptions).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     heldGrantOptions.onSuccess({
@@ -766,7 +766,7 @@ describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)
     await waitFor(() => expect(csvEnqueueMutateAsync).toHaveBeenCalled());
     expect(dialog.getByText("grants.csv")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     csvJobStatusState.data = null;
@@ -795,7 +795,7 @@ describe("ExamRegistrationsTab — super_admin CSV bulk grant flow (Frontend B2)
     fireEvent.click(dialog.getByTestId("csv-upload-submit"));
 
     await waitFor(() => expect(csvPresignMutateAsync).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await act(async () => {
@@ -899,7 +899,7 @@ describe("ExamRegistrationsTab — super_admin standalone revoke modal", () => {
 
     const grantDialog = openGrantModal();
     expect(grantDialog.queryByTestId("grant-mode-revoke-csv")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutup" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     const dialog = openRevokeModal();
