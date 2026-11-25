@@ -172,6 +172,31 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 		t.Fatalf("seed prev item: %v", err)
 	}
 
+	// 1990 submitted_at makes this the oldest pending submission in the shared
+	// container, so essays_exam_id is exact while essays_to_grade can only be >= 1.
+	var essayTestID, essayQuestionID, essayExamID, essayRegID, essaySessionID uuid.UUID
+	for _, step := range []struct {
+		dst *uuid.UUID
+		sql string
+		arg []any
+	}{
+		{&essayTestID, `INSERT INTO test (title, subject, topic, duration_minutes) VALUES ('T', 'math', 'algebra', 60) RETURNING id`, nil},
+		{&essayQuestionID, `INSERT INTO question (format, body, point_correct, point_wrong) VALUES ('essay', 'Essay', 10, 0) RETURNING id`, nil},
+		{&essayExamID, `INSERT INTO exam (title) VALUES ('Dashboard Essay Exam') RETURNING id`, nil},
+		{&essayRegID, `INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3) RETURNING id`, []any{studentID, &essayExamID, uuid.NewString()}},
+		{&essaySessionID, `INSERT INTO exam_session (registration_id, student_id, exam_id, started_at, status, submitted_at) VALUES ($1, $2, $3, now(), 'submitted', '1990-01-01') RETURNING id`, []any{&essayRegID, studentID, &essayExamID}},
+	} {
+		if err := pool.QueryRow(ctx, step.sql, step.arg...).Scan(step.dst); err != nil {
+			t.Fatalf("seed essay fixture: %v", err)
+		}
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO exam_session_answer (session_id, question_id, answer, saved_at) VALUES ($1, $2, 'jawaban', now())`,
+		essaySessionID, essayQuestionID,
+	); err != nil {
+		t.Fatalf("seed ungraded essay answer: %v", err)
+	}
+
 	resp, err := svc.AdminDashboard(ctx, from, to, "day")
 	if err != nil {
 		t.Fatalf("AdminDashboard: %v", err)
@@ -203,8 +228,11 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 	if got := resp.KPI["revenue_digital"]; got.Value != 40000 || got.Prev != nil {
 		t.Errorf("kpi.revenue_digital = %+v, want value 40000 and no prev", got)
 	}
-	if (resp.Attention.EssaysToGrade == 0) != (resp.Attention.EssaysExamID == nil) {
-		t.Errorf("essays_to_grade %d and essays_exam_id %v disagree on emptiness", resp.Attention.EssaysToGrade, resp.Attention.EssaysExamID)
+	if resp.Attention.EssaysToGrade < 1 {
+		t.Errorf("essays_to_grade = %d, want >= 1 (seeded ungraded submission)", resp.Attention.EssaysToGrade)
+	}
+	if resp.Attention.EssaysExamID == nil || *resp.Attention.EssaysExamID != essayExamID {
+		t.Errorf("essays_exam_id = %v, want %v (oldest pending submission)", resp.Attention.EssaysExamID, essayExamID)
 	}
 
 	byProduct := map[string]DashboardTopProduct{}

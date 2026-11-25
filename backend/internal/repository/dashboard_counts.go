@@ -141,7 +141,7 @@ func (r *Repository) CountEssaysToGrade(ctx context.Context) (int, *uuid.UUID, e
 			 GROUP BY s.id, s.exam_id, s.submitted_at
 		)
 		SELECT (SELECT COUNT(*) FROM pending),
-		       (SELECT exam_id FROM pending ORDER BY submitted_at ASC LIMIT 1)`,
+		       (SELECT exam_id FROM pending ORDER BY submitted_at ASC, exam_id ASC LIMIT 1)`,
 	).Scan(&n, &examID)
 	return n, examID, err
 }
