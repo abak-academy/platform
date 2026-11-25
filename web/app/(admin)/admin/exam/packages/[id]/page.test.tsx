@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, waitFor, within, fireEvent } from "@testing-library/react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api";
 import { useUIStore } from "@/stores/ui";
@@ -16,6 +16,7 @@ import type {
 
 vi.mock("next/navigation", () => ({
   useParams: vi.fn(),
+  useSearchParams: vi.fn(),
 }));
 
 vi.mock("sonner", () => ({
@@ -68,6 +69,7 @@ vi.mock("@/lib/hooks/admin-uploads", () => ({
 }));
 
 beforeEach(() => {
+  (useSearchParams as ReturnType<typeof vi.fn>).mockReturnValue(new URLSearchParams());
   mockRole = undefined;
   registrationCountsState = { data: undefined };
   mockSetCertificateEnabled.mockClear();
@@ -453,6 +455,23 @@ describe("ExamPackageDetailPage — grading tab", () => {
     });
     expect(screen.getByText("Siti Aminah")).toBeInTheDocument();
     expect(screen.getByText("2")).toBeInTheDocument();
+  });
+
+  it("opens the grading tab straight from ?tab=grading", async () => {
+    (useSearchParams as ReturnType<typeof vi.fn>).mockReturnValue(new URLSearchParams("tab=grading"));
+    render(<ExamPackageDetailPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
+    });
+  });
+
+  it.each(["bogus", "results_workspace"])("falls back to the default tab for ?tab=%s", (value) => {
+    (useSearchParams as ReturnType<typeof vi.fn>).mockReturnValue(new URLSearchParams(`tab=${value}`));
+    render(<ExamPackageDetailPage />);
+
+    expect(screen.queryByText("Budi Santoso")).toBeNull();
+    expect(screen.getByRole("button", { name: /ringkasan/i })).toHaveClass("border-primary");
   });
 
   it("shows an empty state when no sessions need grading, via DataTable's single colSpan row", async () => {

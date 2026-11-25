@@ -71,26 +71,6 @@ describe("AdminIndexPage — real hooks, rejecting fetch, backgrounded tab", () 
     expect(screen.queryByTestId("kpi-row")).toBeNull();
     expect(screen.queryByText("Rp0")).toBeNull();
 
-    // The audit panel is stuck in the same paused state, so its own reload
-    // button renders too — assert at least one exists rather than exactly one.
-    expect(screen.getAllByRole("button", { name: /muat ulang/i }).length).toBeGreaterThan(0);
-  });
-
-  it("shows admin_home_audit_failed instead of a false empty-activity state", async () => {
-    const qc = new QueryClient({
-      defaultOptions: { queries: { staleTime: 30 * 1000, refetchOnWindowFocus: false, retry: 1 } },
-    });
-
-    render(
-      <QueryClientProvider client={qc}>
-        <AdminIndexPage />
-      </QueryClientProvider>
-    );
-
-    await waitFor(
-      () => expect(screen.getByText("Gagal memuat log aktivitas. Coba lagi nanti.")).toBeInTheDocument(),
-      { timeout: 5000 }
-    );
-    expect(screen.queryByText("Belum ada aktivitas.")).toBeNull();
+    expect(screen.getByRole("button", { name: /muat ulang/i })).toBeInTheDocument();
   });
 });

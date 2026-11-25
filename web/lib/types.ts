@@ -1556,6 +1556,8 @@ export interface AdminDashboard {
     new_students: DashboardKPI;
     schools: DashboardKPI;
     students_total: DashboardKPI;
+    revenue_digital: DashboardKPI;
+    revenue_physical: DashboardKPI;
   };
   series: DashboardSeriesPoint[];
   attention: {
@@ -1563,6 +1565,8 @@ export interface AdminDashboard {
     ready_to_ship: number;
     shipment_failed: number;
     active_sessions: number;
+    essays_to_grade: number;
+    essays_exam_id: string | null;
   };
   top_products: DashboardTopProduct[];
   upcoming_exams: DashboardUpcomingExam[];

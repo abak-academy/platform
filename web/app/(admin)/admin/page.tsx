@@ -4,28 +4,28 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Shield, DollarSign, Receipt, UserPlus, Store, Clock, PackageCheck,
-  AlertTriangle, Activity, Clipboard, BarChart3, type LucideIcon,
+  Receipt, UserPlus, Store, Clock, PackageCheck, AlertTriangle, PenLine, Coins,
+  ArrowRight, ArrowUp, ArrowDown, Plus, Calendar, Megaphone, Tag, type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
-import { useAdminAuditLog } from "@/lib/hooks/admin-audit";
 import { useAdminDashboard } from "@/lib/hooks/admin-dashboard";
+import { useAdminNotifications } from "@/lib/hooks/admin-notifications";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { adminHomeForRole } from "@/lib/auth-redirect";
 import { NoAccess } from "@/components/admin/NoAccess";
-import { StatCard } from "@/components/admin/StatCard";
-import { DashboardHero } from "@/components/admin/DashboardHero";
-import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
+import { RevenueMixCard } from "@/components/admin/RevenueMixCard";
 import { PeriodBar, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
 import { AreaLineChart } from "@/components/admin/charts/AreaLineChart";
 import { MultiLineChart } from "@/components/admin/charts/MultiLineChart";
-import { StackedBarChart } from "@/components/admin/charts/StackedBarChart";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
-import type { AuditLogEntry, AdminDashboard } from "@/lib/types";
+import type { AdminDashboard } from "@/lib/types";
 
 // Series colours, verified 3:1 against BOTH the light surface (#FFFFFF) and
 // the dark surface (--md-sys-color-surface, #27213b) — the mockup's own
@@ -37,7 +37,6 @@ const CHART_ORANGE = "#D2691E"; // 3.63:1 light / 4.23:1 dark
 const CHART_PURPLE = "#9B51E0"; // 4.52:1 light / 3.40:1 dark
 const CHART_TEAL = "#0E8074"; // 4.82:1 light / 3.19:1 dark
 const CHART_AMBER = "#B26A00"; // 4.24:1 light / 3.62:1 dark
-const CHART_MAGENTA = "#D6409F"; // 4.12:1 light / 3.73:1 dark
 
 const EMPTY_DASHBOARD: AdminDashboard = {
   period: { from: "", to: "", bucket: "day" },
@@ -47,9 +46,14 @@ const EMPTY_DASHBOARD: AdminDashboard = {
     new_students: { value: 0 },
     schools: { value: 0 },
     students_total: { value: 0 },
+    revenue_digital: { value: 0 },
+    revenue_physical: { value: 0 },
   },
   series: [],
-  attention: { needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, active_sessions: 0 },
+  attention: {
+    needs_confirm: 0, ready_to_ship: 0, shipment_failed: 0, active_sessions: 0,
+    essays_to_grade: 0, essays_exam_id: null,
+  },
   top_products: [],
   upcoming_exams: [],
 };
@@ -94,80 +98,97 @@ function computeDelta(value: number, prev?: number): number | null {
   return Math.round(((value - prev) / prev) * 100);
 }
 
-function DeltaText({ delta }: { delta: number | null }) {
-  if (delta === null) return null;
-  const color = delta > 0 ? "var(--md-sys-color-tertiary)" : delta < 0 ? "var(--md-sys-color-error)" : "var(--md-sys-color-on-surface-variant)";
-  const sign = delta > 0 ? "+" : "";
-  return (
-    <div className="text-label" style={{ color }}>
-      {sign}{delta}%
-    </div>
-  );
+function jakartaHour(d: Date): number {
+  return Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta" }).format(d));
 }
 
+const KPI_TONE = {
+  brand: { card: "bg-brand-50", chip: "text-brand-700" },
+  ember: { card: "bg-ember-50", chip: "text-ember-700" },
+  teal: { card: "bg-teal-50", chip: "text-teal-700" },
+  sky: { card: "bg-sky-50", chip: "text-sky-700" },
+};
+
 function KpiCard({
-  icon: Icon, label, value, delta, sub,
+  tone, icon: Icon, label, value, delta, sub,
 }: {
+  tone: keyof typeof KPI_TONE;
   icon: LucideIcon;
   label: string;
   value: string;
   delta: number | null;
   sub?: string;
 }) {
+  const { t } = useTranslation();
+  const tn = KPI_TONE[tone];
+  const DeltaIcon = delta !== null && delta > 0 ? ArrowUp : ArrowDown;
+  const deltaColor = delta === null ? "" : delta > 0 ? "text-teal-700" : delta < 0 ? "text-danger-600" : "text-ink-600";
   return (
-    <div className="md-card-elevated">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-label color-on-surface-variant mb-2">{label}</div>
-          <div className="text-title-large mb-2" style={{ fontWeight: 600 }}>{value}</div>
-          <DeltaText delta={delta} />
-          {sub ? <div className="text-label color-on-surface-variant">{sub}</div> : null}
-        </div>
-        <div
-          className="flex size-10 items-center justify-center rounded-[12px]"
-          style={{ backgroundColor: "var(--md-sys-color-primary-container)", color: "var(--md-sys-color-primary)" }}
-        >
-          <Icon size={20} />
-        </div>
+    <div className={`flex items-start justify-between gap-3 rounded-[var(--radius-card)] p-5 ${tn.card}`}>
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="type-label text-ink-600">{label}</div>
+        <div className="type-h2 text-ink-900">{value}</div>
+        {delta !== null && (
+          <div className={`flex items-center gap-1 type-caption ${deltaColor}`}>
+            {delta !== 0 && <DeltaIcon aria-hidden className="size-3" />}
+            <span>{delta > 0 ? "+" : ""}{delta}% {t("admin_home_vs_prev")}</span>
+          </div>
+        )}
+        {sub ? <div className="type-caption text-ink-600">{sub}</div> : null}
       </div>
+      <span className={`flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface ${tn.chip}`}>
+        <Icon aria-hidden className="size-5" />
+      </span>
     </div>
   );
 }
 
-// Mirrors QueueCardLink in app/(admin)/admin/store/page.tsx:34 — a count with
-// nowhere to go is a dead end, the whole point of this band is to click
-// through to the work behind it. Active sessions has no queue, so it's the
-// one card in the row with no href.
+const ATTENTION_TONE = {
+  gold: "bg-gold-50 text-gold-700",
+  sky: "bg-sky-50 text-sky-700",
+  ember: "bg-ember-50 text-ember-700",
+  danger: "bg-danger-50 text-danger-600",
+};
+
+// The whole card is the link: a count with nowhere to go is a dead end.
 function AttentionCard({
-  testId, accent, label, value, icon: Icon, href,
+  testId, tone, label, value, icon: Icon, href,
 }: {
   testId: string;
-  accent: "primary" | "secondary" | "error" | "tertiary";
+  tone: keyof typeof ATTENTION_TONE;
   label: string;
   value: number;
   icon: LucideIcon;
   href?: string;
 }) {
-  const card = (
-    <div data-testid={testId} data-accent={accent}>
-      <StatCard label={label} value={String(value)} accent={accent} icon={Icon} />
-    </div>
+  const className = "flex items-center gap-4 rounded-[var(--radius-card)] border border-line bg-card p-4 shadow-card";
+  const body = (
+    <>
+      <span className={`flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-md)] ${ATTENTION_TONE[tone]}`}>
+        <Icon aria-hidden className="size-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="type-caption text-ink-600">{label}</div>
+        <div className="type-h2 text-ink-900">{value}</div>
+      </div>
+      {href && <ArrowRight aria-hidden className="size-4 text-ink-600" />}
+    </>
   );
-  if (!href) return card;
+  if (!href) return <div data-testid={testId} className={className}>{body}</div>;
   return (
     <Link
       href={href}
-      className="block rounded-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-      style={{ outlineColor: "var(--md-sys-color-primary)" }}
+      data-testid={testId}
+      className={`${className} outline-none transition-shadow hover:shadow-pop focus-visible:outline-[2.5px] focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-brand-600`}
     >
-      {card}
+      {body}
     </Link>
   );
 }
 
 export default function AdminIndexPage() {
   const router = useRouter();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const jakarta = useJakartaFormatter();
   const user = useAuthStore((s) => s.user);
   const storeRole = user?.role as UserRole | undefined;
@@ -176,11 +197,11 @@ export default function AdminIndexPage() {
   const name = user?.name ?? me.data?.name ?? t("admin_home_default_name");
   const formatRelativeTime = useFormatRelativeTime();
 
-  const quickActions: QuickAction[] = [
-    { icon: Clipboard, label: t("admin_action_create_question"), href: "/admin/exam/tests" },
-    { icon: Store, label: t("admin_action_add_product"), href: "/admin/products" },
-    { icon: UserPlus, label: t("admin_action_register_student"), href: "/admin/school/students" },
-    { icon: BarChart3, label: t("admin_action_sales_report"), href: "/admin/revenue" },
+  const quickActions: { icon: LucideIcon; label: string; href: string }[] = [
+    { icon: Plus, label: t("admin_action_add_product"), href: "/admin/products" },
+    { icon: Calendar, label: t("admin_home_create_exam"), href: "/admin/exam/packages" },
+    { icon: Megaphone, label: t("admin_home_action_announce"), href: "/admin/notifications" },
+    { icon: Tag, label: t("admin_home_action_promo"), href: "/admin/promos" },
   ];
 
   const [preset, setPreset] = useState<PeriodPreset>("30d");
@@ -202,12 +223,12 @@ export default function AdminIndexPage() {
   }
 
   const {
-    data: auditEntries = [],
-    isLoading: auditLoading,
-    isError: auditIsError,
-    isPaused: auditIsPaused,
-    refetch: refetchAudit,
-  } = useAdminAuditLog();
+    data: dashboard,
+    isLoading: dashboardLoading,
+    isError: dashboardIsError,
+    isPaused: dashboardIsPaused,
+    refetch: refetchDashboard,
+  } = useAdminDashboard(resolvedRange);
   // TanStack Query pauses a scheduled retry while document.visibilityState is
   // "hidden" (tab backgrounded during the retry delay) and only resumes on the
   // next visibilitychange — until then fetchStatus sits at "paused" with
@@ -215,15 +236,8 @@ export default function AdminIndexPage() {
   // isError flag never fires and the page below would render fabricated zeros
   // instead of dash_load_failed. Folding in isPaused (only when we have
   // nothing to show yet) catches that stuck state too.
-  const auditError = auditIsError || (auditIsPaused && auditEntries.length === 0);
-  const {
-    data: dashboard,
-    isLoading: dashboardLoading,
-    isError: dashboardIsError,
-    isPaused: dashboardIsPaused,
-    refetch: refetchDashboard,
-  } = useAdminDashboard(resolvedRange);
   const dashboardError = dashboardIsError || (dashboardIsPaused && !dashboard);
+  const notifications = useAdminNotifications();
   const canReadRevenue = useHasCapability("revenue:read");
 
   useEffect(() => {
@@ -236,302 +250,330 @@ export default function AdminIndexPage() {
 
   const d = dashboard ?? EMPTY_DASHBOARD;
   const labels = d.series.map((p) => jakarta.short(p.date));
+  const now = new Date();
+  const hour = jakartaHour(now);
+  const greeting = t(
+    hour < 11 ? "admin_home_greet_morning" : hour < 15 ? "admin_home_greet_afternoon" : hour < 18 ? "admin_home_greet_evening" : "admin_home_greet_night",
+  );
+  const today = new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Jakarta",
+  }).format(now);
+  const a = d.attention;
+  const topMax = Math.max(1, ...d.top_products.map((p) => p.qty_sold));
+
+  const purchaseFeed = (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle>{t("admin_home_purchase_activity")}</CardTitle>
+          <Badge variant="live">{t("admin_home_live")}</Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {notifications.isLoading ? (
+          <div className="flex flex-col gap-4">
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </div>
+        ) : notifications.isError ? (
+          <div className="py-8 text-center text-ink-600">{t("notification_inbox_failed")}</div>
+        ) : notifications.items.length === 0 ? (
+          <div className="py-8 text-center text-ink-600">{t("notification_inbox_empty")}</div>
+        ) : (
+          <ul className="flex flex-col gap-4">
+            {notifications.items.slice(0, 5).map((n) => (
+              <li key={n.id} className="flex items-center gap-3">
+                <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 type-label text-brand-700">
+                  {n.student_name.charAt(0).toUpperCase()}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate type-label">{n.student_name}</div>
+                  <div className="type-caption text-ink-600">{formatRelativeTime(n.created_at)}</div>
+                </div>
+                <span className="type-label tabular-nums">{formatRupiah(n.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const quickActionsCard = (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("admin_home_quick_actions")}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-3">
+        {quickActions.map((action) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className="flex flex-col items-center gap-2 rounded-[var(--radius-md)] bg-surface-sunken p-4 text-center transition-transform duration-150 hover:-translate-y-0.5"
+          >
+            <span className="flex size-10 items-center justify-center rounded-[var(--radius-md)] bg-brand-50 text-brand-700">
+              <action.icon aria-hidden className="size-5" />
+            </span>
+            <span className="type-label-sm">{action.label}</span>
+          </Link>
+        ))}
+      </CardContent>
+    </Card>
+  );
 
   return (
-    <div className="fade-in">
-      <DashboardHero
-        icon={Shield}
-        badge={t("admin_home_badge")}
-        name={name}
-        subtitle={t("admin_home_subtitle")}
-      />
+    <div className="fade-in flex flex-col gap-6">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="type-h1">{`${greeting}, ${name.split(" ")[0]}`}</h1>
+          <p className="type-body-sm text-ink-600">{`${today} · ${t("admin_home_overview_suffix")}`}</p>
+        </div>
+        <Button asChild>
+          <Link href="/admin/exam/packages">
+            <Plus aria-hidden />
+            {t("admin_home_create_exam")}
+          </Link>
+        </Button>
+      </header>
 
-      {/* Period bar */}
-      <div className="mb-8">
-        <PeriodBar
-          preset={preset}
-          range={range}
-          onChange={handlePeriodChange}
-          resolvedFrom={d.period.from || undefined}
-          resolvedTo={d.period.to || undefined}
-        />
-      </div>
-
-      {dashboardError ? (
-        <div className="md-card-outlined mb-8">
-          <div className="py-12 text-center text-ink-500">
-            <p className="mb-4">{t("dash_load_failed")}</p>
-            <button
-              type="button"
-              className="md-btn-tonal"
-              onClick={() => refetchDashboard()}
-            >
-              {t("admin_home_reload")}
-            </button>
-          </div>
-        </div>
-      ) : (
-      <>
-      {/* KPI row */}
-      {dashboardLoading ? (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
-          {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
-        </div>
-      ) : (
-        <div data-testid="kpi-row" className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4 mb-8">
-          <KpiCard
-            icon={DollarSign}
-            label={t("admin_home_kpi_revenue")}
-            value={formatRupiah(d.kpi.revenue.value)}
-            delta={computeDelta(d.kpi.revenue.value, d.kpi.revenue.prev)}
-          />
-          <KpiCard
-            icon={Receipt}
-            label={t("admin_home_kpi_orders")}
-            value={String(d.kpi.order_count.value)}
-            delta={computeDelta(d.kpi.order_count.value, d.kpi.order_count.prev)}
-          />
-          <KpiCard
-            icon={UserPlus}
-            label={t("admin_home_kpi_new_students")}
-            value={String(d.kpi.new_students.value)}
-            delta={computeDelta(d.kpi.new_students.value, d.kpi.new_students.prev)}
-          />
-          <KpiCard
-            icon={Store}
-            label={t("admin_home_kpi_schools")}
-            value={String(d.kpi.schools.value)}
-            delta={computeDelta(d.kpi.schools.value, d.kpi.schools.prev)}
-            sub={t("admin_home_kpi_students_total").replace("{count}", String(d.kpi.students_total.value))}
-          />
-        </div>
-      )}
-
-      {/* Chart 1 — revenue & order trend */}
-      {dashboardLoading ? (
-        <Skeleton className="h-40 w-full mb-8" />
-      ) : (
-        <div className="md-card-outlined mb-8">
-          <h3 className="text-title-medium">{t("admin_home_chart_revenue_title")}</h3>
-          <p className="text-body mb-4">{t("admin_home_chart_revenue_sub")}</p>
-          <AreaLineChart
-            labels={labels}
-            area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue"), format: formatRupiah }}
-            line={{ values: d.series.map((p) => p.order_count), color: CHART_ORANGE, label: t("admin_home_series_orders") }}
-            emptyLabel={t("admin_home_chart_empty")}
-          />
-        </div>
-      )}
-
-      {/* Charts 2 & 3 — student activity, digital vs physical mix */}
-      {dashboardLoading ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-          <div className="md-card-outlined">
-            <h3 className="text-title-medium">{t("admin_home_chart_students_title")}</h3>
-            <p className="text-body mb-4">{t("admin_home_chart_students_sub")}</p>
-            <MultiLineChart
-              labels={labels}
-              series={[
-                { values: d.series.map((p) => p.new_students), color: CHART_PURPLE, label: t("admin_home_series_new") },
-                { values: d.series.map((p) => p.exam_students), color: CHART_TEAL, label: t("admin_home_series_exam") },
-                { values: d.series.map((p) => p.buying_students), color: CHART_AMBER, label: t("admin_home_series_buy") },
-              ]}
-              emptyLabel={t("admin_home_chart_empty")}
-            />
-          </div>
-          <div className="md-card-outlined">
-            <h3 className="text-title-medium">{t("admin_home_chart_mix_title")}</h3>
-            <p className="text-body mb-4">{t("admin_home_chart_mix_sub")}</p>
-            <StackedBarChart
-              labels={labels}
-              bottom={{ values: d.series.map((p) => p.revenue_digital), color: CHART_BLUE, label: t("admin_home_series_digital"), format: formatRupiah }}
-              top={{ values: d.series.map((p) => p.revenue_physical), color: CHART_MAGENTA, label: t("admin_home_series_physical"), format: formatRupiah }}
-              emptyLabel={t("admin_home_chart_empty")}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Attention */}
-      <div className="mb-8">
-        <h3 className="text-title-large mb-4">{t("admin_home_attention")}</h3>
-        {dashboardLoading ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
-            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+      {!dashboardError && (
+        dashboardLoading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          <div
+            data-testid="attention-row"
+            className={`grid grid-cols-1 gap-4 sm:grid-cols-3 ${a.shipment_failed > 0 ? "xl:grid-cols-4" : ""}`}
+          >
             <AttentionCard
               testId="attention-needs-confirm"
               href="/admin/orders?status=pending"
-              accent="primary"
+              tone="gold"
               label={t("admin_home_needs_confirm")}
-              value={d.attention.needs_confirm}
+              value={a.needs_confirm}
               icon={Clock}
             />
             <AttentionCard
               testId="attention-ready-to-ship"
               href="/admin/orders?queue=ready_to_ship"
-              accent="tertiary"
+              tone="sky"
               label={t("admin_home_ready_to_ship")}
-              value={d.attention.ready_to_ship}
+              value={a.ready_to_ship}
               icon={PackageCheck}
             />
             <AttentionCard
-              testId="attention-shipment-failed"
-              href="/admin/orders?queue=shipment_failed"
-              accent={d.attention.shipment_failed > 0 ? "error" : "secondary"}
-              label={t("admin_home_shipment_failed")}
-              value={d.attention.shipment_failed}
-              icon={AlertTriangle}
+              testId="attention-essays"
+              href={a.essays_to_grade > 0 && a.essays_exam_id ? `/admin/exam/packages/${a.essays_exam_id}?tab=grading` : undefined}
+              tone="ember"
+              label={t("admin_home_essays_to_grade")}
+              value={a.essays_to_grade}
+              icon={PenLine}
             />
-            <AttentionCard
-              testId="attention-active-sessions"
-              accent="secondary"
-              label={t("admin_home_active_sessions")}
-              value={d.attention.active_sessions}
-              icon={Activity}
-            />
-          </div>
-        )}
-      </div>
-
-      {/* Upcoming exams + top products */}
-      {dashboardLoading ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-40 w-full" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 mb-8">
-          <div className="md-card-outlined">
-            <h3 className="text-title-large mb-4">{t("admin_home_upcoming_exams")}</h3>
-            {d.upcoming_exams.length === 0 ? (
-              <div className="py-12 text-center text-ink-500">{t("admin_home_upcoming_empty")}</div>
-            ) : (
-              <div className="space-y-3">
-                {d.upcoming_exams.map((exam) => (
-                  <div
-                    key={exam.id}
-                    className="flex items-center justify-between gap-3 rounded-[12px] p-3"
-                    style={{ backgroundColor: "var(--md-sys-color-surface-container-high)" }}
-                  >
-                    <div>
-                      <div className="text-body" style={{ fontWeight: 500 }}>{exam.title}</div>
-                      <div className="text-label color-on-surface-variant">{jakarta.dateTime(exam.scheduled_at)}</div>
-                    </div>
-                    <div className="text-label" style={{ color: "var(--md-sys-color-primary)" }}>
-                      {t("admin_home_registrants").replace("{count}", String(exam.registrant_count))}
-                    </div>
-                  </div>
-                ))}
-              </div>
+            {a.shipment_failed > 0 && (
+              <AttentionCard
+                testId="attention-shipment-failed"
+                href="/admin/orders?queue=shipment_failed"
+                tone="danger"
+                label={t("admin_home_shipment_failed")}
+                value={a.shipment_failed}
+                icon={AlertTriangle}
+              />
             )}
           </div>
-
-          <div className="md-card-outlined">
-            <h3 className="text-title-large mb-4">{t("admin_home_top_products")}</h3>
-            {d.top_products.length === 0 ? (
-              <div className="py-12 text-center text-ink-500">{t("admin_home_chart_empty")}</div>
-            ) : (
-              <div className="space-y-3">
-                {d.top_products.map((p, i) => (
-                  <div key={p.product_id} className="flex items-center justify-between gap-3">
-                    {/* A top product can legitimately share its name with an
-                        upcoming exam (the product IS the exam registration),
-                        so the rank prefix keeps this row's own text from
-                        exact-matching that other leaf. */}
-                    <div className="text-body" style={{ fontWeight: 500 }}>
-                      {`${i + 1}. ${p.name} (${p.is_physical ? t("admin_home_badge_physical") : t("admin_home_badge_digital")})`}
-                    </div>
-                    <div className="text-label" style={{ fontWeight: 600 }}>{formatRupiah(p.product_revenue)}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      </>
+        )
       )}
 
-      {/* Content grid */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        {/* Log Aktivitas */}
-        <div className="lg:col-span-2 md-card-outlined">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-title-large">{t("admin_home_activity_log")}</h3>
-            <button
-              className="md-btn-tonal"
-              type="button"
-              onClick={() => router.push("/admin/system/audit")}
-            >
-              {t("admin_home_view_all")}
-            </button>
-          </div>
-          {auditLoading ? (
-            <div className="space-y-4">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <Skeleton className="size-8 rounded-full" />
-                  <div className="flex-1 space-y-2">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-3 w-64" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : auditError ? (
-            <div className="py-12 text-center text-ink-500">
-              <p className="mb-4">{t("admin_home_audit_failed")}</p>
-              <button
-                type="button"
-                className="md-btn-tonal"
-                onClick={() => refetchAudit()}
-              >
+      <PeriodBar
+        preset={preset}
+        range={range}
+        onChange={handlePeriodChange}
+        resolvedFrom={d.period.from || undefined}
+        resolvedTo={d.period.to || undefined}
+      />
+
+      {dashboardError ? (
+        <>
+          <Card>
+            <CardContent className="py-12 text-center text-ink-600">
+              <p className="mb-4">{t("dash_load_failed")}</p>
+              <Button variant="outline" onClick={() => refetchDashboard()}>
                 {t("admin_home_reload")}
-              </button>
-            </div>
-          ) : auditEntries.length === 0 ? (
-            <div className="py-12 text-center text-ink-500">
-              {t("admin_home_no_activity")}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {auditEntries.slice(0, 5).map((entry: AuditLogEntry) => (
-                <div key={entry.id} className="flex items-center gap-3">
-                  <div
-                    className="flex size-8 items-center justify-center rounded-full"
-                    style={{
-                      backgroundColor: "var(--md-sys-color-primary-container)",
-                      color: "var(--md-sys-color-primary)",
-                    }}
-                  >
-                    <span className="text-label">
-                      {(entry.actor_name ?? "?").charAt(0).toUpperCase()}
-                    </span>
-                  </div>
-                  <div>
-                    <div className="text-body" style={{ fontWeight: 500 }}>
-                      {entry.actor_name ?? "System"}
-                    </div>
-                    <div className="text-label color-on-surface-variant">
-                      {entry.action} · {entry.target_type} #{entry.target_id} · {formatRelativeTime(entry.created_at)}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </Button>
+            </CardContent>
+          </Card>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <div className="lg:col-span-2">{purchaseFeed}</div>
+            {quickActionsCard}
+          </div>
+        </>
+      ) : dashboardLoading ? (
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+          </div>
+          <Skeleton className="h-64 w-full" />
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-64 w-full" />
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Skeleton className="h-48 w-full lg:col-span-2" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        </>
+      ) : (
+        <>
+          <div data-testid="kpi-row" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <KpiCard
+              tone="brand"
+              icon={Coins}
+              label={t("admin_home_kpi_revenue")}
+              value={formatRupiah(d.kpi.revenue.value)}
+              delta={computeDelta(d.kpi.revenue.value, d.kpi.revenue.prev)}
+            />
+            <KpiCard
+              tone="ember"
+              icon={Receipt}
+              label={t("admin_home_kpi_orders")}
+              value={String(d.kpi.order_count.value)}
+              delta={computeDelta(d.kpi.order_count.value, d.kpi.order_count.prev)}
+            />
+            <KpiCard
+              tone="teal"
+              icon={UserPlus}
+              label={t("admin_home_kpi_new_students")}
+              value={String(d.kpi.new_students.value)}
+              delta={computeDelta(d.kpi.new_students.value, d.kpi.new_students.prev)}
+            />
+            <KpiCard
+              tone="sky"
+              icon={Store}
+              label={t("admin_home_kpi_schools")}
+              value={String(d.kpi.schools.value)}
+              delta={computeDelta(d.kpi.schools.value, d.kpi.schools.prev)}
+              sub={t("admin_home_kpi_students_total").replace("{count}", String(d.kpi.students_total.value))}
+            />
+          </div>
 
-        <QuickActionTiles title={t("admin_home_quick_actions")} actions={quickActions} />
-      </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("admin_home_chart_revenue_title")}</CardTitle>
+              <CardDescription>{t("admin_home_chart_revenue_sub")}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AreaLineChart
+                labels={labels}
+                area={{ values: d.series.map((p) => p.revenue), color: CHART_BLUE, label: t("admin_home_series_revenue"), format: formatRupiah }}
+                line={{ values: d.series.map((p) => p.order_count), color: CHART_ORANGE, label: t("admin_home_series_orders") }}
+                emptyLabel={t("admin_home_chart_empty")}
+              />
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>{t("admin_home_chart_students_title")}</CardTitle>
+                <CardDescription>{t("admin_home_chart_students_sub")}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <MultiLineChart
+                  labels={labels}
+                  series={[
+                    { values: d.series.map((p) => p.new_students), color: CHART_PURPLE, label: t("admin_home_series_new") },
+                    { values: d.series.map((p) => p.exam_students), color: CHART_TEAL, label: t("admin_home_series_exam") },
+                    { values: d.series.map((p) => p.buying_students), color: CHART_AMBER, label: t("admin_home_series_buy") },
+                  ]}
+                  emptyLabel={t("admin_home_chart_empty")}
+                />
+              </CardContent>
+            </Card>
+            <RevenueMixCard digital={d.kpi.revenue_digital} physical={d.kpi.revenue_physical} />
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle>{t("admin_home_upcoming_exams")}</CardTitle>
+                  {a.active_sessions > 0 && (
+                    <Link href="/admin/exam/monitor">
+                      <Badge variant="ember">
+                        {t("admin_home_sessions_chip").replace("{count}", String(a.active_sessions))}
+                      </Badge>
+                    </Link>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {d.upcoming_exams.length === 0 ? (
+                  <div className="py-12 text-center text-ink-600">{t("admin_home_upcoming_empty")}</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {d.upcoming_exams.map((exam) => (
+                      <Link
+                        key={exam.id}
+                        href={`/admin/exam/packages/${exam.id}`}
+                        className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-surface-sunken p-3 transition-colors hover:bg-brand-50"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate type-label">{exam.title}</div>
+                          <div className="type-caption text-ink-600">{jakarta.dateTime(exam.scheduled_at)}</div>
+                        </div>
+                        <div className="shrink-0 type-label-sm text-brand-700">
+                          {t("admin_home_registrants").replace("{count}", String(exam.registrant_count))}
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            {purchaseFeed}
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle>{t("admin_home_top_products")}</CardTitle>
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href="/admin/store">{t("admin_home_sales_summary")}</Link>
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {d.top_products.length === 0 ? (
+                  <div className="py-12 text-center text-ink-600">{t("admin_home_chart_empty")}</div>
+                ) : (
+                  <ol className="flex flex-col gap-4">
+                    {d.top_products.map((p, i) => (
+                      <li key={p.product_id} data-testid="top-product" className="flex items-center gap-3">
+                        <span className="w-5 shrink-0 type-label text-ink-600">{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate type-label">{p.name}</div>
+                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-sunken">
+                            <div
+                              data-testid="top-product-bar"
+                              className="h-full rounded-full bg-brand-600"
+                              style={{ width: `${(p.qty_sold / topMax) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="type-label tabular-nums">{t("admin_home_qty_sold").replace("{count}", String(p.qty_sold))}</div>
+                          <div className="type-caption text-ink-600">{formatRupiah(p.product_revenue)}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </CardContent>
+            </Card>
+            {quickActionsCard}
+          </div>
+        </>
+      )}
     </div>
   );
 }
