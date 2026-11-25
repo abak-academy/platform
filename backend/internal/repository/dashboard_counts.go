@@ -123,3 +123,25 @@ func (r *Repository) CountStudentsAndSchools(ctx context.Context) (int, int, err
 	`).Scan(&students, &schools)
 	return students, schools, err
 }
+
+// CountEssaysToGrade counts submitted sessions with at least one ungraded essay
+// answer across all exams, using the predicate of ListSessionsNeedingGrading.
+// The exam ID is that of the oldest such submission, nil when there are none.
+func (r *Repository) CountEssaysToGrade(ctx context.Context) (int, *uuid.UUID, error) {
+	var n int
+	var examID *uuid.UUID
+	err := r.pool.QueryRow(ctx, `
+		WITH pending AS (
+			SELECT s.exam_id, s.submitted_at
+			  FROM exam_session s
+			  JOIN exam_session_answer a ON a.session_id = s.id
+			  JOIN question q ON q.id = a.question_id
+			 WHERE s.status = 'submitted'
+			   AND q.format = 'essay' AND a.graded_at IS NULL
+			 GROUP BY s.id, s.exam_id, s.submitted_at
+		)
+		SELECT (SELECT COUNT(*) FROM pending),
+		       (SELECT exam_id FROM pending ORDER BY submitted_at ASC LIMIT 1)`,
+	).Scan(&n, &examID)
+	return n, examID, err
+}

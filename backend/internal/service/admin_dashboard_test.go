@@ -154,6 +154,24 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 		t.Fatalf("seed digital item: %v", err)
 	}
 
+	// previous window (2030-01-14): one physical-only order, so prev digital has no data
+	prevDay := day.AddDate(0, 0, -1)
+	var prevOrderID string
+	if err := pool.QueryRow(ctx,
+		`INSERT INTO orders (student_id, status, subtotal, total, created_at, paid_at)
+		 VALUES ($1, 'paid', 25000, 25000, $2, $2) RETURNING id`,
+		studentID, prevDay,
+	).Scan(&prevOrderID); err != nil {
+		t.Fatalf("seed prev order: %v", err)
+	}
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO order_item (order_id, product_id, product_type, name, unit_price, qty, jumlah, weight_grams)
+		 VALUES ($1, $2, 'book', 'Dashboard Pipeline Book', 25000, 1, 25000, 0)`,
+		prevOrderID, physicalProductID,
+	); err != nil {
+		t.Fatalf("seed prev item: %v", err)
+	}
+
 	resp, err := svc.AdminDashboard(ctx, from, to, "day")
 	if err != nil {
 		t.Fatalf("AdminDashboard: %v", err)
@@ -177,6 +195,16 @@ func TestAdminDashboardCountsOrderRevenueOncePerOrder(t *testing.T) {
 	}
 	if seriesDigital != 40000 {
 		t.Errorf("sum(series.revenue_digital) = %v, want 40000 (the course line)", seriesDigital)
+	}
+
+	if got := resp.KPI["revenue_physical"]; got.Value != 60000 || got.Prev == nil || *got.Prev != 25000 {
+		t.Errorf("kpi.revenue_physical = %+v, want value 60000 prev 25000", got)
+	}
+	if got := resp.KPI["revenue_digital"]; got.Value != 40000 || got.Prev != nil {
+		t.Errorf("kpi.revenue_digital = %+v, want value 40000 and no prev", got)
+	}
+	if (resp.Attention.EssaysToGrade == 0) != (resp.Attention.EssaysExamID == nil) {
+		t.Errorf("essays_to_grade %d and essays_exam_id %v disagree on emptiness", resp.Attention.EssaysToGrade, resp.Attention.EssaysExamID)
 	}
 
 	byProduct := map[string]DashboardTopProduct{}
