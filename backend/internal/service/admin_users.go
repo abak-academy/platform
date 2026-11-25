@@ -298,7 +298,7 @@ func (s *Service) TriggerAccountPasswordReset(ctx context.Context, actorID, targ
 	if err != nil {
 		return err
 	}
-	token := newToken(user.ID)
+	token := newToken()
 	stored := s.hashOTP(otpPurposeReset, code)
 	pipe := s.rdb.TxPipeline()
 	pipe.HSet(ctx, "reset:"+token, map[string]interface{}{

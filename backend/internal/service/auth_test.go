@@ -2073,6 +2073,9 @@ func TestForgotPassword_EmailLinkCarriesAUsableToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unescape token: %v", err)
 	}
+	if strings.Contains(token, "u1") {
+		t.Errorf("reset token %q embeds the user id; it lands in URLs and access logs", token)
+	}
 	code := regexp.MustCompile(`\b\d{6}\b`).FindString(body)
 	if err := svc.ResetPassword(ctx, token, code, "newpassword123", "1.1.1.1"); err != nil {
 		t.Fatalf("ResetPassword with the emailed link token and code: %v", err)

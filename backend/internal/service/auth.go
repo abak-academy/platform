@@ -215,7 +215,7 @@ func (s *Service) startOTPChallenge(ctx context.Context, user *model.User, ip st
 }
 
 func (s *Service) storePendingToken(ctx context.Context, userID string) (string, error) {
-	pendingToken := newToken(userID)
+	pendingToken := newToken()
 	if err := s.rdb.Set(ctx, "pending:"+pendingToken, userID, s.cfg.OTPTTL).Err(); err != nil {
 		return "", err
 	}
@@ -498,7 +498,7 @@ func (s *Service) ForgotPassword(ctx context.Context, email, ip string) error {
 	if err != nil {
 		return err
 	}
-	token := newToken(user.ID)
+	token := newToken()
 	stored := s.hashOTP(otpPurposeReset, code)
 	pipe := s.rdb.TxPipeline()
 	pipe.HSet(ctx, "reset:"+token, map[string]interface{}{
@@ -677,8 +677,9 @@ func genOTP() (string, error) {
 	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
-func newToken(userID string) string {
-	return fmt.Sprintf("%s-%d", userID, time.Now().UnixNano())
+// Random, not derived from the user: reset tokens travel in email links and access logs.
+func newToken() string {
+	return rand.Text()
 }
 
 func deref(s *string) string {
@@ -748,6 +749,9 @@ func (s *Service) ResendOTP(ctx context.Context, pendingToken, email, ip string)
 const passwordResetSubject = "Reset kata sandi Abak Academy"
 
 func (s *Service) passwordResetEmailBody(code, token string) string {
+	if s.cfg.WebBaseURL == "" {
+		slog.Warn("web_base_url is empty: the password reset link is relative and will not open from email")
+	}
 	link := strings.TrimRight(s.cfg.WebBaseURL, "/") + "/reset-password?token=" + url.QueryEscape(token)
 	return fmt.Sprintf("Kode reset kata sandi kamu: %s\n\nBuka tautan ini, lalu masukkan kode di atas dan kata sandi baru:\n%s\n\nKode berlaku %d menit. Abaikan email ini jika kamu tidak meminta reset kata sandi.\n",
 		code, link, int(s.cfg.OTPTTL.Minutes()))
