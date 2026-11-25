@@ -48,3 +48,34 @@ func TestPanicRouteRecordedAs500ByMetrics(t *testing.T) {
 		t.Errorf("http_requests_total for panic route = %v, want 1 (metrics middleware is inner to Recover)", n)
 	}
 }
+
+// Content-Disposition isn't in the browser's cross-origin fetch() header
+// safelist, so a CSV download's filename read back from it (exam roster,
+// unit sales, results exports) silently falls back to its hardcoded default
+// unless the server explicitly exposes the header via CORS.
+func TestCORSExposesContentDispositionForCrossOriginDownloads(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	signer := infra.NewJWTSigner("test-secret", time.Hour)
+	svc := service.NewForTest(rdb)
+
+	e := New(handler.New(svc), svc, signer, config.Config{CORSOrigins: []string{"http://localhost:3000"}})
+	e.GET("/download", func(c echo.Context) error {
+		c.Response().Header().Set("Content-Disposition", `attachment; filename="report.csv"`)
+		return c.String(http.StatusOK, "data")
+	})
+
+	req := httptest.NewRequest("GET", "/download", nil)
+	req.Header.Set("Origin", "http://localhost:3000")
+	res := httptest.NewRecorder()
+	e.ServeHTTP(res, req)
+
+	if got := res.Header().Get("Access-Control-Expose-Headers"); got != "Content-Disposition" {
+		t.Errorf("Access-Control-Expose-Headers = %q, want %q", got, "Content-Disposition")
+	}
+}
