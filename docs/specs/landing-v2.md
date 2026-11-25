@@ -1,7 +1,7 @@
 ---
 title: Public site v2 — landing, Event, Program, Toko, and guest cart
 issue: none yet
-status: proposed
+status: agreed
 created: 2026-11-17
 updated: 2026-11-26
 sources: ["docs/specs/redesign-v2-roadmap.md", "docs/specs/design-tokens-v2.md", "docs/specs/event-series.md", "docs/specs/testimonials.md", "docs/specs/student-dashboard-v2.md", "docs/specs/admin-dashboard-v2.md", "docs/prototypes/redesign-v2/index.html", "docs/prototypes/redesign-v2/hero-award.webp", "docs/prototypes/redesign-v2/COMPONENTS.md", "web/app/layout.tsx", "web/app/(student)/layout.tsx", "web/app/(student)/page.tsx", "web/app/(student)/cart/page.tsx", "web/app/(student)/catalog/page.tsx", "web/app/(student)/catalog/[id]/page.tsx", "web/app/(auth)/login/page.tsx", "web/lib/hooks/orders.ts", "web/lib/hooks/products.ts", "web/lib/auth-redirect.ts", "web/lib/i18n.ts", "web/stores/auth.ts", "web/stores/ui.ts", "backend/internal/server/routes.go", "backend/internal/handler/order.go", "backend/internal/handler/errors.go", "backend/internal/service/store.go", "backend/internal/service/store_digital.go", "backend/internal/repository/order.go"]
@@ -30,7 +30,7 @@ Outcome: the Next.js app serves a public site in the prototype's look, in Indone
 
 ## Agreed behavior (Panca, 2026-11-17, revised 2026-11-25/26)
 
-The prototype (`docs/prototypes/redesign-v2/index.html`, public routes `#/`, `#/kompetisi`, `#/program`, `#/katalog`, `#/keranjang`) is the layout reference; its copy (both languages) is the starting copy. Do not invent claims: every number comes from config (D1) or the API.
+The prototype (`docs/prototypes/redesign-v2/index.html`, public routes `#/`, `#/kompetisi`, `#/program`, `#/katalog`, `#/keranjang`) is the layout reference; its copy (both languages) is the starting copy. Do not invent claims: every number comes from config (`lib/site-config.ts`, D1) or the API. D1–D5 are settled (Panca, 2026-11-26: the recommended option of each); D6 stays open as a **launch** blocker (§ Launch blockers).
 
 ### 1. Routes and who sees what
 
@@ -56,7 +56,7 @@ The prototype (`docs/prototypes/redesign-v2/index.html`, public routes `#/`, `#/
 
 ### 3. Landing `/` (guests), in order
 
-1. **Hero.** The award photo full-bleed (`cover`, bottom-anchored) behind the transparent navbar, under a light scrim that fades into the page canvas with no dark edges. Headline "Dari ruang kelas ke panggung ⟨word⟩" / "From the classroom to the ⟨word⟩": the word rotates through `dunia`/`world stage` first, then the Event names (`short_name ?? name` of visible events in sort order, from the Event API); screen readers and reduced motion get only "dunia" / "world stage". Lede, **Cari kompetisimu** (→ `/event`) and **Konsultasi gratis** (WhatsApp). Stats **20.000+ / 200+ / 10** with their labels at the bottom of the hero (D1). Decorative math floaters may stay, never over text. No "Baru" kicker, no phone mockup, no event marquee, no cursor spotlight. Accepted: the photo's banner text shows faintly behind the headline. Needs a high-resolution photo from the client (current 880px wide).
+1. **Hero.** The award photo full-bleed (`cover`, bottom-anchored) behind the transparent navbar, under a light scrim that fades into the page canvas with no dark edges. Headline "Dari ruang kelas ke panggung ⟨word⟩" / "From the classroom to the ⟨word⟩": the word rotates through `dunia`/`world stage` first, then the Event names (`short_name ?? name` of visible events in sort order, from the Event API); screen readers and reduced motion get only "dunia" / "world stage". Lede, **Cari kompetisimu** (→ `/event`) and **Konsultasi gratis** (WhatsApp). Stats **20.000+ / 200+ / 10** with their labels at the bottom of the hero, static values from `lib/site-config.ts` changed by a code edit (D1). Decorative math floaters may stay, never over text. No "Baru" kicker, no phone mockup, no event marquee, no cursor spotlight. Accepted: the photo's banner text shows faintly behind the headline. Needs a high-resolution photo from the client (current 880px wide).
 2. **Program:** 6 cards (Kompetisi & Event, Pelatihan Olimpiade, Bimbel & Les Privat, Pelatihan Karya Tulis, Homeschooling, Study Tour & Kuliah Luar Negeri), each "Selengkapnya" → `/program#<id>`; section CTA "Tanya program" (WhatsApp).
 3. **Tentang:** three centered lines "Setiap anak punya kapasitas, potensi, dan bakat yang unik." / "Tugas kami merawat dan mengasahnya," / "hingga tumbuh para ahli di bidangnya." (first line on one line from 900px up), signature "© Abak Academy 2026". No eyebrow, no stats. EN uses the prototype draft ("Every child has a unique capacity, potential, and talent." / "Our job is to nurture and sharpen it," / "until it grows into true expertise."), client to confirm.
 4. **Event — "Pilih panggungmu":** event tiles + one story card for the selected event (`EventSeriesPicker` + `EventStoryCard`): logo or illustration, scope and level chips, full name, tagline, story, schedule timeline with state, rounds, categories, facts. CTA: "Daftar ⟨level⟩ · price" for each open edition (max 2) → `/catalog/[product_id]`, or "Tanya jadwal" (WhatsApp) when none; plus "Situs resmi" when set. No "all events" tile.
@@ -64,7 +64,7 @@ The prototype (`docs/prototypes/redesign-v2/index.html`, public routes `#/`, `#/
 6. **Kursus online:** first 4 published courses, "Semua kursus" → `/catalog?type=course`.
 7. **Cerita peserta:** one testimonial per slide; the left panel is that person's photo (4:5) and changes with the slide; quote, name, role, up to 3 achievement chips, prev/next buttons, "01/03" counter. Not rendered when the API returns none; no placeholder quotes ship.
 8. **Toko Abak:** 4 published physical products (book, merchandise, medal), "Ke toko" → `/catalog`.
-9. **Untuk sekolah & lembaga:** band with 4 capability tiles, "Ajukan kerja sama" (D2) and "Lihat jadwal" → `/event`.
+9. **Untuk sekolah & lembaga:** band with 4 capability tiles, "Ajukan kerja sama" (opens WhatsApp with a prefilled partnership message; no form, nothing stored; D2) and "Lihat jadwal" → `/event`.
 10. **FAQ** + "Belum ketemu jawabannya?" WhatsApp block.
 11. **CTA band** "Medali berikutnya bisa jadi milikmu." with Daftar gratis + Lihat kompetisi. The landing ends on this band; the footer follows with no gap.
 12. **Footer:** blurb, address, WhatsApp number, social links (real URLs only; a link without one is hidden), link columns (Telusuri, Akun, Tim), wordmark. The end-of-page stats band is gone.
@@ -84,7 +84,7 @@ The prototype (`docs/prototypes/redesign-v2/index.html`, public routes `#/`, `#/
 ### 6. Toko `/catalog`, `/catalog/[id]`
 
 - Slim page hero: eyebrow "TOKO ABAK", title "Buku, kursus & perlengkapan belajar", tagline "Semua yang kamu butuhkan buat latihan, belajar, dan tampil di hari lomba." **No promo line.**
-- Existing category rail + search + grid, restyled by PR 1 primitives; exam products stay out of the Toko list (they are reached from the Event page). Product detail keeps its current content and behavior except that a guest can add to cart (§7).
+- Existing category rail + search + grid, restyled by PR 1 primitives; the grouping filter is labelled **Event** / **Event** ("Semua event" / "All events"), renamed by the event-series PR (its D9) — this PR keeps that label when it moves the page; exam products stay out of the Toko list (they are reached from the Event page). Product detail keeps its current content and behavior except that a guest can add to cart (§7).
 
 ### 7. Cart and login at payment
 
@@ -126,7 +126,7 @@ Every string on these pages exists in `id` and `en`. Event narratives and testim
 | `/` | `(student)/page.tsx` | Guest → `<Landing/>`; student → PR 2 home |
 | `/cart` | `(student)/cart/page.tsx` | Guest → `<GuestCart/>`; student → today's cart |
 
-`(student)/layout.tsx` gains `GUEST_PATHS = ["/", "/cart"]`: once hydrated with no token on those paths it renders `PublicShell` around the page instead of redirecting; every other path keeps the redirect. Before hydration on `/` it renders the landing (not "Memuat…") so the static landing is in the prerendered HTML (D3); an inline `<head>` script sets `data-session` on `<html>` from the persisted `abak-auth` token, and CSS hides the public shell while it is set, so signed-in students never see a flash of the landing.
+`(student)/layout.tsx` gains `GUEST_PATHS = ["/", "/cart"]`: once hydrated with no token on those paths it renders `PublicShell` around the page instead of redirecting; every other path keeps the redirect. Before hydration on `/` it renders the landing (not "Memuat…") so the static landing is in the prerendered HTML (D3 = a; dynamic sections still load client-side); an inline `<head>` script sets `data-session` on `<html>` from the persisted `abak-auth` token, and CSS hides the public shell while it is set, so signed-in students never see a flash of the landing.
 
 ### Components (folders per `COMPONENTS.md`)
 
@@ -145,7 +145,7 @@ Every string on these pages exists in `id` and `en`. Event narratives and testim
 | Cerita peserta | `GET /testimonials?lang=` (`testimonials.md`) | Empty or error: section absent |
 | Kursus online | `useProducts("course")`, first 4 | Empty: section absent |
 | Toko Abak | `useProducts()` filtered to book/merchandise/medal, first 4 | Empty: section absent |
-| Stats | `lib/site-config.ts` (D1) | — |
+| Stats | `lib/site-config.ts`, static (D1) | — |
 | WhatsApp number, prefilled messages, address, social URLs | `lib/site-config.ts` (one module; nothing hard-coded in components) | Social without URL hidden |
 | Programs | `lib/programs.ts` (id, icon, tone, i18n keys) | — |
 | Dashboard count | `useOrders()` + `useRegistrations()` + PR 2 count helpers, only when token and role student | Error: no count |
@@ -181,6 +181,7 @@ New prefixes in both locales: `pub_nav_*`, `pub_foot_*`, `land_*` (hero, program
 ### Metadata and deployment
 
 - `metadataBase`, canonical, and Open Graph URLs come from `NEXT_PUBLIC_SITE_URL` (new, optional; when unset, no canonical is emitted). Title and description per route in small server `layout.tsx` files; the landing's live in `app/layout.tsx` defaults. Every internal link is relative.
+- No `hreflang` alternates: the language is a client preference on one URL, so only the canonical is emitted and Indonesian is the indexed language (D5).
 - Deployment (domain, WordPress, DNS, proxy) is out of scope and must stay config-only.
 
 ### Motion without dependencies
@@ -193,10 +194,11 @@ CSS transitions + `IntersectionObserver` + one `requestAnimationFrame` loop + a 
 - **Event entity (`event-series.md`):** Panca decided (2026-11-26) that the Event evolves the existing **product grouping** (`product_grouping`, migration 0073, `GET /product-groupings`, `product.grouping_id`) instead of a new table. The Toko's competition grouping becomes the Event. This spec relies only on: visible events in sort order with `slug`, display name + short name, scope, levels, tone/illustration/logo, official URL, narrative for `?lang=`, schedule with state, and open editions with `product_id`, phase, level, price, date. Please keep `product_id` and a `slug` usable as a URL fragment; if `GET /product-groupings` changes shape for the Toko's grouping filter, the catalog page needs the compat window.
 - **`testimonials.md`:** `GET /testimonials?lang=` with `photo_url` always present (4:5). No change requested.
 - **`student-dashboard-v2.md` (PR 2):** (a) its AC1 lists `/catalog` among pages showing the student sidebar; after this PR `/catalog` and `/catalog/[id]` render in the public shell for everyone (prototype `pub('katalog')`), so that AC should drop `/catalog` or note it is superseded here; `/cart` stays in the student shell. (b) This PR reuses PR 2's count helpers (`lib/student-home.ts`) for the Dashboard button; please export them. (c) This PR edits `(student)/layout.tsx`, `(student)/page.tsx`, `(student)/cart/page.tsx` after PR 2.
-- **`redesign-v2-roadmap.md`:** phase 4 row: landing is PR 5, last, after RD1 order; scope now includes `/program`, the Toko public move, and the guest cart (web-only, no backend). Open question "Stats static vs computed" is D1 here.
+- **`redesign-v2-roadmap.md`:** phase 4 row: landing is PR 5, last, after RD1 order; scope now includes `/program`, the Toko public move, and the guest cart (web-only, no backend). "Stats static vs computed" is settled here as static (D1).
 
-- **Aligned with the realigned specs (2026-11-26):** the `useEvents` adapter reads `GET /event-series?lang=` and `GET /event-series/:slug` from `event-series.md` (Event = extended `product_grouping`, migration `0075_event`). Event fields: `slug`, `name`, `short_name`, `scope`, `subjects`, `tone`, `illustration`, `logo_url`, `official_url`, narrative, schedule with state. Open-edition fields: `product_id`, `exam_ids`, `title`, `stages`, `grade_min`, `grade_max`, `price`, `image_url`, `phase`, `scheduled_at`, `scheduled_end_at`, `available_until`. `GET /product-groupings` is unchanged, so the Toko filter needs no compat work (its label may become "Event" per event-series D9).
-- This PR renames the user-facing Toko strings `catalog_title`, `product_back_catalog`, `cart_view_catalog` to Toko/Shop. The Dashboard button reuses `kompetisiCount` and `pendingCount` exported from `lib/student-home.ts` (PR2). Layout uses `container-public` (1200px), the 80px footer gap, and the page-header tint fade from `design-tokens-v2.md`; the hero title size depends on tokens D1 (`display-hero`). Landing D4 (where admins land at `/`) and admin D10 (`NEXT_PUBLIC_SITE_URL`) must be decided together.
+- **Aligned with the realigned specs (2026-11-26):** the `useEvents` adapter reads `GET /event-series?lang=` and `GET /event-series/:slug` from `event-series.md` (Event = extended `product_grouping`, migration `0075_event`). Event fields: `slug`, `name`, `short_name`, `scope`, `subjects`, `tone`, `illustration`, `logo_url`, `official_url`, narrative, schedule with state. Open-edition fields: `product_id`, `exam_ids`, `title`, `stages`, `grade_min`, `grade_max`, `price`, `image_url`, `phase`, `scheduled_at`, `scheduled_end_at`, `available_until`. `GET /product-groupings` is unchanged, so the Toko filter needs no compat work. Its label is already **Event** when this PR starts (event-series D9 settled: grouping is used only for competitions, so every grouping is an Event).
+- This PR renames the user-facing Toko strings `catalog_title`, `product_back_catalog`, `cart_view_catalog` to Toko/Shop. The Dashboard button reuses `kompetisiCount` and `pendingCount` exported from `lib/student-home.ts` (PR2). Layout uses `container-public` (1200px), the 80px footer gap, and the page-header tint fade from `design-tokens-v2.md`; the hero title uses `type-display-hero` (tokens D1 settled, defined by PR 1). Landing D4 = a (admins at `/` keep their redirect) and admin D10 = a (`NEXT_PUBLIC_SITE_URL`, item hidden when unset) were settled together on 2026-11-26.
+- **Participant numbers** never appear on public pages. The event prefix rule (`event-series.md` § Participant number) changes only the exam card, admin roster, roster CSV, and the external-result match.
 
 ## Acceptance criteria
 
@@ -222,6 +224,7 @@ CSS transitions + `IntersectionObserver` + one `requestAnimationFrame` loop + a 
 20. Changing `NEXT_PUBLIC_SITE_URL` changes canonical and OG URLs with no code change; unset emits no canonical.
 21. Lighthouse mobile on a production build of `/`: SEO ≥ 95, Accessibility ≥ 95, CLS < 0.1, LCP < 2.5s.
 22. No new dependency; no hex values outside `globals.css`; every new string in both locales.
+23. "Ajukan kerja sama" opens `wa.me/<config number>` with the partnership text and renders no form (D2); the stats come from `lib/site-config.ts` (D1); no `hreflang` link is emitted on any public page (D5); the Toko grouping filter reads "Event".
 
 ## Verification
 
@@ -236,28 +239,32 @@ CSS transitions + `IntersectionObserver` + one `requestAnimationFrame` loop + a 
 - Backend, migration, or order/payment logic changes; a server-side guest cart.
 - Restyling `(auth)` pages, the product detail page beyond guest add-to-cart, or the prototype's `/kompetisi/:id` edition page (editions use `/catalog/[id]`).
 - Blog migration; a CMS for programs, FAQ, or stats.
-- A school lead backend (D2 picks the front-end shape).
+- A school lead backend or form (D2 = a: WhatsApp only).
 - Deployment, domain, WordPress, DNS.
 - Image protection beyond the accepted context-menu block.
 
-## Decisions needed
+## Decisions
 
-Recommendation first in each.
+All build decisions settled (Panca, 2026-11-26: the recommended option of each).
 
-- **D1. Stats (20.000+ / 200+ / 10).** a) Static values in `lib/site-config.ts`, changed by a code edit; computed counts differ from marketing claims. b) Computed "10" from the Event API (visible events count), the other two static. c) Admin-editable config (needs backend; out of scope).
-- **D2. "Ajukan kerja sama".** The prototype opens a form (school, contact, WhatsApp); the 11-17 spec said WhatsApp. No lead endpoint exists. a) Button opens WhatsApp with a prefilled message, no form: no PII stored, no backend. b) The prototype form, whose submit only builds the WhatsApp message (same privacy as a, one more step). c) A real lead form with an endpoint and admin list (backend + PII handling; its own spec).
-- **D3. SEO of `/` in a client-only app.** a) Render the landing before auth hydration with the `data-session` head script hiding it for signed-in users (AC 2–3); dynamic sections (events, testimonials, products) still load client-side. b) Keep "Memuat…" until hydration; no static landing HTML (fails the crawler goal). c) First server component fetching the public API at request time (needs a server-reachable API URL; breaks the client-only convention).
-- **D4. Admins and affiliators at `/`.** a) Keep today's redirect to their home; they view public pages through `/event`, `/program`, `/catalog`. b) Show them the landing at `/` like the prototype.
-- **D5. `hreflang`.** The language is a client preference on one URL, so id/en alternates would point to the same page. a) Drop `hreflang`; canonical only, Indonesian is the indexed language. b) Add a `?lang=en` URL that sets the language, and emit alternates for it.
-- **D6. Client inputs (not code decisions; block launch, not build):** high-resolution hero photo (≥ 2400px wide), social URLs, confirmation of program copy and the EN Tentang lines.
+- ~~D1. Stats (20.000+ / 200+ / 10).~~ **Settled: (a)** static values in `lib/site-config.ts`, changed by a code edit. Not chosen: (b) computed "10" from the Event API, (c) admin-editable config.
+- ~~D2. "Ajukan kerja sama".~~ **Settled: (a)** the button opens WhatsApp with a prefilled message; no form, no PII stored, no backend. Not chosen: (b) the prototype form that only builds the WhatsApp message, (c) a real lead form with an endpoint.
+- ~~D3. SEO of `/` in a client-only app.~~ **Settled: (a)** render the landing before auth hydration with the `data-session` head script hiding it for signed-in users (AC 2–3); dynamic sections load client-side. Not chosen: (b) "Memuat…" until hydration, (c) a server component.
+- ~~D4. Admins and affiliators at `/`.~~ **Settled: (a)** keep today's redirect to their home; they view public pages through `/event`, `/program`, `/catalog` (and admins through "Buka situs publik", admin D10 = a). Not chosen: (b) landing at `/` for them.
+- ~~D5. `hreflang`.~~ **Settled: (a)** no `hreflang`; canonical only, Indonesian indexed. Not chosen: (b) a `?lang=en` URL with alternates.
+
+## Launch blockers (open; do not block the build)
+
+- **D6. Client inputs:** high-resolution hero photo (≥ 2400px wide; current 880px), social URLs (links stay hidden until set), confirmation of the program copy and of the EN Tentang lines.
+- **EN event narratives:** the English drafts in the event seed (`event-series.md` § Seed content) need review by Panca or the client before any event is made visible; until then the Event sections show nothing (no visible events).
 
 ## Implementation plan
 
-Branch `feat/landing-v2` from `feat/public-landing` after PR 1, event-series, PR 2 student, and testimonials have merged into it (RD1); one PR into `feat/public-landing`; it is the last redesign PR before `feat/public-landing` goes to `main`. The plan assumes the recommended options.
+Branch `feat/landing-v2` from `feat/public-landing` after PR 1, event-series, PR 2 student, and testimonials have merged into it (RD1); one PR into `feat/public-landing`; it is the last redesign PR before `feat/public-landing` goes to `main`. The plan follows the settled D1–D5.
 
 | id | title | files / scope | depends_on | test-first step | done-check |
 |---|---|---|---|---|---|
-| T0 | Config + i18n contract | `lib/site-config.ts`, `lib/programs.ts`, `lib/i18n.ts` (new keys, Katalog → Toko) | — | — (data only) | `tsc --noEmit`; keys in both locales; grep shows no user-facing "Katalog" |
+| T0 | Config + i18n contract | `lib/site-config.ts` (static stats, WhatsApp partnership text), `lib/programs.ts`, `lib/i18n.ts` (new keys, Katalog → Toko) | — | — (data only) | `tsc --noEmit`; keys in both locales; grep shows no user-facing "Katalog" |
 | T1 | Public shell + nav + footer | `components/shell/{PublicShell,SiteNav,SiteFooter,LanguageToggle}.tsx`(+tests), `app/(public)/layout.tsx`, nav scroll state, context-menu guard | T0 | SiteNav guest/student/admin variants + count; contextmenu prevented only inside `PublicShell` (red) | tests green; 390/1366 browser check |
 | T2 | Route moves + guest gate + metadata | `git mv (student)/catalog → (public)/catalog`, `(student)/layout.tsx` `GUEST_PATHS` + pre-hydration landing + `data-session` head script in `app/layout.tsx`, metadata layouts, `NEXT_PUBLIC_SITE_URL` | T1 | layout test: guest on `/`, `/cart` renders public shell; guest on `/orders` redirects; student unchanged (red) | tests green; e2e redirect specs updated; prerender check (AC 2) |
 | T3 | Guest cart store + page | `stores/guest-cart.ts`(+test), `(student)/cart/page.tsx` guest branch, `components/cart/GuestCart.tsx`(+test), `catalog/[id]` guest add | T2 | store rule cases; guest page hides address/promo/pay and shows Masuk untuk bayar (red) | tests green |

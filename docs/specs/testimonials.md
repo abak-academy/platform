@@ -1,7 +1,7 @@
 ---
 title: Testimonials managed by admins, with a consent gate
 issue: none yet
-status: proposed
+status: agreed
 created: 2026-11-17
 updated: 2026-11-26
 sources: ["docs/specs/redesign-v2-roadmap.md", "docs/specs/landing-v2.md", "docs/specs/event-series.md", "docs/specs/profile-avatars.md", "docs/specs/admin-list-toolbar.md", "docs/specs/design-tokens-v2.md", "docs/prototypes/redesign-v2/index.html", "abak-redesign-prototype/index.html (Panca's local copy, 2026-11-26)", "backend/internal/server/routes.go", "backend/internal/service/student.go", "backend/internal/service/admin_users.go", "backend/internal/handler/admin_uploads.go", "backend/internal/service/card_logo.go"]
@@ -33,12 +33,12 @@ Decisions (Panca, 2026-11-17, from prototype review at `#/admin/testimoni`), unc
    - Visibility ("Tampil di landing page") and a sort order.
 2. **Consent gate.** A testimonial can be made visible only when consent is recorded, the consent note is filled, the EN quote is filled, and a photo is uploaded (photo added 2026-11-26). The switch and the save are both rejected otherwise, with a message that names the missing part.
 3. Unchecking consent on a visible testimonial hides it in the same save.
-4. The admin page is a card grid with the shared `ListToolbar` (`admin-list-toolbar.md`; availability per event-series D5): search name or quote; filters Landing (shown/draft), Consent (yes/no), EN (complete/missing). Each card shows the person, quote, chips, flags (consent, ID + EN), a visibility switch, Edit, and Delete (with a confirm modal). The prototype's "Data contoh" flag marks its own sample data only; it has no column and is not built.
+4. The admin page is a card grid with the shared `ListToolbar` (`admin-list-toolbar.md`; built by the event-series PR, its D5 = a): search name or quote; filters Landing (shown/draft), Consent (yes/no), EN (complete/missing). Each card shows the person, quote, chips, flags (consent, ID + EN), a visibility switch, Edit, and Delete (with a confirm modal). The prototype's "Data contoh" flag marks its own sample data only; it has no column and is not built.
 5. The landing carousel shows visible testimonials in sort order, in the visitor's language, each slide with the speaker's own photo. With none visible, the section is not rendered.
 6. Every change to consent or visibility is written to the audit log (actor, testimonial id, old and new values).
 7. Only `super_admin` manages testimonials (D1, Panca 2026-11-26): consent of minors is a legal matter, so access stays narrow.
 
-Added 2026-11-26 (proposed; confirm in align):
+Added 2026-11-26, settled 2026-11-26 (Panca accepted both):
 
 8. Achievements per language are independent: `?lang=en` returns the EN chips, possibly none, and never falls back to the ID chips (a mixed-language slide reads as a bug).
 9. Replacing or removing a photo, or deleting a testimonial, leaves the old storage object in place (no delete call); see the privacy note under Photo.
@@ -138,10 +138,11 @@ All settled (Panca, 2026-11-26):
 - **D2. Photo format and server-side checking:** (a) JPEG from the canvas, trust the browser crop; the server checks only the key prefix. No new dependency, no backend change on the upload path. Rejected: (b) a save-time `image.DecodeConfig` check (storage read in the save path), (c) WebP (Go stdlib cannot decode it; `toBlob('image/webp')` can silently return PNG).
 - **D3. Photo/media prefix:** reuse `question/` via `POST /admin/uploads/image` (same as event-series logos, event-series D7).
 - **Rule 12 (photo removal hides):** accepted.
+- **Behaviors 8–9:** settled 2026-11-26: EN achievements never fall back to ID; replaced or removed photos and deleted testimonials leave their storage objects in place.
 
 ## Implementation plan
 
-Branch `feat/testimonials` from `feat/public-landing` after the event-series PR merges; one PR into `feat/public-landing`, in parallel with the student PR. Tasks for `.agents/work/testimonials.json`, test-first per `tdd-implementation`. Uses the generic admin `ListToolbar` from the event-series PR (event-series T4; if event-series D5 ≠ a, that task moves here).
+Branch `feat/testimonials` from `feat/public-landing` after the event-series PR merges; one PR into `feat/public-landing`, in parallel with the student PR. Tasks for `.agents/work/testimonials.json`, test-first per `tdd-implementation`. Uses the generic admin `ListToolbar` from the event-series PR (event-series T4; event-series D5 = a is settled).
 
 | ID | Title | Files / scope | depends_on | Test-first step | Done-check |
 |----|-------|---------------|------------|-----------------|------------|

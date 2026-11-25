@@ -24,7 +24,7 @@ Outcome: `globals.css` exposes the v2 tokens below, `layout.tsx` loads the displ
 ### Principles (from the DS README)
 
 1. One pattern, one component; a variation is a prop, never a restyled copy in a page.
-2. Tokens only: no hex, pixel sizes, or radii in pages. Type from the 12 styles, spacing from `space-*`, corners from `radius-*`.
+2. Tokens only: no hex, pixel sizes, or radii in pages. Type from the 13 styles, spacing from `space-*`, corners from `radius-*`.
 3. Accent is for action: `ember-600` = primary CTA, live badges, counts, highlights. Selection, navigation, and focus are always `brand-600`.
 4. Tabs switch views of one record; filters filter lists.
 5. Every list = ListToolbar + Table or grid + EmptyState.
@@ -106,11 +106,12 @@ Usage rules:
 
 Families: **Plus Jakarta Sans** 500–800 (`display`: headings, buttons, chips, nav, numbers; new, via `next/font/google` as `--font-display`), **Public Sans** 400–700 (`body`, existing `--font-sans`), **Spline Sans Mono** 500–600 (`mono`, existing `--font-mono`; overlines and column heads only). Numbers in tables and KPIs use tabular figures.
 
-Twelve styles; nothing else. Ten sizes: 64, 44, 30, 20, 16, 15, 14, 13, 12, 11.
+Thirteen styles (the twelve DS styles plus `display-hero`, D1); nothing else. Ten fixed sizes: 64, 44, 30, 20, 16, 15, 14, 13, 12, 11, plus the `display-hero` clamp.
 
 | Style | Family | Size / line-height | Weight | Tracking | Phones | Use |
 |---|---|---|---|---|---|---|
-| `display-xl` | display | 64 / 1.02 | 800 | -0.045em | `clamp(42px, 5.4vw, 64px)` | Marketing headlines (the landing hero title itself is D1) |
+| `display-hero` | display | `clamp(44px, 6.4vw, 92px)` / 1.0 | 800 | -0.05em | (in the clamp) | Landing hero title only (D1) |
+| `display-xl` | display | 64 / 1.02 | 800 | -0.045em | `clamp(42px, 5.4vw, 64px)` | Marketing headlines other than the landing hero title |
 | `display` | display | 44 / 1.08 | 800 | -0.04em | 30 | Landing section titles, CTA band, story headings |
 | `h1` | display | 30 / 1.15 | 800 | -0.035em | 24 | One per page: page title; KPI values; ring centres |
 | `h2` | display | 20 / 1.3 | 800 | -0.02em | — | Section and dialog titles |
@@ -227,7 +228,7 @@ When porting from the prototype, snap every value; never copy it.
 | 24–34 (page titles, KPI values, ring centres) | `h1` |
 | 36–46 | `display` |
 | clamp(42–72), 58, 64, 66 | `display-xl` |
-| `clamp(44px, 6.4vw, 92px)` (landing hero title) | D1 |
+| `clamp(44px, 6.4vw, 92px)` (landing hero title) | `display-hero` (D1) |
 | 8.5 mono (ACADEMY in the wordmark) | part of the logo lockup |
 | 150–300 (giant numerals, watermark) | illustration, drawn as SVG |
 | Spacing 2–5 / 6–9 / 10–13 / 14–17 / 18–21 / 22–27 / 28–35 / 36–47 / 48–64 / 72+ | `space-1` / `2` / `3` / `4` / `5` / `6` / `8` / `10` / `14` / `20` |
@@ -263,15 +264,14 @@ Known limits, by design; reviewers do not re-raise them, implementers must respe
 4. Existing component tests pass; class assertions that change are updated in the same PR.
 5. Contrast table in the PR body for every `-50`/`-700` badge pair, `on-brand`/`on-ember`/`on-danger` on their fills, `ink-600` on `paper`/`surface`/`surface-sunken`, both themes; values match the flags above.
 6. `AppShell` content is capped at 1480px and centred with 32px gutters (16px below 680px); no `max-w-[1340px]` remains.
-7. `--container-public` and `--container-public-narrow` exist for the public pages (used from the landing PR on; PR 1 only defines them).
+7. `type-display-hero` exists with the D1 values, and no page other than the landing hero uses it (grep).
+8. `--container-public` and `--container-public-narrow` exist for the public pages (used from the landing PR on; PR 1 only defines them).
 
-## Decisions needed
+## Decisions
 
-Recommendation first.
+All settled (Panca, 2026-11-26).
 
-- **D1 — Landing hero title size.** The 2026-11-26 landing hero title is `clamp(44px, 6.4vw, 92px)` (up to ~92px, line-height 1, tracking -0.05em), larger than `display-xl` (64).
-  - a) **Add `display-hero`** (display family, 800, `clamp(44px, 6.4vw, 92px)` / 1.0, -0.05em), landing hero only; `display-xl` stays 64 for other marketing headlines. Keeps the approved hero; one extra style.
-  - b) Cap at `display-xl` 64 and ask Panca to re-approve the smaller hero. Keeps the twelve-style rule intact.
+- ~~D1 — Landing hero title size.~~ **Settled 2026-11-26 (Panca): (a) add `display-hero`** (display family, 800, `clamp(44px, 6.4vw, 92px)` / 1.0, -0.05em), landing hero only; `display-xl` stays 64 for other marketing headlines. PR 1 T1 defines its `type-display-hero` utility with the rest of the set; the landing PR is its only user. Not chosen: (b) cap at `display-xl` 64.
 - ~~D2 — Terracotta name.~~ **Settled (Panca, 2026-11-26):** `ember-*` + `on-ember`.
 - ~~D3 — Scope in PR 1.~~ **Settled (Panca, 2026-11-26):** the full token set incl. the radius repoint ships in PR 1.
 
