@@ -401,6 +401,8 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .prod-info { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
 .specs { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
 .specs div { background: var(--surface-sunken); border-radius: 16px; padding: 12px; } .specs dt { font-size: 12px; color: var(--ink-muted); } .specs dd { margin: 0; font-weight: 700; font-size: 14px; }
+.dash-btn { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 4px 14px 4px 4px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); color: var(--ink); text-decoration: none; font: 700 14px var(--font-display); transition: border-color .2s, box-shadow .2s; } .dash-btn:hover { border-color: var(--brand); box-shadow: var(--shadow-card); } .dash-btn .av { width: 34px; height: 34px; box-shadow: none; } .dash-btn .count { min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--ember); color: #fff; font: 800 10.5px/20px var(--font-display); text-align: center; }
+body:has(.hero-photo):not(.scrolled) .dash-btn { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .3); color: #fff; }
 .guest-note { display: flex; gap: 10px; align-items: flex-start; } .guest-note p { margin: 0; }
 .cat-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 32px; }
 .cat-rail { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
@@ -984,7 +986,6 @@ button.opt:hover, .sres:hover { border-color: var(--brand); }
 .um-pop > a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; color: var(--ink); text-decoration: none; font: 700 13.5px var(--font-display); }
 .um-pop > a:hover { background: var(--brand-soft); color: var(--brand-ink); } .um-pop > a .ab-i { color: var(--ink-muted); }
 .um-pop .count { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--ember); color: #fff; font: 800 10.5px/20px var(--font-display); text-align: center; }
-.um-ref { margin: 6px 4px; padding: 10px 12px; border-radius: 14px; border: 1.5px dashed var(--ember); background: var(--ember-soft); display: flex; justify-content: space-between; align-items: center; } .um-ref .mono { font-size: 9.5px; color: var(--ember-ink); } .um-ref b { font: 800 15px var(--font-display); color: var(--ember-ink); letter-spacing: .04em; }
 .um-out { border-top: 1px dashed var(--line); border-radius: 0 0 14px 14px !important; margin-top: 2px; }
 @media (max-width: 680px) { .app-main { padding-bottom: 90px; } .um-pop { right: -48px; width: min(300px, calc(100vw - 24px)); } .home-hi { padding-top: 12px; } }
 .ev-admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
@@ -1774,21 +1775,14 @@ ACT.menu = () => document.body.classList.toggle('nav-open');
 function cartCount() { return S.cart.reduce((a, c) => a + c.qty, 0); }
 const ctaArrow = (label, href, cls = 'primary') => `<a class="ab-btn ${cls} cta" href="${href}">${label}<span class="cta-dot">${ic('arrow-ur', 'sm')}</span></a>`;
 function publicNav(active) {
-  const me = S.role === 'student';
-  const links = me ? [['#/', L('Beranda', 'Home'), 'home'], ['#/app/kompetisi', L('Kompetisi Saya', 'My Competitions'), 'mine'], ['#/kompetisi', 'Event', 'kompetisi'], ['#/app/kursus', L('Belajar', 'Learn'), 'kursus'], ['#/katalog', L('Toko', 'Shop'), 'katalog']]
-    : [['#/kompetisi', 'Event', 'kompetisi'], ['#/program', L('Program', 'Programs'), 'program'], ['#/katalog', L('Toko', 'Shop'), 'katalog']];
+  // One public navbar for everyone; signed-in people get a Dashboard button instead of Masuk | Daftar.
+  const links = [['#/kompetisi', 'Event', 'kompetisi'], ['#/program', L('Program', 'Programs'), 'program'], ['#/katalog', L('Toko', 'Shop'), 'katalog']];
   let right;
-  if (me) {
+  if (S.role === 'student') {
     const live = Object.keys(S.registrations).filter(id => evt(id) && evPhase(evt(id)) === 'live' && !myAttempt(id)?.submitted).length;
     const pend = S.orders.filter(o => o.mine && o.status === 'payment_pending').length;
-    right = `<button class="ab-iconbtn hide-sm" data-act="notifStu" aria-label="Notifikasi">${ic('bell')}<span class="dot"></span></button>
-      <details class="umenu"><summary aria-label="Menu akun">${avatar(S.user.name, 'sm')}<span class="hide-sm">${esc(S.user.name.split(' ')[0])}</span>${pend + live ? `<span class="um-dot">${pend + live}</span>` : ''}${ic('chev-d', 'sm')}</summary>
-        <div class="um-pop"><div class="um-head">${avatar(S.user.name, 'md')}<div><b>${esc(S.user.name)}</b><small>${L('Kelas', 'Grade')} ${esc(S.user.grade)} · ${esc(S.user.school)}</small></div></div>
-          <a href="#/app/tagihan">${ic('receipt', 'sm')}${L("Tagihan", "Billing")}${pend ? `<span class="count">${pend}</span>` : ''}</a>
-          <a href="#/app/profil">${ic('user', 'sm')}${L("Profil & akun", "Profile & account")}</a>
-          <div class="um-ref"><span class="mono">${L("KODE REFERRAL", "REFERRAL CODE")}</span><b>${esc(S.user.referral || 'NADIA26')}</b></div>
-          <a href="#/" data-act="logout" class="um-out">${ic('logout', 'sm')}${L("Keluar", "Log out")}</a></div></details>`;
-  } else if (S.role === 'admin') right = `<a class="ab-btn dark" href="#/admin">${ic('grid', 'sm')}Konsol admin</a>`;
+    right = `<a class="dash-btn" href="#/app">${avatar(S.user.name, 'sm')}<span>Dashboard</span>${pend + live ? `<span class="count" aria-label="${pend + live} ${L('perlu perhatian', 'need attention')}">${pend + live}</span>` : ''}${ic('arrow-r', 'sm')}</a>`;
+  } else if (S.role === 'admin') right = `<a class="dash-btn" href="#/admin">${avatar(ADMIN_NAME, 'sm')}<span>Dashboard</span>${ic('arrow-r', 'sm')}</a>`;
   else right = `<div class="auth-pill"><a href="#/masuk" class="ap-in">${L('Masuk', 'Log in')}</a><a href="#/daftar" class="ap-up">${L('Daftar gratis', 'Sign up free')}<span class="cta-dot">${ic('arrow-ur', 'sm')}</span></a></div>`;
   return `<header class="pubnav-wrap"><nav class="pubnav" aria-label="Utama">
     ${logo()}
