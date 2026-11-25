@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Search, X } from "lucide-react";
+import { Calendar, Search, Users, MapPin, Building2, School, X } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
+import { StatCard } from "@/components/admin/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,17 +35,6 @@ function Sub({ children }: { children: React.ReactNode }) {
   return <div className="mt-0.5 text-xs text-ink-500">{children}</div>;
 }
 
-// Same card shape as ExamRegistrationsTab's RosterSummaryCard, so the exam
-// list's box-summary (review point 2, "seperti di detail") reads as the
-// same component family rather than a one-off.
-function SummaryBox({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
-      <div className="text-sm text-ink-600">{label}</div>
-      <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
-    </div>
-  );
-}
 
 function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions" | "exam_admin_list_sessions_started", n: number) {
   return t(n === 1 ? `${key}_one` : key).replace("{n}", String(n));
@@ -115,6 +105,14 @@ export default function ExamPackagesPage() {
     { q: q || undefined, ...diversityFilterParams },
     hasDiversityFilter,
   );
+  // Review point 2 ("filter belum valid karena yg tidak di filter masih
+  // muncul"): once a diversity filter is active, the table itself narrows
+  // to the exams the filter actually matched — not just the pill/box. The
+  // "pilih ujian" dropdown still lists every loaded exam (items), since it
+  // has to offer exams you haven't filtered to yet.
+  const visibleItems = hasDiversityFilter && diversity.data
+    ? items.filter((exam) => diversityByExamId.has(exam.id))
+    : items;
 
   useEffect(() => {
     if (!data) return;
@@ -168,7 +166,10 @@ export default function ExamPackagesPage() {
         </div>
         {!isLoading && !isError && (
           <span className="shrink-0 text-sm text-ink-500" aria-live="polite">
-            {t("exam_packages_count").replace("{n}", `${items.length}${nextCursor ? "+" : ""}`)}
+            {t("exam_packages_count").replace(
+              "{n}",
+              `${visibleItems.length}${!hasDiversityFilter && nextCursor ? "+" : ""}`,
+            )}
           </span>
         )}
       </div>
@@ -232,10 +233,10 @@ export default function ExamPackagesPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" data-testid="exam-list-diversity-summary">
-        <SummaryBox label={t("exam_roster_stat_total")} value={diversitySummary.data?.registration_count ?? 0} />
-        <SummaryBox label={t("exam_roster_stat_provinces")} value={diversitySummary.data?.province_count ?? 0} />
-        <SummaryBox label={t("exam_roster_stat_cities")} value={diversitySummary.data?.city_count ?? 0} />
-        <SummaryBox label={t("exam_roster_stat_schools")} value={diversitySummary.data?.school_count ?? 0} />
+        <StatCard label={t("exam_roster_stat_total")} value={String(diversitySummary.data?.registration_count ?? 0)} icon={Users} />
+        <StatCard label={t("exam_roster_stat_provinces")} value={String(diversitySummary.data?.province_count ?? 0)} icon={MapPin} accent="secondary" />
+        <StatCard label={t("exam_roster_stat_cities")} value={String(diversitySummary.data?.city_count ?? 0)} icon={Building2} accent="tertiary" />
+        <StatCard label={t("exam_roster_stat_schools")} value={String(diversitySummary.data?.school_count ?? 0)} icon={School} accent="secondary" />
       </div>
 
       {isLoading && (
@@ -253,9 +254,9 @@ export default function ExamPackagesPage() {
       )}
 
       {!isLoading && !isError && (
-        items.length === 0 ? (
+        visibleItems.length === 0 ? (
           <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
-            {t("exam_packages_empty")}
+            {hasDiversityFilter ? t("exam_packages_empty_filtered") : t("exam_packages_empty")}
           </div>
         ) : (
           <div className="overflow-x-auto md-card-outlined">
@@ -270,7 +271,7 @@ export default function ExamPackagesPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((exam) => {
+                {visibleItems.map((exam) => {
                   const composable = exam.format_version === 2;
                   const perSection = composable && exam.timer_mode === "per_test";
                   const access = accessWindow(exam.scheduled_at ?? null, exam.scheduled_end_at ?? null, lang);

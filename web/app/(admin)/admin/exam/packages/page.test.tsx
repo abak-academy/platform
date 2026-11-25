@@ -528,8 +528,8 @@ describe("ExamPackagesPage", () => {
       expect(call[1]).toBe(false);
     }
 
-    fireEvent.click(screen.getByLabelText("Semua Sekolah"));
-    fireEvent.change(screen.getByLabelText("Semua Sekolah"), { target: { value: "sch-1" } });
+    fireEvent.click(screen.getByLabelText("Filter Sekolah"));
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
 
     await waitFor(() => {
       const lastCall = useExamRegistrantDiversitySpy.mock.calls.at(-1);
@@ -550,7 +550,7 @@ describe("ExamPackagesPage", () => {
 
     expect(screen.queryByTestId("exam-row-diversity")).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Semua Sekolah"), { target: { value: "sch-1" } });
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
 
     const diversityBadges = await screen.findAllByTestId("exam-row-diversity");
     expect(diversityBadges).toHaveLength(1);
@@ -577,7 +577,7 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
     await screen.findByText("UTS Matematika");
 
-    fireEvent.change(screen.getByLabelText("Semua Sekolah"), { target: { value: "sch-1" } });
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
 
     await waitFor(() => expect(useExamRegistrantDiversitySpy).toHaveBeenCalled());
     expect(screen.queryByTestId("exam-row-diversity")).not.toBeInTheDocument();
@@ -590,7 +590,7 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
     await screen.findByText("UTS Matematika");
 
-    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Semua Ujian" }), {
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Filter Ujian" }), {
       button: 0,
       ctrlKey: false,
       pointerType: "mouse",
@@ -625,7 +625,7 @@ describe("ExamPackagesPage", () => {
       isLoading: false,
       isError: false,
     };
-    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Semua Ujian" }), {
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Filter Ujian" }), {
       button: 0,
       ctrlKey: false,
       pointerType: "mouse",
@@ -638,5 +638,40 @@ describe("ExamPackagesPage", () => {
       expect(lastCall?.[1]).toBe(true);
       expect(lastCall?.[0]).toMatchObject({ exam_id: "e1" });
     });
+  });
+
+  // Review point 2 ("filter belum valid karena yg tidak di filter masih
+  // muncul"): once a filter is set, the table itself must narrow to only
+  // the exams the filter actually matched — not just the pill/box, with
+  // every other loaded exam still showing as a row.
+  it("hides exam rows the diversity filter did not match, not just their pill", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+    expect(screen.getByText("UAS IPA")).toBeInTheDocument();
+    expect(screen.getByText("Tryout Lama")).toBeInTheDocument();
+
+    diversityState = {
+      data: { data: [{ exam_id: "e1", registration_count: 2, province_count: 1, city_count: 1, school_count: 1 }] },
+      isLoading: false,
+      isError: false,
+    };
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    await waitFor(() => expect(screen.queryByText("UAS IPA")).not.toBeInTheDocument());
+    expect(screen.queryByText("Tryout Lama")).not.toBeInTheDocument();
+    expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+  });
+
+  it("shows a filtered-empty message, not the generic empty message, when no exam matches the filter", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    diversityState = { data: { data: [] }, isLoading: false, isError: false };
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    expect(await screen.findByText("Tidak ada ujian yang cocok dengan filter ini.")).toBeInTheDocument();
+    expect(screen.queryByText("Belum ada ujian")).not.toBeInTheDocument();
   });
 });
