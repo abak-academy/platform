@@ -1198,6 +1198,9 @@ type ExamRegistrantDiversityFilter struct {
 	ProvinceID   *string
 	CityID       *string
 	SchoolID     *string
+	// ExamID narrows to one specific exam (Feature 1/Opsi A's "filter ujian
+	// tertentu") — distinct from SchoolFilter's tenant scoping.
+	ExamID *string
 }
 
 // decodeCardNotes turns the card_notes jsonb column into []string. pgx would
@@ -1494,51 +1497,32 @@ func (r *Repository) ListExamRegistrantDiversity(ctx context.Context, filter Exa
 		}
 	}
 
+	// A LEFT JOIN + GROUP BY, with the diversity filter predicates in WHERE
+	// rather than as correlated-subquery predicates, makes an exam with zero
+	// registrants MATCHING the active filter disappear from the result set
+	// entirely (the registration/school columns are NULL, so an active
+	// province/city/school/exam filter's equality check fails and the row is
+	// dropped) — exactly what "0 sekolah masih muncul ketika filter aktif"
+	// needed fixed, as a consequence of the join shape rather than a bolted-on
+	// HAVING. With no filter active at all, the NULL-joined row still passes
+	// (every predicate's IS NULL branch is true), so an exam with genuinely
+	// zero registrants still shows registration_count=0 as before.
 	query := `SELECT e.id, e.created_at,
-		(
-			SELECT COUNT(*) FROM exam_registration r
-			JOIN users u ON u.id = r.student_id
-			LEFT JOIN school sch ON sch.id = u.school_id
-			WHERE r.exam_id = e.id AND r.status <> 'revoked'
-				AND ($1::uuid IS NULL OR u.school_id = $1)
-				AND ($2::text IS NULL OR sch.provinsi_id = $2)
-				AND ($3::text IS NULL OR sch.kota_id = $3)
-				AND ($4::uuid IS NULL OR u.school_id = $4)
-		) AS registration_count,
-		(
-			SELECT COUNT(DISTINCT sch.provinsi_id) FROM exam_registration r
-			JOIN users u ON u.id = r.student_id
-			LEFT JOIN school sch ON sch.id = u.school_id
-			WHERE r.exam_id = e.id AND r.status <> 'revoked'
-				AND ($1::uuid IS NULL OR u.school_id = $1)
-				AND ($2::text IS NULL OR sch.provinsi_id = $2)
-				AND ($3::text IS NULL OR sch.kota_id = $3)
-				AND ($4::uuid IS NULL OR u.school_id = $4)
-		) AS province_count,
-		(
-			SELECT COUNT(DISTINCT sch.kota_id) FROM exam_registration r
-			JOIN users u ON u.id = r.student_id
-			LEFT JOIN school sch ON sch.id = u.school_id
-			WHERE r.exam_id = e.id AND r.status <> 'revoked'
-				AND ($1::uuid IS NULL OR u.school_id = $1)
-				AND ($2::text IS NULL OR sch.provinsi_id = $2)
-				AND ($3::text IS NULL OR sch.kota_id = $3)
-				AND ($4::uuid IS NULL OR u.school_id = $4)
-		) AS city_count,
-		(
-			SELECT COUNT(DISTINCT u.school_id) FROM exam_registration r
-			JOIN users u ON u.id = r.student_id
-			LEFT JOIN school sch ON sch.id = u.school_id
-			WHERE r.exam_id = e.id AND r.status <> 'revoked'
-				AND ($1::uuid IS NULL OR u.school_id = $1)
-				AND ($2::text IS NULL OR sch.provinsi_id = $2)
-				AND ($3::text IS NULL OR sch.kota_id = $3)
-				AND ($4::uuid IS NULL OR u.school_id = $4)
-		) AS school_count
+		COUNT(r.id) AS registration_count,
+		COUNT(DISTINCT sch.provinsi_id) AS province_count,
+		COUNT(DISTINCT sch.kota_id) AS city_count,
+		COUNT(DISTINCT u.school_id) AS school_count
 	FROM exam e
-	WHERE 1=1`
-	args := []interface{}{filter.SchoolFilter, filter.ProvinceID, filter.CityID, filter.SchoolID}
-	argIdx := 5
+	LEFT JOIN exam_registration r ON r.exam_id = e.id AND r.status <> 'revoked'
+	LEFT JOIN users u ON u.id = r.student_id
+	LEFT JOIN school sch ON sch.id = u.school_id
+	WHERE ($1::uuid IS NULL OR u.school_id = $1)
+		AND ($2::text IS NULL OR sch.provinsi_id = $2)
+		AND ($3::text IS NULL OR sch.kota_id = $3)
+		AND ($4::uuid IS NULL OR u.school_id = $4)
+		AND ($5::uuid IS NULL OR e.id = $5)`
+	args := []interface{}{filter.SchoolFilter, filter.ProvinceID, filter.CityID, filter.SchoolID, filter.ExamID}
+	argIdx := 6
 
 	if filter.Q != "" {
 		query += fmt.Sprintf(` AND e.title ILIKE '%%' || $%d || '%%'`, argIdx)
@@ -1556,7 +1540,7 @@ func (r *Repository) ListExamRegistrantDiversity(ctx context.Context, filter Exa
 		argIdx += 2
 	}
 
-	query += ` ORDER BY e.created_at DESC, e.id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
+	query += ` GROUP BY e.id, e.created_at ORDER BY e.created_at DESC, e.id ASC LIMIT $` + fmt.Sprintf("%d", argIdx)
 	args = append(args, filter.Limit+1)
 
 	rows, err := r.pool.Query(ctx, query, args...)
@@ -1592,6 +1576,47 @@ func (r *Repository) ListExamRegistrantDiversity(ctx context.Context, filter Exa
 	}
 
 	return items, nextCursor, nil
+}
+
+// AggregateExamRegistrantDiversity is ListExamRegistrantDiversity's box-summary
+// counterpart: one row across every exam matching Q/Status/ExamID and the
+// province/city/school filter, not a per-exam breakdown — Cursor/Limit are
+// ignored (there is no pagination over one row).
+func (r *Repository) AggregateExamRegistrantDiversity(ctx context.Context, filter ExamRegistrantDiversityFilter) (model.ExamRegistrantDiversitySummary, error) {
+	query := `SELECT COUNT(r.id) AS registration_count,
+		COUNT(DISTINCT sch.provinsi_id) AS province_count,
+		COUNT(DISTINCT sch.kota_id) AS city_count,
+		COUNT(DISTINCT u.school_id) AS school_count
+	FROM exam e
+	LEFT JOIN exam_registration r ON r.exam_id = e.id AND r.status <> 'revoked'
+	LEFT JOIN users u ON u.id = r.student_id
+	LEFT JOIN school sch ON sch.id = u.school_id
+	WHERE ($1::uuid IS NULL OR u.school_id = $1)
+		AND ($2::text IS NULL OR sch.provinsi_id = $2)
+		AND ($3::text IS NULL OR sch.kota_id = $3)
+		AND ($4::uuid IS NULL OR u.school_id = $4)
+		AND ($5::uuid IS NULL OR e.id = $5)`
+	args := []interface{}{filter.SchoolFilter, filter.ProvinceID, filter.CityID, filter.SchoolID, filter.ExamID}
+	argIdx := 6
+
+	if filter.Q != "" {
+		query += fmt.Sprintf(` AND e.title ILIKE '%%' || $%d || '%%'`, argIdx)
+		args = append(args, filter.Q)
+		argIdx++
+	}
+	if filter.Status != "" {
+		query += fmt.Sprintf(` AND e.status = $%d`, argIdx)
+		args = append(args, filter.Status)
+	}
+
+	var summary model.ExamRegistrantDiversitySummary
+	err := r.pool.QueryRow(ctx, query, args...).Scan(
+		&summary.RegistrationCount, &summary.ProvinceCount, &summary.CityCount, &summary.SchoolCount,
+	)
+	if err != nil {
+		return model.ExamRegistrantDiversitySummary{}, err
+	}
+	return summary, nil
 }
 
 // ListExamMonitorCandidates returns the scheduling fields of every scheduled exam, for

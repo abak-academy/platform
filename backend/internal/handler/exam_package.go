@@ -62,16 +62,13 @@ func (h *Handler) AdminListExams(c echo.Context) error {
 // least one of the three filters is required rather than left to default to
 // an unscoped (and expensive) computation on every list load.
 func (h *Handler) AdminListExamRegistrantDiversity(c echo.Context) error {
-	provinceID := c.QueryParam("province_id")
-	cityID := c.QueryParam("city_id")
-	schoolID := c.QueryParam("school_id")
-	if provinceID == "" && cityID == "" && schoolID == "" {
-		return badRequest(c, "at least one of province_id, city_id, or school_id is required")
-	}
-	if schoolID != "" {
-		if _, err := uuid.Parse(schoolID); err != nil {
-			return badRequest(c, "invalid school_id")
-		}
+	// filter is nil exactly when bindExamRegistrantDiversityFilter already
+	// wrote an error response (c.JSON/badRequest return nil on a successful
+	// write, so checking the returned error here would miss that and panic
+	// on the nil filter below).
+	filter := bindExamRegistrantDiversityFilter(c)
+	if filter == nil {
+		return nil
 	}
 	limit := 20
 	if l := c.QueryParam("limit"); l != "" {
@@ -79,24 +76,85 @@ func (h *Handler) AdminListExamRegistrantDiversity(c echo.Context) error {
 			limit = n
 		}
 	}
+	filter.Cursor = c.QueryParam("cursor")
+	filter.Limit = limit
+	filter.Q = c.QueryParam("q")
+	filter.Status = c.QueryParam("status")
+
+	items, nextCursor, err := h.svc.ListExamRegistrantDiversity(c.Request().Context(), *filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"data":        items,
+		"next_cursor": nextCursor,
+	})
+}
+
+// AdminExamRegistrantDiversitySummary is the box-summary counterpart to
+// AdminListExamRegistrantDiversity (Feature 1/Opsi A review fix): one
+// aggregate across every matching exam rather than a per-exam breakdown.
+// A true distinct province/city/school count across several exams cannot be
+// derived by summing their individual distinct counts (the same province can
+// recur across exams), so it needs its own query rather than reducing the
+// list response client-side.
+func (h *Handler) AdminExamRegistrantDiversitySummary(c echo.Context) error {
+	filter := bindExamRegistrantDiversityFilter(c)
+	if filter == nil {
+		return nil
+	}
+	filter.Q = c.QueryParam("q")
+	filter.Status = c.QueryParam("status")
+
+	summary, err := h.svc.AggregateExamRegistrantDiversity(c.Request().Context(), *filter)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, summary)
+}
+
+// bindExamRegistrantDiversityFilter parses the query params shared by the
+// Opsi A list and summary endpoints: province_id/city_id/school_id/exam_id,
+// at least one required, plus the admin_school tenant scope. Cursor/limit/q/
+// status are left for the caller to fill in since the summary endpoint has
+// no pagination. Returns nil once it has already written an error response
+// (badRequest/c.JSON return nil on a successful write, so the caller must
+// check the filter itself, not a returned error, to know whether to stop).
+func bindExamRegistrantDiversityFilter(c echo.Context) *repository.ExamRegistrantDiversityFilter {
+	provinceID := c.QueryParam("province_id")
+	cityID := c.QueryParam("city_id")
+	schoolID := c.QueryParam("school_id")
+	examID := c.QueryParam("exam_id")
+	if provinceID == "" && cityID == "" && schoolID == "" && examID == "" {
+		_ = badRequest(c, "at least one of province_id, city_id, school_id, or exam_id is required")
+		return nil
+	}
+	if schoolID != "" {
+		if _, err := uuid.Parse(schoolID); err != nil {
+			_ = badRequest(c, "invalid school_id")
+			return nil
+		}
+	}
+	if examID != "" {
+		if _, err := uuid.Parse(examID); err != nil {
+			_ = badRequest(c, "invalid exam_id")
+			return nil
+		}
+	}
 	claims := claimsFromContext(c)
 	if claims == nil || claims.Sub == "" {
-		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+		_ = c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+		return nil
 	}
 	var schoolFilter *string
 	if claims.Role == "admin_school" {
 		if claims.SchoolID == nil {
-			return c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+			_ = c.JSON(http.StatusForbidden, APIError{Code: "forbidden", Message: "missing school scope"})
+			return nil
 		}
 		schoolFilter = claims.SchoolID
 	}
-	filter := repository.ExamRegistrantDiversityFilter{
-		Cursor:       c.QueryParam("cursor"),
-		Limit:        limit,
-		Q:            c.QueryParam("q"),
-		Status:       c.QueryParam("status"),
-		SchoolFilter: schoolFilter,
-	}
+	filter := &repository.ExamRegistrantDiversityFilter{SchoolFilter: schoolFilter}
 	if provinceID != "" {
 		filter.ProvinceID = &provinceID
 	}
@@ -106,15 +164,10 @@ func (h *Handler) AdminListExamRegistrantDiversity(c echo.Context) error {
 	if schoolID != "" {
 		filter.SchoolID = &schoolID
 	}
-
-	items, nextCursor, err := h.svc.ListExamRegistrantDiversity(c.Request().Context(), filter)
-	if err != nil {
-		return mapServiceError(c, err)
+	if examID != "" {
+		filter.ExamID = &examID
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{
-		"data":        items,
-		"next_cursor": nextCursor,
-	})
+	return filter
 }
 
 func (h *Handler) AdminCreateExam(c echo.Context) error {

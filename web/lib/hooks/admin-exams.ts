@@ -47,16 +47,20 @@ export const adminExamsKeys = {
 // Shared by the roster-counts endpoint (Opsi B, always-on) and the exam-list
 // endpoint (Opsi A, on-demand) — province_id/city_id/school_id narrow by the
 // registrant's school, distinct from AdminExamsFilters' own q/status.
+// exam_id (Opsi A review fix) narrows to one specific exam; Opsi B is already
+// scoped to one exam by URL, so it never sets this field.
 export interface RegistrantDiversityFilter {
   province_id?: string;
   city_id?: string;
   school_id?: string;
+  exam_id?: string;
 }
 
 function appendRegistrantDiversityParams(params: URLSearchParams, filter?: RegistrantDiversityFilter) {
   if (filter?.province_id) params.set("province_id", filter.province_id);
   if (filter?.city_id) params.set("city_id", filter.city_id);
   if (filter?.school_id) params.set("school_id", filter.school_id);
+  if (filter?.exam_id) params.set("exam_id", filter.exam_id);
 }
 
 export interface GradeEssayInput {
@@ -366,11 +370,14 @@ export interface ExamRegistrantDiversityItem {
 // Opsi A: a separate, on-demand endpoint — never called without at least one
 // of province_id/city_id/school_id, so the exam list's eager load never pays
 // for this. `enabled` must stay false until the admin sets a filter.
+export function hasRegistrantDiversityFilter(filter: RegistrantDiversityFilter): boolean {
+  return Boolean(filter.province_id || filter.city_id || filter.school_id || filter.exam_id);
+}
+
 export function useExamRegistrantDiversity(
   filter: AdminExamsFilters & RegistrantDiversityFilter,
   enabled: boolean,
 ) {
-  const hasFilter = Boolean(filter.province_id || filter.city_id || filter.school_id);
   return useQuery({
     queryKey: adminExamsKeys.registrantDiversity(filter),
     queryFn: () => {
@@ -384,7 +391,36 @@ export function useExamRegistrantDiversity(
         `/admin/exams/registrant-diversity?${params.toString()}`,
       );
     },
-    enabled: enabled && hasFilter,
+    enabled: enabled && hasRegistrantDiversityFilter(filter),
+  });
+}
+
+export interface ExamRegistrantDiversitySummary {
+  registration_count: number;
+  province_count: number;
+  city_count: number;
+  school_count: number;
+}
+
+// Opsi A's box-summary (review point 2): one aggregate across every exam
+// matching the filter — "0" by default (not fetched) until a filter is set,
+// then the real counted numbers, mirroring the Registrasi tab's cards.
+export function useExamRegistrantDiversitySummary(
+  filter: Pick<AdminExamsFilters, "q" | "status"> & RegistrantDiversityFilter,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [...adminExamsKeys.all, "registrant-diversity-summary", filter] as const,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filter.q) params.set("q", filter.q);
+      if (filter.status) params.set("status", filter.status);
+      appendRegistrantDiversityParams(params, filter);
+      return authFetch<ExamRegistrantDiversitySummary>(
+        `/admin/exams/registrant-diversity/summary?${params.toString()}`,
+      );
+    },
+    enabled: enabled && hasRegistrantDiversityFilter(filter),
   });
 }
 

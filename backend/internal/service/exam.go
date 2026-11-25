@@ -1535,6 +1535,10 @@ func (s *Service) ListExamRegistrantDiversity(ctx context.Context, filter reposi
 	return s.storeRepo.ListExamRegistrantDiversity(ctx, filter)
 }
 
+func (s *Service) AggregateExamRegistrantDiversity(ctx context.Context, filter repository.ExamRegistrantDiversityFilter) (model.ExamRegistrantDiversitySummary, error) {
+	return s.storeRepo.AggregateExamRegistrantDiversity(ctx, filter)
+}
+
 func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([]model.RegistrationListItem, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {

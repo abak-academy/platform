@@ -17,7 +17,12 @@ import {
 } from "@/components/ui/select";
 import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
-import { useExams, useExamRegistrantDiversity } from "@/lib/hooks/admin-exams";
+import {
+  useExams,
+  useExamRegistrantDiversity,
+  useExamRegistrantDiversitySummary,
+  hasRegistrantDiversityFilter,
+} from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
@@ -27,6 +32,18 @@ import type { ExamListItem } from "@/lib/types";
 
 function Sub({ children }: { children: React.ReactNode }) {
   return <div className="mt-0.5 text-xs text-ink-500">{children}</div>;
+}
+
+// Same card shape as ExamRegistrationsTab's RosterSummaryCard, so the exam
+// list's box-summary (review point 2, "seperti di detail") reads as the
+// same component family rather than a one-off.
+function SummaryBox({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
+      <div className="text-sm text-ink-600">{label}</div>
+      <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
+    </div>
+  );
 }
 
 function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions" | "exam_admin_list_sessions_started", n: number) {
@@ -70,17 +87,21 @@ export default function ExamPackagesPage() {
   const [provinceFilter, setProvinceFilter] = useState("");
   const [cityFilter, setCityFilter] = useState("");
   const [schoolFilter, setSchoolFilter] = useState("");
+  // "Ujian tertentu" (review point 3): narrows the box-summary and the
+  // per-row pills to one exam. Populated from the exams already loaded on
+  // this page, not a separate full fetch.
+  const [examFilter, setExamFilter] = useState("");
   const { data: provinces } = useProvinces();
   const { data: cities } = useCitiesByProvince(provinceFilter || null);
-  const hasDiversityFilter = Boolean(provinceFilter || cityFilter || schoolFilter);
+  const diversityFilterParams = {
+    province_id: provinceFilter || undefined,
+    city_id: cityFilter || undefined,
+    school_id: schoolFilter || undefined,
+    exam_id: examFilter || undefined,
+  };
+  const hasDiversityFilter = hasRegistrantDiversityFilter(diversityFilterParams);
   const diversity = useExamRegistrantDiversity(
-    {
-      q: q || undefined,
-      limit: 100,
-      province_id: provinceFilter || undefined,
-      city_id: cityFilter || undefined,
-      school_id: schoolFilter || undefined,
-    },
+    { q: q || undefined, limit: 100, ...diversityFilterParams },
     hasDiversityFilter,
   );
   const diversityByExamId = useMemo(() => {
@@ -88,6 +109,12 @@ export default function ExamPackagesPage() {
     for (const item of diversity.data?.data ?? []) map.set(item.exam_id, item);
     return map;
   }, [diversity.data]);
+  // Box summary (review point 2): one aggregate across every matching exam,
+  // "0" by default until a filter is set, then the real counted numbers.
+  const diversitySummary = useExamRegistrantDiversitySummary(
+    { q: q || undefined, ...diversityFilterParams },
+    hasDiversityFilter,
+  );
 
   useEffect(() => {
     if (!data) return;
@@ -188,6 +215,27 @@ export default function ExamPackagesPage() {
           compact
           className="w-[200px]"
         />
+        <Select
+          value={examFilter || "__all__"}
+          onValueChange={(v) => setExamFilter(v === "__all__" ? "" : v)}
+        >
+          <SelectTrigger className="h-9 w-[220px] text-xs" aria-label={t("exam_packages_filter_exam")}>
+            <SelectValue placeholder={t("exam_packages_filter_exam")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_packages_filter_exam")}</SelectItem>
+            {items.map((exam) => (
+              <SelectItem key={exam.id} value={exam.id}>{exam.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" data-testid="exam-list-diversity-summary">
+        <SummaryBox label={t("exam_roster_stat_total")} value={diversitySummary.data?.registration_count ?? 0} />
+        <SummaryBox label={t("exam_roster_stat_provinces")} value={diversitySummary.data?.province_count ?? 0} />
+        <SummaryBox label={t("exam_roster_stat_cities")} value={diversitySummary.data?.city_count ?? 0} />
+        <SummaryBox label={t("exam_roster_stat_schools")} value={diversitySummary.data?.school_count ?? 0} />
       </div>
 
       {isLoading && (
@@ -260,8 +308,13 @@ export default function ExamPackagesPage() {
                         </Sub>
                         {/* Only rendered once the admin sets a diversity
                             filter — never on a plain page load, per Feature
-                            1/Opsi A's lazy design. */}
-                        {hasDiversityFilter && diversityByExamId.has(exam.id) && (
+                            1/Opsi A's lazy design. registration_count > 0
+                            guards against an exam the backend still returned
+                            with nothing matching the filter (review point 1,
+                            "0 sekolah masih muncul"); the backend excludes
+                            those now, this is defense in depth. */}
+                        {hasDiversityFilter &&
+                          (diversityByExamId.get(exam.id)?.registration_count ?? 0) > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1" data-testid="exam-row-diversity">
                             {(() => {
                               const d = diversityByExamId.get(exam.id)!;

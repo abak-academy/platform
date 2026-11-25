@@ -339,6 +339,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminExamsRead.Use(handler.RBACMiddleware("products(exam):read"))
 	adminExamsRead.GET("", h.AdminListExams)
 	adminExamsRead.GET("/registrant-diversity", h.AdminListExamRegistrantDiversity)
+	adminExamsRead.GET("/registrant-diversity/summary", h.AdminExamRegistrantDiversitySummary)
 	adminExamsRead.GET("/:id", h.AdminGetExam)
 	adminExamsRead.GET("/:id/registrations", h.AdminListExamRegistrations)
 	adminExamsRead.GET("/:id/registrations/counts", h.AdminExamRegistrationCounts)

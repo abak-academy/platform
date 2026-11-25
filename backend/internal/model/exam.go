@@ -541,6 +541,18 @@ type ExamRegistrantDiversityItem struct {
 	SchoolCount       int       `json:"school_count"`
 }
 
+// ExamRegistrantDiversitySummary is the box-summary counterpart to
+// ExamRegistrantDiversityItem (GET /admin/exams/registrant-diversity/summary):
+// one aggregate across every exam matching the filter, not a per-exam row —
+// a true distinct province/city/school count across several exams can't be
+// derived by summing their individual distinct counts.
+type ExamRegistrantDiversitySummary struct {
+	RegistrationCount int `json:"registration_count"`
+	ProvinceCount     int `json:"province_count"`
+	CityCount         int `json:"city_count"`
+	SchoolCount       int `json:"school_count"`
+}
+
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the
 // gate discriminator ("hidden" | "grading" | "locked" | "result"); the remaining fields are
 // populated per state (score/counts/rank always on "result"; breakdown/pembahasan only on

@@ -163,3 +163,96 @@ func TestAdminExamRegistrationCountsAndRoster_ProvinceFilterStayConsistent(t *te
 		t.Fatalf("filtered roster student_id: want %s, got %v", inStudent.String(), got)
 	}
 }
+
+// Review point 3 ("filter by ujian belum ada"): exam_id on its own satisfies
+// the "at least one filter" requirement and narrows the list to that exam.
+func TestAdminListExamRegistrantDiversity_ExamIDFilterAlonePasses(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "ExamID Filter Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+
+	examID := seedExam(t, env.pool, "ExamID Filter Exam", false, "hidden", "classic")
+	student := seedUser(t, env.pool, service.RoleStudent, "ExamID Filter Student")
+	seedRegistration(t, env.pool, student, examID)
+
+	rec := getRequest(t, env.e, "/api/v1/admin/exams/registrant-diversity?exam_id="+examID.String(), token)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data []struct {
+			ExamID string `json:"exam_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(resp.Data) != 1 || resp.Data[0].ExamID != examID.String() {
+		t.Fatalf("want exactly the filtered exam, got %+v", resp.Data)
+	}
+}
+
+// Review point 2 ("box jumlah/pendaftar/sekolah/kota seperti di detail"): the
+// summary endpoint returns one aggregate row, requires a filter the same way
+// the list endpoint does, and aggregates distinct counts across exams rather
+// than summing each exam's own distinct count.
+func TestAdminExamRegistrantDiversitySummary(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+
+	t.Run("no filter returns 400", func(t *testing.T) {
+		admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Summary No Filter Admin")
+		token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/registrant-diversity/summary", token)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("aggregates distinct counts across exams sharing a province", func(t *testing.T) {
+		schoolA := seedSchool(t, env.pool)
+		setSchoolLocation(t, env, schoolA, "11", "1101")
+		schoolB := seedSchool(t, env.pool)
+		setSchoolLocation(t, env, schoolB, "11", "1102")
+
+		admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Summary Admin")
+		token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+
+		exam1 := seedExam(t, env.pool, "Summary Exam 1", false, "hidden", "classic")
+		exam2 := seedExam(t, env.pool, "Summary Exam 2", false, "hidden", "classic")
+
+		studentA := seedUser(t, env.pool, service.RoleStudent, "Summary Student A")
+		studentB := seedUser(t, env.pool, service.RoleStudent, "Summary Student B")
+		if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, schoolA, studentA); err != nil {
+			t.Fatalf("set user school: %v", err)
+		}
+		if _, err := env.pool.Exec(ctx, `UPDATE users SET school_id = $1 WHERE id = $2`, schoolB, studentB); err != nil {
+			t.Fatalf("set user school: %v", err)
+		}
+		seedRegistration(t, env.pool, studentA, exam1)
+		seedRegistration(t, env.pool, studentB, exam2)
+
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/registrant-diversity/summary?province_id=11", token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		var summary struct {
+			RegistrationCount int `json:"registration_count"`
+			ProvinceCount     int `json:"province_count"`
+			CityCount         int `json:"city_count"`
+			SchoolCount       int `json:"school_count"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &summary); err != nil {
+			t.Fatalf("decode summary: %v", err)
+		}
+		if summary.RegistrationCount != 2 {
+			t.Fatalf("registration_count: want 2, got %d", summary.RegistrationCount)
+		}
+		if summary.ProvinceCount != 1 {
+			t.Fatalf("province_count: want 1 (both schools share province 11), got %d", summary.ProvinceCount)
+		}
+		if summary.CityCount != 2 || summary.SchoolCount != 2 {
+			t.Fatalf("city/school count: want 2/2, got %d/%d", summary.CityCount, summary.SchoolCount)
+		}
+	})
+}

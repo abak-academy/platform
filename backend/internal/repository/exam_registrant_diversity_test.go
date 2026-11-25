@@ -150,3 +150,145 @@ func TestListExamRegistrantDiversity_PerExamCountsScopedToFilter(t *testing.T) {
 	require.Equal(t, 1, exam2Item.ProvinceCount)
 	require.Equal(t, 1, exam2Item.SchoolCount)
 }
+
+// TestListExamRegistrantDiversity_ExcludesExamsWithNoMatchingRegistrant is
+// the review-reported bug ("ada yg 0 sekolah masih muncul ketika filter
+// aktif"): an exam whose only registrants are OUTSIDE the active filter must
+// not appear in the result at all — not appear with zero counts.
+func TestListExamRegistrantDiversity_ExcludesExamsWithNoMatchingRegistrant(t *testing.T) {
+	pool := newPristineTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	schoolInFilter := insertSchoolWithLocation(t, pool, "Diversity Zero School In", "divzero-in", "11", "1101")
+	schoolOutOfFilter := insertSchoolWithLocation(t, pool, "Diversity Zero School Out", "divzero-out", "12", "1201")
+
+	var examMatching, examNonMatching, examNoRegistrants uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity Zero Exam Matching', 'draft') RETURNING id`,
+	).Scan(&examMatching))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity Zero Exam Non-matching', 'draft') RETURNING id`,
+	).Scan(&examNonMatching))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity Zero Exam No Registrants', 'draft') RETURNING id`,
+	).Scan(&examNoRegistrants))
+
+	studentIn := insertSchoolUser(t, pool, "student", "Matching Student", schoolInFilter)
+	studentOut := insertSchoolUser(t, pool, "student", "Non-matching Student", schoolOutOfFilter)
+
+	_, err := pool.Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3)`,
+		studentIn, examMatching, uuid.NewString(),
+	)
+	require.NoError(t, err)
+	_, err = pool.Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3)`,
+		studentOut, examNonMatching, uuid.NewString(),
+	)
+	require.NoError(t, err)
+	// examNoRegistrants gets no registration rows at all.
+
+	provinceFilter := "11"
+	items, _, err := repo.ListExamRegistrantDiversity(ctx, ExamRegistrantDiversityFilter{
+		Limit:      10,
+		ProvinceID: &provinceFilter,
+	})
+	require.NoError(t, err)
+
+	byExam := map[uuid.UUID]model.ExamRegistrantDiversityItem{}
+	for _, item := range items {
+		byExam[item.ExamID] = item
+	}
+
+	_, matchingPresent := byExam[examMatching]
+	require.True(t, matchingPresent, "exam with a filter-matching registrant must appear")
+
+	_, nonMatchingPresent := byExam[examNonMatching]
+	require.False(t, nonMatchingPresent, "exam whose only registrant is outside the filter must not appear at all")
+
+	_, noRegistrantsPresent := byExam[examNoRegistrants]
+	require.False(t, noRegistrantsPresent, "exam with zero registrants must not appear once a filter is active")
+}
+
+// TestListExamRegistrantDiversity_ExamIDFilterNarrowsToOneExam proves the
+// review-requested "filter ujian tertentu" (Opsi A, point 3): passing
+// ExamID returns only that exam, even though it would otherwise also match
+// the province filter alongside other exams.
+func TestListExamRegistrantDiversity_ExamIDFilterNarrowsToOneExam(t *testing.T) {
+	pool := newPristineTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	school := insertSchoolWithLocation(t, pool, "Diversity ExamID School", "divexamid", "11", "1101")
+
+	var exam1, exam2 uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity ExamID Exam 1', 'draft') RETURNING id`,
+	).Scan(&exam1))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity ExamID Exam 2', 'draft') RETURNING id`,
+	).Scan(&exam2))
+
+	student1 := insertSchoolUser(t, pool, "student", "ExamID Student 1", school)
+	student2 := insertSchoolUser(t, pool, "student", "ExamID Student 2", school)
+	for studentID, examID := range map[uuid.UUID]uuid.UUID{student1: exam1, student2: exam2} {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3)`,
+			studentID, examID, uuid.NewString(),
+		)
+		require.NoError(t, err)
+	}
+
+	provinceFilter := "11"
+	exam1Str := exam1.String()
+	items, _, err := repo.ListExamRegistrantDiversity(ctx, ExamRegistrantDiversityFilter{
+		Limit:      10,
+		ProvinceID: &provinceFilter,
+		ExamID:     &exam1Str,
+	})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, exam1, items[0].ExamID)
+}
+
+// TestAggregateExamRegistrantDiversity_TrueDistinctAcrossExams proves the
+// box-summary (review point 2) computes a TRUE distinct province/city/school
+// count across every matching exam, not a sum of each exam's own distinct
+// count — two exams sharing the same province must count that province once.
+func TestAggregateExamRegistrantDiversity_TrueDistinctAcrossExams(t *testing.T) {
+	pool := newPristineTestPool(t)
+	repo := New(pool)
+	ctx := context.Background()
+
+	schoolA := insertSchoolWithLocation(t, pool, "Diversity Agg School A", "divagg-a", "11", "1101")
+	schoolB := insertSchoolWithLocation(t, pool, "Diversity Agg School B", "divagg-b", "11", "1102")
+
+	var exam1, exam2 uuid.UUID
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity Agg Exam 1', 'draft') RETURNING id`,
+	).Scan(&exam1))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO exam (title, status) VALUES ('Diversity Agg Exam 2', 'draft') RETURNING id`,
+	).Scan(&exam2))
+
+	studentA := insertSchoolUser(t, pool, "student", "Agg Student A", schoolA)
+	studentB := insertSchoolUser(t, pool, "student", "Agg Student B", schoolB)
+	for studentID, examID := range map[uuid.UUID]uuid.UUID{studentA: exam1, studentB: exam2} {
+		_, err := pool.Exec(ctx,
+			`INSERT INTO exam_registration (student_id, exam_id, token) VALUES ($1, $2, $3)`,
+			studentID, examID, uuid.NewString(),
+		)
+		require.NoError(t, err)
+	}
+
+	provinceFilter := "11"
+	summary, err := repo.AggregateExamRegistrantDiversity(ctx, ExamRegistrantDiversityFilter{
+		ProvinceID: &provinceFilter,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, summary.RegistrationCount, "one registrant on each of the two exams")
+	require.Equal(t, 1, summary.ProvinceCount, "both schools share province 11 — must count once, not twice")
+	require.Equal(t, 2, summary.CityCount)
+	require.Equal(t, 2, summary.SchoolCount)
+}
