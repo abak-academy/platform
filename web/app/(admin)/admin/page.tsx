@@ -324,7 +324,7 @@ export default function AdminIndexPage() {
     <div className="fade-in flex flex-col gap-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="type-h1">{`${greeting}, ${name.split(" ")[0]}`}</h1>
+          <h1 className="type-h1 text-ink-900">{`${greeting}, ${name.split(" ")[0]}`}</h1>
           <p className="type-body-sm text-ink-600">{`${today} · ${t("admin_home_overview_suffix")}`}</p>
         </div>
         <Button asChild>

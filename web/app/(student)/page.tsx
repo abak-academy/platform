@@ -65,10 +65,7 @@ export default function DashboardPage() {
           <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-5">
             <div
               className="relative overflow-hidden rounded-xl lg:col-span-3"
-              style={{
-                background:
-                  "linear-gradient(135deg, var(--color-brand-600) 0%, var(--color-brand-800) 100%)",
-              }}
+              style={{ background: "var(--gradient-hero)" }}
             >
               <div className="flex h-full flex-col justify-between p-6 md:p-8">
                 <div>
