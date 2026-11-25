@@ -44,6 +44,12 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 
 ## Agreed behavior (Panca, 2026-11-25)
 
+> **Update 2026-11-26 (Panca, prototype review). Overrides the text below where they conflict.**
+> - **Beranda "Dari Toko" section** (last on the page): up to 4 published Toko items the student does not own yet (courses not enrolled, books, merchandise, medals; no competitions, the carousel covers those; out-of-stock physical items skipped), as the Toko product card, with a "Ke toko →" link to the public `/catalog`. Hidden when nothing qualifies.
+> - **Language toggle** moves into the sidebar user menu as a row "Bahasa · ID | EN" (between the theme item and Profil & akun). The page header stays free of icons.
+> - **Logged-in cart** (`/cart`) renders inside the student sidebar shell, like Tagihan.
+> - **Layout** follows `design-tokens-v2.md` on every student page: content max 1480px centered, 32px gutter (16px below 680px). No referral card in the sidebar.
+
 ### 1. Shell
 - Student pages render the PR 1 sidebar shell (admin prototype style). Sidebar items, one ungrouped list: **Beranda** `/` · **Kompetisi** `/exam` (count) · **Kursus Saya** `/courses` · **Tagihan** `/orders` (count). No Katalog/Toko, no Profil.
   - Kompetisi count = registrations whose `computeCardState` is `start`, `checkin`, or `in_progress` (actionable now). Tagihan count = orders with `status === "payment_pending"`. A zero count renders nothing.

@@ -46,6 +46,8 @@ Outcome: admin pages render with v2 tokens; the sidebar is the prototype's group
 
 ## Agreed behavior
 
+> **Update 2026-11-26 (Panca):** the language toggle moves out of the header into the sidebar user menu as a row "Bahasa · ID | EN" (after "Akun & peran"), for admin and student alike. The admin header keeps only theme and bell; this replaces the earlier inferred "language toggle stays in the header".
+
 From the roadmap decisions of 2026-11-17 and the brief for this PR. Items marked *(inferred)* are mine and are repeated under Decisions needed where they are real choices.
 
 **Tokens (phase 1).** Exactly `design-tokens-v2.md` (the in-repo copy of the design system's `tokens.json`, updated 2026-11-26): the full colour set with the terracotta family named `ember-*` + `on-ember` (D3), the twelve type styles with Plus Jakarta Sans as `--font-display`, spacing steps, radius tokens with the `--r-sm/md/lg` repoint 9/13/18 → 10/14/20 (D14), shadows, layout/size/z tokens, motion, reduced motion, and the primitive table incl. `Dialog size="wide"` (820px, student R6). The 50/30/20 usage rule holds: ember only for primary CTAs, highlights, live badges, counts; brand for selection, navigation, focus. Admin pages follow through the MD3 bridge (D2 = a).
