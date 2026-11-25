@@ -195,6 +195,15 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .floater.c-ember { color: var(--ember-bright); background: none; } .floater.c-teal { color: var(--teal); background: none; } .floater.c-gold { color: var(--gold); background: none; } .floater.c-sky { color: var(--sky); background: none; } .floater.c-berry { color: var(--berry); background: none; } .floater.c-navy { color: var(--navy-ink); background: none; }
 .floater.light { color: rgba(255, 255, 255, .28); font-size: 64px; }
 @keyframes float { 50% { transform: translateY(-12px) rotate(calc(var(--r) * -1)); } }
+.hero-stage { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 34px 0 44px; }
+.hero-stage .kicker, .hero-stage .lede, .hero-stage .cta-row { position: relative; z-index: 1; } .hero-stage .lede { margin-inline: auto; } .hero-stage .cta-row { justify-content: center; }
+.hs-title { position: relative; z-index: 1; font: 800 clamp(44px, 6.4vw, 92px)/1 var(--font-display) !important; letter-spacing: -0.05em; margin: 22px 0 18px; text-wrap: balance; max-width: 15ch; }
+.hs-rot { position: relative; display: inline-grid; vertical-align: bottom; color: var(--ember-ink); transition: width .5s var(--ease); text-align: left; }
+.hs-words { display: grid; overflow: hidden; padding-bottom: .08em; } .hs-words > span { grid-area: 1 / 1; white-space: nowrap; transform: translateY(105%); opacity: 0; transition: transform .55s var(--ease), opacity .55s var(--ease); width: max-content; } .hs-words > span.on { transform: none; opacity: 1; } .hs-words > span.out { transform: translateY(-105%); opacity: 0; }
+.hs-rot .squiggle { bottom: -12px; }
+.hs-floaters .floater { font-size: 52px; }
+@media (max-width: 760px) { .hs-title { font-size: clamp(34px, 10vw, 44px) !important; } .hs-title .nw { white-space: normal; } .hs-floaters { display: none; } }
+@media (prefers-reduced-motion: reduce) { .hs-rot { transition: none; } .hs-words > span { transition: none; } }
 .hero-grid { position: relative; display: grid; grid-template-columns: 1.05fr 1fr; gap: 48px; align-items: center; padding: 30px 0 50px; }
 .kicker { display: inline-flex; align-items: center; gap: 10px; padding: 5px 12px 5px 5px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow-card); font: 600 13px var(--font-display); color: var(--ink-2); text-decoration: none; max-width: 100%; }
 .hero h1 { font: 800 clamp(42px, 5.4vw, 72px)/1.02 var(--font-display); letter-spacing: -0.045em; margin: 22px 0 18px; }
@@ -980,6 +989,50 @@ button.opt:hover, .sres:hover { border-color: var(--brand); }
 .ev-card-stats { display: flex; gap: 14px; font-size: 12.5px; color: var(--ink-muted); padding: 8px 0; border-top: 1px dashed var(--line); } .ev-card-stats b { color: var(--ink); font-family: var(--font-display); }
 .ev-card .row-wrap { justify-content: space-between; }
 .ev-prev { display: flex; align-items: center; gap: 12px; padding: 14px; border-radius: 18px; background: linear-gradient(120deg, var(--a), var(--b)); color: #fff; } .ev-prev svg { width: 56px; height: 56px; } .ev-prev b { font: 800 20px var(--font-display); }
+
+/* ===== Landing hero: photo background ===== */
+.hero.hero-photo { --nav-h: 78px; margin-top: calc(-1 * var(--nav-h)); padding-top: var(--nav-h); min-height: min(980px, 100svh); display: flex; flex-direction: column; justify-content: center; background: #0b1620; color: #fff; overflow: hidden; isolation: isolate; }
+.hero-photo .hero-stage { padding: 48px 0 170px; transform: translateY(calc(var(--py, 0px) * .4)); opacity: var(--fade, 1); }
+.hp-bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; }
+.hp-img { position: absolute; inset: -6% -3% 0; background: url(hero-award.webp) no-repeat 50% 100% / cover; transform: translate3d(calc(var(--dx, 0) * -14px), calc(var(--py, 0px) + var(--dy, 0) * -10px), 0) scale(1.04); transition: transform .25s linear; }
+.hp-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(8, 14, 22, .82) 0%, rgba(8, 14, 22, .55) 34%, rgba(8, 14, 22, .5) 58%, rgba(8, 14, 22, .62) 72%, color-mix(in srgb, var(--canvas) 55%, rgba(8, 14, 22, .6)) 86%, var(--canvas) 100%); }
+.hp-spot { position: absolute; inset: 0; z-index: 1; background: radial-gradient(520px circle at var(--mx, 50%) var(--my, 35%), rgba(255, 255, 255, .13), transparent 62%); transition: background-position .2s; pointer-events: none; }
+.hero-photo .hs-title { color: #fff; } .hero-photo .hs-rot { color: #f59a6b; } .hero-photo .lede { color: rgba(255, 255, 255, .86); }
+.hero-photo .kicker { background: rgba(255, 255, 255, .12); border-color: rgba(255, 255, 255, .28); color: #fff; box-shadow: none; backdrop-filter: blur(8px); }
+.hero-photo .cta-row .ab-btn.outline { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .45); color: #fff; } .hero-photo .cta-row .ab-btn.outline:hover { background: rgba(255, 255, 255, .2); }
+.hero-photo .hs-floaters { transform: translate(calc(var(--dx, 0) * 36px), calc(var(--dy, 0) * 28px)); transition: transform .3s var(--ease); } .hero-photo .floater { color: rgba(255, 255, 255, .32) !important; }
+.hp-stats { position: relative; z-index: 1; display: flex; align-items: flex-end; gap: 40px; width: 100%; margin-top: 56px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, .2); text-align: left; }
+.hp-stats span { display: flex; flex-direction: column; font-size: 13px; color: rgba(255, 255, 255, .78); } .hp-stats b { font: 800 30px/1.05 var(--font-display); letter-spacing: -0.03em; color: #fff; }
+.hp-cap { margin-left: auto; font: 600 11px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: rgba(255, 255, 255, .7); }
+body:has(.hero-photo):not(.scrolled) .pubnav .links a { color: rgba(255, 255, 255, .86) !important; } body:has(.hero-photo):not(.scrolled) .pubnav .links a:hover { color: #fff !important; }
+body:has(.hero-photo):not(.scrolled) .pubnav .ab-logo .wm b { color: #fff; } body:has(.hero-photo):not(.scrolled) .pubnav .ab-logo .wm small { color: rgba(255, 255, 255, .7); }
+body:has(.hero-photo):not(.scrolled) .pubnav .ab-logo .on-light { display: none; } body:has(.hero-photo):not(.scrolled) .pubnav .ab-logo .on-dark { display: block; }
+body:has(.hero-photo):not(.scrolled) .pubnav .right .ab-iconbtn, body:has(.hero-photo):not(.scrolled) .pubnav .right .ab-btn.ghost { color: #fff; }
+body:has(.hero-photo):not(.scrolled) .pubnav .lang-btn { background: rgba(255, 255, 255, .1); border-color: rgba(255, 255, 255, .3); } body:has(.hero-photo):not(.scrolled) .pubnav .lang-btn span:not(.on) { color: rgba(255, 255, 255, .8); }
+@media (max-width: 760px) {
+  .hero.hero-photo { min-height: 0; } .hero-photo .hero-stage { padding: 28px 0 110px; }
+  .hp-img { inset: auto 0 0; height: 58%; background-size: auto 150%; transform: translate3d(0, calc(var(--py, 0px) * .5), 0); }
+  .hp-bg::after { background: linear-gradient(180deg, #0b1620 0%, #0b1620 38%, rgba(8, 14, 22, .55) 58%, rgba(8, 14, 22, .7) 76%, color-mix(in srgb, var(--canvas) 55%, rgba(8, 14, 22, .6)) 89%, var(--canvas) 100%); }
+  .hp-stats { gap: 18px; justify-content: space-between; margin-top: 200px; } .hp-stats b { font-size: 22px; } .hp-stats span { font-size: 12px; } .hp-cap { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .hp-img, .hero-photo .hs-floaters, .hero-photo .hero-stage { transform: none !important; transition: none; } .hero-photo .hero-stage { opacity: 1 !important; } .hp-spot { display: none; } }
+
+/* ===== Landing motion: varied section reveal, stagger, card tilt, cursor glow ===== */
+#main:has(> .hero-photo) { overflow-x: clip; }
+section.reveal { transition: opacity .8s var(--ease), transform .9s var(--ease), filter .8s var(--ease); }
+section.reveal:not(.in) { opacity: 0; }
+section.rv-up:not(.in) { transform: translateY(64px); } section.rv-left:not(.in) { transform: translateX(-80px); } section.rv-right:not(.in) { transform: translateX(80px); }
+section.rv-zoom:not(.in) { transform: scale(.9); } section.rv-blur:not(.in) { transform: translateY(24px); filter: blur(12px); }
+section.rv-tilt { transform-origin: 50% 0; } section.rv-tilt:not(.in) { transform: perspective(1200px) rotateX(14deg) translateY(48px); }
+section.reveal.in { opacity: 1; transform: none; filter: none; }
+section.reveal .rv-kid { transition: opacity .6s var(--ease) var(--rv-d, 0ms), transform .7s var(--spring) var(--rv-d, 0ms); }
+section.reveal:not(.in) .rv-kid { opacity: 0; transform: translateY(28px) scale(.97); }
+section.reveal.done .rv-kid { transition: transform .25s var(--ease), box-shadow .25s var(--ease); }
+section.reveal.done .rv-tiltable.tilting { transform: perspective(900px) rotateX(var(--ty, 0deg)) rotateY(var(--tx, 0deg)) translateY(-4px); box-shadow: var(--shadow-pop); z-index: 1; }
+#cur-glow { position: fixed; left: 0; top: 0; width: 420px; height: 420px; border-radius: 50%; pointer-events: none; z-index: 5; background: radial-gradient(circle, color-mix(in srgb, var(--brand) 22%, transparent), color-mix(in srgb, var(--ember) 10%, transparent) 45%, transparent 70%); mix-blend-mode: multiply; transition: opacity .3s; }
+#cur-glow.on-hero { opacity: 0; }
+[data-theme="dark"] #cur-glow { mix-blend-mode: screen; }
+@media (prefers-reduced-motion: reduce), (pointer: coarse) { #cur-glow { display: none; } }
 /* ===== Seamless navbar ===== */
 .pubnav-wrap { padding: 0; transition: background-color .3s, box-shadow .3s, backdrop-filter .3s; }
 .pubnav { width: min(1200px, calc(100% - 48px)); padding: 18px 0; border-radius: 0; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; transition: padding .3s var(--ease); }
@@ -1807,38 +1860,65 @@ const shopSec = () => `<section class="wrap section">
     <div class="sec-head"><div><span class="eyebrow">${L("TOKO ABAK", "ABAK SHOP")}</span><h2 class="h-display">${L("Amunisi buat calon juara", "Gear for future champions")}</h2></div><a class="ab-btn ghost" href="#/katalog">${L("Ke katalog", "Go to catalog")} ${ic('arrow-r', 'sm')}</a></div>
     <div class="card-grid">${catalog().filter(p => p.published && ['book', 'merchandise', 'medal'].includes(p.type)).slice(0, 4).map(productCard).join('')}</div>
   </section>`;
+// First word is the default (and the only one under reduced motion); the rest are event names.
+const heroWords = () => [L('dunia', 'world'), 'STEMCO', 'Einstein', 'IKLC', 'ESOLIO', 'KoSSMI'];
+function heroWordsStart() {
+  document.title = `${L('Dari ruang kelas ke panggung dunia', 'From the classroom to the world stage')} · Abak Academy`;
+  const box = document.querySelector('.hs-rot'); if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const words = [...box.querySelectorAll('.hs-words > span')]; let k = 0;
+  const fit = () => { box.style.width = words[k].offsetWidth + 'px'; }; fit();
+  timers.push(setInterval(() => { words[k].classList.replace('on', 'out'); const prev = words[k]; k = (k + 1) % words.length; words[k].classList.remove('out'); words[k].classList.add('on'); fit(); setTimeout(() => prev.classList.remove('out'), 600); }, 2600));
+}
+// Landing hero motion: photo parallax + content fade on scroll, cursor spotlight + layered drift. Off under reduced motion.
+const heroMotionOK = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
+let heroRaf = 0;
+window.addEventListener('scroll', () => { if (heroRaf) return; heroRaf = requestAnimationFrame(() => { heroRaf = 0; const h = document.querySelector('.hero-photo'); if (!h || !heroMotionOK()) return; const y = Math.min(window.scrollY, h.offsetHeight); h.style.setProperty('--py', (y * 0.35).toFixed(1) + 'px'); h.style.setProperty('--fade', (1 - y / h.offsetHeight * 1.3).toFixed(3)); }); }, { passive: true });
+document.addEventListener('pointermove', e => { if (e.pointerType !== 'mouse') return; const h = e.target.closest?.('.hero-photo'); if (!h || !heroMotionOK()) return; const r = h.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; h.style.setProperty('--mx', (x * 100).toFixed(1) + '%'); h.style.setProperty('--my', (y * 100).toFixed(1) + '%'); h.style.setProperty('--dx', (x - .5).toFixed(3)); h.style.setProperty('--dy', (y - .5).toFixed(3)); });
+// Each section gets a different entrance (shuffled per load); its heading and grid items follow one by one.
+const RV = ['rv-up', 'rv-left', 'rv-right', 'rv-zoom', 'rv-blur', 'rv-tilt'];
+function revealSections() {
+  if (!heroMotionOK() || !('IntersectionObserver' in window)) return;
+  const order = [...RV].sort(() => Math.random() - .5);
+  const io = new IntersectionObserver(es => es.forEach(en => { if (!en.isIntersecting) return; const el = en.target; el.classList.add('in'); io.unobserve(el); setTimeout(() => el.classList.add('done'), 1400); }), { threshold: .12, rootMargin: '0px 0px -8% 0px' });
+  [...document.querySelectorAll('#main > section:not(.hero)')].forEach((el, i) => {
+    if (el.getBoundingClientRect().top + window.scrollY < innerHeight * .9) return; // document position: render's scroll-to-top is smooth, so the viewport position is stale here
+    el.classList.add('reveal', order[i % order.length]);
+    const head = el.querySelector('.block-head, .section-head, h2'); if (head) { head.classList.add('rv-kid'); head.style.setProperty('--rv-d', '0ms'); }
+    const grid = [...el.querySelectorAll('*')].find(x => x.children.length >= 3 && /grid|tiles|list|faq|row/.test(x.className));
+    if (grid) [...grid.children].slice(0, 12).forEach((c, k) => { c.classList.add('rv-kid', 'rv-tiltable'); c.style.setProperty('--rv-d', 120 + k * 80 + 'ms'); });
+    io.observe(el);
+  });
+}
+// Cursor across the whole landing: a soft glow that trails the pointer, and grid cards tilt toward it.
+let glowX = 0, glowY = 0, glowTX = 0, glowTY = 0, glowRaf = 0;
+const glowStep = () => { const g = document.getElementById('cur-glow'); if (!g) { glowRaf = 0; return; } glowX += (glowTX - glowX) * .16; glowY += (glowTY - glowY) * .16; g.style.transform = `translate3d(${glowX - 210}px, ${glowY - 210}px, 0)`; glowRaf = Math.abs(glowTX - glowX) + Math.abs(glowTY - glowY) > .5 ? requestAnimationFrame(glowStep) : 0; };
+document.addEventListener('pointermove', e => {
+  if (!document.querySelector('.hero-photo')) { document.getElementById('cur-glow')?.remove(); return; }
+  if (e.pointerType !== 'mouse' || !heroMotionOK()) return;
+  let g = document.getElementById('cur-glow'); if (!g) { g = document.createElement('div'); g.id = 'cur-glow'; g.setAttribute('aria-hidden', 'true'); document.body.appendChild(g); glowX = glowTX = e.clientX; glowY = glowTY = e.clientY; }
+  glowTX = e.clientX; glowTY = e.clientY; g.classList.toggle('on-hero', !!e.target.closest?.('.hero-photo')); if (!glowRaf) glowRaf = requestAnimationFrame(glowStep);
+  const card = e.target.closest?.('.reveal.done .rv-tiltable');
+  document.querySelectorAll('.rv-tiltable.tilting').forEach(c => { if (c !== card) { c.classList.remove('tilting'); c.style.removeProperty('--tx'); c.style.removeProperty('--ty'); } });
+  if (card) { const r = card.getBoundingClientRect(); card.classList.add('tilting'); card.style.setProperty('--tx', (((e.clientX - r.left) / r.width - .5) * 8).toFixed(2) + 'deg'); card.style.setProperty('--ty', ((.5 - (e.clientY - r.top) / r.height) * 8).toFixed(2) + 'deg'); }
+});
+document.addEventListener('pointerleave', () => document.getElementById('cur-glow')?.remove());
 const FLOATERS = [['∑', 'brand', 6, 0], ['π', 'teal', 90, 2], ['∞', 'gold', 95, 42], ['√', 'sky', 0, 44], ['θ', 'ember', 46, 95], ['∫', 'navy', 78, 92]];
 route(/^\/$/, () => {
   if (S.role === 'student') return studentHome();
   const evs = S.events.filter(e => e.published);
   const live = evs.filter(e => evPhase(e) === 'live'), up = evs.filter(e => ['open', 'closed'].includes(evPhase(e))).sort((a, b) => new Date(a.start) - new Date(b.start)), pop = [...evs].filter(e => evPhase(e) !== 'done').sort((a, b) => b.popular - a.popular);
   const col = (title, icon, tone, list) => `<div class="np-col"><div class="np-head"><span class="np-ico c-${tone}">${ic(icon, 'sm')}</span><b>${title}</b><span class="chip c-mute">${list.length}</span></div>${list.slice(0, 3).map(miniRow).join('') || '<p class="muted small pad-sm">Belum ada.</p>'}${list.length > 3 ? `<a class="more" href="#/kompetisi">+ ${list.length - 3} lainnya</a>` : ''}</div>`;
-  const next = up.find(e => e.kind !== 'Tryout');
+  AFTER.push(heroWordsStart, revealSections);
   return pub('home', `
-  <section class="hero">
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
-        ${next ? `<a class="kicker" href="#/kompetisi/${next.id}"><span class="chip live"><i class="pulse"></i>${L("Baru", "New")}</span>${esc(next.name)} — ${L("daftar s.d.", "register by")} ${fDate(next.regClose).replace(/ \d{4}$/, '')}${ic('chev-r', 'sm')}</a>` : ''}
-        <h1>${L(`Dari ruang kelas <span class="nw">ke <span class="hl">panggung dunia${squiggle}</span>.</span>`, `From the classroom <span class="nw">to the <span class="hl">world stage${squiggle}</span>.</span>`)}</h1>
-        <p class="lede">${L("Olimpiade sains, matematika, dan bahasa Inggris berstandar internasional, plus pelatihan yang bikin kamu siap tampil. Daftar, latihan, ujian, sampai sertifikat — semua di satu akun.", "International-standard science, math, and English olympiads, plus training that gets you ready to perform. Register, practice, take the exam, and get your certificate — all in one account.")}</p>
-        <div class="cta-row">${ctaArrow(L('Cari kompetisimu', 'Find your competition'), '#/kompetisi')}${waBtn(L('Konsultasi gratis', 'Free consultation'), 'Halo Abak Academy, saya ingin konsultasi gratis tentang program yang cocok.')}</div>
-        <div class="proof"><span class="ab-avstack">${[0, 11, 26, 4, 31].map(i => avatarByIdx(i)).join('')}</span><span><b>20.000+</b> ${L("pelajar sudah naik panggung bareng kami sejak 2021", "students have taken the stage with us since 2021")}</span></div>
-      </div>
-      <div class="hero-art" aria-hidden="true">
-        <div class="floaters hero-floaters">${FLOATERS.map(([g, t, x, y], i) => `<span class="floater c-${t}" style="left:${x}%;top:${y}%;--r:${(i % 2 ? 1 : -1) * (8 + i * 3)}deg;--dl:${i * .7}s">${g}</span>`).join('')}</div>
-        <div class="blob b1"></div><div class="blob b2"></div>
-        <div class="phone">
-          <div class="phone-top"><span class="mono">SOAL 14 / 30</span><span class="chip c-ember">${ic('timer', 'sm')}42:18</span></div>
-          <p>Untuk setiap 3 halaman yang dibaca Rani, Dimas membaca 5 halaman. Berapa halaman yang dibaca Dimas?</p>
-          ${['24 halaman', '32 halaman', '40 halaman', '48 halaman'].map((o, i) => `<div class="ph-opt ${i === 2 ? 'on' : ''}"><span>${'ABCD'[i]}</span>${o}</div>`).join('')}
-          <div class="ph-grid">${Array.from({ length: 12 }, (_, i) => `<i class="${i < 9 ? 'd' : i === 9 ? 'n' : ''}"></i>`).join('')}</div>
-        </div>
-        <div class="sticker s-rank">${avatarByIdx(26, 'sm')}<div><small>${L("Peringkat nasional", "National rank")}</small><b>#27</b></div><span class="chip c-teal">${ic('arrow-ur', 'sm')}31</span></div>
-        <div class="sticker s-medal"><span class="medal-big">${ic('medal')}</span><div><small>Einstein Olympiad</small><b>${L("Medali Perak", "Silver Medal")}</b></div></div>
-        <div class="sticker s-cert">${ic('verified')}<span>${L("Sertifikat terbit", "Certificate issued")}</span></div>
-      </div>
+  <section class="hero hero-photo">
+    <div class="hp-bg" aria-hidden="true"><div class="hp-img"></div><div class="hp-spot"></div></div>
+    <div class="wrap hero-stage">
+      <div class="floaters hs-floaters" aria-hidden="true">${FLOATERS.slice(0, 4).map(([g, t], i) => `<span class="floater c-${t}" style="left:${[2, 93, 6, 90][i]}%;top:${[8, 6, 46, 40][i]}%;--r:${(i % 2 ? 1 : -1) * (8 + i * 3)}deg;--dl:${i * .7}s">${g}</span>`).join('')}</div>
+      <h1 class="hs-title">${L('Dari ruang kelas', 'From the classroom')} <span class="nw">${L('ke panggung', 'to the')} <span class="hs-rot"><span class="sr-only">${L('dunia', 'world stage')}</span><span class="hs-words" aria-hidden="true">${heroWords().map((w, k) => `<span class="${k ? '' : 'on'}">${w}</span>`).join('')}</span>${squiggle}</span></span></h1>
+      <p class="lede">${L("Olimpiade sains, matematika, dan bahasa Inggris berstandar internasional, plus pelatihan yang bikin kamu siap tampil. Daftar, latihan, ujian, sampai sertifikat — semua di satu akun.", "International-standard science, math, and English olympiads, plus training that gets you ready to perform. Register, practice, take the exam, and get your certificate — all in one account.")}</p>
+      <div class="cta-row">${ctaArrow(L('Cari kompetisimu', 'Find your competition'), '#/kompetisi')}${waBtn(L('Konsultasi gratis', 'Free consultation'), 'Halo Abak Academy, saya ingin konsultasi gratis tentang program yang cocok.')}</div>
+      <div class="hp-stats"><span><b>20.000+</b>${L('peserta sejak 2021', 'students since 2021')}</span><span><b>200+</b>${L('lembaga mitra', 'partner institutions')}</span><span><b>10</b>${L('event rutin', 'recurring events')}</span><small class="hp-cap">STEMCO · Award Ceremony, Juni 2026</small></div>
     </div>
-    <div class="marquee" aria-label="Event yang diselenggarakan Abak Academy"><div class="track">${[...EVENT_BRANDS, ...EVENT_BRANDS, ...EVENT_BRANDS, ...EVENT_BRANDS].map((s, i) => `<span class="brand-ev">${ic(['trophy', 'medal', 'star', 'sparkle'][i % 4], 'sm')}${s}</span>`).join('')}</div></div>
   </section>
 
 

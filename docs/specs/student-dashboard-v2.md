@@ -3,6 +3,7 @@ title: Student dashboard v2 (sidebar shell, home, order detail + invoice)
 issue: none yet
 status: proposed
 created: 2026-11-25
+updated: 2026-11-26
 sources: ["docs/specs/redesign-v2-roadmap.md", "docs/specs/student-shell-v2.md", "docs/specs/admin-dashboard-v2.md", "docs/specs/design-tokens-v2.md", "docs/specs/event-series.md", "docs/prototypes/redesign-v2/index.html", "docs/prototypes/redesign-v2/COMPONENTS.md", "web/app/(student)/layout.tsx", "web/app/(student)/page.tsx", "web/app/(student)/orders/[id]/page.tsx", "web/app/(student)/orders/[id]/timeline.ts", "web/components/shell/AppShell.tsx", "web/components/shell/AppHeader.tsx", "web/components/dashboard", "web/lib/nav-config.ts", "web/lib/hooks/exam.ts", "web/lib/hooks/orders.ts", "web/lib/hooks/students.ts", "web/lib/hooks/products.ts", "web/lib/exam-card-state.ts", "web/lib/exam-schedule.ts", "web/lib/types.ts", "backend/internal/server/routes.go", "backend/internal/service/store.go", "backend/internal/service/exam_leaderboard.go", "backend/internal/service/exam_result.go", "backend/internal/repository/order.go", "backend/internal/model/product.go", "backend/internal/model/exam.go", "/Users/Panca/Documents/MyBook/Project/bimbel-tryout/web/lib/capture-pdf.ts"]
 ---
 
@@ -47,7 +48,8 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 - Student pages render the PR 1 sidebar shell (admin prototype style). Sidebar items, one ungrouped list: **Beranda** `/` · **Kompetisi** `/exam` (count) · **Kursus Saya** `/courses` · **Tagihan** `/orders` (count). No Katalog/Toko, no Profil.
   - Kompetisi count = registrations whose `computeCardState` is `start`, `checkin`, or `in_progress` (actionable now). Tagihan count = orders with `status === "payment_pending"`. A zero count renders nothing.
 - No header icons (theme, cart, bell) for students. The **user card** at the sidebar bottom (avatar, name, "Kelas N") opens an upward menu: Notifikasi (count) · Keranjang (count) · Mode gelap/terang · Profil & akun · Keluar. The cart count also shows as a dot on the card. See D4 for Notifikasi.
-- Mobile (< lg): the page header shows only a hamburger that opens the sidebar as a drawer.
+- Mobile (< lg): the page header shows only a hamburger that opens the sidebar as a drawer (PR 1 D4 = a, settled 2026-11-26).
+- Content width: centred, capped at 1480px (`container-max`, settled 2026-11-26; PR 1 replaces `max-w-[1340px]` in `AppShell`).
 - Not built: the prototype's referral-code card (students have no referral code).
 - Exam session room and print routes keep their own layouts.
 
@@ -77,7 +79,7 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 - Autoplay every 6s; pauses while hovered or focus is inside; no autoplay under `prefers-reduced-motion` or with one slide. Dots evenly spaced, each a button labelled "Event i dari n: name", `aria-current` on the active one.
 - All slides stack in one grid cell, so height and dot position never change; transition is a crossfade with a small horizontal slide (none under reduced motion). Hidden slides are `inert` + `aria-hidden`. Region has `aria-roledescription="carousel"`.
 - No banner CMS: content comes from admin product/exam data.
-- **When event-series (phase 3) lands:** switch the source to `GET /event-series` `open_editions[]` (`product_id`, `title`, `level`, `price`, `phase`, `scheduled_at`), which gives level and open/live phase directly. Only the data adapter changes; the component takes a normalized slide list.
+- **Source depends on roadmap RD1** (whether event-series merges before this PR); see D1. With event-series, slides come from `GET /event-series` flattened `open_editions[]` (`exam_id`, `product_id`, `title`, `stages`/`grade_min`/`grade_max`, `price`, `image_url`, `phase`, `scheduled_at`), which gives level and open/live directly. Only the data adapter (`heroEvents`) differs; the component takes a normalized slide list either way.
 
 ### 6. Event & kompetisi card
 - Compact list of the student's registrations, max 4, plus "Lihat semua" → `/exam`.
@@ -118,7 +120,7 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 | `app/(student)/orders/[id]/page.tsx` (+test) | Grid swap, invoice button, remove `invoice_url` row. |
 | `app/globals.css` | `@media print` rule that hides everything but the invoice paper and sets A4 page size. Light-only invoice tokens if needed. |
 
-Use `web/components/ui` primitives and v2 tokens only; no hex in components (roadmap rule). Accent only on primary CTAs and counts.
+Use `web/components/ui` primitives and v2 tokens only (`design-tokens-v2.md`; visual reference: the design-system artifact's HeroCarousel, EventListRow, LearnListRow, ShippingStrip, Ring pages); no hex in components (roadmap rule). Ember only on primary CTAs and counts.
 
 ### Data per widget
 
@@ -141,16 +143,16 @@ New keys with prefix `stu_home_*` (greeting intro, ship titles/steps/resi/copy/d
 
 ## Dependencies (on PR 1, `admin-dashboard-v2.md`)
 
-PR 2 is cut from `feat/public-landing` after PR 1 merges into it. It reuses PR 1's tokens, `AppShell` + `AppSidebar` + `SidebarUserMenu`, and the `NAV_CONFIG` / `USER_MENU` config (PR 1 D1 = (a), students keep the sidebar), and does not re-spec them. PR 1 as written (2026-11-25) gives: untitled group = flat rows; `NavItem.countKey?` + `AppSidebar counts?` (only if its D13 builds the slot); `USER_MENU[role]: { labelKey, icon, href, hintKey?, external? }[]` with Keluar appended; header keeps language, theme, cart (student), bell.
+PR 2 is cut from `feat/public-landing` after PR 1 merges into it. It reuses PR 1's tokens, `AppShell` + `AppSidebar` + `SidebarUserMenu`, and the `NAV_CONFIG` / `USER_MENU` config (PR 1 D1 = (a), students keep the sidebar), and does not re-spec them. PR 1 as settled (2026-11-26) gives: untitled group = flat rows; `NavItem.countKey?` + `AppSidebar counts?` with `AppShell` forwarding `counts` (D13 = a); `USER_MENU[role]` with action items, `countKey`, card dot, Keluar appended; the student header without theme, cart, bell; an off-canvas drawer below 1024px (D4 = a); content capped at 1480px; `Dialog size="wide"` at 820px.
 
-Requirements on PR 1 (R1, R4, R6 must be decided there; R2 and R3 are now part of PR 1's shell contract as of 2026-11-25; R5 stays in PR 2):
+Requirements on PR 1 (R1, R4, R6 settled in PR 1 on 2026-11-26; R2 and R3 are part of PR 1's shell contract since 2026-11-25; R5 stays in PR 2):
 
-- R1. PR 1 D13 builds the count slot (`countKey` + `counts`), and `AppShell` forwards `counts` to `AppSidebar`.
+- R1. ~~PR 1 D13 builds the count slot (`countKey` + `counts`), and `AppShell` forwards `counts` to `AppSidebar`.~~ **Satisfied:** PR 1 D13 = a.
 - R2. `UserMenuItem` gains an action form (theme toggle; no `href`) and `countKey?`; `SidebarUserMenu` takes `counts?` and an optional card-dot count key. PR 2 sets `USER_MENU.student` = Keranjang `/cart` (cart count, also the card dot), Mode gelap/terang (action), Profil & akun `/profile`, plus Notifikasi per D4.
 - R3. `AppHeader` hides theme, cart, and bell for the student role (PR 1 keeps them). Language toggle stays where PR 1 puts it (D5).
-- R4. PR 1 D4 = (a) off-canvas drawer below 1024px, opened by the header menu button, closing on navigation and Escape.
+- R4. ~~PR 1 D4 = (a) off-canvas drawer below 1024px, opened by the header menu button, closing on navigation and Escape.~~ **Satisfied:** PR 1 D4 = a.
 - R5. `CartCountSync` keeps running for students; the cart count moves from the header badge to the menu.
-- R6. `Dialog` v2 supports a wide variant (invoice preview ~820px) with its own scroll.
+- R6. ~~`Dialog` v2 supports a wide variant (invoice preview ~820px) with its own scroll.~~ **Satisfied:** PR 1's `Dialog size="wide"` = 820px (`dialog-wide-width`), body scrolls inside, header/footer fixed.
 
 Any extension PR 2 makes to shared shell files is listed in its PR body with admin/affiliator tests still green.
 
@@ -186,8 +188,8 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 ## Non-goals
 
 - Restyling `/exam`, `/courses`, `/catalog`, `/cart`, `/profile` beyond what the PR 1 shell and primitives give.
-- Public catalog/landing (phase 4) and event-series data (phase 3).
-- Any backend, migration, or dashboard-API change (unless D1/D3/D6 pick a backend option).
+- Public catalog/landing (`landing-v2.md`). Event-series backend (`event-series.md`); this PR only consumes it when RD1 puts it first.
+- Any backend, migration, or dashboard-API change (unless D1/D3/D6 pick a backend option; with event-series first, D1/D2 need none).
 - Student notifications backend; referral code for students; "Pesanan sudah diterima" button and access buttons from the prototype order page.
 - Server-side or text-selectable invoice PDF; invoice numbering scheme beyond `INV/<order id>`.
 
@@ -195,12 +197,11 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 
 Recommendation first in each.
 
-- **D1 Carousel source, "live" headline, and order.** The public product payload has no exam schedule and no popularity count.
-  - a) Web-only now: slides from `GET /products?type=exam` (already "registration open" by its availability window); headline always "Pendaftaran dibuka" + "Daftar sekarang"; order by `available_until` ascending (closing soonest), nulls last, then name. "Sedang berlangsung" and level arrive when the source switches to event-series. Cheapest; no popularity ever without (c).
-  - b) Add `scheduled_at`/`scheduled_end_at` to exam `relations` in the product payload (small backend read change) to enable the live headline now. Makes this PR cross-layer.
-  - c) Add a public registration/sales count for "most popular first". Exposes sales volume to anyone; not recommended.
-- **D2 Level on slides.** No level field exists on exam or product. a) Omit the level segment until event-series `open_editions.level`. b) Read a product spec row named "Jenjang"/"Kelas" if present: fragile label matching.
-- **D3 Result released vs waiting.** The registration list has no release state or `allow_leaderboard`.
+- **D1 Carousel source, "live" headline, and order. Conditional on roadmap RD1** (Panca picks the PR order there; this spec does not decide it). Popularity ordering is out in every branch: no public payload exposes registration or sales counts, and event-series deliberately adds none.
+  - **If event-series merges before this PR** (RD1 = a or b with event-series first): slides = flattened `open_editions[]` of `GET /event-series?lang=` minus editions whose `exam_id` the student is registered for; headline from `phase` (`open` → "Pendaftaran dibuka" + "Daftar sekarang", `live` → "Sedang berlangsung" + "Jelajahi sekarang"); order = the API's (live first, then `scheduled_at`, unscheduled last); art = `image_url`, else the event's illustration. No backend change in this PR. Limit: only exams linked to a **visible** event appear; an open exam product not linked to any event drops out of the carousel (accept, or fall back to `GET /products?type=exam` for unlinked exams; recommend accept, admins link exams when they seed events).
+  - **If this PR merges first:** a) Web-only: slides from `GET /products?type=exam` (already "registration open" by its availability window); headline always "Pendaftaran dibuka" + "Daftar sekarang"; order by `available_until` ascending, nulls last, then name; a follow-up (in the event-series PR or right after it) swaps `heroEvents` to the source above. b) Add `scheduled_at`/`scheduled_end_at` to exam `relations` in the product payload to get the live headline now; makes this PR cross-layer and is thrown away once event-series lands.
+- **D2 Level on slides. Conditional on RD1.** If event-series is first: level text rendered from `stages` + `grade_min/max` (event-series D3 = a), e.g. "SD · Kelas 4–6". If this PR is first: a) omit the level segment until the swap; b) read a product spec row named "Jenjang"/"Kelas": fragile label matching.
+- **D3 Result released vs waiting.** Independent of RD1: event-series does not supply it. The registration list has no release state or `allow_leaderboard`.
   - a) For each visible submitted row (≤ 4), call the existing result endpoint: `grading`/`locked` → "Menunggu hasil", `hidden` → "Selesai" chip without link, otherwise "Lihat hasil" → leaderboard (which already explains `leaderboard_not_available`). Web-only; cost ≤ 4 calls that load full pembahasan on each home visit.
   - b) Backend adds `result_state` + `allow_leaderboard` to `GET /exam/registrations` (needs an essay-graded check per row). One call, cross-layer.
 - **D4 Notifikasi in the user menu.** No student notification endpoint exists; today's bell is decorative. a) Leave Notifikasi out until an endpoint exists. b) Show it without a count opening an empty "Belum ada notifikasi" dialog (dead UI).
@@ -211,7 +212,7 @@ Recommendation first in each.
 
 ## Implementation plan
 
-Branch `feat/student-dashboard-v2` from `feat/public-landing` after PR 1 merges; one PR into `feat/public-landing`. The plan assumes the recommended options; a backend option in D1/D3/D6 adds one backend task before T3/T4/T5.
+Branch `feat/student-dashboard-v2` from `feat/public-landing` after PR 1 merges; one PR into `feat/public-landing`. The plan assumes the recommended options; a backend option in D1/D3/D6 adds one backend task before T3/T4/T5. T3's `heroEvents` adapter reads `GET /event-series` (new `useEventSeries` hook) or `GET /products?type=exam` per D1; the component and its tests are the same either way.
 
 | id | title | files / scope | depends_on | test-first step | done-check |
 |---|---|---|---|---|---|
