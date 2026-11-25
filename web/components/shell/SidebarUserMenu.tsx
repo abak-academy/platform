@@ -56,7 +56,7 @@ function LanguageRow({ item }: { item: UserMenuItem }) {
         setLang(lang === "id" ? "en" : "id");
       }}
     >
-      <item.icon className="size-[18px] text-ink-500" />
+      <item.icon className="size-5 text-ink-600" />
       <span>{t(item.labelKey)}</span>
       <span className="ml-auto flex overflow-hidden rounded-md border border-line">
         {LANGS.map((l) => (
@@ -70,8 +70,8 @@ function LanguageRow({ item }: { item: UserMenuItem }) {
               setLang(l);
             }}
             className={cn(
-              "h-[30px] px-2.5 type-label-xs uppercase",
-              lang === l ? "bg-brand-600 text-white" : "text-ink-500 hover:text-ink-700"
+              "h-8 px-2.5 type-label-xs uppercase",
+              lang === l ? "bg-brand-600 text-on-brand" : "text-ink-600 hover:text-ink-700"
             )}
           >
             {l.toUpperCase()}
@@ -89,7 +89,7 @@ function ThemeRow({ item }: { item: UserMenuItem }) {
   const Icon = theme === "dark" ? Sun : Moon;
   return (
     <DropdownMenuItem className={ROW} onSelect={toggleTheme}>
-      <Icon className="size-[18px] text-ink-500" />
+      <Icon className="size-5 text-ink-600" />
       <span>{t(item.labelKey)}</span>
     </DropdownMenuItem>
   );
@@ -99,11 +99,11 @@ function LinkRow({ item, count }: { item: UserMenuItem; count?: number }) {
   const { t } = useTranslation();
   const body = (
     <>
-      <item.icon className="size-[18px] text-ink-500" />
+      <item.icon className="size-5 text-ink-600" />
       <span className="flex min-w-0 flex-col">
         <span>{t(item.labelKey)}</span>
         {item.hintKey && (
-          <span className="type-caption font-normal text-ink-500">{t(item.hintKey)}</span>
+          <span className="type-caption font-normal text-ink-600">{t(item.hintKey)}</span>
         )}
       </span>
       <CountBadge n={count} />
@@ -150,7 +150,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
   const avatar = (
     <Avatar className="size-9">
       <AvatarImage src={fileUrl(user?.photo_url)} />
-      <AvatarFallback className="bg-brand-600 text-[13px] font-semibold text-white">{initial}</AvatarFallback>
+      <AvatarFallback className="bg-brand-600 type-label-sm text-on-brand">{initial}</AvatarFallback>
     </Avatar>
   );
 
@@ -160,35 +160,35 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
         <button
           type="button"
           aria-label={t("user_menu_label")}
-          className="group relative flex w-full items-center gap-3 rounded-xl border border-line bg-surface p-2 text-left"
+          className="group relative flex w-full items-center gap-3 rounded-md border border-line bg-surface p-2 text-left"
         >
           {avatar}
           <span className="min-w-0 flex-1">
             <span className="block truncate type-label text-ink-900">{name}</span>
-            <span className="block truncate type-caption text-ink-500">{roleLabel}</span>
+            <span className="block truncate type-caption text-ink-600">{roleLabel}</span>
           </span>
           {dot !== undefined && dot > 0 && (
             <span
               data-testid="user-menu-dot"
-              className="absolute -top-1 left-7 min-w-[18px] rounded-full bg-ember-600 px-1 text-center type-label-xs text-on-ember"
+              className="absolute -top-1 left-7 min-w-5 rounded-full bg-ember-600 px-1 text-center type-label-xs text-on-ember"
             >
               {dot}
             </span>
           )}
-          <ChevronUp className="size-4 shrink-0 text-ink-500 transition-transform group-data-[state=open]:rotate-180" />
+          <ChevronUp className="size-4 shrink-0 text-ink-600 transition-transform group-data-[state=open]:rotate-180" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
         side="top"
         align="start"
         sideOffset={8}
-        className="w-(--radix-dropdown-menu-trigger-width) min-w-[236px] rounded-xl p-2"
+        className="w-(--radix-dropdown-menu-trigger-width) min-w-menu rounded-lg p-2"
       >
         <div className="flex items-center gap-2.5 border-b border-dashed border-line px-2.5 pb-3 pt-2">
           {avatar}
           <div className="min-w-0">
             <p className="truncate type-label text-ink-900">{name}</p>
-            <p className="truncate type-caption text-ink-500">
+            <p className="truncate type-caption text-ink-600">
               {user?.email ? `${user.email} · ${roleLabel}` : roleLabel}
             </p>
           </div>
@@ -204,7 +204,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
         )}
         <DropdownMenuSeparator className="border-t border-dashed border-line bg-transparent" />
         <DropdownMenuItem className={ROW} onSelect={handleLogout}>
-          <LogOut className="size-[18px] text-ink-500" />
+          <LogOut className="size-5 text-ink-600" />
           <span>{t("logout")}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

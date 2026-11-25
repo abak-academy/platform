@@ -2929,6 +2929,9 @@ export const DICT = {
     user_menu_language: "Bahasa",
     user_menu_public_site: "Buka situs publik",
     user_menu_public_site_hint: "landing page seperti dilihat pengunjung",
+    // Admin dashboard v2 — shell
+    nav_close_menu: "Tutup menu",
+    nav_menu: "Menu",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -5850,6 +5853,9 @@ export const DICT = {
     user_menu_language: "Language",
     user_menu_public_site: "Open public site",
     user_menu_public_site_hint: "the landing page as visitors see it",
+    // Admin dashboard v2 — shell
+    nav_close_menu: "Close menu",
+    nav_menu: "Menu",
   },
 };
 

@@ -56,7 +56,20 @@ function CountPill({ n }: { n?: number }) {
   );
 }
 
-function NavItemLink({ item, active, count }: { item: NavItem; active: boolean; count?: number }) {
+function IconTile({ active, children }: { active: boolean; children: React.ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "flex size-8 shrink-0 items-center justify-center rounded-sm",
+        active ? "bg-brand-600 text-on-brand" : "text-ink-600"
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function NavItemLink({ item, active, count, nested }: { item: NavItem; active: boolean; count?: number; nested?: boolean }) {
   const { t } = useTranslation();
   return (
     <Link
@@ -64,16 +77,19 @@ function NavItemLink({ item, active, count }: { item: NavItem; active: boolean; 
       title={t(item.labelKey)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex min-h-nav-row items-center gap-3 rounded-lg px-3 type-label",
+        "flex items-center gap-3 rounded-md px-2.5 type-label",
+        nested ? "min-h-9.5" : "min-h-nav-row",
         active
           ? "bg-brand-50 text-brand-700"
           : "text-ink-600 hover:bg-brand-50/60 hover:text-brand-700"
       )}
     >
-      <item.icon className={cn("size-[18px] shrink-0", active ? "text-brand-600" : "text-ink-400")} />
+      <IconTile active={active}>
+        <item.icon className="size-5" />
+      </IconTile>
       <span className="truncate">{t(item.labelKey)}</span>
       {item.comingSoon && (
-        <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-normal text-ink-400">
+        <Badge variant="outline" className="ml-auto px-1.5 py-0 type-caption text-ink-600">
           Akan datang
         </Badge>
       )}
@@ -109,14 +125,18 @@ function GroupSection({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={onToggle}
-        className="flex min-h-nav-row w-full items-center gap-3 rounded-lg px-3 text-left type-label text-ink-600 hover:bg-brand-50/60"
+        className="flex min-h-nav-row w-full items-center gap-3 rounded-md px-2.5 text-left type-label text-ink-600 hover:bg-brand-50/60"
       >
-        {Icon && <Icon className="size-[18px] shrink-0 text-ink-400" />}
+        {Icon && (
+          <IconTile active={false}>
+            <Icon className="size-5" />
+          </IconTile>
+        )}
         <span className="truncate">{t(key)}</span>
         {!open && <CountPill n={sum} />}
         <ChevronDown
           className={cn(
-            "size-4 shrink-0 text-ink-400",
+            "size-4 shrink-0 text-ink-600",
             sum > 0 && !open ? "ml-1" : "ml-auto",
             animate && "transition-transform duration-[350ms]",
             open && "rotate-180"
@@ -139,6 +159,7 @@ function GroupSection({
                 item={item}
                 active={isNavActive(pathname, item)}
                 count={item.countKey ? counts?.[item.countKey] : undefined}
+                nested
               />
             ))}
           </div>
