@@ -1564,7 +1564,7 @@ export const DICT = {
     admin_home_chart_students_title: "Aktivitas siswa",
     admin_home_chart_students_sub: "Siswa baru, ikut ujian, dan belanja",
     admin_home_chart_mix_title: "Digital vs Fisik",
-    admin_home_chart_mix_sub: "Pendapatan digital dan fisik per hari. Fisik = buku, merchandise, medali",
+    admin_home_chart_mix_sub: "Komposisi pendapatan periode ini. Fisik = buku, merchandise, medali.",
     admin_home_series_revenue: "Pendapatan",
     admin_home_series_orders: "Jumlah pesanan",
     admin_home_series_new: "Baru",
@@ -2915,6 +2915,12 @@ export const DICT = {
     admin_partner_rep_students_view: "Lihat daftar",
     admin_partner_rep_students_count: "{n} siswa",
     admin_partner_rep_students_title: "Siswa yang dibelikan",
+    // Admin dashboard v2 — revenue mix
+    admin_home_mix_digital_hint: "kursus & kompetisi",
+    admin_home_mix_physical_hint: "buku, merchandise, medali",
+    admin_home_mix_share_up: "Porsi digital naik {n} poin dibanding periode sebelumnya",
+    admin_home_mix_share_down: "Porsi digital turun {n} poin dibanding periode sebelumnya",
+    admin_home_mix_share_same: "Porsi digital sama seperti periode sebelumnya",
     // Admin dashboard v2 — nav & user menu
     nav_group_academic: "Akademik",
     nav_announcements: "Pengumuman",
@@ -4480,7 +4486,7 @@ export const DICT = {
     admin_home_chart_students_title: "Student activity",
     admin_home_chart_students_sub: "New, sat an exam, and purchased",
     admin_home_chart_mix_title: "Digital vs Physical",
-    admin_home_chart_mix_sub: "Digital and physical revenue by day. Physical = books, merchandise, medals.",
+    admin_home_chart_mix_sub: "Revenue composition for this period. Physical = books, merchandise, medals.",
     admin_home_series_revenue: "Revenue",
     admin_home_series_orders: "Order count",
     admin_home_series_new: "New",
@@ -5830,6 +5836,12 @@ export const DICT = {
     admin_partner_rep_students_view: "View list",
     admin_partner_rep_students_count: "{n} students",
     admin_partner_rep_students_title: "Students bought for",
+    // Admin dashboard v2 — revenue mix
+    admin_home_mix_digital_hint: "courses & competitions",
+    admin_home_mix_physical_hint: "books, merchandise, medals",
+    admin_home_mix_share_up: "Digital share is up {n} points vs the previous period",
+    admin_home_mix_share_down: "Digital share is down {n} points vs the previous period",
+    admin_home_mix_share_same: "Digital share is the same as the previous period",
     // Admin dashboard v2 — nav & user menu
     nav_group_academic: "Academics",
     nav_announcements: "Announcements",
