@@ -225,6 +225,26 @@ describe("AppSidebar — accordion", () => {
   const header = (name: string) => screen.getByRole("button", { name: new RegExp(name) });
   const panelOf = (name: string) => document.getElementById(header(name).getAttribute("aria-controls")!)!;
 
+  it("keeps panel ids unique across two mounted sidebars, each header controlling its own panel", () => {
+    const { container } = render(
+      <>
+        <div data-testid="a"><AppSidebar role="super_admin" /></div>
+        <div data-testid="b"><AppSidebar role="super_admin" /></div>
+      </>,
+    );
+    const ids = [...container.querySelectorAll("[aria-controls]")].map((e) => e.getAttribute("aria-controls")!);
+    expect(ids.length).toBeGreaterThan(1);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ["a", "b"]) {
+      const inst = screen.getByTestId(id);
+      for (const h of inst.querySelectorAll("[aria-controls]")) {
+        const panel = document.getElementById(h.getAttribute("aria-controls")!);
+        expect(panel).not.toBeNull();
+        expect(inst.contains(panel)).toBe(true);
+      }
+    }
+  });
+
   it("opens only the group containing the active route", () => {
     nav.pathname = "/admin/exam/tests";
     render(<AppSidebar role="super_admin" />);

@@ -76,7 +76,7 @@ export function AppShell({ role, counts, children }: AppShellProps) {
 
   return (
     <div className={cn("flex min-h-screen bg-paper", adminLook && "admin-shell")}>
-      <aside className="fixed left-0 top-0 z-30 hidden h-screen w-sidebar flex-col border-r border-line bg-surface lg:flex">
+      <aside inert={open} className="fixed left-0 top-0 z-30 hidden h-screen w-sidebar flex-col border-r border-line bg-surface lg:flex">
         <AppSidebar role={role} counts={counts} />
       </aside>
 
@@ -109,7 +109,7 @@ export function AppShell({ role, counts, children }: AppShellProps) {
         </>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col lg:pl-sidebar">
+      <div inert={open} className="flex min-w-0 flex-1 flex-col lg:pl-sidebar">
         {!isAdmin && role !== "affiliator" && <CartCountSync />}
         <AppHeader role={role} onMenuClick={() => setOpen(true)} menuButtonRef={menuButtonRef} />
         <main className="flex-1">

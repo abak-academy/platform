@@ -120,6 +120,23 @@ describe("AppShell — drawer below 1024px", () => {
 
   const drawer = () => screen.queryByRole("dialog");
 
+  it("makes the main column and desktop aside inert only while open", async () => {
+    const { container } = renderShell();
+    const column = screen.getByRole("main").parentElement!;
+    const desktopAside = container.querySelector("aside")!;
+    expect(column).not.toHaveAttribute("inert");
+    expect(desktopAside).not.toHaveAttribute("inert");
+
+    await userEvent.click(screen.getByTestId("menu-button"));
+    expect(column).toHaveAttribute("inert");
+    expect(desktopAside).toHaveAttribute("inert");
+    expect(drawer()).not.toHaveAttribute("inert");
+
+    await userEvent.keyboard("{Escape}");
+    expect(column).not.toHaveAttribute("inert");
+    expect(desktopAside).not.toHaveAttribute("inert");
+  });
+
   it("is closed until the menu button is pressed", () => {
     renderShell();
     expect(drawer()).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { Dialog, DialogContent, DialogTitle } from "./dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./dialog";
 
 function open(size?: "default" | "wide") {
   render(
@@ -34,5 +34,31 @@ describe("DialogContent", () => {
   it("close button is labelled Tutup", () => {
     open();
     expect(screen.getByRole("button", { name: "Tutup" })).toBeInTheDocument();
+  });
+
+  it("size=wide scrolls the body only; header and footer stay fixed", () => {
+    render(
+      <Dialog open>
+        <DialogContent size="wide">
+          <DialogHeader><DialogTitle>Title</DialogTitle></DialogHeader>
+          <div data-testid="body">body</div>
+          <DialogFooter>footer</DialogFooter>
+        </DialogContent>
+      </Dialog>,
+    );
+    const c = screen.getByRole("dialog").className;
+    expect(c).toContain("flex flex-col overflow-hidden");
+    expect(c).toContain("[&>:not([data-slot^=dialog-])]:overflow-y-auto");
+    expect(c).toContain("[&>:not([data-slot^=dialog-])]:min-h-0");
+    expect(c).toContain("[&>[data-slot=dialog-header]]:shrink-0");
+    expect(c).toContain("[&>[data-slot=dialog-footer]]:shrink-0");
+    const dialog = screen.getByRole("dialog");
+    expect(screen.getByTestId("body").matches("[data-slot^=dialog-]")).toBe(false);
+    expect(dialog.querySelector("[data-slot=dialog-header]")!.parentElement).toBe(dialog);
+    expect(dialog.querySelector("[data-slot=dialog-footer]")!.parentElement).toBe(dialog);
+  });
+
+  it("default size scrolls the whole dialog", () => {
+    expect(open().className).toContain("overflow-y-auto");
   });
 });

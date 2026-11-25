@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
@@ -115,7 +115,7 @@ function GroupSection({
 }) {
   const { t } = useTranslation();
   const key = group.titleKey!;
-  const panelId = `nav-group-${key}`;
+  const panelId = `${useId()}-nav-group-${key}`;
   const sum = group.items.reduce((acc, i) => acc + (i.countKey ? (counts?.[i.countKey] ?? 0) : 0), 0);
   const Icon = group.icon;
   return (
