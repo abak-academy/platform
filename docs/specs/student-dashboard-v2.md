@@ -9,13 +9,13 @@ sources: ["docs/specs/redesign-v2-roadmap.md", "docs/specs/student-shell-v2.md",
 
 # Student dashboard v2
 
-Supersedes `student-shell-v2.md` (2026-11-17). Roadmap phase 5. PR 2 of the redesign; PR 1 is `admin-dashboard-v2.md`.
+Supersedes `student-shell-v2.md` (2026-11-17). Roadmap phase 5. Built after PR 1 (`admin-dashboard-v2.md`) and the event-series PR, in parallel with testimonials (roadmap RD1 = a, Panca 2026-11-26).
 
 ## Problem and outcome
 
 The 2026-11-17 plan put students on the public top navbar. On 2026-11-25 Panca chose the opposite: students keep the app they use today, in the same sidebar style as admin, and the catalog moves out to the public landing. The home page today mixes a static "latest exam" banner, ranking, exam-progress bars, and popular lessons, none of which say what to do next. The order detail page links an invoice that never exists.
 
-Outcome: a student sees the admin-style sidebar shell with four items, a home page that shows what needs attention now (unpaid order, package on the way, open events, registered events, courses to continue), and an order detail page that can show, print, and download an invoice.
+Outcome: a student sees the admin-style sidebar shell with four items, a home page that shows what needs attention now (unpaid order, package on the way, open events, registered events, courses to continue) and a few Toko items to buy next, and an order detail page that can show, print, and download an invoice.
 
 ## Current behavior (verified 2026-11-25 on `feat/public-landing` @ 65136458)
 
@@ -42,25 +42,23 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 
 **Order detail `/orders/[id]`**: grid `[1fr_380px]` with items + status timeline (`buildTimeline`) on the left and a sticky summary/shipping/payment aside on the right. `PaymentInfo` shows an "Lihat invoice" link from `order.invoice_url`; **no code writes `orders.invoice_url`** (column added in migration 0009, only ever read), so the link never renders.
 
-## Agreed behavior (Panca, 2026-11-25)
+## Agreed behavior (Panca, 2026-11-25 and 2026-11-26)
 
-> **Update 2026-11-26 (Panca, prototype review). Overrides the text below where they conflict.**
-> - **Beranda "Dari Toko" section** (last on the page): up to 4 published Toko items the student does not own yet (courses not enrolled, books, merchandise, medals; no competitions, the carousel covers those; out-of-stock physical items skipped), as the Toko product card, with a "Ke toko →" link to the public `/catalog`. Hidden when nothing qualifies.
-> - **Language toggle** moves into the sidebar user menu as a row "Bahasa · ID | EN" (between the theme item and Profil & akun). The page header stays free of icons.
-> - **Logged-in cart** (`/cart`) renders inside the student sidebar shell, like Tagihan.
-> - **Layout** follows `design-tokens-v2.md` on every student page: content max 1480px centered, 32px gutter (16px below 680px). No referral card in the sidebar.
+"Katalog" is called **Toko / Shop** in every string a student sees (route stays `/catalog`).
 
 ### 1. Shell
 - Student pages render the PR 1 sidebar shell (admin prototype style). Sidebar items, one ungrouped list: **Beranda** `/` · **Kompetisi** `/exam` (count) · **Kursus Saya** `/courses` · **Tagihan** `/orders` (count). No Katalog/Toko, no Profil.
   - Kompetisi count = registrations whose `computeCardState` is `start`, `checkin`, or `in_progress` (actionable now). Tagihan count = orders with `status === "payment_pending"`. A zero count renders nothing.
-- No header icons (theme, cart, bell) for students. The **user card** at the sidebar bottom (avatar, name, "Kelas N") opens an upward menu: Notifikasi (count) · Keranjang (count) · Mode gelap/terang · Profil & akun · Keluar. The cart count also shows as a dot on the card. See D4 for Notifikasi.
-- Mobile (< lg): the page header shows only a hamburger that opens the sidebar as a drawer (PR 1 D4 = a, settled 2026-11-26).
-- Content width: centred, capped at 1480px (`container-max`, settled 2026-11-26; PR 1 replaces `max-w-[1340px]` in `AppShell`).
-- Not built: the prototype's referral-code card (students have no referral code).
+- No header icons (theme, cart, bell, language) for students. The **user card** at the sidebar bottom (avatar, name, "Kelas N · school", either part omitted when empty) opens an upward menu, in order: Notifikasi (D4) · Keranjang (count) · Mode gelap/terang · **Bahasa · ID | EN** (inline switch) · Profil & akun · Keluar. The cart count also shows as a dot on the card.
+- Mobile (< lg): the page header shows only a hamburger that opens the sidebar as a drawer (PR 1 D4 = a).
+- Layout per `design-tokens-v2.md` § Layout (dashboard shell): content centred and capped at 1480px, gutter 32px (16px below 680px), sidebar 264px.
+- Not built: the prototype's referral-code card (removed from the prototype; students have no referral code).
 - Exam session room and print routes keep their own layouts.
 
-### 2. Catalog
-- `/catalog`, `/catalog/[id]`, and `/cart` stay routable inside `(student)` and keep working from in-page links (cart, orders, courses empty states, "Tambah kursus", carousel CTA). They only lose the sidebar entry. Moving the catalog to the public landing is a later phase.
+### 2. Toko and cart
+- Toko (`/catalog`, `/catalog/[id]`) leaves the sidebar. In this PR it stays routable inside `(student)` and keeps working from in-page links (cart, orders, courses empty states, "Tambah kursus", "Ke toko", carousel CTA).
+- The landing PR (`landing-v2.md`, same release) turns Toko into public pages: public navbar for everyone, with a **Dashboard** button for a signed-in student (attention count = pending payments + live exams) back to Beranda. Links from this PR to `/catalog` stay valid either way.
+- **Logged-in `/cart`** renders inside the student sidebar shell (like Tagihan; no sidebar item is active). The guest cart is a landing-PR concern.
 
 ### 3. Home `/` order
 1. Date overline + greeting ("Selamat malam, Nadia") + one intro line.
@@ -68,6 +66,7 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 3. **Shipping strip**, only while a physical order is `processing` or `shipped`.
 4. Row A: **Event carousel** (65%) | **Event & kompetisi** card (35%).
 5. Row B: **Lanjut belajar** (40%) | **Total jam belajar** (60%).
+6. **Dari Toko** (§9), only when something qualifies.
 - Rows stack to one column below 1200px.
 - Removed from home: hero "Ujian Terbaru" banner, "Peringkat saya", "Progress ujian", "Pelajaran populer", the big course card grid, and the "Kompetisi terdaftar" section.
 
@@ -79,20 +78,23 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 - Hidden once the order is `completed` (or for any other status).
 
 ### 5. Event carousel
-- Slides = open events the student has not registered for (source and order: D1). An exam product counts as registered when every id in its `exam_ids` has a registration.
-- Slide: overline, headline from status ("Pendaftaran dibuka" / "Sedang berlangsung", D1), `name · level · price` or "Gratis" (level: D2), product image or illustration. CTAs: **Daftar sekarang** (open) / **Jelajahi sekarang** (live) → `/catalog/[productId]`; **Kompetisi Saya** → `/exam`.
+- Source (D1, settled): the flattened `open_editions[]` of `GET /event-series?lang=` (`event-series.md`), minus editions the student is registered for. An edition (a product) counts as registered when every id in its `exam_ids` has a registration. Order = the API's: live first, then `scheduled_at`, unscheduled last. Popularity ordering is out (no public payload has counts).
+- Only editions inside a **visible** event appear; an open exam product in no visible event drops out (accepted: admins put exam products into their event when they seed events).
+- Slide: overline (event name), headline from `phase` (`open` → "Pendaftaran dibuka" + **Daftar sekarang**, `live` → "Sedang berlangsung" + **Jelajahi sekarang**), `title · level · price` or "Gratis" (level from `stages` + `grade_min/max`, e.g. "SD · Kelas 4–6"; omitted when empty; D2 settled), art = `image_url`, else the event illustration. CTAs: **Daftar sekarang** (open) / **Jelajahi sekarang** (live) → `/catalog/[productId]`; **Kompetisi Saya** → `/exam`.
 - No eligible event: one fallback slide ("Belum ada event baru", CTA Kompetisi Saya), no dots.
 - Autoplay every 6s; pauses while hovered or focus is inside; no autoplay under `prefers-reduced-motion` or with one slide. Dots evenly spaced, each a button labelled "Event i dari n: name", `aria-current` on the active one.
 - All slides stack in one grid cell, so height and dot position never change; transition is a crossfade with a small horizontal slide (none under reduced motion). Hidden slides are `inert` + `aria-hidden`. Region has `aria-roledescription="carousel"`.
-- No banner CMS: content comes from admin product/exam data.
-- **Source depends on roadmap RD1** (whether event-series merges before this PR); see D1. With event-series, slides come from `GET /event-series` flattened `open_editions[]` (`exam_id`, `product_id`, `title`, `stages`/`grade_min`/`grade_max`, `price`, `image_url`, `phase`, `scheduled_at`), which gives level and open/live directly. Only the data adapter (`heroEvents`) differs; the component takes a normalized slide list either way.
+- No banner CMS: content comes from admin Event data. `heroEvents` adapts editions × registrations into a normalized slide list; the component never sees the API shape.
 
 ### 6. Event & kompetisi card
 - Compact list of the student's registrations, max 4, plus "Lihat semua" → `/exam`.
 - Order: not-finished (live or upcoming) by `scheduled_at` ascending (unscheduled last), then finished (submitted or expired) newest first by `scheduled_end_at ?? scheduled_at`.
 - Row: date tile (day + short month of `scheduled_at`; "—" when unscheduled), `exam_title`, "{n} menit" from `workingMinutes` (omitted when null), and "Sedang berlangsung" when live.
-- Action per row: submitted + result released → **Lihat hasil** → `/exam/sessions/[session_id]/leaderboard` (not the review page); submitted + not released → "Menunggu hasil"; expired → "Terlewat"; live (`start`/`checkin`/`in_progress`) → **Mulai** → `/exam/[registrationId]`; otherwise **Detail** → `/exam/[registrationId]`. Release detection: D3.
-- Empty: "Belum ada event yang kamu ikuti." + "Lihat event" → `/catalog` (until the landing exists).
+- Action per row, first match wins:
+  1. The registration has published **external round results** (`external_results[]` on `GET /exam/registrations`, from the event-series PR) → **Lihat hasil** opens a dialog listing each round: label, score, rank, award chip, and "Lihat sertifikat" (new tab) when `certificate_url` is set. When an on-platform result is also released, the dialog links to the leaderboard too.
+  2. Submitted + on-platform result released → **Lihat hasil** → `/exam/sessions/[session_id]/leaderboard` (not the review page). Release detection: D3.
+  3. Submitted + not released → "Menunggu hasil"; expired → "Terlewat"; live (`start`/`checkin`/`in_progress`) → **Mulai** → `/exam/[registrationId]`; otherwise **Detail** → `/exam/[registrationId]`.
+- Empty: "Belum ada event yang kamu ikuti." + "Lihat event" → `/event` (the public Event page from the landing PR, same release; `/catalog` until that PR merges into `feat/public-landing`).
 
 ### 7. Lanjut belajar + Total jam belajar
 - Lanjut belajar: one row per `enrolled_courses` item: cover thumbnail (`cover`, else a tone placeholder) with a play badge, title, `progress` %, "Materi x dari y · Lanjut: …" (D6) or "Kursus selesai" at 100%, progress bar; row links `/courses/[id]`. "+ Tambah kursus" at the bottom → `/catalog`. Empty: "Belum ada kursus." + the same button.
@@ -105,6 +107,12 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 - The invoice paper is light in both themes.
 - The dead `invoice_url` row is removed from `PaymentInfo`. Visibility for cancelled/expired orders: D8.
 
+### 9. Dari Toko
+- Last section of Beranda: heading "Dari Toko" / "From the shop" with a ghost link **Ke toko →** to `/catalog`.
+- Up to 4 published products the student does not own yet, in the order `GET /products` returns them: no `exam` products (the carousel covers competitions); a course product is owned when every id in its `course_ids` is in `enrolled_courses`; physical products with `stock === 0` are skipped.
+- Each item uses the existing Toko product card (`components/catalog/ProductCard.tsx`) linking to `/catalog/[id]`.
+- The whole section is absent when nothing qualifies or the product request fails (no error state on home for an upsell).
+
 ## Technical contract
 
 ### Components and files
@@ -114,12 +122,13 @@ Outcome: a student sees the admin-style sidebar shell with four items, a home pa
 | `lib/nav-config.ts` (+test) | `STUDENT_NAV` = 4 items above with `countKey` on Kompetisi and Tagihan; drop `nav_store`, `nav_profile` from it (keys stay; other roles/pages use them). `USER_MENU.student` per R2. |
 | `components/shell/SidebarUserMenu.tsx`, `AppHeader.tsx`, `AppShell.tsx` (+tests) | Only the R2/R3/R5 extensions, if PR 1 lacks them. |
 | `app/(student)/layout.tsx` (+test) | Keep every gate. Pass student counts and the student user-menu definition into the PR 1 shell API. |
-| `lib/student-home.ts` (+test) | Pure helpers, no React: `kompetisiCount`, `pendingCount`, `pickShipment`, `shipmentSteps`, `heroEvents` (products × registrations → slides), `eventRows` (order + action kind), `courseRowText`. Kept out of `page.tsx` (Next page-export rule). |
+| `lib/student-home.ts` (+test) | Pure helpers, no React, **exported** (the landing PR's public Dashboard button reuses `kompetisiCount` + `pendingCount` for its attention count): `kompetisiCount`, `pendingCount`, `pickShipment`, `shipmentSteps`, `heroEvents` (products × registrations → slides), `eventRows` (order + action kind), `courseRowText`, `shopPicks` (products × enrolled courses → ≤4 items). Kept out of `page.tsx` (Next page-export rule). |
 | `components/dashboard/ShippingStrip.tsx` | New. |
 | `components/dashboard/EventCarousel.tsx` | New; takes normalized slides, owns timer/pause/dots. |
-| `components/dashboard/MyEventsCard.tsx` | New; registrations + per-row result query (D3). |
+| `components/dashboard/MyEventsCard.tsx` | New; registrations + per-row result query (D3) + external-results dialog. |
 | `components/dashboard/ContinueLearningCard.tsx` | New. |
 | `components/dashboard/StudySummaryCard.tsx` | Restyle to the 60% layout + legend; keeps `Donut`. |
+| `components/dashboard/ShopPicks.tsx` | New; `shopPicks` helper result rendered with the existing `ProductCard`. |
 | `app/(student)/page.tsx` (+test) | New order; delete `RankingCard`, `ExamProgressCard`, `PopularLessonsSection` and the helpers only they use (`GroupedBars`, `Ring`), which this change orphans. Dashboard API fields stay untouched. |
 | `components/orders/InvoiceDialog.tsx` | New; uses PR 1 `Dialog`. |
 | `lib/capture-pdf.ts` | New; single-page subset of Taruna's file (`toJpeg` with embedded font CSS → hand-written one-page image PDF → download). Port only `imagePdf`, `captureJpeg`, `download`, `savePageAsPdf`. |
@@ -135,11 +144,12 @@ Use `web/components/ui` primitives and v2 tokens only (`design-tokens-v2.md`; vi
 | Sidebar counts | `useRegistrations`, `useOrders`, `useCartStore` | +2 (layout-level, cached by React Query) |
 | Pending banner, courses, study | `useDashboard` | 0 |
 | Shipping strip | `useOrders` | 0 (shared with sidebar) |
-| Carousel | `useProducts("exam")`, `useRegistrations` | +1 |
+| Carousel | new `useEventSeries(lang)` (`GET /event-series`), `useRegistrations` | +1 |
 | Event card | `useRegistrations`, `useSessionResult` per visible submitted row (≤4) | ≤4 (D3) |
+| Dari Toko | `useProducts()`, `useDashboard` | +1 (all product pages, as the Toko page loads them) |
 
 ### i18n (both locales, `lib/i18n.ts`)
-New keys with prefix `stu_home_*` (greeting intro, ship titles/steps/resi/copy/detail, carousel headlines/CTAs/fallback/dot label, events card title/empty/actions/minutes/live, learn title/lesson-of/next/done/add, study legend), `stu_menu_*` (notifications, cart, profile & account), and `invoice_*` (title, bill-to, order date, paid, unpaid, columns, subtotal, discount, shipping, total, payment, print, download, generating, downloaded, failed). Reuse `nav_*`, `light_mode`, `dark_mode`, `logout`, `dash_view_all`, `dash_study_*`. Keys of removed widgets that become unused are deleted in both locales.
+New keys with prefix `stu_home_*` (greeting intro, ship titles/steps/resi/copy/detail, carousel headlines/CTAs/fallback/dot label, events card title/empty/actions/minutes/live, learn title/lesson-of/next/done/add, study legend, shop title/link), `stu_menu_*` (notifications, cart, profile & account; the Bahasa row reuses PR 1's `user_menu_language`), and `invoice_*` (title, bill-to, order date, paid, unpaid, columns, subtotal, discount, shipping, total, payment, print, download, generating, downloaded, failed). Reuse `nav_*`, `light_mode`, `dark_mode`, `logout`, `dash_view_all`, `dash_study_*`. Keys of removed widgets that become unused are deleted in both locales.
 
 ### New dependency: `html-to-image` (exact pin `1.11.13`)
 - Why: rasterizing a styled DOM node in the browser needs a full CSS-inlining/serialization pass (fonts, computed styles, SVG foreignObject); hand-writing that is hundreds of lines. The PDF container itself is hand-written (~40 lines), so no PDF library is added.
@@ -151,11 +161,11 @@ New keys with prefix `stu_home_*` (greeting intro, ship titles/steps/resi/copy/d
 
 PR 2 is cut from `feat/public-landing` after PR 1 merges into it. It reuses PR 1's tokens, `AppShell` + `AppSidebar` + `SidebarUserMenu`, and the `NAV_CONFIG` / `USER_MENU` config (PR 1 D1 = (a), students keep the sidebar), and does not re-spec them. PR 1 as settled (2026-11-26) gives: untitled group = flat rows; `NavItem.countKey?` + `AppSidebar counts?` with `AppShell` forwarding `counts` (D13 = a); `USER_MENU[role]` with action items, `countKey`, card dot, Keluar appended; the student header without theme, cart, bell; an off-canvas drawer below 1024px (D4 = a); content capped at 1480px; `Dialog size="wide"` at 820px.
 
-Requirements on PR 1 (R1, R4, R6 settled in PR 1 on 2026-11-26; R2 and R3 are part of PR 1's shell contract since 2026-11-25; R5 stays in PR 2):
+Requirements on PR 1 (R1, R4, R6 settled in PR 1 on 2026-11-26; R2 and R3 are part of PR 1's shell contract; R5 stays in PR 2):
 
 - R1. ~~PR 1 D13 builds the count slot (`countKey` + `counts`), and `AppShell` forwards `counts` to `AppSidebar`.~~ **Satisfied:** PR 1 D13 = a.
-- R2. `UserMenuItem` gains an action form (theme toggle; no `href`) and `countKey?`; `SidebarUserMenu` takes `counts?` and an optional card-dot count key. PR 2 sets `USER_MENU.student` = Keranjang `/cart` (cart count, also the card dot), Mode gelap/terang (action), Profil & akun `/profile`, plus Notifikasi per D4.
-- R3. `AppHeader` hides theme, cart, and bell for the student role (PR 1 keeps them). Language toggle stays where PR 1 puts it (D5).
+- R2. `UserMenuItem` has an action form (`theme`, `language`; no `href`) and `countKey?`; `SidebarUserMenu` takes `counts?` and an optional card-dot count key (PR 1 contract). PR 2 sets `USER_MENU.student` = Notifikasi per D4, Keranjang `/cart` (cart count, also the card dot), Mode gelap/terang (`theme`), Bahasa (`language`), Profil & akun `/profile`.
+- R3. `AppHeader` shows no theme, cart, bell, or language toggle for the student role (PR 1 contract: language leaves the header for every role).
 - R4. ~~PR 1 D4 = (a) off-canvas drawer below 1024px, opened by the header menu button, closing on navigation and Escape.~~ **Satisfied:** PR 1 D4 = a.
 - R5. `CartCountSync` keeps running for students; the cart count moves from the header badge to the menu.
 - R6. ~~`Dialog` v2 supports a wide variant (invoice preview ~820px) with its own scroll.~~ **Satisfied:** PR 1's `Dialog size="wide"` = 820px (`dialog-wide-width`), body scrolls inside, header/footer fixed.
@@ -164,16 +174,16 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 
 ## Acceptance criteria
 
-1. As a student at `/`, `/exam`, `/courses`, `/orders`, `/orders/[id]`, `/catalog`, `/cart`, `/profile`, the sidebar shows exactly Beranda, Kompetisi, Kursus Saya, Tagihan (both locales); no Toko/Katalog/Profil item; no theme/cart/bell icon in the header.
+1. As a student at `/`, `/exam`, `/courses`, `/orders`, `/orders/[id]`, `/cart`, `/profile`, the sidebar shows exactly Beranda, Kompetisi, Kursus Saya, Tagihan (both locales); no Toko/Katalog/Profil item; no theme/cart/bell/language control in the header; `/cart` renders inside this shell.
 2. Kompetisi badge equals the number of registrations in `start`/`checkin`/`in_progress`; Tagihan badge equals `payment_pending` orders; zero shows no badge.
-3. The user card menu lists Keranjang (with count), Mode gelap/terang (toggles the theme), Profil & akun (`/profile`), Keluar (logs out to the student login), plus Notifikasi per D4; the card shows a dot with the cart count when > 0.
+3. The user card menu lists, in order, Notifikasi per D4, Keranjang (with count), Mode gelap/terang (toggles the theme), Bahasa · ID | EN (switches and persists the language), Profil & akun (`/profile`), Keluar (logs out to the student login); the card shows a dot with the cart count when > 0.
 4. At 390px the header shows only the hamburger; it opens the sidebar drawer, which closes after navigating.
 5. Links to `/catalog` from cart, orders, courses empty states, "Tambah kursus", and the carousel still load the catalog.
-6. Home renders, in order: greeting, pending banner (when `pending_order`), shipping strip (when eligible), Row A, Row B. No ranking, exam-progress, popular-lessons, or "Ujian Terbaru" content remains.
+6. Home renders, in order: greeting, pending banner (when `pending_order`), shipping strip (when eligible), Row A, Row B, Dari Toko (when eligible). No ranking, exam-progress, popular-lessons, or "Ujian Terbaru" content remains.
 7. Shipping strip appears for a newest `processing`/`shipped` physical order, shows the 4 steps with available dates, courier, and a resi copy button that writes the resi to the clipboard; it is absent when the newest such order is completed or the order has only exam/course items.
-8. Carousel lists only eligible unregistered events in the agreed order; a registered one is absent; with none, the fallback slide shows and no dots render.
+8. Carousel lists only open editions from `GET /event-series` the student is not registered for, in the API order, with level and the open/live headline; a registered one is absent; with none, the fallback slide shows and no dots render.
 9. Carousel advances every 6s, stops while hovered or focused, does not autoplay under reduced motion; switching slides leaves the card height and dot positions unchanged (browser check); non-active slides are `inert`.
-10. Event card shows ≤ 4 rows in the agreed order with the agreed action per state; "Lihat hasil" links to `/exam/sessions/<session_id>/leaderboard`.
+10. Event card shows ≤ 4 rows in the agreed order with the agreed action per state; on-platform "Lihat hasil" links to `/exam/sessions/<session_id>/leaderboard`; a registration with published external results shows "Lihat hasil" opening the round dialog (score, rank, award, certificate link); an empty `external_results` changes nothing.
 11. Lanjut belajar rows show title, %, progress text, bar, and link to the course; "+ Tambah kursus" links `/catalog`. Total jam belajar shows hours and the three legend values from `study_summary`.
 12. At 1366px Row A is 65/35 and Row B 40/60; at < 1200px both stack.
 13. Order detail at ≥ md shows Ringkasan pesanan left (wider) and Riwayat status right; one column at 390px.
@@ -181,7 +191,8 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 15. Cetak prints only the invoice on one A4 page (print preview check, both themes).
 16. Unduh PDF downloads `Invoice-<id8>.pdf` that opens as one A4 page matching the preview, without any network call except fonts already loaded; failures show a toast and re-enable the button.
 17. No hex values added outside `globals.css`; `html-to-image` is pinned and loaded only on download.
-18. Every new string exists in `id` and `en`; no orphaned i18n keys from removed widgets.
+18. Dari Toko shows ≤ 4 cards, never an exam product, an owned course, or an out-of-stock physical product; "Ke toko" links `/catalog`; the section is absent when nothing qualifies or the request fails.
+19. Every new string exists in `id` and `en`; no new student-facing string says "Katalog"/"Catalog"; no orphaned i18n keys from removed widgets.
 
 ## Verification
 
@@ -194,8 +205,8 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 ## Non-goals
 
 - Restyling `/exam`, `/courses`, `/catalog`, `/cart`, `/profile` beyond what the PR 1 shell and primitives give.
-- Public catalog/landing (`landing-v2.md`). Event-series backend (`event-series.md`); this PR only consumes it when RD1 puts it first.
-- Any backend, migration, or dashboard-API change (unless D1/D3/D6 pick a backend option; with event-series first, D1/D2 need none).
+- Public Toko pages, guest cart, the public navbar's Dashboard button, and renaming the existing Toko page strings (`landing-v2.md`). Event-series backend and external result upload (`event-series.md`); this PR only consumes `GET /event-series` and `external_results`.
+- Any backend, migration, or dashboard-API change (unless D3/D6 pick a backend option).
 - Student notifications backend; referral code for students; "Pesanan sudah diterima" button and access buttons from the prototype order page.
 - Server-side or text-selectable invoice PDF; invoice numbering scheme beyond `INV/<order id>`.
 
@@ -203,34 +214,33 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 
 Recommendation first in each.
 
-- **D1 Carousel source, "live" headline, and order. Conditional on roadmap RD1** (Panca picks the PR order there; this spec does not decide it). Popularity ordering is out in every branch: no public payload exposes registration or sales counts, and event-series deliberately adds none.
-  - **If event-series merges before this PR** (RD1 = a or b with event-series first): slides = flattened `open_editions[]` of `GET /event-series?lang=` minus editions whose `exam_id` the student is registered for; headline from `phase` (`open` → "Pendaftaran dibuka" + "Daftar sekarang", `live` → "Sedang berlangsung" + "Jelajahi sekarang"); order = the API's (live first, then `scheduled_at`, unscheduled last); art = `image_url`, else the event's illustration. No backend change in this PR. Limit: only exams linked to a **visible** event appear; an open exam product not linked to any event drops out of the carousel (accept, or fall back to `GET /products?type=exam` for unlinked exams; recommend accept, admins link exams when they seed events).
-  - **If this PR merges first:** a) Web-only: slides from `GET /products?type=exam` (already "registration open" by its availability window); headline always "Pendaftaran dibuka" + "Daftar sekarang"; order by `available_until` ascending, nulls last, then name; a follow-up (in the event-series PR or right after it) swaps `heroEvents` to the source above. b) Add `scheduled_at`/`scheduled_end_at` to exam `relations` in the product payload to get the live headline now; makes this PR cross-layer and is thrown away once event-series lands.
-- **D2 Level on slides. Conditional on RD1.** If event-series is first: level text rendered from `stages` + `grade_min/max` (event-series D3 = a), e.g. "SD · Kelas 4–6". If this PR is first: a) omit the level segment until the swap; b) read a product spec row named "Jenjang"/"Kelas": fragile label matching.
-- **D3 Result released vs waiting.** Independent of RD1: event-series does not supply it. The registration list has no release state or `allow_leaderboard`.
+- ~~D1 Carousel source, "live" headline, and order.~~ **Settled with RD1 = a (Panca, 2026-11-26):** event-series merges first; slides from `GET /event-series` open editions (§5). No backend change in this PR.
+- ~~D2 Level on slides.~~ **Settled with RD1 = a:** level from the edition's `stages` + `grade_min/max` (event-series D3).
+- **D3 On-platform result released vs waiting.** Event-series supplies only external round results; the registration list has no on-platform release state or `allow_leaderboard`.
   - a) For each visible submitted row (≤ 4), call the existing result endpoint: `grading`/`locked` → "Menunggu hasil", `hidden` → "Selesai" chip without link, otherwise "Lihat hasil" → leaderboard (which already explains `leaderboard_not_available`). Web-only; cost ≤ 4 calls that load full pembahasan on each home visit.
   - b) Backend adds `result_state` + `allow_leaderboard` to `GET /exam/registrations` (needs an essay-graded check per row). One call, cross-layer.
 - **D4 Notifikasi in the user menu.** No student notification endpoint exists; today's bell is decorative. a) Leave Notifikasi out until an endpoint exists. b) Show it without a count opening an empty "Belum ada notifikasi" dialog (dead UI).
-- **D5 Language toggle.** Decision 2 removes the header icons and does not mention ID/EN; PR 1 keeps ID/EN in the header for all roles. a) Keep it there for students too: on desktop the header holds only ID/EN; at 390px it is already hidden (`sm:`), so mobile shows only the hamburger as agreed. b) Move ID/EN into the student user menu as a row.
+- ~~D5 Language toggle.~~ **Settled (Panca, 2026-11-26):** a "Bahasa · ID | EN" row in the user menu (§1), for every role (PR 1).
 - **D6 "Lanjut: <next lesson>".** The dashboard has no next-lesson title. a) Show "Materi {min(done+1,total)} dari {total}" without the lesson title. b) Fetch `GET /courses/:id` per enrolled course (N calls). c) Backend adds `next_lesson_title` to `enrolled_courses`.
 - **D7 "Dikemas" date.** Orders have no processing timestamp. a) Mark the step reached with no date. b) Use the earliest `shipment_events.occurred_at`: Biteship only; manual waybills have none.
 - **D8 Invoice for cancelled/expired orders.** a) Hide "Lihat invoice" for `cancelled` and `payment_expired`; show it for `payment_pending` (BELUM DIBAYAR) and paid statuses (LUNAS). b) Always show it, with a DIBATALKAN stamp.
 
 ## Implementation plan
 
-Branch `feat/student-dashboard-v2` from `feat/public-landing` after PR 1 merges; one PR into `feat/public-landing`. The plan assumes the recommended options; a backend option in D1/D3/D6 adds one backend task before T3/T4/T5. T3's `heroEvents` adapter reads `GET /event-series` (new `useEventSeries` hook) or `GET /products?type=exam` per D1; the component and its tests are the same either way.
+Branch `feat/student-dashboard-v2` from `feat/public-landing` after PR 1 and the event-series PR merge; one PR into `feat/public-landing`, in parallel with testimonials. The plan assumes the recommended options; a backend option in D3/D6 adds one backend task before T4/T5. T3's `heroEvents` adapter reads `GET /event-series` (new `useEventSeries` hook).
 
 | id | title | files / scope | depends_on | test-first step | done-check |
 |---|---|---|---|---|---|
 | T0 | i18n contract | `lib/i18n.ts` (id + en keys listed above) | PR 1 | — (data only) | `tsc --noEmit` passes; keys exist in both locales |
-| T1 | Student nav + shell wiring | `lib/nav-config.ts`(+test), `app/(student)/layout.tsx`(+test), `lib/student-home.ts` count helpers(+test), R2/R3/R5 shell extensions(+tests) | T0 | nav test expects the 4 hrefs; layout test expects badges and menu items (red) | tests green; 390/1366 browser check of sidebar, drawer, menu |
+| T1 | Student nav + shell wiring | `lib/nav-config.ts`(+test), `app/(student)/layout.tsx`(+test), `lib/student-home.ts` count helpers(+test), R5 + any R2/R3 gap (+tests), `/cart` inside the shell | T0 | nav test expects the 4 hrefs; layout test expects badges and menu items in order incl. Bahasa (red) | tests green; 390/1366 browser check of sidebar, drawer, menu |
 | T2 | Shipping strip | `lib/student-home.ts` `pickShipment`/`shipmentSteps`(+test), `components/dashboard/ShippingStrip.tsx`(+test) | T0 | helper cases: newest pick, digital-only excluded, completed hidden, step reach (red) | tests green |
-| T3 | Event carousel | `heroEvents`(+test), `components/dashboard/EventCarousel.tsx`(+test) | T0 | eligibility/order cases; fake-timer autoplay/pause/reduced-motion (red) | tests green |
-| T4 | Event & kompetisi card | `eventRows`(+test), `components/dashboard/MyEventsCard.tsx`(+test) | T0 | order + action-per-state cases incl. result states (red) | tests green |
+| T3 | Event carousel | `lib/hooks/event-series.ts` (`useEventSeries`), `heroEvents`(+test), `components/dashboard/EventCarousel.tsx`(+test) | T0 | eligibility (all `exam_ids` registered → excluded), API order, level text, open/live headline; fake-timer autoplay/pause/reduced-motion (red) | tests green |
+| T4 | Event & kompetisi card | `eventRows`(+test), `components/dashboard/MyEventsCard.tsx` + external-results dialog (+test), `lib/types.ts` `external_results` if not already added by event-series | T0 | order + action-per-state cases incl. on-platform result states and external results first (red) | tests green |
 | T5 | Learn + study cards | `courseRowText`(+test), `ContinueLearningCard.tsx`(+test), `StudySummaryCard.tsx` | T0 | row text/percent/empty cases (red) | tests green |
-| T6 | Home assembly + cleanup | `app/(student)/page.tsx`(+test), delete `RankingCard`, `ExamProgressCard`, `PopularLessonsSection`, `GroupedBars`, `Ring`, orphan i18n keys | T2, T3, T4, T5 | page test asserts section order and removed widgets absent (red) | tests green; grep shows no imports of deleted files; e2e grep done |
+| T5b | Dari Toko | `shopPicks`(+test), `components/dashboard/ShopPicks.tsx`(+test) | T0 | cases: exam excluded, owned course excluded (all `course_ids` enrolled), out-of-stock physical skipped, cap 4, empty → nothing (red) | tests green |
+| T6 | Home assembly + cleanup | `app/(student)/page.tsx`(+test), delete `RankingCard`, `ExamProgressCard`, `PopularLessonsSection`, `GroupedBars`, `Ring`, orphan i18n keys | T2, T3, T4, T5, T5b | page test asserts section order and removed widgets absent (red) | tests green; grep shows no imports of deleted files; e2e grep done |
 | T7 | Invoice dialog + PDF | `package.json`/lock (`html-to-image@1.11.13`), `lib/capture-pdf.ts`, `components/orders/InvoiceDialog.tsx`(+test), print CSS in `globals.css` | T0 | dialog test: fields, stamp, Cetak calls print, Unduh calls the capture helper (red) | tests green; manual PDF + print preview check |
 | T8 | Order detail layout | `app/(student)/orders/[id]/page.tsx`(+test) | T7 | test expects Lihat invoice button and no `invoice_url` row (red) | tests green; 390/1366 check |
 | T9 | Integration verification | whole branch | T1, T6, T8 | — | `tsc`, `vitest run`, `npm run build` green; browser matrix and PDF check per Verification; `git diff --check` |
 
-Parallel frontier after T0: **T1, T2, T3, T4, T5, T7** (disjoint files except `lib/student-home.ts`; T1–T5 each add their own functions and tests to it, so either run them sequentially on that file or let the first task create it and the others append in separate, non-overlapping sections). Then **T6** and **T8** in parallel, then **T9**.
+Parallel frontier after T0: **T1, T2, T3, T4, T5, T5b, T7** (disjoint files except `lib/student-home.ts`; T1–T5b each add their own functions and tests to it, so either run them sequentially on that file or let the first task create it and the others append in separate, non-overlapping sections). Then **T6** and **T8** in parallel, then **T9**.

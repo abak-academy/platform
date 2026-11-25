@@ -110,7 +110,7 @@ Twelve styles; nothing else. Ten sizes: 64, 44, 30, 20, 16, 15, 14, 13, 12, 11.
 
 | Style | Family | Size / line-height | Weight | Tracking | Phones | Use |
 |---|---|---|---|---|---|---|
-| `display-xl` | display | 64 / 1.02 | 800 | -0.045em | `clamp(42px, 5.4vw, 64px)` | Landing hero headline only (see D1) |
+| `display-xl` | display | 64 / 1.02 | 800 | -0.045em | `clamp(42px, 5.4vw, 64px)` | Marketing headlines (the landing hero title itself is D1) |
 | `display` | display | 44 / 1.08 | 800 | -0.04em | 30 | Landing section titles, CTA band, story headings |
 | `h1` | display | 30 / 1.15 | 800 | -0.035em | 24 | One per page: page title; KPI values; ring centres |
 | `h2` | display | 20 / 1.3 | 800 | -0.02em | — | Section and dialog titles |
@@ -158,8 +158,9 @@ No other shadows. Borders: 1px `line` for cards, rows, dividers; 1.5px for inter
 
 | Token | Value | Use |
 |---|---|---|
-| `container-max` | 1480px | Max content width, centred in the main column. **Replaces `max-w-[1340px]` in `AppShell`** (settled 2026-11-26, admin and student) |
-| `gutter` / `gutter-mobile` | 32px / 16px | Main-column horizontal padding; 16px below 680px |
+| `container-max` | 1480px | Dashboard shell: max content width, centred in the main column. **Replaces `max-w-[1340px]` in `AppShell`** |
+| `gutter` / `gutter-mobile` | 32px / 16px | Dashboard shell: main-column horizontal padding; 16px below 680px |
+| `container-public` / `container-public-narrow` | 1200px / 820px | Public site: content width (prototype `.wrap` / `.wrap.narrow`), each `min(<width>, 100% − 48px)`, i.e. a 24px (`space-6`) side gutter at every width |
 | `sidebar-width` | 264px | App sidebar ≥1024px; same-width off-canvas drawer below (replaces today's 252px + 64px rail) |
 | `dialog-width` / `dialog-wide-width` | 480px / 820px | Default / wide Dialog (invoice preview; body scrolls inside) |
 | `popover-width` | 420px | Filter popover (min with 90vw) |
@@ -169,6 +170,17 @@ No other shadows. Borders: 1px `line` for cards, rows, dividers; 1.5px for inter
 | `nav-row` | 44px | Sidebar row and group header (38px for nested rows) |
 | `icon` | 20px | Default icon; 16 small, 26 large, 48 empty state |
 | `z-popover` < `z-menu` < `z-drawer` < `z-dialog` | 30 < 40 < 50 < 70 | Stacking. The Dialog moves to 70 (shadcn default is 50, which would tie with the drawer) |
+
+**Which layout applies where** (Panca, 2026-11-26):
+
+| Surface | Routes | Container | Gutter | Bottom |
+|---|---|---|---|---|
+| Dashboard shell (sidebar 264px) | every admin and affiliate page; student pages incl. Beranda, Kompetisi, Kursus Saya, Tagihan, order detail, Profil, and the **logged-in** `/cart` | `container-max` 1480px, centred | `gutter` 32px, `gutter-mobile` 16px below 680px | `space-20` 80px |
+| Public site (public navbar + footer, no sidebar) | landing, `/event`, `/program`, Toko `/catalog` + `/catalog/[id]`, the **guest** `/cart` | `container-public` 1200px (`-narrow` 820px for single-column pages such as the cart) | 24px | 80px (`space-20`) between the last section and the footer, except when the page ends with the CTA band, which meets the footer directly |
+
+A public `container-public` wrapper never applies inside the dashboard shell (a page rendered in both, such as the cart, takes the shell's container there). Exam session room and print routes keep their own layouts.
+
+**Page-header tint** (public page heroes such as Event, Program, Toko): the `hero-a`/`hero-b` radial glows extend about 120px below the header block and fade out with a top-to-bottom mask (opaque to ~45%, transparent at the bottom), so the header never ends in a hard edge or line.
 
 Breakpoints: ≥1200 full grids · <1200 KPI rows drop to 3 and two-column dashboard rows stack · <1024 sidebar becomes the drawer (scrim, `z-drawer`, close button) · <680 single column, toolbar search full width, Filter popover docks to the bottom, display/h1 shrink.
 
@@ -215,6 +227,7 @@ When porting from the prototype, snap every value; never copy it.
 | 24–34 (page titles, KPI values, ring centres) | `h1` |
 | 36–46 | `display` |
 | clamp(42–72), 58, 64, 66 | `display-xl` |
+| `clamp(44px, 6.4vw, 92px)` (landing hero title) | D1 |
 | 8.5 mono (ACADEMY in the wordmark) | part of the logo lockup |
 | 150–300 (giant numerals, watermark) | illustration, drawn as SVG |
 | Spacing 2–5 / 6–9 / 10–13 / 14–17 / 18–21 / 22–27 / 28–35 / 36–47 / 48–64 / 72+ | `space-1` / `2` / `3` / `4` / `5` / `6` / `8` / `10` / `14` / `20` |
@@ -237,7 +250,7 @@ Known limits, by design; reviewers do not re-raise them, implementers must respe
 - Colours, radii, shadows: `web/app/globals.css` `@theme` block + the `html[data-theme="dark"]` block. No new CSS file. `--gradient-hero` and `--z-*` live in `:root` (Tailwind has no theme namespace for them; use `z-(--z-dialog)`).
 - Type: one `@utility type-<style>` per style (family, size, line-height, weight, tracking, phone step) so a page writes `type-h1`, not five utilities. The `type-` prefix avoids colliding with Tailwind's `text-*` scale.
 - Spacing: Tailwind v4's numeric scale already equals `space-N` (`p-4` = 16px); the rule is "only steps 1, 2, 3, 4, 5, 6, 8, 10, 14, 20". No new spacing tokens.
-- Sizes and widths: `--spacing-control-sm|md|lg`, `--spacing-input`, `--spacing-nav-row`, `--spacing-sidebar`; `--container-page` (1480px; not `container-max`, because `max-w-max` is a built-in Tailwind utility), `--container-dialog`, `--container-dialog-wide`, `--container-popover`, `--container-menu`. Breakpoints 1200 and 680 are added as named `--breakpoint-*` entries (1024 = existing `lg`).
+- Sizes and widths: `--spacing-control-sm|md|lg`, `--spacing-input`, `--spacing-nav-row`, `--spacing-sidebar`; `--container-page` (1480px; not `container-max`, because `max-w-max` is a built-in Tailwind utility), `--container-public` (1200px), `--container-public-narrow` (820px), `--container-dialog`, `--container-dialog-wide`, `--container-popover`, `--container-menu`. Breakpoints 1200 and 680 are added as named `--breakpoint-*` entries (1024 = existing `lg`).
 - `layout.tsx`: Plus Jakarta Sans 500–800 via `next/font/google` as `--font-display`. No new dependency.
 - `components/ui/*` keep their public props; `Dialog` gains `size`. `Button` `default` becoming ember changes meaning on every call site: list them in the PR body.
 - Admin and affiliate pages use these tokens through the `--md-sys-*` bridge in `admin-theme.css` (`admin-dashboard-v2.md` D2 = a).
@@ -249,7 +262,8 @@ Known limits, by design; reviewers do not re-raise them, implementers must respe
 3. Every token in the colour, radius, shadow, layout, size, and z tables exists in `globals.css` with the listed light/dark value (checked against this file in review).
 4. Existing component tests pass; class assertions that change are updated in the same PR.
 5. Contrast table in the PR body for every `-50`/`-700` badge pair, `on-brand`/`on-ember`/`on-danger` on their fills, `ink-600` on `paper`/`surface`/`surface-sunken`, both themes; values match the flags above.
-6. `AppShell` content is capped at 1480px and centred; no `max-w-[1340px]` remains.
+6. `AppShell` content is capped at 1480px and centred with 32px gutters (16px below 680px); no `max-w-[1340px]` remains.
+7. `--container-public` and `--container-public-narrow` exist for the public pages (used from the landing PR on; PR 1 only defines them).
 
 ## Decisions needed
 
@@ -263,5 +277,5 @@ Recommendation first.
 
 ## Non-goals
 
-- Page layout changes; those belong to the phase specs.
+- Page layout changes beyond the shell container; those belong to the phase specs. The public site's use of `container-public`, the footer gap, and the page-header fade is built by the landing PR (`landing-v2.md`).
 - Icon-set swap; replacing legacy `ink-500`/`ink-400`/status tokens on existing pages.

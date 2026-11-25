@@ -9,7 +9,7 @@ sources: ["docs/specs/redesign-v2-roadmap.md", "docs/specs/landing-v2.md", "docs
 
 # Testimonials
 
-In scope of the redesign (Panca, 2026-11-26): built on a branch cut from `feat/public-landing`, PR into `feat/public-landing`, not `main`. Its place in the PR order is roadmap decision RD1.
+In scope of the redesign (Panca, 2026-11-26): built on a branch cut from `feat/public-landing` after the event-series PR merges (roadmap RD1 = a; it reuses that PR's admin `ListToolbar`), in parallel with the student PR; PR into `feat/public-landing`, not `main`.
 
 ## Problem and outcome
 
@@ -26,7 +26,7 @@ One slide at a time. The left panel is **the photo of the person speaking** (4:5
 Decisions (Panca, 2026-11-17, from prototype review at `#/admin/testimoni`), unchanged:
 
 1. A testimonial has:
-   - Person: name, school or role (free text, for example "SMA Negeri 1 Depok" or "Guru BK, SMA Kornita IPB"), and a photo (behavior 9). The avatar-sheet alternative was dropped on 2026-11-26.
+   - Person: name, school or role (free text, for example "SMA Negeri 1 Depok" or "Guru BK, SMA Kornita IPB"), and a photo (behaviors 10–11). The avatar-sheet alternative was dropped on 2026-11-26.
    - Quote in Indonesian and English.
    - Achievements in Indonesian and English, up to 3 short chips each (for example "Medali perak olimpiade 2025").
    - Consent: a checkbox "Ada persetujuan tertulis" plus a required note on where the consent is kept (for example "Formulir izin via WhatsApp, 12 Nov 2026"). The consent is from the person, or from a parent or guardian when the person is under 18.
@@ -34,26 +34,24 @@ Decisions (Panca, 2026-11-17, from prototype review at `#/admin/testimoni`), unc
 2. **Consent gate.** A testimonial can be made visible only when consent is recorded, the consent note is filled, the EN quote is filled, and a photo is uploaded (photo added 2026-11-26). The switch and the save are both rejected otherwise, with a message that names the missing part.
 3. Unchecking consent on a visible testimonial hides it in the same save.
 4. The admin page is a card grid with the shared `ListToolbar` (`admin-list-toolbar.md`; availability per event-series D5): search name or quote; filters Landing (shown/draft), Consent (yes/no), EN (complete/missing). Each card shows the person, quote, chips, flags (consent, ID + EN), a visibility switch, Edit, and Delete (with a confirm modal). The prototype's "Data contoh" flag marks its own sample data only; it has no column and is not built.
-5. The landing carousel shows visible testimonials in sort order, in the visitor's language. With none visible, the section is not rendered.
+5. The landing carousel shows visible testimonials in sort order, in the visitor's language, each slide with the speaker's own photo. With none visible, the section is not rendered.
 6. Every change to consent or visibility is written to the audit log (actor, testimonial id, old and new values).
+7. Only `super_admin` manages testimonials (D1, Panca 2026-11-26): consent of minors is a legal matter, so access stays narrow.
 
 Added 2026-11-26 (proposed; confirm in align):
 
-7. Achievements per language are independent: `?lang=en` returns the EN chips, possibly none, and never falls back to the ID chips (a mixed-language slide reads as a bug).
-8. Replacing or removing a photo, or deleting a testimonial, leaves the old storage object in place (no delete call); see the privacy note under Photo.
+8. Achievements per language are independent: `?lang=en` returns the EN chips, possibly none, and never falls back to the ID chips (a mixed-language slide reads as a bug).
+9. Replacing or removing a photo, or deleting a testimonial, leaves the old storage object in place (no delete call); see the privacy note under Photo.
 
-Decided 2026-11-26 (Panca, prototype review):
+Decided 2026-11-26 (Panca):
 
-9. **Photo required to show.** A testimonial is visible on the landing only with a photo. Drafts may have none.
-10. **Standard photo size** ("resolusi nanti dibuat standar"): portrait **4:5**, stored at **1200 × 1500**. The admin picks a JPG, PNG, or WebP file of at most **5 MB** and at least **1200 × 1500 px**; the admin web center-crops it to 4:5 and resizes it to 1200 × 1500 in the browser (canvas), shows a live preview, and uploads only on Save. Encoded format and server-side checking: D2.
-
-Proposed 2026-11-26 (confirm in align):
-
-11. Removing the photo of a visible testimonial hides it in the same save, like unchecking consent (3), because a removal request may be a privacy request.
+10. **Photo required to show.** A testimonial is visible on the landing only with a photo. Drafts may have none.
+11. **Standard photo** ("resolusi nanti dibuat standar"): portrait **4:5**, stored at **1200 × 1500** as **JPEG** (canvas quality about 0.85). The admin picks a JPG, PNG, or WebP file of at most **5 MB** and at least **1200 × 1500 px**; the admin web center-crops it to 4:5, resizes it to 1200 × 1500, encodes JPEG in the browser, shows a live preview, and uploads only on Save. The browser crop is the gate; the server checks only the key prefix (D2 = a).
+12. Removing the photo of a visible testimonial hides it in the same save, like unchecking consent (3), because a removal request may be a privacy request.
 
 ## Data model
 
-Migration `0076_testimonials` (after `0075_event_series` if that lands first; the latest on `feat/public-landing` @ 34ea5d32 is `0074`, so re-check the next free number on the branch base before creating):
+Migration `0076_testimonials` (after `0075_event` from the event-series PR, which merges first; the latest on `main` is `0074`, so re-check the next free number on the branch base before creating):
 
 ```sql
 CREATE TABLE testimonial (
@@ -76,26 +74,26 @@ CREATE TABLE testimonial (
 CREATE INDEX testimonial_visible_idx ON testimonial (sort_order) WHERE is_visible;
 ```
 
-`content` uses the same locale-keyed shape as `event_series.content` (`id` and `en` only; 422 on other keys; at most 3 achievements per locale). `consent_by` and `consent_at` are set by the server when `has_consent` changes to true, not sent by the client. The table CHECKs back up the service rule, so a bad write cannot publish a testimonial without consent or without a photo. `photo_key` stores the object key, not a URL; the service accepts only a key under the upload prefix (D3), the same guard `UpdatePhoto` applies to student avatars (`avatarKeyFromStored`, `service/exam.go`), so no arbitrary URL is stored.
+`content` uses the same locale-keyed shape as the event `content` (`event-series.md`) (`id` and `en` only; 422 on other keys; at most 3 achievements per locale). `consent_by` and `consent_at` are set by the server when `has_consent` changes to true, not sent by the client. The table CHECKs back up the service rule, so a bad write cannot publish a testimonial without consent or without a photo. `photo_key` stores the object key, not a URL; the service accepts only a key under the `question/` upload prefix (D3), the same guard `UpdatePhoto` applies to student avatars (`avatarKeyFromStored`, `service/exam.go`), so no arbitrary URL is stored.
 
 Down migration drops the table.
 
 ## API
 
-**Admin.** New RBAC permission `testimonials:write` (and `:read`), roles per D1.
+**Admin.** New RBAC permission `testimonials:write` (and `:read`), `super_admin` only (D1; `super_admin` already holds `*`, so no role table change beyond naming the permission).
 
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/admin/testimonials` | All, including drafts, with `consent_by` name |
 | POST | `/admin/testimonials` | Create. `is_visible` defaults to false |
-| PATCH | `/admin/testimonials/:id` | Partial update. 422 with `missing: ["has_consent", "consent_note", "content.en.quote", "photo_key"]` (the ones absent) when `is_visible` would be true without them. `has_consent: false` or `photo_key: null` also sets `is_visible: false` in the same write (behaviors 3, 11) |
+| PATCH | `/admin/testimonials/:id` | Partial update. 422 with `missing: ["has_consent", "consent_note", "content.en.quote", "photo_key"]` (the ones absent) when `is_visible` would be true without them. `has_consent: false` or `photo_key: null` also sets `is_visible: false` in the same write (behaviors 3, 12) |
 | DELETE | `/admin/testimonials/:id` | Hard delete; it is marketing content, not a record of a transaction. Audit entry kept |
 
 Audit: `InsertAuditLogMeta(ctx, nil, actor, "testimonial", id, "testimonial.consent_change" \| "testimonial.visibility_change" \| "testimonial.delete", {old, new})`, the same helper `admin_users.go` uses.
 
-**Photo.** Uses `POST /admin/uploads/image` with no backend change; the key lands under `question/`, which the anonymous `GET /files/*` already serves (verified 2026-11-26, see event-series "Logo storage"). Prefix choice is event-series D7, decided once for both (D3). Privacy: a **draft** photo of a minor is fetchable by anyone holding its key, and stays so after removal (behavior 8). Keys are not listed anywhere public; the T1 PR confirms they are unguessable and records it here.
+**Photo.** Uses `POST /admin/uploads/image` with no backend change; the key lands under `question/`, which the anonymous `GET /files/*` already serves (verified 2026-11-26; D3, shared with event-series logos). Privacy: a **draft** photo of a minor is fetchable by anyone holding its key, and stays so after removal (behavior 9). Keys are not listed anywhere public; the T1 PR confirms they are unguessable and records it here.
 
-What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`handler/admin_uploads.go`) only requires `content_type` to start with `image/`; `GeneratePresignedUploadURL` (`service/student.go`) returns a 15-minute presigned **PUT** with no size cap and no dimension check, and the bytes go straight to storage, never through the API. So today nothing server-side enforces 5 MB, 1200 × 1500, or the format; the admin web's crop is the only gate unless D2 = b. `GET /files/*` serves `image/jpeg` and `image/webp` inline (`safeInlineImageTypes`, `handler/student.go`).
+What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`handler/admin_uploads.go`) only requires `content_type` to start with `image/`; `GeneratePresignedUploadURL` (`service/student.go`) returns a 15-minute presigned **PUT** with no size cap and no dimension check, and the bytes go straight to storage, never through the API. So nothing server-side enforces 5 MB, 1200 × 1500, or the format; the admin web's crop is the only gate (accepted, D2 = a: only `super_admin` can write, and a direct API caller with that token could store any image). `GET /files/*` serves `image/jpeg` and `image/webp` inline (`safeInlineImageTypes`, `handler/student.go`).
 
 **Public, no auth:**
 
@@ -105,7 +103,7 @@ What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`ha
 
 ## Admin UI (web)
 
-- Nav: "Testimoni" in Akademik, right after Event (`admin-nav-accordion.md`; visible to the D1 roles only).
+- Nav: "Testimoni" in Akademik, right after Event (`admin-nav-accordion.md`; `super_admin` only).
 - Page `/admin/testimonials` (admin list template: header + ListToolbar + grid + EmptyState): the card grid and toolbar from Agreed behavior 4; "Tambah testimoni" opens the editor.
 - Editor `Dialog` (default 480px; scrolls inside): name, school/role, the photo field, quote ID, quote EN, achievements ID and EN (one per line, max 3), a highlighted consent box (checkbox + note), the visibility switch, and Save (`brand` button). Delete confirmation uses the `destructive` button.
 - Photo field ("Foto peserta"): file input accepting `image/jpeg,image/png,image/webp`; a 4:5 preview of the cropped result; help text "Wajib untuk tayang. JPG/PNG/WebP, maks 5 MB, minimal 1200 × 1500 px. Dipotong otomatis ke 4:5 dan disimpan 1200 × 1500. Hanya unggah dengan izin peserta/orang tua." Too-large and too-small files are refused at pick time ("Foto lebih dari 5 MB", "Foto minimal 1200 × 1500 px"). The cropped file is uploaded on Save, before the PATCH that stores its key, so a cancelled edit leaves no object.
@@ -116,8 +114,8 @@ What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`ha
 
 1. The migration applies and rolls back cleanly; the table CHECKs reject `is_visible = true` with no consent and with no `photo_key` at the SQL level; a draft without a photo is accepted.
 2. Service tests: visibility rejected for each missing part, photo included; removing the photo of a visible testimonial hides it in the same write; a `photo_key` outside the upload prefix is rejected; unchecking consent hides the testimonial in the same write; `consent_by` and `consent_at` set by the server and not overwritable by the client; unknown locale key and a 4th achievement rejected; audit entries for consent, visibility, and delete with old/new values.
-3. Handler tests: RBAC per role (D1); the public endpoint never returns drafts, consent fields, `photo_key`, or `sort_order`, and every item has `photo_url`; `?lang=en` returns English quote and EN achievements only (empty EN chips stay empty); no `lang` returns Indonesian.
-4. Web tests: create, edit, delete round-trip; the visibility switch is blocked with the right message per missing part, photo included; filters work; a file over 5 MB or under 1200 × 1500 is refused with its message; an accepted file is cropped to a 1200 × 1500 blob of the D2 format (a 3000 × 2000 landscape input keeps its center); the upload happens on Save, not on pick.
+3. Handler tests: only `super_admin` passes RBAC (D1); the public endpoint never returns drafts, consent fields, `photo_key`, or `sort_order`, and every item has `photo_url`; `?lang=en` returns English quote and EN achievements only (empty EN chips stay empty); no `lang` returns Indonesian.
+4. Web tests: create, edit, delete round-trip; the visibility switch is blocked with the right message per missing part, photo included; filters work; a file over 5 MB or under 1200 × 1500 is refused with its message; an accepted file is cropped to a 1200 × 1500 `image/jpeg` blob (a 3000 × 2000 landscape input keeps its center); the upload happens on Save, not on pick.
 5. Landing (`landing-v2.md`): zero visible means no "Cerita peserta" section in the HTML.
 6. `./deploy/pipeline/backend.sh`, `npx tsc --noEmit`, `npx vitest run`, `npm run build` pass.
 
@@ -130,29 +128,27 @@ What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`ha
 - The landing section itself (`landing-v2.md`).
 - An avatar-sheet face for testimonials (dropped 2026-11-26). `profile-avatars.md` may still build the sheet for student profiles.
 - A crop editor (drag/zoom): the crop is always centered; an admin who needs another framing crops the file before upload.
-- A server-side size or dimension gate on the upload itself: the presigned PUT has none today, and this spec adds none (see D2 for a check at save time).
+- A server-side size or dimension gate on the upload itself: the presigned PUT has none today, and this spec adds none (D2 = a).
 
-## Decisions needed
+## Decisions
 
-Recommendation first.
+All settled (Panca, 2026-11-26):
 
-- **D1. Who manages testimonials.** a) `super_admin` only (default from 2026-11-17; consent of minors is a legal matter, keep it narrow). b) Also `admin_exam` (whoever runs events collects stories). c) A new marketing role (out of scope here).
-- **D2. Photo format and server-side checking.** (Replaces the dropped avatar-sheet decision.) Go's standard library decodes JPEG, PNG, and GIF but not WebP; WebP needs `golang.org/x/image/webp`, which is not in `backend/go.mod`. The backend already sniffs image headers with stdlib `image.DecodeConfig` (`service/card_logo.go`).
-  - a) **JPEG from the canvas (quality about 0.85), trust the browser crop** (recommended): the admin web encodes `image/jpeg`; the server checks only the key prefix (Data model). No new dependency, no backend change on the upload path. Every browser encodes JPEG from canvas, while WebP encoding is not universal (`toBlob('image/webp')` can silently return PNG; uncertain for current Safari, so a WebP choice must check `blob.type`). Cost: files roughly 25–35% larger than WebP (estimate, a few hundred KB at 1200 × 1500); a direct API caller with a valid admin token could still store any image, which is acceptable because only D1 roles can write.
-  - b) **JPEG plus a check at save**: on PATCH with a new `photo_key`, the service reads the object (`s.storage.GetObject`, as `service/job.go` does) through a 5 MB `LimitReader` and requires `image.DecodeConfig` to report `jpeg` at exactly 1200 × 1500, else 422 `photo_invalid`. No new dependency. Cost: a storage read in the save path, storage needed in service tests, and it still cannot stop an oversized PUT, only refuse to link it.
-  - c) **WebP as in the prototype**: smallest files. Either trust the browser (a's risk plus the encoding fallback above) or add `golang.org/x/image/webp` for b's check (a new dependency).
-- **D3. Photo/media prefix.** Shared with event-series D7; decide once.
+- **D1. Who manages testimonials:** `super_admin` only (behavior 7).
+- **D2. Photo format and server-side checking:** (a) JPEG from the canvas, trust the browser crop; the server checks only the key prefix. No new dependency, no backend change on the upload path. Rejected: (b) a save-time `image.DecodeConfig` check (storage read in the save path), (c) WebP (Go stdlib cannot decode it; `toBlob('image/webp')` can silently return PNG).
+- **D3. Photo/media prefix:** reuse `question/` via `POST /admin/uploads/image` (same as event-series logos, event-series D7).
+- **Rule 12 (photo removal hides):** accepted.
 
 ## Implementation plan
 
-Branch `feat/testimonials` from `feat/public-landing` (after the PRs RD1 puts before it); one PR into `feat/public-landing` (or folded into the event-series PR if RD1 = b). Tasks for `.agents/work/testimonials.json`, test-first per `tdd-implementation`. Assumes the recommended options and that the generic admin `ListToolbar` already exists (event-series T5); if testimonials lands first, that task moves here unchanged.
+Branch `feat/testimonials` from `feat/public-landing` after the event-series PR merges; one PR into `feat/public-landing`, in parallel with the student PR. Tasks for `.agents/work/testimonials.json`, test-first per `tdd-implementation`. Uses the generic admin `ListToolbar` from the event-series PR (event-series T4; if event-series D5 ≠ a, that task moves here).
 
 | ID | Title | Files / scope | depends_on | Test-first step | Done-check |
 |----|-------|---------------|------------|-----------------|------------|
 | T1 | Schema + model + repository | `backend/db/migrations/0076_testimonials.{up,down}.sql`, `internal/model/testimonial.go`, `internal/repository/testimonial.go` (+ tests) | — | Repository tests against Postgres: CRUD, both CHECKs reject at SQL level (no consent, no photo), photo-less draft accepted, visible-only ordered list (fail) | migration up/down/up; repository tests green |
-| T2 | Admin service + handlers + audit | `internal/service/testimonial.go`, `internal/handler/admin_testimonials.go`, RBAC (D1), admin routes (+ tests) | T1 | Service cases of AC 2 (each missing part incl. photo, consent-off and photo-removal hide, key-prefix guard, server-set consent fields, locale/achievement limits, audit rows; plus the save-time check if D2 = b) and RBAC per role (fail) | `go test -run` both packages green |
+| T2 | Admin service + handlers + audit | `internal/service/testimonial.go`, `internal/handler/admin_testimonials.go`, RBAC (D1), admin routes (+ tests) | T1 | Service cases of AC 2 (each missing part incl. photo, consent-off and photo-removal hide, key-prefix guard, server-set consent fields, locale/achievement limits, audit rows) and RBAC: only `super_admin` (fail) | `go test -run` both packages green |
 | T3 | Public endpoint | `handler/testimonials_public.go`, public route, flattening per `lang` (+ tests) | T1 | No drafts, no consent fields or `photo_key`, `photo_url` on every item, EN chips not falling back (fail) | tests green; `curl` on the local stack |
-| T4 | Admin web page + editor + nav | `app/(admin)/admin/testimonials/**`, `lib/hooks/testimonials.ts`, a small crop helper beside the editor, `NAV_CONFIG` Akademik › Testimoni, i18n (+ tests) | T2 | Round-trip; blocked visibility message per missing part (photo included); 5 MB and 1200 × 1500 refusals; crop to 1200 × 1500 in the D2 format; upload on Save only (fail) | tests green; 390/1366 light/dark browser check including a real photo upload and its `/files/` URL |
+| T4 | Admin web page + editor + nav | `app/(admin)/admin/testimonials/**`, `lib/hooks/testimonials.ts`, a small crop helper beside the editor, `NAV_CONFIG` Akademik › Testimoni, i18n (+ tests) | T2 | Round-trip; blocked visibility message per missing part (photo included); 5 MB and 1200 × 1500 refusals; crop to a 1200 × 1500 JPEG; upload on Save only (fail) | tests green; 390/1366 light/dark browser check including a real photo upload and its `/files/` URL |
 | T5 | Integration verification | whole branch | T3, T4 | — | `backend.sh`, `tsc`, `vitest`, `npm run build`; AC 1–6 each with evidence; `git diff --check` |
 
 Parallel frontiers: **T1** → **{T2, T3}** → **T4** → T5. T2 and T3 both add to `routes.go` and the RBAC table: separate anchored blocks.
