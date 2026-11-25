@@ -469,11 +469,12 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .side-row.on .side-ico .d { opacity: .3; }
 .side-row .count { margin-left: auto; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px; background: var(--ember); color: var(--on-ember); font: 800 11px/22px var(--font-display); text-align: center; }
 .side-foot { margin-top: auto; padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
-.side-promo { padding: 14px; border-radius: 18px; background: radial-gradient(120% 120% at 100% 0%, #f59a6b, var(--ember)); color: #fff; display: flex; flex-direction: column; gap: 2px; } .side-promo .mono { opacity: .85; font-size: 10px; } .side-promo b { font: 800 22px var(--font-display); letter-spacing: .02em; } .side-promo small { opacity: .9; }
 .side-user { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 14px; text-decoration: none; color: var(--ink); } .side-user:hover { background: var(--surface-sunken); }
 .side-user b { display: block; font: 700 13px var(--font-display); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .side-user small { display: block; font-size: 11.5px; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scrim { display: none; }
-.shell-main { flex: 1; min-width: 0; padding: 22px 30px 100px; display: flex; flex-direction: column; gap: 20px; }
+.shell-main { flex: 1; min-width: 0; padding: 24px 32px 100px; display: flex; flex-direction: column; gap: 20px; }
+/* design-tokens-v2 layout: every dashboard page (admin + student) caps content at container-max 1480px, centred; public .wrap containers don't apply inside the shell. */
+.shell-main > *, .shell-main > .wrap { width: 100%; max-width: 1480px; margin-inline: auto; } .shell-main .wrap .wrap { width: 100%; margin-inline: 0; }
 .app-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .app-head h1 { font: 800 30px/1.15 var(--font-display); letter-spacing: -0.035em; }
 .app-head p { margin: 4px 0 0; color: var(--ink-muted); font-size: 14px; }
@@ -773,7 +774,7 @@ button.opt:hover { border-color: var(--ember); transform: translateX(3px); }
   .side { position: fixed; left: 0; top: 0; z-index: 50; transform: translateX(-105%); transition: transform .3s var(--ease); box-shadow: var(--shadow-pop); }
   .nav-open .side { transform: none; } .nav-open .scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(10, 24, 32, .45); }
   .close-side { display: inline-grid !important; } .menu-btn { display: inline-grid !important; }
-  .shell-main { padding: 16px 16px 90px; }
+  .shell-main { padding: 16px 32px 90px; }
   .exam-body { grid-template-columns: 1fr; padding: 16px 12px 80px; }
   .qnav { position: fixed; right: 10px; top: 70px; bottom: 10px; width: min(320px, calc(100% - 20px)); z-index: 30; overflow-y: auto; transform: translateX(115%); transition: transform .3s var(--ease); }
   .nav-open .qnav { transform: none; } .exam-nav-btn { display: inline-flex; } .exam-prog { display: none; }
@@ -966,6 +967,7 @@ button.opt:hover, .sres:hover { border-color: var(--brand); }
 .app-main .wrap { width: auto; margin-inline: 0; } .app-main .section { padding-top: 56px; }
 .app-main > .back { margin-bottom: -8px; }
 .app-top .site-foot { margin-top: 0; }
+@media (max-width: 680px) { .shell-main { padding: 16px 16px 90px; } }
 /* Public pages always end with breathing room before the footer (space-20); the landing ends on its own CTA band. */
 .page > #main { padding-bottom: 80px; } .page > #main:has(> .cta-band:last-child) { padding-bottom: 0; }
 .home-hi { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; padding: 24px 0 4px; }
@@ -2513,8 +2515,7 @@ function studentNav(active) {
   const live = Object.keys(S.registrations).filter(id => evt(id) && evPhase(evt(id)) === 'live' && !myAttempt(id)?.submitted).length;
   const pend = S.orders.filter(o => o.mine && o.status === 'payment_pending').length;
   return sidebar([['dash', '#/app', 'home', 'Beranda'], ['komp', '#/app/kompetisi', 'trophy', 'Kompetisi', live], ['kursus', '#/app/kursus', 'book', 'Kursus Saya'], ['tagihan', '#/app/tagihan', 'receipt', 'Tagihan', pend]], active,
-    `<div class="side-promo"><span class="mono">KODE REFERRAL</span><b>${esc(S.user.referral || 'NADIA26')}</b><small>Ajak teman, dapat poin.</small></div>
-     <details class="umenu side-umenu"><summary aria-label="Menu akun">${avatar(S.user.name, 'sm')}<span class="grow"><b>${esc(S.user.name)}</b><small>Kelas ${esc(S.user.grade)} · ${esc(S.user.school)}</small></span>${cartCount() ? `<span class="um-dot">${cartCount()}</span>` : ''}${ic('chev-d', 'sm')}</summary>
+    `<details class="umenu side-umenu"><summary aria-label="Menu akun">${avatar(S.user.name, 'sm')}<span class="grow"><b>${esc(S.user.name)}</b><small>Kelas ${esc(S.user.grade)} · ${esc(S.user.school)}</small></span>${cartCount() ? `<span class="um-dot">${cartCount()}</span>` : ''}${ic('chev-d', 'sm')}</summary>
       <div class="um-pop"><div class="um-head">${avatar(S.user.name, 'md')}<div><b>${esc(S.user.name)}</b><small>${esc(S.user.email)}</small></div></div>
         <button type="button" data-act="notifStu">${ic('bell', 'sm')}Notifikasi<span class="count">${S.announcements.length}</span></button>
         <a href="#/keranjang">${ic('cart', 'sm')}Keranjang${cartCount() ? `<span class="count">${cartCount()}</span>` : ''}</a>
