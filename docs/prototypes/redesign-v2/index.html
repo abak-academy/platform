@@ -401,6 +401,7 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .prod-info { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
 .specs { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
 .specs div { background: var(--surface-sunken); border-radius: 16px; padding: 12px; } .specs dt { font-size: 12px; color: var(--ink-muted); } .specs dd { margin: 0; font-weight: 700; font-size: 14px; }
+.guest-note { display: flex; gap: 10px; align-items: flex-start; } .guest-note p { margin: 0; }
 .cat-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 32px; }
 .cat-rail { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
 .cat-tab { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--paper); font: 700 14px var(--font-display); cursor: pointer; white-space: nowrap; transition: transform .25s var(--spring); }
@@ -1299,7 +1300,7 @@ const SEED = () => ({
     { id: 'ABK-26111206', buyer: 'Sekar Ayu', email: 'sekar@mail.id', items: [{ type: 'course', id: 'c-lit', name: 'Kelas Intensif Literasi', price: 125000, qty: 1 }, { type: 'product', id: 'p-book', name: 'Buku Latihan Penalaran', price: 89000, qty: 1 }], subtotal: 214000, discount: 0, shipping: 18000, total: 232000, method: 'QRIS', status: 'completed', physical: true, address: 'Jl. Sudirman 21, Depok', courier: 'JNE REG', resi: 'JNE0126 7781 3301', created: at(-8, 9), log: [{ s: 'created', at: at(-8, 9) }, { s: 'paid', at: at(-8, 9, 3) }, { s: 'processing', at: at(-7, 10) }, { s: 'shipped', at: at(-7, 16) }, { s: 'completed', at: at(-5, 13) }] },
   ],
   promos: [
-    { code: 'BELAJAR20', pct: 20, until: at(30, 23, 59), limit: 500, used: 128, active: true, public: true, note: 'Semua kelas & produk' },
+    { code: 'BELAJAR20', pct: 20, until: at(30, 23, 59), limit: 500, used: 128, active: true, note: 'Semua kelas & produk' },
     { code: 'OSN2026', pct: 15, until: at(11, 17), limit: 200, used: 61, active: true, note: 'Pendaftaran olimpiade' },
     { code: 'MERDEKA45', pct: 45, until: at(-90, 23, 59), limit: 100, used: 100, active: false, note: 'Kedaluwarsa' },
   ],
@@ -2154,18 +2155,13 @@ ACT.regFree = el => {
 ACT.buyExam = el => { addToCart('exam', el.dataset.id); go('#/keranjang'); };
 
 // ---------- Catalogue ----------
-// Shop banner comes from promo data: the first active, public promo that still has uses left. None → no line.
-function shopPromo() {
-  const p = S.promos.find(x => x.active && x.public && new Date(x.until) > new Date() && (!x.limit || x.used < x.limit)); if (!p) return '';
-  return `<p class="lede">${L('Pakai kode', 'Use code')} <b>${esc(p.code)}</b> ${L('untuk diskon', 'for')} ${p.pct}%${L('', ' off')} · ${esc(p.note)} · ${L('berlaku s.d.', 'valid until')} ${fDate(p.until)}</p>`;
-}
 route(/^\/katalog$/, () => {
   const tab = S.catTab && S.catTab !== 'exam' ? S.catTab : 'all'; const q = (S.catQ || '').toLowerCase();
   const isOwned = p => S.role === 'student' && p.type === 'course' && S.enrolled[p.ref];
   const owned = catalog().filter(p => p.published && isOwned(p)).length;
   const all = catalog().filter(p => p.published && p.type !== 'exam' && !isOwned(p));
   const list = all.filter(p => (tab === 'all' || p.type === tab) && (!q || p.name.toLowerCase().includes(q)));
-  return pub('katalog', `<section class="page-hero slim"><div class="wrap"><span class="eyebrow">${L('TOKO ABAK', 'ABAK SHOP')}</span><h1 class="h-display xl">Buku, kursus & perlengkapan belajar</h1>${shopPromo()}</div></section>
+  return pub('katalog', `<section class="page-hero slim"><div class="wrap"><span class="eyebrow">${L('TOKO ABAK', 'ABAK SHOP')}</span><h1 class="h-display xl">Buku, kursus & perlengkapan belajar</h1><p class="lede">${L('Semua yang kamu butuhkan buat latihan, belajar, dan tampil di hari lomba.', 'Everything you need to practise, learn, and perform on competition day.')}</p></div></section>
   <section class="wrap"><div class="cat-bar">
     <div class="cat-rail" role="tablist">${Object.entries(TYPE_TAB).filter(([k]) => k !== 'exam').map(([k, v]) => `<button class="cat-tab ${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-act="catTab" data-t="${k}">${ic({ all: 'grid', book: 'book', course: 'play-circle', exam: 'trophy', merchandise: 'shirt', medal: 'medal' }[k], 'sm')}${v}<span>${k === 'all' ? all.length : all.filter(p => p.type === k).length}</span></button>`).join('')}</div>
     <label class="ab-field pill search">${ic('search', 'sm')}<input data-input="catQ" value="${esc(S.catQ || '')}" placeholder="Cari di toko" aria-label="Cari di toko"></label></div>
@@ -2248,7 +2244,7 @@ function summaryBox(t) {
 route(/^\/keranjang$/, () => {
   const lines = cartLines();
   if (!lines.length) return pub('katalog', `<section class="wrap narrow">${empty('cart', 'Keranjang masih kosong', 'Yuk jelajahi toko dan tambahkan buku atau kursus favoritmu.', '<a class="ab-btn primary" href="#/katalog">Ke toko</a>')}</section>`);
-  const t = totals(lines); const addr = S.user?.address;
+  const t = totals(lines); const addr = S.user?.address; const me = S.role === 'student';
   const avail = S.promos.filter(p => p.active && new Date(p.until) > new Date());
   return pub('katalog', `<section class="wrap page-head"><span class="eyebrow">KERANJANG · ${lines.length} ITEM</span><h1 class="h-display">Keranjang</h1></section>
   <section class="wrap checkout">
@@ -2257,7 +2253,8 @@ route(/^\/keranjang$/, () => {
         ${l.type === 'product' && !l.digital ? `<div class="qty sm"><button data-act="cartQty" data-i="${i}" data-d="-1" aria-label="Kurangi">${ic('minus', 'sm')}</button><output>${l.qty}</output><button data-act="cartQty" data-i="${i}" data-d="1" aria-label="Tambah">${ic('plus', 'sm')}</button></div>` : '<span class="chip c-teal">Digital</span>'}
         <b class="num">${rp(l.price * l.qty)}</b><button class="ab-iconbtn sm" data-act="cartDel" data-i="${i}" aria-label="Hapus ${esc(l.name)}">${ic('trash', 'sm')}</button></div>`).join('')}
         <a class="ab-btn ghost sm" href="#/katalog">${ic('chev-l', 'sm')}Lanjutkan belanja</a></div>
-      ${t.physical ? `<div class="card pad"><div class="block-head"><h2>Alamat pengiriman</h2>${addr ? `<button class="ab-btn ghost sm" data-act="addrEdit">${ic('pencil', 'sm')}Ubah</button>` : ''}</div>
+      ${t.physical && !me ? `<div class="card pad guest-note">${ic('truck', 'sm')}<p class="muted">${L('Alamat dan ongkos kirim diisi setelah kamu masuk, saat pembayaran.', 'Address and shipping are filled in after you log in, at payment.')}</p></div>` : ''}
+      ${t.physical && me ? `<div class="card pad"><div class="block-head"><h2>Alamat pengiriman</h2>${addr ? `<button class="ab-btn ghost sm" data-act="addrEdit">${ic('pencil', 'sm')}Ubah</button>` : ''}</div>
         ${addr ? `<div class="addr">${ic('pin')}<div><b>${esc(addr.recipient)} · ${esc(addr.phone)}</b>${addr.primary ? ' <span class="chip c-teal">Alamat utama</span>' : ''}<p class="muted">${esc(addr.street)}, ${esc(addr.district)}, ${esc(addr.city)}, ${esc(addr.province)} ${esc(addr.zip)}</p></div></div>
           <label class="ab-label" for="cn">Catatan untuk kurir</label><input id="cn" class="ab-input" data-input="courierNote" value="${esc(S.courierNote || '')}" placeholder="Opsional — mis. titip di satpam">`
           : `<p class="muted">Lengkapi alamat pengiriman untuk melanjutkan.</p><button class="ab-btn outline" data-act="addrEdit">${ic('plus', 'sm')}Tambah alamat</button>`}</div>
@@ -2266,11 +2263,12 @@ route(/^\/keranjang$/, () => {
     </div>
     <aside class="card pad sticky">
       <h2>Ringkasan pesanan</h2>
-      <form data-form="promo" class="promo"><input class="ab-input" name="code" placeholder="Kode promo" value="${esc(S.promoApplied || '')}" aria-label="Kode promo"><button class="ab-btn outline">Pakai</button></form>
-      ${avail.length && !S.promoApplied ? `<div class="promo-avail"><span class="mono muted">PROMO TERSEDIA</span>${avail.slice(0, 2).map(p => `<button class="promo-pill" data-act="applyPromo" data-c="${p.code}">${ic('tag', 'sm')}<b>${p.code}</b><span>−${p.pct}% · ${esc(p.note)}</span></button>`).join('')}</div>` : ''}
+      ${me ? `<form data-form="promo" class="promo"><input class="ab-input" name="code" placeholder="Kode promo" value="${esc(S.promoApplied || '')}" aria-label="Kode promo"><button class="ab-btn outline">Pakai</button></form>` : `<p class="muted small">${L('Punya kode promo? Pakai saat pembayaran setelah masuk.', 'Have a promo code? Use it at payment after you log in.')}</p>`}
+      ${me && avail.length && !S.promoApplied ? `<div class="promo-avail"><span class="mono muted">PROMO TERSEDIA</span>${avail.slice(0, 2).map(p => `<button class="promo-pill" data-act="applyPromo" data-c="${p.code}">${ic('tag', 'sm')}<b>${p.code}</b><span>−${p.pct}% · ${esc(p.note)}</span></button>`).join('')}</div>` : ''}
       ${summaryBox(t)}
-      <button class="ab-btn primary lg full" data-act="pay" ${t.physical && !t.rate ? 'disabled' : ''}>${ic('shield', 'sm')}Bayar ${rp(t.total)}</button>
-      ${t.physical && !t.rate ? '<p class="muted small center">Pilih jasa pengiriman dulu.</p>' : ''}
+      ${me ? `<button class="ab-btn primary lg full" data-act="pay" ${t.physical && !t.rate ? 'disabled' : ''}>${ic('shield', 'sm')}Bayar ${rp(t.total)}</button>
+      ${t.physical && !t.rate ? '<p class="muted small center">Pilih jasa pengiriman dulu.</p>' : ''}` : `<button class="ab-btn primary lg full" data-act="pay">${ic('lock', 'sm')}${L('Masuk untuk bayar', 'Log in to pay')}</button>
+      <p class="muted small center">${L('Keranjangmu tetap tersimpan setelah masuk.', 'Your cart stays saved after you log in.')}</p>`}
       <p class="muted small center">Midtrans · pembayaran aman terenkripsi</p>
     </aside>
   </section>`);
