@@ -399,7 +399,7 @@ select.ab-input { appearance: none; background-image: linear-gradient(45deg, tra
 .prod-info { display: flex; flex-direction: column; gap: 16px; align-items: flex-start; }
 .specs { margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: 100%; }
 .specs div { background: var(--surface-sunken); border-radius: 16px; padding: 12px; } .specs dt { font-size: 12px; color: var(--ink-muted); } .specs dd { margin: 0; font-weight: 700; font-size: 14px; }
-.cat-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 22px; }
+.cat-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 32px; }
 .cat-rail { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding: 2px; }
 .cat-tab { display: inline-flex; align-items: center; gap: 8px; height: 44px; padding: 0 16px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--paper); font: 700 14px var(--font-display); cursor: pointer; white-space: nowrap; transition: transform .25s var(--spring); }
 .cat-tab:hover { transform: translateY(-2px); }
@@ -963,6 +963,8 @@ button.opt:hover, .sres:hover { border-color: var(--brand); }
 .app-main .wrap { width: auto; margin-inline: 0; } .app-main .section { padding-top: 56px; }
 .app-main > .back { margin-bottom: -8px; }
 .app-top .site-foot { margin-top: 0; }
+/* Public pages always end with breathing room before the footer (space-20); the landing ends on its own CTA band. */
+.page > #main { padding-bottom: 80px; } .page > #main:has(> .cta-band:last-child) { padding-bottom: 0; }
 .home-hi { display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap; padding: 24px 0 4px; }
 .home-hi .mono { color: var(--ink-muted); } .home-hi h1 { font: 800 clamp(32px, 4vw, 48px)/1.08 var(--font-display); letter-spacing: -0.04em; margin: 8px 0 6px; } .home-hi p { margin: 0; }
 .hi-quick { display: flex; gap: 8px; flex-wrap: wrap; }
