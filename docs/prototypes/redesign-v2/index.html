@@ -1201,7 +1201,7 @@ const DAY = 864e5;
 const at = (days, h = 8, m = 0) => { const d = new Date(); d.setHours(h, m, 0, 0); return new Date(d.getTime() + days * DAY).toISOString(); };
 
 const SEED = () => ({
-  v: 11,
+  v: 12,
   testimonials: JSON.parse(JSON.stringify(TESTIMONIALS_SEED)),
   series: JSON.parse(JSON.stringify(SERIES_SEED)),
   theme: null,
@@ -1299,7 +1299,7 @@ const SEED = () => ({
     { id: 'ABK-26111206', buyer: 'Sekar Ayu', email: 'sekar@mail.id', items: [{ type: 'course', id: 'c-lit', name: 'Kelas Intensif Literasi', price: 125000, qty: 1 }, { type: 'product', id: 'p-book', name: 'Buku Latihan Penalaran', price: 89000, qty: 1 }], subtotal: 214000, discount: 0, shipping: 18000, total: 232000, method: 'QRIS', status: 'completed', physical: true, address: 'Jl. Sudirman 21, Depok', courier: 'JNE REG', resi: 'JNE0126 7781 3301', created: at(-8, 9), log: [{ s: 'created', at: at(-8, 9) }, { s: 'paid', at: at(-8, 9, 3) }, { s: 'processing', at: at(-7, 10) }, { s: 'shipped', at: at(-7, 16) }, { s: 'completed', at: at(-5, 13) }] },
   ],
   promos: [
-    { code: 'BELAJAR20', pct: 20, until: at(30, 23, 59), limit: 500, used: 128, active: true, note: 'Semua kelas & produk' },
+    { code: 'BELAJAR20', pct: 20, until: at(30, 23, 59), limit: 500, used: 128, active: true, public: true, note: 'Semua kelas & produk' },
     { code: 'OSN2026', pct: 15, until: at(11, 17), limit: 200, used: 61, active: true, note: 'Pendaftaran olimpiade' },
     { code: 'MERDEKA45', pct: 45, until: at(-90, 23, 59), limit: 100, used: 100, active: false, note: 'Kedaluwarsa' },
   ],
@@ -2154,13 +2154,18 @@ ACT.regFree = el => {
 ACT.buyExam = el => { addToCart('exam', el.dataset.id); go('#/keranjang'); };
 
 // ---------- Catalogue ----------
+// Shop banner comes from promo data: the first active, public promo that still has uses left. None → no line.
+function shopPromo() {
+  const p = S.promos.find(x => x.active && x.public && new Date(x.until) > new Date() && (!x.limit || x.used < x.limit)); if (!p) return '';
+  return `<p class="lede">${L('Pakai kode', 'Use code')} <b>${esc(p.code)}</b> ${L('untuk diskon', 'for')} ${p.pct}%${L('', ' off')} · ${esc(p.note)} · ${L('berlaku s.d.', 'valid until')} ${fDate(p.until)}</p>`;
+}
 route(/^\/katalog$/, () => {
   const tab = S.catTab && S.catTab !== 'exam' ? S.catTab : 'all'; const q = (S.catQ || '').toLowerCase();
   const isOwned = p => S.role === 'student' && p.type === 'course' && S.enrolled[p.ref];
   const owned = catalog().filter(p => p.published && isOwned(p)).length;
   const all = catalog().filter(p => p.published && p.type !== 'exam' && !isOwned(p));
   const list = all.filter(p => (tab === 'all' || p.type === tab) && (!q || p.name.toLowerCase().includes(q)));
-  return pub('katalog', `<section class="page-hero slim"><div class="wrap"><span class="eyebrow">${L('TOKO ABAK', 'ABAK SHOP')}</span><h1 class="h-display xl">Buku, kursus & perlengkapan belajar</h1><p class="lede">Pakai kode <b>BELAJAR20</b> untuk diskon 20% semua kursus dan buku.</p></div></section>
+  return pub('katalog', `<section class="page-hero slim"><div class="wrap"><span class="eyebrow">${L('TOKO ABAK', 'ABAK SHOP')}</span><h1 class="h-display xl">Buku, kursus & perlengkapan belajar</h1>${shopPromo()}</div></section>
   <section class="wrap"><div class="cat-bar">
     <div class="cat-rail" role="tablist">${Object.entries(TYPE_TAB).filter(([k]) => k !== 'exam').map(([k, v]) => `<button class="cat-tab ${k === tab ? 'on' : ''}" role="tab" aria-selected="${k === tab}" data-act="catTab" data-t="${k}">${ic({ all: 'grid', book: 'book', course: 'play-circle', exam: 'trophy', merchandise: 'shirt', medal: 'medal' }[k], 'sm')}${v}<span>${k === 'all' ? all.length : all.filter(p => p.type === k).length}</span></button>`).join('')}</div>
     <label class="ab-field pill search">${ic('search', 'sm')}<input data-input="catQ" value="${esc(S.catQ || '')}" placeholder="Cari di toko" aria-label="Cari di toko"></label></div>
