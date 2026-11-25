@@ -1,13 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import { AppSidebar } from "./AppSidebar";
+import { NAV_CONFIG } from "@/lib/nav-config";
 
 const replace = vi.fn();
 
+const nav = vi.hoisted(() => ({ pathname: "/dashboard" }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
-  usePathname: () => "/dashboard",
+  usePathname: () => nav.pathname,
 }));
 
 // Runs onSettled the way the real mutation does, so the redirect the component
@@ -119,28 +123,30 @@ describe("AppSidebar — logout destination", () => {
     authStore = { user: null };
   });
 
-  function clickLogout() {
-    fireEvent.click(screen.getAllByLabelText("logout")[0]);
+  async function clickLogout() {
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "user_menu_label" }));
+    await user.click(await screen.findByRole("menuitem", { name: /logout/ }));
   }
 
-  it("sends an admin to the admin login, not the student one", () => {
+  it("sends an admin to the admin login, not the student one", async () => {
     authStore = { user: { name: "Admin", role: "super_admin" } };
     render(<AppSidebar role="super_admin" />);
 
-    clickLogout();
+    await clickLogout();
 
     expect(logoutMutate).toHaveBeenCalled();
     expect(replace).toHaveBeenCalledWith("/admin/login");
     expect(replace).not.toHaveBeenCalledWith("/login");
   });
 
-  it("sends every admin role to the admin login", () => {
+  it("sends every admin role to the admin login", async () => {
     for (const role of ["admin_store", "admin_exam", "admin_school"] as const) {
       replace.mockClear();
       authStore = { user: { name: "Admin", role } };
       const { unmount } = render(<AppSidebar role={role} />);
 
-      clickLogout();
+      await clickLogout();
 
       expect(replace, `${role} landed on the wrong login`).toHaveBeenCalledWith(
         "/admin/login"
@@ -149,22 +155,22 @@ describe("AppSidebar — logout destination", () => {
     }
   });
 
-  it("still sends a student to the student login", () => {
+  it("still sends a student to the student login", async () => {
     authStore = { user: { name: "Budi", role: "student" } };
     render(<AppSidebar role="student" />);
 
-    clickLogout();
+    await clickLogout();
 
     expect(replace).toHaveBeenCalledWith("/login");
   });
 
   // It previously called mutate with no callback at all, leaving the tab where
   // it was until a route guard happened to bounce it.
-  it("navigates on logout rather than leaving the tab in place", () => {
+  it("navigates on logout rather than leaving the tab in place", async () => {
     authStore = { user: { name: "Admin", role: "super_admin" } };
     render(<AppSidebar role="super_admin" />);
 
-    clickLogout();
+    await clickLogout();
 
     expect(replace).toHaveBeenCalledTimes(1);
   });
@@ -206,5 +212,113 @@ describe("AppSidebar — affiliator program groups", () => {
     render(<AppSidebar role="affiliator" />);
     expect(screen.getByText("aff_nav_group_affiliator")).toBeInTheDocument();
     expect(screen.getByText("aff_nav_group_partner")).toBeInTheDocument();
+  });
+});
+
+
+describe("AppSidebar — accordion", () => {
+  beforeEach(() => {
+    nav.pathname = "/admin";
+    authStore = { user: { name: "Admin", role: "super_admin" } };
+  });
+
+  const header = (name: string) => screen.getByRole("button", { name: new RegExp(name) });
+  const panelOf = (name: string) => document.getElementById(header(name).getAttribute("aria-controls")!)!;
+
+  it("opens only the group containing the active route", () => {
+    nav.pathname = "/admin/exam/tests";
+    render(<AppSidebar role="super_admin" />);
+
+    expect(header("nav_group_academic")).toHaveAttribute("aria-expanded", "true");
+    for (const k of ["nav_group_store", "nav_group_affiliate", "system"]) {
+      expect(header(k)).toHaveAttribute("aria-expanded", "false");
+    }
+  });
+
+  it("opening a closed header closes the others, clicking the open header closes it", async () => {
+    nav.pathname = "/admin/exam/tests";
+    const user = userEvent.setup();
+    render(<AppSidebar role="super_admin" />);
+
+    await user.click(header("nav_group_store"));
+    expect(header("nav_group_store")).toHaveAttribute("aria-expanded", "true");
+    expect(header("nav_group_academic")).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(header("nav_group_store"));
+    expect(header("nav_group_store")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("re-derives the open group on route change, overriding manual state", () => {
+    nav.pathname = "/admin/exam/tests";
+    const { rerender } = render(<AppSidebar role="super_admin" />);
+    nav.pathname = "/admin/orders";
+    rerender(<AppSidebar role="super_admin" />);
+
+    expect(header("nav_group_store")).toHaveAttribute("aria-expanded", "true");
+    expect(header("nav_group_academic")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("renders untitled groups as flat rows, never as a header", () => {
+    render(<AppSidebar role="super_admin" />);
+    expect(screen.getByRole("link", { name: "nav_dashboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /nav_dashboard/ })).toBeNull();
+  });
+
+  describe("counts", () => {
+    const orders = NAV_CONFIG.super_admin.flatMap((g) => g.items).find((i) => i.labelKey === "admin_nav_orders")!;
+    const promos = NAV_CONFIG.super_admin.flatMap((g) => g.items).find((i) => i.labelKey === "promos")!;
+    beforeEach(() => {
+      orders.countKey = "orders";
+      promos.countKey = "promos";
+    });
+    afterEach(() => {
+      delete orders.countKey;
+      delete promos.countKey;
+    });
+
+    it("shows the sum of item counts on a collapsed header and each item's own count when open", async () => {
+      nav.pathname = "/admin";
+      const user = userEvent.setup();
+      render(<AppSidebar role="super_admin" counts={{ orders: 3, promos: 4 }} />);
+
+      expect(within(header("nav_group_store")).getByText("7")).toBeInTheDocument();
+
+      await user.click(header("nav_group_store"));
+      expect(within(header("nav_group_store")).queryByText("7")).toBeNull();
+      expect(within(panelOf("nav_group_store")).getByText("3")).toBeInTheDocument();
+      expect(within(panelOf("nav_group_store")).getByText("4")).toBeInTheDocument();
+    });
+
+    it("hides a zero sum", () => {
+      render(<AppSidebar role="super_admin" counts={{ orders: 0 }} />);
+      expect(within(header("nav_group_store")).queryByText("0")).toBeNull();
+    });
+  });
+
+  describe("motion", () => {
+    const stubReduced = (matches: boolean) =>
+      vi.stubGlobal("matchMedia", (q: string) => ({
+        matches: matches && q.includes("prefers-reduced-motion"),
+        media: q,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("animates the panel height by default", () => {
+      stubReduced(false);
+      render(<AppSidebar role="super_admin" />);
+      expect(panelOf("nav_group_academic").className).toMatch(/transition/);
+    });
+
+    it("applies no transition class under prefers-reduced-motion", () => {
+      stubReduced(true);
+      render(<AppSidebar role="super_admin" />);
+      for (const k of ["nav_group_academic", "nav_group_store"]) {
+        expect(panelOf(k).className).not.toMatch(/transition/);
+        expect(panelOf(k).innerHTML).not.toMatch(/transition/);
+      }
+      expect(header("nav_group_store").innerHTML).not.toMatch(/transition/);
+    });
   });
 });

@@ -64,7 +64,7 @@ export function AppShell({ role, children }: AppShellProps) {
           collapsed ? "w-16" : "w-[252px]"
         )}
       >
-        <AppSidebar role={role} collapsed={collapsed} />
+        <AppSidebar role={role} />
       </aside>
 
       <div

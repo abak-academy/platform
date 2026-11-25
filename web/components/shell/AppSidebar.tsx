@@ -1,32 +1,27 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, LogOut } from "lucide-react";
-import { useAuthStore } from "@/stores/auth";
-import { useLogout, useMe } from "@/lib/hooks/auth";
-import { fileUrl } from "@/lib/api";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { usePathname } from "next/navigation";
+import { ChevronDown } from "lucide-react";
+import { useMe } from "@/lib/hooks/auth";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { AbakMark } from "./AbakMark";
+import { SidebarUserMenu } from "./SidebarUserMenu";
 import {
   NAV_CONFIG,
   ADMIN_ROLES,
-  roleLabelKey,
-  affiliatorRoleLabelKey,
   type UserRole,
   type NavItem,
+  type NavGroup,
 } from "@/lib/nav-config";
-import { useTranslation, type DICT } from "@/lib/i18n";
-import { loginPathForRole } from "@/lib/auth-redirect";
+import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface AppSidebarProps {
   role: UserRole;
-  collapsed?: boolean;
+  counts?: Record<string, number>;
 }
 
 function isNavActive(pathname: string, item: NavItem): boolean {
@@ -34,60 +29,127 @@ function isNavActive(pathname: string, item: NavItem): boolean {
   return pathname === item.href || pathname.startsWith(item.href + "/");
 }
 
-function NavItemLink({ item, active }: { item: NavItem; active: boolean }) {
+function activeGroupKey(groups: NavGroup[], pathname: string): string | null {
+  const g = groups.find((g) => g.titleKey && g.items.some((i) => isNavActive(pathname, i)));
+  return g?.titleKey ?? null;
+}
+
+function useReducedMotion() {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduced(mq.matches);
+    sync();
+    mq.addEventListener?.("change", sync);
+    return () => mq.removeEventListener?.("change", sync);
+  }, []);
+  return reduced;
+}
+
+function CountPill({ n }: { n?: number }) {
+  if (!n || n <= 0) return null;
+  return (
+    <span className="ml-auto min-w-5 rounded-full bg-ember-600 px-1.5 text-center type-label-xs text-on-ember">
+      {n}
+    </span>
+  );
+}
+
+function NavItemLink({ item, active, count }: { item: NavItem; active: boolean; count?: number }) {
   const { t } = useTranslation();
   return (
     <Link
       href={item.href}
       title={t(item.labelKey)}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+        "flex min-h-nav-row items-center gap-3 rounded-lg px-3 type-label",
         active
-          ? "bg-brand-50 font-semibold text-brand-700"
-          : "font-medium text-ink-600 hover:bg-brand-50/60 hover:text-brand-700"
+          ? "bg-brand-50 text-brand-700"
+          : "text-ink-600 hover:bg-brand-50/60 hover:text-brand-700"
       )}
     >
-      <item.icon
-        className={cn(
-          "size-[18px] shrink-0",
-          active ? "text-brand-600" : "text-ink-400"
-        )}
-      />
+      <item.icon className={cn("size-[18px] shrink-0", active ? "text-brand-600" : "text-ink-400")} />
       <span className="truncate">{t(item.labelKey)}</span>
       {item.comingSoon && (
-        <Badge
-          variant="outline"
-          className="ml-auto px-1.5 py-0 text-[10px] font-normal text-ink-400"
-        >
+        <Badge variant="outline" className="ml-auto px-1.5 py-0 text-[10px] font-normal text-ink-400">
           Akan datang
         </Badge>
       )}
+      <CountPill n={count} />
     </Link>
   );
 }
 
-function RailItemLink({ item, active }: { item: NavItem; active: boolean }) {
+function GroupSection({
+  group,
+  open,
+  onToggle,
+  pathname,
+  counts,
+  animate,
+}: {
+  group: NavGroup;
+  open: boolean;
+  onToggle: () => void;
+  pathname: string;
+  counts?: Record<string, number>;
+  animate: boolean;
+}) {
+  const { t } = useTranslation();
+  const key = group.titleKey!;
+  const panelId = `nav-group-${key}`;
+  const sum = group.items.reduce((acc, i) => acc + (i.countKey ? (counts?.[i.countKey] ?? 0) : 0), 0);
+  const Icon = group.icon;
   return (
-    <Link
-      href={item.href}
-      title={item.labelKey}
-      className={cn(
-        "flex size-10 items-center justify-center rounded-lg transition-colors",
-        active
-          ? "bg-brand-50 text-brand-600"
-          : "text-ink-400 hover:bg-brand-50/60 hover:text-brand-700"
-      )}
-    >
-      <item.icon className="size-[18px]" />
-    </Link>
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={onToggle}
+        className="flex min-h-nav-row w-full items-center gap-3 rounded-lg px-3 text-left type-label text-ink-600 hover:bg-brand-50/60"
+      >
+        {Icon && <Icon className="size-[18px] shrink-0 text-ink-400" />}
+        <span className="truncate">{t(key)}</span>
+        {!open && <CountPill n={sum} />}
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-ink-400",
+            sum > 0 && !open ? "ml-1" : "ml-auto",
+            animate && "transition-transform duration-[350ms]",
+            open && "rotate-180"
+          )}
+        />
+      </button>
+      <div
+        id={panelId}
+        className={cn(
+          "grid",
+          animate && "transition-[grid-template-rows] duration-[350ms] ease-standard",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        )}
+      >
+        <div className="overflow-hidden" inert={!open}>
+          <div className="flex flex-col gap-1 pt-1">
+            {group.items.map((item) => (
+              <NavItemLink
+                key={item.href + item.labelKey}
+                item={item}
+                active={isNavActive(pathname, item)}
+                count={item.countKey ? counts?.[item.countKey] : undefined}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
+export function AppSidebar({ role, counts }: AppSidebarProps) {
   const pathname = usePathname();
-  const router = useRouter();
-  const user = useAuthStore((s) => s.user);
-  const logout = useLogout();
   const { t } = useTranslation();
   const me = useMe({ enabled: role === "affiliator" });
   const programStates = me.data?.affiliator_programs;
@@ -95,45 +157,21 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
     () => (NAV_CONFIG[role] ?? []).filter((g) => !g.program || !programStates || programStates[g.program] !== "not_enrolled"),
     [role, programStates],
   );
-  const [open, setOpen] = useState(() => groups.map(() => true));
+  const [openKey, setOpenKey] = useState<string | null>(() => activeGroupKey(groups, pathname));
+  const animate = !useReducedMotion();
 
-  const initial = useMemo(() => {
-    const source = user?.name ?? user?.email ?? user?.username ?? "A";
-    return source.trim().charAt(0).toUpperCase();
-  }, [user]);
-
-  const roleKey = role === "affiliator" ? affiliatorRoleLabelKey(programStates) : roleLabelKey(role ?? user?.role);
-  const roleLabel = roleKey ? t(roleKey) : t("account");
-
-  function handleLogout() {
-    // Without an explicit destination this left the route guard to bounce the
-    // tab, and that guard sent admins to the student login.
-    const loginPath = loginPathForRole(role);
-    logout.mutate(undefined, {
-      onSettled: () => {
-        router.replace(loginPath);
-      },
-    });
-  }
-
-  function toggleGroup(index: number) {
-    setOpen((prev) => {
-      const next = [...prev];
-      next[index] = !next[index];
-      return next;
-    });
-  }
-
-  const flatItems = useMemo(() => groups.flatMap((g) => g.items), [groups]);
+  useEffect(() => {
+    setOpenKey(activeGroupKey(groups, pathname));
+  }, [pathname, groups]);
 
   return (
     <>
-      <div className="flex h-[72px] shrink-0 items-center px-4 lg:px-5">
+      <div className="flex h-[72px] shrink-0 items-center px-5">
         <Link href="/" className="flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-[11px] bg-brand-50">
             <AbakMark size={28} />
           </div>
-          <div className="hidden flex-col justify-center lg:flex">
+          <div className="flex flex-col justify-center">
             <div className="flex items-baseline gap-1.5 leading-none">
               <span className="font-serif text-[18px] font-extrabold tracking-[-0.01em] text-ink-900">
                 abak
@@ -151,100 +189,35 @@ export function AppSidebar({ role, collapsed = false }: AppSidebarProps) {
 
       <Separator className="shrink-0" />
 
-      {collapsed ? (
-        <nav className="flex flex-1 flex-col items-center gap-2 overflow-y-auto px-2 py-3">
-          {flatItems.map((item) => (
-            <RailItemLink
-              key={item.href + item.labelKey}
-              item={item}
-              active={isNavActive(pathname, item)}
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
+        {groups.map((group, index) =>
+          group.titleKey ? (
+            <GroupSection
+              key={group.titleKey}
+              group={group}
+              open={openKey === group.titleKey}
+              onToggle={() => setOpenKey((k) => (k === group.titleKey ? null : group.titleKey!))}
+              pathname={pathname}
+              counts={counts}
+              animate={animate}
             />
-          ))}
-        </nav>
-      ) : (
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
-          {groups.map((group, index) => (
-            <div key={group.titleKey || `group-${index}`}>
-              {group.titleKey && (
-                <button
-                  type="button"
-                  onClick={() => toggleGroup(index)}
-                  className="flex w-full items-center justify-between px-3 py-2 text-left"
-                >
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-ink-400">
-                    {t(group.titleKey)}
-                  </span>
-                  <ChevronDown
-                    className={cn(
-                      "size-4 text-ink-400 transition-transform",
-                      open[index] && "rotate-180"
-                    )}
-                  />
-                </button>
-              )}
-              <div
-                className={cn(
-                  "flex flex-col gap-1",
-                  group.titleKey && !open[index] && "hidden"
-                )}
-              >
-                {group.items.map((item) => (
-                  <NavItemLink
-                    key={item.href + item.labelKey}
-                    item={item}
-                    active={isNavActive(pathname, item)}
-                  />
-                ))}
-              </div>
+          ) : (
+            <div key={`group-${index}`} className="flex flex-col gap-1">
+              {group.items.map((item) => (
+                <NavItemLink
+                  key={item.href + item.labelKey}
+                  item={item}
+                  active={isNavActive(pathname, item)}
+                  count={item.countKey ? counts?.[item.countKey] : undefined}
+                />
+              ))}
             </div>
-          ))}
-        </nav>
-      )}
-
-      <div className="mt-auto border-t border-line">
-        {collapsed ? (
-          <div className="flex flex-col items-center gap-2 p-2">
-            <Avatar className="size-9">
-              <AvatarImage src={fileUrl(user?.photo_url)} />
-              <AvatarFallback className="bg-brand-600 text-[13px] font-semibold text-white">
-                {initial}
-              </AvatarFallback>
-            </Avatar>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleLogout}
-              aria-label={t("logout")}
-            >
-              <LogOut className="size-4 text-ink-500" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-3 p-3">
-            <Avatar className="size-9">
-              <AvatarImage src={fileUrl(user?.photo_url)} />
-              <AvatarFallback className="bg-brand-600 text-[13px] font-semibold text-white">
-                {initial}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-ink-900">
-                {user?.name || user?.email || user?.username || t("account")}
-              </p>
-              <p className="truncate text-[11px] font-medium text-ink-400">
-                {roleLabel}
-              </p>
-            </div>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={handleLogout}
-              aria-label={t("logout")}
-            >
-              <LogOut className="size-4 text-ink-500" />
-            </Button>
-          </div>
+          )
         )}
+      </nav>
+
+      <div className="mt-auto border-t border-line p-3">
+        <SidebarUserMenu role={role} counts={counts} />
       </div>
     </>
   );
