@@ -158,7 +158,10 @@ export default function SystemSchoolsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  // shortcut: client-side over the loaded page, move to a server param when lists get long
+  // Province filter and sorts only see loaded rows; sort is locked until every page is in.
+  const partial = !!nextCursor;
+  const clientFiltered = !!provinceFilter;
+  const loadedOnly = partial && (clientFiltered || sort !== "default");
   const rows = useMemo(() => {
     const filtered = provinceFilter ? schools.filter((s) => s.provinsi_id === provinceFilter) : schools;
     if (sort === "students") return [...filtered].sort((a, b) => (b.student_count ?? 0) - (a.student_count ?? 0));
@@ -303,7 +306,14 @@ export default function SystemSchoolsPage() {
       ? t("sys_error_load")
       : isLoading
         ? t("sys_loading_data")
-        : t("sys_no_schools_found");
+        : partial && clientFiltered
+          ? (
+            <div className="flex flex-col items-center gap-2 py-6">
+              <p>{t("filter_empty_loaded")}</p>
+              <Button variant="outline" size="sm" onClick={handleLoadMore}>{t("adm_load_more")}</Button>
+            </div>
+          )
+          : t("sys_no_schools_found");
 
   const columns: DataTableColumn<School>[] = [
     {
@@ -430,7 +440,7 @@ export default function SystemSchoolsPage() {
                 </FilterGrid>
                 <FilterPanelFooter
                   onReset={resetFilters}
-                  showLabel={t("list_toolbar_show_n").replace("{n}", String(rows.length))}
+                  showLabel={t("list_toolbar_show_n").replace("{n}", `${rows.length}${loadedOnly ? "+" : ""}`)}
                 />
               </div>
             </PopoverContent>
@@ -441,14 +451,19 @@ export default function SystemSchoolsPage() {
             label={t("list_toolbar_sort")}
             options={[
               { value: "default", label: t("filter_sort_default") },
-              { value: "students", label: t("filter_sort_students") },
-              { value: "name", label: t("filter_sort_name") },
+              { value: "students", label: t("filter_sort_students"), disabled: partial },
+              { value: "name", label: t("filter_sort_name"), disabled: partial },
             ]}
           />
           <ToolbarCount>
-            {t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))}
+            {loadedOnly
+              ? t("adm_schools_count").replace("{n}", `${rows.length}+`)
+              : t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))}
           </ToolbarCount>
         </div>
+        {partial && (
+          <p className="border-b border-line px-4 py-2 text-xs text-ink-600">{t("filter_sort_locked")}</p>
+        )}
         {activeChips.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
             {activeChips.map((c) => (

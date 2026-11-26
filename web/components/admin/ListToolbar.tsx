@@ -109,6 +109,7 @@ export function FilterSelect({
   wide,
   placeholder,
   allowAll = true,
+  disabled,
 }: {
   label: string;
   value: string;
@@ -118,12 +119,13 @@ export function FilterSelect({
   placeholder?: string;
   /** false for a mode switch, where "Semua" means nothing. */
   allowAll?: boolean;
+  disabled?: boolean;
 }) {
   const { t } = useTranslation();
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", wide && "sm:col-span-2")}>
       <span className="font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{label}</span>
-      <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? "" : v)}>
+      <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? "" : v)} disabled={disabled}>
         <SelectTrigger aria-label={label}>
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -156,7 +158,7 @@ export function ToolbarSort({
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; disabled?: boolean }[];
   label: string;
 }) {
   return (
@@ -165,7 +167,7 @@ export function ToolbarSort({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        {options.map((o) => <SelectItem key={o.value} value={o.value} disabled={o.disabled}>{o.label}</SelectItem>)}
       </SelectContent>
     </Select>
   );

@@ -539,3 +539,74 @@ describe("ExamPackagesPage", () => {
     expect(titles[2]).toContain("Ujian Lampau");
   });
 });
+
+describe("ExamPackagesPage loaded-rows-only filters", () => {
+  beforeEach(() => {
+    examsQuery = undefined;
+  });
+
+  const partialState = (next?: string) => ({
+    data: { data: filterExams, next_cursor: next },
+    isLoading: false,
+    isError: false,
+    error: null,
+  });
+
+  it("shows a loaded-only empty state with Muat lagi and a '+' count when a filter matches nothing and more pages exist", async () => {
+    examsState = partialState("c2") as typeof examsState;
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Status", "Selesai");
+    await pick("Produk", "Belum terbit");
+    await pick("Status", "Akan datang");
+    await pick("Produk", "Terbit");
+
+    expect(screen.getByText(/Tidak ada yang cocok di data yang sudah dimuat/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tampilkan 0+ hasil" })).toBeInTheDocument();
+    expect(screen.getByText("0+ ujian")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Muat lebih" }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("shows the plain empty state and a plain count when everything is loaded", async () => {
+    examsState = partialState(undefined) as typeof examsState;
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Status", "Akan datang");
+    await pick("Produk", "Terbit");
+
+    expect(screen.queryByText(/data yang sudah dimuat/)).not.toBeInTheDocument();
+    expect(screen.getByText("0 ujian")).toBeInTheDocument();
+  });
+
+  it("disables non-default sorts while nextCursor is set and enables them when it is not", async () => {
+    examsState = partialState("c2") as typeof examsState;
+    const { unmount } = render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+    expect(screen.getByText(/Urutan lain aktif setelah semua data dimuat/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+    expect(await screen.findByRole("option", { name: "Jadwal terdekat" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "Urutan bawaan" })).not.toHaveAttribute("aria-disabled", "true");
+    unmount();
+
+    examsState = partialState(undefined) as typeof examsState;
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+    await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+    expect(await screen.findByRole("option", { name: "Jadwal terdekat" })).not.toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("labels the product-off filter 'Belum terbit'", async () => {
+    examsState = partialState(undefined) as typeof examsState;
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await userEvent.click(screen.getByRole("combobox", { name: "Produk" }));
+    expect(await screen.findByRole("option", { name: "Belum terbit" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Draf" })).not.toBeInTheDocument();
+  });
+});

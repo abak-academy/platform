@@ -92,9 +92,16 @@ export default function ExamPackagesPage() {
     setNextCursor(data.next_cursor);
   }, [cursor, data, q, isPlaceholderData]);
 
-  // shortcut: client-side over the loaded page, move to a server param when lists get long
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Filters and sorts only see loaded rows; sort is locked until every page is in.
+  const partial = !!nextCursor;
+  const clientFiltered = !!phase || !!product;
   const shown = useMemo(() => {
-    const now = Date.now();
     const rows = items.filter(
       (e) =>
         (!phase || phaseOf(e, now) === phase) &&
@@ -108,7 +115,7 @@ export default function ExamPackagesPage() {
       if (Number.isNaN(x) || Number.isNaN(y)) return Number.isNaN(x) ? (Number.isNaN(y) ? 0 : 1) : -1;
       return (x - y) * dir;
     });
-  }, [items, phase, product, sort]);
+  }, [items, phase, product, sort, now]);
 
   const phaseOptions = (["upcoming", "open", "ended", "none"] as const).map((v) => ({
     value: v,
@@ -166,7 +173,7 @@ export default function ExamPackagesPage() {
                   </FilterGrid>
                   <FilterPanelFooter
                     onReset={resetFilters}
-                    showLabel={t("list_toolbar_show_n").replace("{n}", String(shown.length))}
+                    showLabel={t("list_toolbar_show_n").replace("{n}", `${shown.length}${partial && clientFiltered ? "+" : ""}`)}
                   />
                 </div>
               </PopoverContent>
@@ -177,15 +184,18 @@ export default function ExamPackagesPage() {
               label={t("list_toolbar_sort")}
               options={[
                 { value: "default", label: t("filter_sort_default") },
-                { value: "soon", label: t("exam_sort_soon") },
-                { value: "late", label: t("exam_sort_late") },
-                { value: "reg", label: t("exam_sort_reg") },
+                { value: "soon", label: t("exam_sort_soon"), disabled: partial },
+                { value: "late", label: t("exam_sort_late"), disabled: partial },
+                { value: "reg", label: t("exam_sort_reg"), disabled: partial },
               ]}
             />
             <ToolbarCount>
-              {t("exam_packages_count").replace("{n}", `${shown.length}${nextCursor ? "+" : ""}`)}
+              {t("exam_packages_count").replace("{n}", `${shown.length}${partial ? "+" : ""}`)}
             </ToolbarCount>
           </div>
+          {partial && (
+            <p className="border-b border-line px-4 py-2 text-xs text-ink-600">{t("filter_sort_locked")}</p>
+          )}
           {active.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
               {active.map((c) => (
@@ -210,7 +220,22 @@ export default function ExamPackagesPage() {
             rows={shown}
             rowKey={(exam) => exam.id}
             onRowClick={(exam) => router.push(`/admin/exam/packages/${exam.id}`)}
-            empty={<EmptyState icon={Calendar} title={t("exam_packages_empty")} />}
+            empty={
+              partial && clientFiltered ? (
+                <EmptyState
+                  icon={Calendar}
+                  title={t("exam_packages_empty")}
+                  text={t("filter_empty_loaded")}
+                  action={
+                    <Button variant="outline" onClick={() => setCursor(nextCursor)} disabled={isFetching}>
+                      {isFetching ? t("sys_loading") : t("load_more")}
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState icon={Calendar} title={t("exam_packages_empty")} />
+              )
+            }
             columns={[
               {
                 key: "exam",

@@ -186,3 +186,10 @@ describe("FilterSelect allowAll", () => {
     expect(screen.queryByRole("option", { name: "Semua" })).toBeNull();
   });
 });
+
+describe("FilterSelect disabled", () => {
+  it("disables the trigger", () => {
+    render(<FilterSelect label="Topik" value="" options={[]} onChange={() => {}} disabled />);
+    expect(screen.getByRole("combobox", { name: "Topik" })).toBeDisabled();
+  });
+});

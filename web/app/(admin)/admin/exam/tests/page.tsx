@@ -204,6 +204,7 @@ export default function TestsPage() {
                     value={topic}
                     options={topicOptions.map((opt) => ({ value: opt.name, label: opt.name }))}
                     onChange={setTopic}
+                    disabled={topicsForSubject.isLoading}
                   />
                 </FilterGrid>
                 <FilterPanelFooter

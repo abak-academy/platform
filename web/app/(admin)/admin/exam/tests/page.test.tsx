@@ -44,10 +44,12 @@ const sampleTopics: ExamTopic[] = [
 ];
 
 // useTopics() (no subject) drives the subject dropdown; useTopics(subject) re-scopes the topic one.
+let topicsLoading = false;
+
 vi.mock("@/lib/hooks/admin-topics", () => ({
   useTopics: (subject?: string) => ({
     data: { data: subject ? sampleTopics.filter((t) => t.subject === subject) : sampleTopics },
-    isLoading: false,
+    isLoading: topicsLoading,
     isError: false,
     error: null,
   }),
@@ -436,6 +438,17 @@ describe("TestsPage", () => {
     render(<TestsPage />);
 
     expect(screen.getByTestId("tests-count")).toHaveTextContent("2 tes");
+  });
+
+  it("disables the topic dropdown while topics load", async () => {
+    topicsLoading = true;
+    try {
+      render(<TestsPage />);
+      await userEvent.click(screen.getByRole("button", { name: /^filter$/i }));
+      expect(screen.getByRole("combobox", { name: "Topik" })).toBeDisabled();
+    } finally {
+      topicsLoading = false;
+    }
   });
 
   it("keeps the subject and topic filters behind the Filter button and counts active ones", async () => {

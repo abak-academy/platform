@@ -327,7 +327,7 @@ export default function QuestionBankPage() {
                       options={formatOptions}
                       onChange={(v) => setFormat((v || "all") as QuestionFormat | "all")}
                     />
-                    <FilterSelect label={t("topic")} value={topicId} options={topicSelectOptions} onChange={setTopicId} />
+                    <FilterSelect label={t("topic")} value={topicId} options={topicSelectOptions} onChange={setTopicId} disabled={topics.isLoading} />
                   </FilterGrid>
                   <FilterPanelFooter
                     onReset={resetFilters}

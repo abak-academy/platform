@@ -752,4 +752,35 @@ describe("SystemSchoolsPage", () => {
       expect(last?.cursor).toBeUndefined();
     });
   });
+
+  describe("loaded-rows-only province filter and sort", () => {
+    it("shows a '+' loaded count, a loaded-only empty state with load more, and locks sort when more pages exist", async () => {
+      schoolsState = { ...schoolsState, data: { ...paginatedResponse(sampleSchools, "c2"), total: 80 } };
+      renderPage(<SystemSchoolsPage />);
+      await screen.findByText("SMAN 1 Jakarta");
+      expect(screen.getByText("80 sekolah")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+      await pick("Provinsi", "JAWA BARAT");
+
+      expect(screen.getByText("0+ sekolah")).toBeInTheDocument();
+      expect(screen.getByText(/Tidak ada yang cocok di data yang sudah dimuat/)).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "Muat lebih banyak" }).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Urutan lain aktif setelah semua data dimuat/)).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+      expect(await screen.findByRole("option", { name: "Nama A–Z" })).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("keeps the server total and an enabled sort when everything is loaded", async () => {
+      renderPage(<SystemSchoolsPage />);
+      await screen.findByText("SMAN 1 Jakarta");
+      expect(screen.getByText("2 sekolah")).toBeInTheDocument();
+      expect(screen.queryByText(/Urutan lain aktif/)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+      expect(await screen.findByRole("option", { name: "Nama A–Z" })).not.toHaveAttribute("aria-disabled", "true");
+    });
+  });
 });

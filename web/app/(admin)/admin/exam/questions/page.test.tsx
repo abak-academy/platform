@@ -165,6 +165,13 @@ describe("QuestionBankPage", () => {
     bankFilterCalls.length = 0;
   });
 
+  it("disables the topic filter while topics load", async () => {
+    topicsState = { ...topicsState, data: null, isLoading: true };
+    renderWithClient(<QuestionBankPage />);
+    await userEvent.click(await screen.findByRole("button", { name: /^list_toolbar_filter/ }));
+    expect(screen.getByRole("combobox", { name: "topic" })).toBeDisabled();
+  });
+
   it("renders title, subtitle, toolbar and table with used-in column", async () => {
     renderWithClient(<QuestionBankPage />);
 

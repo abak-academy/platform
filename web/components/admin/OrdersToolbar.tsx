@@ -30,7 +30,6 @@ export interface OrdersToolbarProps {
   value: AdminOrderQuery;
   onChange: (q: AdminOrderQuery) => void;
   couriers?: string[];
-  count?: number;
 }
 
 export function chipCount(
@@ -68,7 +67,7 @@ function isQueueOption(option: FilterOption): option is AdminOrderQueue {
   return (QUEUE_VALUES as string[]).includes(option);
 }
 
-export function OrdersToolbar({ value, onChange, couriers = [], count }: OrdersToolbarProps) {
+export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarProps) {
   const { t } = useTranslation();
   const [search, setSearch] = useState(value.q ?? "");
 
@@ -251,7 +250,7 @@ export function OrdersToolbar({ value, onChange, couriers = [], count }: OrdersT
               <FilterPanelFooter
                 onReset={() => onChange({ ...value, status: "all", queue: undefined, type: undefined, courier: undefined, from: undefined, to: undefined })}
                 resetLabel={t("orders_reset_filters")}
-                showLabel={count === undefined ? t("orders_show_orders") : t("list_toolbar_show_n").replace("{n}", String(count))}
+                showLabel={t("orders_show_orders")}
               />
             </div>
           </PopoverContent>
