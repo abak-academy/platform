@@ -12,6 +12,7 @@ const toastError = vi.fn();
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: (m: string) => toastError(m) } }));
 
 beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
   Element.prototype.hasPointerCapture = vi.fn(() => false);
   Element.prototype.releasePointerCapture = vi.fn();
   Element.prototype.scrollIntoView = vi.fn();
@@ -79,8 +80,10 @@ function renderPage() {
 }
 
 const cardNames = () => screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"));
-const pick = (group: string, name: string) =>
-  fireEvent.click(within(screen.getByRole("group", { name: group })).getByRole("button", { name }));
+const pick = async (field: string, name: string) => {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+};
 
 beforeEach(() => {
   push.mockReset();
@@ -118,26 +121,26 @@ describe("event list", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 
-    pick("Landing page", "Tampil");
+    await pick("Landing page", "Tampil");
     expect(cardNames()).toEqual(["ESOLIO"]);
     expect(screen.getAllByText("1 event").length).toBeGreaterThan(0);
-    pick("Landing page", "Disembunyikan");
+    await pick("Landing page", "Disembunyikan");
     expect(cardNames()).toEqual(["KoSSMI", "IKLC"]);
-    pick("Landing page", "Semua");
+    await pick("Landing page", "Semua");
 
-    pick("Status", "Draft");
+    await pick("Status", "Draft");
     expect(cardNames()).toEqual(["KoSSMI"]);
-    pick("Status", "Semua");
+    await pick("Status", "Semua");
 
-    pick("Tingkat", "Nasional");
+    await pick("Tingkat", "Nasional");
     expect(cardNames()).toEqual(["KoSSMI", "IKLC"]);
-    pick("Tingkat", "Semua");
+    await pick("Tingkat", "Semua");
 
-    pick("Jadwal", "Sedang berlangsung");
+    await pick("Jadwal", "Sedang berlangsung");
     expect(cardNames()).toEqual(["ESOLIO"]);
-    pick("Jadwal", "Akan datang");
+    await pick("Jadwal", "Akan datang");
     expect(cardNames()).toEqual(["KoSSMI"]);
-    pick("Jadwal", "Belum diisi");
+    await pick("Jadwal", "Belum diisi");
     expect(cardNames()).toEqual(["IKLC"]);
   });
 

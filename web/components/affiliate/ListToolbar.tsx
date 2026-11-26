@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ActiveChip, FilterChip, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ActiveChip, FILTER_PANEL_CLASS, FilterGrid, FilterPanelFooter, FilterSelect, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
 import { PAGE_SIZES, type ListParams } from "@/lib/hooks/use-list-params";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { formatAffDate } from "@/lib/affiliate-labels";
@@ -85,47 +84,35 @@ export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filt
             <PopoverTrigger asChild>
               <ToolbarFilterButton label={t("aff_filter_button")} count={chips.length} />
             </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto"
-              aria-label={t("aff_filter_title")}
-            >
+            <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("aff_filter_title")}>
               <div className="flex flex-col gap-3.5">
-                {filters.map((filter) => (
-                  <div key={filter.key} role="group" aria-label={filter.label}>
-                    <span className="mb-2 block type-overline text-ink-600">{filter.label}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {[{ value: "", label: t("aff_filter_all") }, ...filter.options].map((o) => (
-                        <FilterChip key={o.value} on={(params[filter.key] ?? "") === o.value} onClick={() => onChange({ [filter.key]: o.value })}>
-                          {o.label}
-                        </FilterChip>
-                      ))}
+                <FilterGrid>
+                  {filters.map((filter) => (
+                    <FilterSelect
+                      key={filter.key}
+                      label={filter.label}
+                      value={params[filter.key] ?? ""}
+                      options={filter.options}
+                      onChange={(v) => onChange({ [filter.key]: v })}
+                    />
+                  ))}
+                  {dateLabel && (
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <span className="block font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{dateLabel}</span>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <label className="space-y-1 text-xs text-ink-600">
+                          {t("aff_filter_date_from")}
+                          <Input type="date" value={params.from} max={params.to || undefined} onChange={(e) => onChange({ from: e.target.value })} />
+                        </label>
+                        <label className="space-y-1 text-xs text-ink-600">
+                          {t("aff_filter_date_to")}
+                          <Input type="date" value={params.to} min={params.from || undefined} onChange={(e) => onChange({ to: e.target.value })} />
+                        </label>
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {dateLabel && (
-                  <div className="space-y-1.5">
-                    <span className="block type-overline text-ink-600">{dateLabel}</span>
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="space-y-1 text-xs text-ink-600">
-                        {t("aff_filter_date_from")}
-                        <Input type="date" value={params.from} max={params.to || undefined} onChange={(e) => onChange({ from: e.target.value })} />
-                      </label>
-                      <label className="space-y-1 text-xs text-ink-600">
-                        {t("aff_filter_date_to")}
-                        <Input type="date" value={params.to} min={params.from || undefined} onChange={(e) => onChange({ to: e.target.value })} />
-                      </label>
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
-                  <Button variant="ghost" size="sm" onClick={onReset}>
-                    {t("aff_filter_reset")}
-                  </Button>
-                  <PopoverClose asChild>
-                    <Button variant="secondary" size="sm">{t("aff_filter_show")}</Button>
-                  </PopoverClose>
-                </div>
+                  )}
+                </FilterGrid>
+                <FilterPanelFooter onReset={onReset} resetLabel={t("aff_filter_reset")} showLabel={t("aff_filter_show")} />
               </div>
             </PopoverContent>
           </Popover>

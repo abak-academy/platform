@@ -11,6 +11,7 @@ const toastError = vi.fn();
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: (m: string) => toastError(m) } }));
 
 beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
   Element.prototype.hasPointerCapture = vi.fn(() => false);
   Element.prototype.releasePointerCapture = vi.fn();
   Element.prototype.scrollIntoView = vi.fn();
@@ -82,8 +83,10 @@ function renderPage() {
 }
 
 const cardNames = () => screen.getAllByRole("article").map((a) => a.getAttribute("aria-label"));
-const pick = (group: string, name: string) =>
-  fireEvent.click(within(screen.getByRole("group", { name: group })).getByRole("button", { name }));
+const pick = async (field: string, name: string) => {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+};
 const upload = (f: File) => userEvent.upload(screen.getByTestId("testimonial-photo-input"), f);
 const photoFile = (size = 1000) => {
   const f = new File(["x"], "p.png", { type: "image/png" });
@@ -139,19 +142,19 @@ describe("testimonials list", () => {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
-    pick("Landing page", "Tampil");
+    await pick("Landing page", "Tampil");
     expect(cardNames()).toEqual(["Peserta Satu"]);
-    pick("Landing page", "Draft");
+    await pick("Landing page", "Draft");
     expect(cardNames()).toEqual(["Peserta Dua", "Peserta Tiga"]);
-    pick("Landing page", "Semua");
-    pick("Persetujuan", "Belum");
+    await pick("Landing page", "Semua");
+    await pick("Persetujuan", "Belum");
     expect(cardNames()).toEqual(["Peserta Tiga"]);
-    pick("Persetujuan", "Ada");
+    await pick("Persetujuan", "Ada");
     expect(cardNames()).toEqual(["Peserta Satu", "Peserta Dua"]);
-    pick("Persetujuan", "Semua");
-    pick("English", "Belum lengkap");
+    await pick("Persetujuan", "Semua");
+    await pick("English", "Belum lengkap");
     expect(cardNames()).toEqual(["Peserta Tiga"]);
-    pick("English", "Lengkap");
+    await pick("English", "Lengkap");
     expect(cardNames()).toEqual(["Peserta Satu", "Peserta Dua"]);
   });
 });

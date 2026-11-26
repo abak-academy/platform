@@ -1,5 +1,6 @@
-import { render, screen, fireEvent, act } from "@testing-library/react";
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi, beforeAll, beforeEach, afterEach } from "vitest";
 import { ListToolbar } from "./ListToolbar";
 import type { ListParams } from "@/lib/hooks/use-list-params";
 
@@ -31,6 +32,13 @@ function setup(params: Partial<ListParams> = {}, props: Partial<React.ComponentP
   );
   return { onChange, onReset, ...utils };
 }
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 describe("ListToolbar", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -98,5 +106,27 @@ describe("ListToolbar", () => {
   it("omits the search box when the list has nothing to search", () => {
     setup({}, { searchPlaceholder: undefined });
     expect(screen.queryByRole("searchbox")).toBeNull();
+  });
+
+  it("picks a filter through its dropdown, clears it with Semua, and resets from the footer", async () => {
+    vi.useRealTimers();
+    const { onChange, onReset } = setup({ status: "pending" });
+    fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    const status = screen.getByRole("combobox", { name: "Status" });
+    expect(status).toHaveTextContent("Menunggu");
+    expect(status.closest(".grid")).toHaveClass("grid-cols-1", "sm:grid-cols-2");
+
+    await userEvent.click(status);
+    await userEvent.click(await screen.findByRole("option", { name: "Tersedia" }));
+    expect(onChange).toHaveBeenLastCalledWith({ status: "available" });
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Status" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Semua" }));
+    expect(onChange).toHaveBeenLastCalledWith({ status: "" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Atur ulang" }));
+    expect(onReset).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Tampilkan hasil" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Tampilkan hasil" })).toBeNull());
   });
 });

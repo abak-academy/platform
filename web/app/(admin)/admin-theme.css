@@ -263,3 +263,16 @@
   border: 1px solid var(--md-sys-color-outline-variant);
   box-shadow: var(--md-sys-elevation-1);
 }
+
+/* Filter popover becomes a bottom sheet on phones (prototype .fpop-panel); the popper wrapper is transformed, so it is the wrapper that must move. */
+@media (max-width: 679px) {
+  [data-radix-popper-content-wrapper]:has(> .fpop-sheet) {
+    transform: none !important;
+    top: auto !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    min-width: 0 !important;
+  }
+  .fpop-sheet { width: 100% !important; }
+}

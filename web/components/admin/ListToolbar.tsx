@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
+import { Filter, Search, X } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,7 +81,7 @@ export const ToolbarFilterButton = React.forwardRef<
     aria-label={`${label}${count ? ` (${count})` : ""}`}
     {...props}
   >
-    <SlidersHorizontal className="size-4" aria-hidden />
+    <Filter className="size-4" aria-hidden />
     {label}
     {count > 0 && (
       <span className="grid h-5 min-w-5 place-items-center rounded-full bg-brand-600 px-1.5 text-[11px] leading-5 font-extrabold text-on-brand tabular-nums">
@@ -91,6 +91,59 @@ export const ToolbarFilterButton = React.forwardRef<
   </Button>
 ));
 ToolbarFilterButton.displayName = "ToolbarFilterButton";
+
+export const FILTER_PANEL_CLASS =
+  "admin-shell fpop-sheet w-[min(420px,90vw)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto";
+
+const ALL = "__all__";
+
+export function FilterGrid({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2", className)}>{children}</div>;
+}
+
+export function FilterSelect({
+  label,
+  value,
+  options,
+  onChange,
+  wide,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (v: string) => void;
+  wide?: boolean;
+  placeholder?: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className={cn("flex min-w-0 flex-col gap-1.5", wide && "sm:col-span-2")}>
+      <span className="font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{label}</span>
+      <Select value={value || ALL} onValueChange={(v) => onChange(v === ALL ? "" : v)}>
+        <SelectTrigger aria-label={label}>
+          <SelectValue placeholder={placeholder} />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>{t("list_toolbar_all")}</SelectItem>
+          {options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+export function FilterPanelFooter({ onReset, showLabel, resetLabel }: { onReset: () => void; showLabel: string; resetLabel?: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
+      <Button variant="ghost" size="sm" onClick={onReset}>{resetLabel ?? t("list_toolbar_reset")}</Button>
+      <PopoverClose asChild>
+        <Button variant="dark" size="sm">{showLabel}</Button>
+      </PopoverClose>
+    </div>
+  );
+}
 
 export function ToolbarSort({
   value,
@@ -182,26 +235,14 @@ export function ListToolbar({ value, onChange, filters, sorts, count, unit, vari
             <PopoverTrigger asChild>
               <ToolbarFilterButton label={t("list_toolbar_filter")} count={active.length} />
             </PopoverTrigger>
-            <PopoverContent align="end" className="admin-shell w-[min(24rem,90vw)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto" aria-label={t("list_toolbar_filter")}>
+            <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
               <div className="flex flex-col gap-3.5">
-                {filters.map((f) => (
-                  <div key={f.key} role="group" aria-label={f.label}>
-                    <span className="mb-2 block type-overline text-ink-600">{f.label}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {[{ value: "", label: t("list_toolbar_all") }, ...f.options].map((o) => (
-                        <FilterChip key={o.value} on={(value.filters[f.key] ?? "") === o.value} onClick={() => setFilter(f.key, o.value)}>
-                          {o.label}
-                        </FilterChip>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
-                  <Button variant="ghost" size="sm" onClick={clearAll}>{t("list_toolbar_reset")}</Button>
-                  <PopoverClose asChild>
-                    <Button variant="secondary" size="sm">{t("list_toolbar_show_n").replace("{n}", String(count))}</Button>
-                  </PopoverClose>
-                </div>
+                <FilterGrid>
+                  {filters.map((f) => (
+                    <FilterSelect key={f.key} label={f.label} value={value.filters[f.key] ?? ""} options={f.options} onChange={(v) => setFilter(f.key, v)} />
+                  ))}
+                </FilterGrid>
+                <FilterPanelFooter onReset={clearAll} showLabel={t("list_toolbar_show_n").replace("{n}", String(count))} />
               </div>
             </PopoverContent>
           </Popover>
