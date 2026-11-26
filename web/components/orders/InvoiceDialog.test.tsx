@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -30,19 +31,20 @@ const DIGITAL: Order = {
   ],
 };
 
-const PHYSICAL: Order = {
+const PHYSICAL = {
   ...DIGITAL,
   id: "ffff0000-aaaa-bbbb-cccc-99999999aaaa",
   status: "payment_pending",
-  paid_at: undefined,
-  payment_method: undefined,
+  paid_at: null,
+  shipped_at: null,
+  payment_method: "",
   discount: 0,
   shipping_cost: 18000,
   subtotal: 100000,
   total: 118000,
   shipping_address: { penerima: "Penerima Uji", alamat: "Jl. Contoh 1", kode_pos: "40111" },
   items: [{ id: "i2", order_id: "o2", product_id: "p2", product_type: "book", name: "Buku Latihan", unit_price: 100000, qty: 1, jumlah: 100000 }],
-};
+} as unknown as Order;
 
 function show(order: Order) {
   return render(<InvoiceDialog order={order} open onOpenChange={() => {}} />);
@@ -86,6 +88,25 @@ describe("InvoiceDialog", () => {
     expect(paper).toHaveTextContent("Rp18.000");
     expect(paper).toHaveTextContent("Jl. Contoh 1");
     expect(paper).not.toHaveTextContent("Diskon");
+  });
+
+  it("falls back to a dash when the payment method is an empty string", () => {
+    show(PHYSICAL);
+    expect(document.querySelector(".invoice-paper")).toHaveTextContent(/Pembayaran: —/);
+  });
+
+  it("formats dates in the active language in Jakarta time", () => {
+    useUIStore.setState({ lang: "en" });
+    show({ ...DIGITAL, created_at: "2026-11-30T20:00:00Z" });
+    expect(document.querySelector(".invoice-paper")).toHaveTextContent("Dec 1, 2026");
+  });
+
+  it("scopes the A4 @page rule to the open dialog, not globals.css", () => {
+    const a4Styles = () => [...document.querySelectorAll("style")].filter((el) => el.textContent?.includes("size:A4"));
+    expect(a4Styles()).toHaveLength(0);
+    show(DIGITAL);
+    expect(a4Styles()).toHaveLength(1);
+    expect(readFileSync("app/globals.css", "utf8")).not.toMatch(/@page/);
   });
 
   it("invents no legal entity details", () => {

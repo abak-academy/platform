@@ -14,8 +14,10 @@ import { hasPhysicalItems } from "@/lib/shipping";
 import type { Order } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth";
 
-const formatDate = (iso?: string) =>
-  iso ? new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso)) : "—";
+const formatDate = (iso: string | undefined, lang: string) =>
+  iso
+    ? new Intl.DateTimeFormat(lang === "id" ? "id-ID" : "en-US", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date(iso))
+    : "—";
 
 export interface InvoiceDialogProps {
   order: Order;
@@ -24,7 +26,7 @@ export interface InvoiceDialogProps {
 }
 
 export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const paperRef = useRef<HTMLElement>(null);
   const [generating, setGenerating] = useState(false);
@@ -59,8 +61,10 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent size="wide">
+        <style>{"@media print{@page{size:A4;margin:0}}"}</style>
         <DialogTitle className="sr-only">{t("invoice_title")}</DialogTitle>
         <div className="invoice-stage -mx-2 rounded-2xl bg-surface-sunken p-3.5">
+          {/* shortcut: paper is one fixed A4 page in print CSS, long orders clip; upgrade when orders exceed ~12 items */}
           <article
             ref={paperRef}
             className="invoice-paper mx-auto flex aspect-[210/297] w-full max-w-[640px] flex-col rounded-md p-8 text-[12.5px] leading-normal shadow-pop"
@@ -89,7 +93,7 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
               <div className="flex flex-col items-end gap-2 text-right">
                 <span className="flex flex-col items-end">
                   <small className="text-[11px] text-ink-500">{t("invoice_order_date")}</small>
-                  {formatDate(order.created_at)}
+                  {formatDate(order.created_at, lang)}
                 </span>
                 <b
                   className={`inline-block rounded-md border-2 px-2.5 py-0.5 text-[11px] font-extrabold tracking-[.1em] ${paid ? "border-success text-success" : "border-danger text-danger"}`}
@@ -131,8 +135,8 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
             </div>
 
             <footer className="mt-auto border-t border-line pt-3 text-[11px] text-ink-500">
-              {t("invoice_payment")}: {order.payment_method ?? "—"}
-              {order.paid_at ? ` · ${formatDate(order.paid_at)}` : ""}
+              {t("invoice_payment")}: {order.payment_method || "—"}
+              {order.paid_at ? ` · ${formatDate(order.paid_at, lang)}` : ""}
             </footer>
           </article>
         </div>
