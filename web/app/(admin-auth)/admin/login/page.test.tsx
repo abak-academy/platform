@@ -38,6 +38,11 @@ describe("AdminLoginPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the student auth heading style", () => {
+    render(<AdminLoginPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Masuk admin" })).toHaveClass("text-[36px]");
+  });
+
   it("renders no Google sign-in element", () => {
     render(<AdminLoginPage />);
     expect(screen.queryByTestId("google-sign-in")).toBeNull();

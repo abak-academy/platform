@@ -183,7 +183,7 @@ export default function TestimonialsPage() {
             filters={FILTERS}
             count={rows.length}
             unit="testimoni"
-            searchPlaceholder="Cari nama atau kutipan"
+            searchPlaceholder={t("adm_testi_search")}
           />
           {rows.length === 0 ? (
             <EmptyState framed icon={MessageSquareQuote} title={t("adm_testi_empty")} text={filtering ? t("adm_filter_hint") : undefined} />
@@ -215,7 +215,7 @@ export default function TestimonialsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleting(null)}>Batal</Button>
+            <Button variant="outline" onClick={() => setDeleting(null)}>{t("adm_cancel_btn")}</Button>
             <Button variant="destructive" disabled={remove.isPending} onClick={handleDelete}>{t("adm_delete")}</Button>
           </DialogFooter>
         </DialogContent>

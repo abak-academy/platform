@@ -290,11 +290,11 @@ describe("ExamMonitorPage", () => {
     await selectExamRow("UTBK 2026");
 
     const kpis = await screen.findByTestId("exam-monitor-kpis");
-    const tile = within(kpis).getByText("Sedang berjalan").parentElement as HTMLElement;
+    const value = within(kpis).getByText("Sedang berjalan").nextElementSibling as HTMLElement;
     const rows = await within(await screen.findByTestId("exam-monitor-table")).findAllByRole("row");
     const running = rows.filter((r) => /Sedang berjalan|Terlambat/.test(r.textContent ?? "")).length;
     expect(running).toBeGreaterThan(1);
-    expect(tile.textContent).toContain(String(running));
+    expect(value).toHaveTextContent(new RegExp(`^${running}$`));
   });
 
   it("renders progress values for each row", async () => {
