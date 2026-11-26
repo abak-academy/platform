@@ -1,6 +1,8 @@
 import type { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type StatAccent = "primary" | "secondary" | "error" | "tertiary";
+export type StatTone = "brand" | "ember" | "teal" | "sky" | "gold" | "berry" | "danger";
 
 interface StatCardProps {
   label: string;
@@ -8,34 +10,47 @@ interface StatCardProps {
   icon?: LucideIcon;
   trend?: string;
   accent?: StatAccent;
+  tone?: StatTone;
+  className?: string;
 }
 
-const ACCENT: Record<StatAccent, { box: string; on: string; trend: string }> = {
-  primary:   { box: "var(--md-sys-color-primary-container)",   on: "var(--md-sys-color-on-primary-container)",   trend: "var(--md-sys-color-primary)" },
-  secondary: { box: "var(--md-sys-color-secondary-container)", on: "var(--md-sys-color-on-secondary-container)", trend: "var(--md-sys-color-on-surface-variant)" },
-  error:     { box: "var(--md-sys-color-error-container)",     on: "var(--md-sys-color-on-error-container)",     trend: "var(--md-sys-color-error)" },
-  tertiary:  { box: "var(--md-sys-color-tertiary-container)",  on: "var(--md-sys-color-on-tertiary-container)",  trend: "var(--md-sys-color-on-surface-variant)" },
+const ACCENT_TONE: Record<StatAccent, StatTone> = {
+  primary: "brand",
+  secondary: "teal",
+  tertiary: "sky",
+  error: "danger",
 };
 
-export function StatCard({ label, value, icon: Icon, trend, accent = "primary" }: StatCardProps) {
-  const c = ACCENT[accent];
+const TONE: Record<StatTone, { box: string; icon: string }> = {
+  brand: { box: "bg-brand-50", icon: "text-brand-ink" },
+  ember: { box: "bg-ember-50", icon: "text-ember-700" },
+  teal: { box: "bg-teal-50", icon: "text-teal-700" },
+  sky: { box: "bg-sky-50", icon: "text-sky-700" },
+  gold: { box: "bg-gold-50", icon: "text-gold-700" },
+  berry: { box: "bg-berry-50", icon: "text-berry-700" },
+  danger: { box: "bg-danger-50", icon: "text-danger-600" },
+};
+
+export function StatCard({ label, value, icon: Icon, trend, accent = "primary", tone, className }: StatCardProps) {
+  const t = TONE[tone ?? ACCENT_TONE[accent]];
   return (
-    <div className="md-card-elevated">
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="text-label color-on-surface-variant mb-2">{label}</div>
-          <div className="text-title-large mb-2" style={{ fontWeight: 600 }}>{value}</div>
-          {trend ? <div className="text-label" style={{ color: c.trend }}>{trend}</div> : null}
+    <div
+      className={cn(
+        "relative flex min-w-0 flex-col gap-1 overflow-hidden rounded-[var(--radius-card)] border border-transparent p-[18px] transition-transform duration-300 ease-spring hover:-translate-y-[3px]",
+        t.box,
+        className
+      )}
+    >
+      {Icon ? (
+        <div className={cn("mb-2 grid size-10 place-items-center rounded-[13px] bg-surface", t.icon)}>
+          <Icon size={20} />
         </div>
-        {Icon ? (
-          <div
-            className="flex size-10 items-center justify-center rounded-[12px]"
-            style={{ backgroundColor: c.box, color: c.on }}
-          >
-            <Icon size={20} />
-          </div>
-        ) : null}
+      ) : null}
+      <div className="type-label-sm text-ink-700">{label}</div>
+      <div className="font-[family-name:var(--font-display)] text-[28px] leading-[1.15] font-extrabold tracking-[-0.03em] text-ink-900 max-narrow:text-[22px]">
+        {value}
       </div>
+      {trend ? <div className="text-xs text-ink-600">{trend}</div> : null}
     </div>
   );
 }

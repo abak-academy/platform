@@ -29,13 +29,16 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id" translate="no" suppressHydrationWarning>
+    <html
+      lang="id"
+      translate="no"
+      suppressHydrationWarning
+      className={`${plusJakarta.variable} ${publicSans.variable} ${sourceSerif.variable} ${splineMono.variable} ${cinzel.variable} ${inter.variable}`}
+    >
       <head>
         <script dangerouslySetInnerHTML={{ __html: SESSION_FLAG_SCRIPT }} />
       </head>
-      <body
-        className={`${plusJakarta.variable} ${publicSans.variable} ${sourceSerif.variable} ${splineMono.variable} ${cinzel.variable} ${inter.variable} antialiased`}
-      >
+      <body className="antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>

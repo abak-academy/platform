@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
 
 export function EmptyState({
   icon: Icon,
@@ -8,15 +9,17 @@ export function EmptyState({
   text,
   action,
   className,
+  framed = false,
 }: {
   icon: LucideIcon;
   title: string;
   text?: string;
   action?: ReactNode;
   className?: string;
+  framed?: boolean;
 }) {
-  return (
-    <div className={cn("flex flex-col items-center gap-2 px-4 py-10 text-center text-ink-500", className)}>
+  const body = (
+    <div className={cn("flex flex-col items-center gap-2 px-4 py-10 text-center text-ink-600", className)}>
       <span className="grid size-14 place-items-center rounded-2xl bg-ember-50 text-ember-700">
         <Icon className="size-6" aria-hidden />
       </span>
@@ -25,4 +28,5 @@ export function EmptyState({
       {action}
     </div>
   );
+  return framed ? <Card className="gap-0 py-0">{body}</Card> : body;
 }

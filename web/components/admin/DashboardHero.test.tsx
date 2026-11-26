@@ -13,17 +13,13 @@ describe("DashboardHero", () => {
     expect(screen.getByText("Pantau sesi ujian.")).toBeTruthy();
   });
 
-  it("uses the default gradient when none is given", () => {
+  it("renders as a plain page head with no gradient or margin", () => {
     const { container } = render(
       <DashboardHero icon={Shield} badge="b" name="n" subtitle="s" />,
     );
-    expect(container.firstChild).toHaveStyle({ color: "#FFFFFF" });
-  });
-
-  it("keeps its mb-8 margin when className is omitted", () => {
-    const { container } = render(
-      <DashboardHero icon={Shield} badge="b" name="n" subtitle="s" />,
-    );
-    expect(container.firstChild).toHaveClass("mb-8");
+    const root = container.firstChild as HTMLElement;
+    expect(root).not.toHaveClass("mb-8");
+    expect(root.getAttribute("style")).toBeNull();
+    expect(screen.getByRole("heading", { name: "n" })).toHaveClass("type-h1");
   });
 });

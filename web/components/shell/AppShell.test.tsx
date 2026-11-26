@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppShell } from "./AppShell";
+import { PageHead } from "./PageHead";
 import type { UserRole } from "@/lib/nav-config";
 
 let pathname = "/dashboard";
@@ -42,7 +43,8 @@ vi.mock("./AppSidebar", () => ({
   ),
 }));
 
-vi.mock("./AppHeader", () => ({
+vi.mock("./AppHeader", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./AppHeader")>()),
   AppHeader: ({
     onMenuClick,
     menuButtonRef,
@@ -105,6 +107,48 @@ describe("AppShell — layout", () => {
     expect(wrapper.className).toContain("max-w-page");
     expect(wrapper.className).toContain("px-4");
     expect(wrapper.className).toContain("narrow:px-8");
+  });
+
+  it("lays blocks out as a flat 20px column with the prototype's top and bottom padding", () => {
+    renderShell();
+    const wrapper = screen.getByText("content").parentElement!;
+    for (const c of ["flex", "flex-col", "gap-5", "pt-4", "lg:pt-6", "pb-[90px]", "lg:pb-[100px]"]) {
+      expect(wrapper).toHaveClass(c);
+    }
+  });
+
+  it("renders no bordered 64px header bar", () => {
+    const { container } = renderShell();
+    expect(container.querySelector("header.h-16, header.border-b")).toBeNull();
+  });
+
+  it("shows the fallback menu button only while no PageHead is mounted", () => {
+    const { rerender } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AppShell role="super_admin"><PageHead title="Halaman" /></AppShell>
+      </QueryClientProvider>
+    );
+    expect(screen.queryByTestId("menu-button")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Toggle sidebar" })).toBeInTheDocument();
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <AppShell role="super_admin"><div>plain</div></AppShell>
+      </QueryClientProvider>
+    );
+    expect(screen.getByTestId("menu-button")).toBeInTheDocument();
+  });
+
+  it("opens the drawer from the PageHead menu button and returns focus to it", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <AppShell role="student"><PageHead title="Halaman" /></AppShell>
+      </QueryClientProvider>
+    );
+    const menu = screen.getByRole("button", { name: "Toggle sidebar" });
+    await userEvent.click(menu);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(menu).toHaveFocus();
   });
 
   it("forwards counts to the sidebar", () => {

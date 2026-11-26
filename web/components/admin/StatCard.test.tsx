@@ -38,6 +38,19 @@ describe("StatCard", () => {
     expect(screen.getByText("Test")).toBeInTheDocument();
   });
 
+  it("uses the prototype tile: tone background, 28px/800 value, icon on top", () => {
+    const { container } = render(<StatCard label="Kursus" value="12" icon={Users} tone="teal" />);
+    const tile = container.firstElementChild!;
+    expect(tile).toHaveClass("bg-teal-50", "rounded-[var(--radius-card)]", "p-[18px]");
+    expect(screen.getByText("12")).toHaveClass("text-[28px]", "font-extrabold");
+    expect(tile.firstElementChild!.querySelector("svg")).not.toBeNull();
+  });
+
+  it("maps the legacy accent onto a tone", () => {
+    const { container } = render(<StatCard label="x" value="1" accent="error" />);
+    expect(container.firstElementChild).toHaveClass("bg-danger-50");
+  });
+
   it("renders with error accent", () => {
     render(<StatCard label="Test" value="123" accent="error" />);
     expect(screen.getByText("Test")).toBeInTheDocument();

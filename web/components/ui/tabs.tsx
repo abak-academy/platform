@@ -30,7 +30,7 @@ const tabsListVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-surface-sunken",
+        default: "max-w-full gap-1 overflow-x-auto border border-line bg-surface",
         line: "gap-1 bg-transparent",
       },
     },
@@ -88,4 +88,17 @@ function TabsContent({
   )
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants }
+function TabCount({ className, ...props }: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="tab-count"
+      className={cn(
+        "ml-1 inline-block min-w-[18px] rounded-[9px] bg-ember-600 px-1.5 text-[10.5px] leading-[18px] text-on-ember",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Tabs, TabsList, TabsTrigger, TabsContent, TabCount, tabsListVariants }

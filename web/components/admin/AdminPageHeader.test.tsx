@@ -4,12 +4,15 @@ import { AdminPageHeader } from "./AdminPageHeader";
 import { Shield } from "lucide-react";
 
 describe("AdminPageHeader", () => {
-  it("renders the icon and title", () => {
+  it("renders the title through PageHead and ignores the legacy icon", () => {
     render(<AdminPageHeader icon={Shield} title="Dashboard" />);
-    // The icon renders inside an SVG element
-    const svg = document.querySelector("svg");
-    expect(svg).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeInTheDocument();
+    expect(document.querySelector("svg")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toHaveClass("type-h1");
+  });
+
+  it("renders a back link when given", () => {
+    render(<AdminPageHeader title="Detail" back={{ href: "/admin/orders", label: "Pesanan" }} />);
+    expect(screen.getByRole("link", { name: "Pesanan" })).toHaveAttribute("href", "/admin/orders");
   });
 
   it("renders description when provided", () => {

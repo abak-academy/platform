@@ -10,16 +10,15 @@ vi.mock("@/lib/i18n", () => ({
 }));
 
 const themeBtn = () => screen.queryByRole("button", { name: /dark_mode|light_mode/ });
-const bellBtn = () => screen.queryByRole("button", { name: "Notifikasi" });
+const bellLink = () => screen.queryByRole("link", { name: "Notifikasi" });
 
 describe("AppHeader — admin and affiliator roles", () => {
   it.each<UserRole>([...ADMIN_ROLES, "affiliator"])(
-    "%s has theme toggle and bell only",
+    "%s has a theme toggle and no search, language or account control",
     (role) => {
       const { container } = render(<AppHeader role={role} />);
 
       expect(themeBtn()).toBeInTheDocument();
-      expect(bellBtn()).toBeInTheDocument();
       expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
       expect(container.querySelector("input")).toBeNull();
       expect(screen.queryByRole("button", { name: /^(ID|EN)$/ })).not.toBeInTheDocument();
@@ -28,9 +27,21 @@ describe("AppHeader — admin and affiliator roles", () => {
     }
   );
 
-  it("keeps the permanent red dot on the bell", () => {
+  it("renders the bell as a link to announcements, never a dead button", () => {
     render(<AppHeader role="super_admin" />);
-    expect(bellBtn()?.querySelector(".bg-danger")).not.toBeNull();
+    expect(bellLink()).toHaveAttribute("href", "/admin/notifications");
+    expect(screen.queryByRole("button", { name: "Notifikasi" })).not.toBeInTheDocument();
+  });
+
+  it("omits the bell for a role without an announcements page", () => {
+    render(<AppHeader role="affiliator" />);
+    expect(bellLink()).not.toBeInTheDocument();
+  });
+
+  it("is a slim row, not a bordered 64px bar", () => {
+    const { container } = render(<AppHeader role="super_admin" />);
+    const header = container.querySelector("header")!;
+    expect(header.className).not.toMatch(/h-16|border-b|sticky/);
   });
 });
 
@@ -39,10 +50,15 @@ describe("AppHeader — student", () => {
     render(<AppHeader role="student" />);
 
     expect(themeBtn()).not.toBeInTheDocument();
-    expect(bellBtn()).not.toBeInTheDocument();
+    expect(bellLink()).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Keranjang" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^(ID|EN)$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /account/i })).not.toBeInTheDocument();
+  });
+
+  it("is mobile-only so the desktop has no empty bar", () => {
+    const { container } = render(<AppHeader role="student" />);
+    expect(container.querySelector("header")).toHaveClass("lg:hidden");
   });
 });
 
@@ -57,5 +73,6 @@ describe("AppHeader — menu button", () => {
 
     expect(onMenuClick).toHaveBeenCalledTimes(1);
     expect(menuButtonRef.current).toBe(button);
+    expect(button).toHaveClass("lg:hidden");
   });
 });

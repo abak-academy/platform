@@ -132,3 +132,36 @@ describe("ListToolbar", () => {
     expect(screen.getByRole("combobox", { name: "Urutkan" })).toBeInTheDocument();
   });
 });
+
+describe("ListToolbar — prototype chrome", () => {
+  it("renders the standalone variant as a card and card-header as a bottom-bordered strip", () => {
+    const { container, rerender } = render(<Harness variant="standalone" />);
+    expect(container.firstElementChild).toHaveClass("rounded-[var(--radius-card)]", "shadow-card");
+    rerender(<Harness variant="card-header" />);
+    expect(container.firstElementChild).toHaveClass("border-b");
+    expect(container.firstElementChild).not.toHaveClass("shadow-card");
+  });
+
+  it("uses a 42px pill search, a 42px filter button with a count pill and a mono count", () => {
+    render(<Harness initial={{ q: "", filters: { status: "live" } }} />);
+    expect(screen.getByRole("searchbox")).toHaveClass("h-[var(--spacing-control-md)]", "rounded-full");
+    const filter = screen.getByRole("button", { name: "Filter (1)" });
+    expect(filter).toHaveClass("rounded-[var(--radius-pill)]");
+    expect(within(filter).getByText("1")).toHaveClass("bg-brand-600", "rounded-full");
+    expect(screen.getByText("12 pesanan")).toHaveClass("font-mono", "text-xs", "uppercase");
+  });
+
+  it("renders panel options as md-fchip and active filters as md-lchip", () => {
+    const { container } = render(<Harness initial={{ q: "", filters: { status: "live" } }} />);
+    expect(container.querySelector(".md-lchip")).not.toBeNull();
+    openPanel();
+    const on = within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Terbit" });
+    expect(on).toHaveClass("md-fchip", "on");
+    expect(within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Draf" })).not.toHaveClass("on");
+  });
+
+  it("renders the sort as a pill trigger", () => {
+    render(<Harness sorts={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />);
+    expect(screen.getByRole("combobox", { name: "Urutkan" })).toHaveClass("rounded-full");
+  });
+});
