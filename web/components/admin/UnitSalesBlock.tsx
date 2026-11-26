@@ -61,6 +61,7 @@ function UnitSalesOverview() {
     {query.isLoading ? <p role="status">{t("admin_unit_loading")}</p> : query.isError ?
       <div role="alert"><p>{t("admin_unit_error")}</p><Button variant="outline" onClick={() => query.refetch()}>{t("retry")}</Button></div> :
       <DataTable
+        mobileCards
         rows={rows}
         rowKey={(r) => r.type}
         empty={t("admin_unit_empty")}
