@@ -11,6 +11,7 @@ import { useAddToCart, useCart } from "@/lib/hooks/orders";
 import { useProfile } from "@/lib/hooks/students";
 import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
+import { useGuestCart } from "@/stores/guest-cart";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError, fileUrl } from "@/lib/api";
@@ -94,9 +95,25 @@ export default function ProductDetailPage({
     dob: "product_biodata_field_dob",
   };
 
+  const maxQty = !token && isPhysical ? Math.max(1, Math.min(10, product.stock ?? 0)) : 10;
+
   const handleAdd = (thenRoute?: () => void) => {
     if (!token) {
-      router.push("/login");
+      const result = useGuestCart.getState().add(product, isDigital ? 1 : qty);
+      if (result === "added") {
+        toast.success(t("gcart_toast_added"), {
+          description: product.name,
+          action: { label: t("gcart_toast_view"), onClick: () => router.push("/cart") },
+        });
+        thenRoute?.();
+      } else if (result === "duplicate") {
+        toast.message(t("gcart_already_in_cart"), { description: product.name });
+        thenRoute?.();
+      } else if (result === "capped") {
+        toast.error(t("gcart_out_of_stock"), { description: product.name });
+      } else {
+        toast.error(t("gcart_full"));
+      }
       return;
     }
     if (alreadyInCart) {
@@ -215,8 +232,8 @@ export default function ProductDetailPage({
                   <button
                     type="button"
                     aria-label={t("product_qty_label")}
-                    onClick={() => setQty((q) => Math.min(10, q + 1))}
-                    disabled={qty >= 10}
+                    onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                    disabled={qty >= maxQty}
                     className="flex size-8 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
                   >
                     <Plus className="size-3.5" />
