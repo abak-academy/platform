@@ -88,7 +88,7 @@ export default function CourseDetailPage() {
   if (isError) {
     return (
       <>
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -135,7 +135,7 @@ export default function CourseDetailPage() {
         sub={course.instructor_name ? `${t("course_instructor")}: ${course.instructor_name}` : undefined}
       />
 
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
         <div className="flex min-w-0 flex-col gap-4">
           <VideoPlayer
             videoRef={activeLesson?.video_url}
@@ -194,7 +194,7 @@ function CourseDetailSkeleton() {
     <>
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-8 w-2/3" />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_330px]">
         <div>
           <Skeleton className="h-0 w-full pb-[56.25%]" />
           <Skeleton className="mt-4 h-24 w-full" />

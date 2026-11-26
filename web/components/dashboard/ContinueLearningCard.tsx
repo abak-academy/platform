@@ -19,7 +19,7 @@ export function ContinueLearningCard({ courses }: { courses: Dashboard["enrolled
   );
 
   return (
-    <Card className="flex flex-col gap-3.5 border-line p-5">
+    <Card className="flex flex-col gap-3.5 border-line p-6">
       <div className="flex items-center gap-2.5">
         <span className="flex size-9 items-center justify-center rounded-xl bg-sky-50 text-sky-600">
           <BookOpen className="size-5" />

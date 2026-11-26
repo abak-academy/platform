@@ -339,7 +339,7 @@ function ServerCart() {
       ) : items.length === 0 ? (
         <EmptyCart />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
           <section className="flex flex-col gap-4">
             {hasPhysical &&
               (addressFormOpen ? (
@@ -432,7 +432,7 @@ function ServerCart() {
             )}
 
             {hasPhysical && shippingRates.isError && (
-              <div className="rounded-[var(--radius-card)] border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+              <div className="rounded-[var(--radius-card)] border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
                 {t(shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_route_unserved"
                   ? "cart_shipping_route_unserved"
                   : shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_temporarily_unavailable"
@@ -442,7 +442,7 @@ function ServerCart() {
             )}
 
             {hasPhysical && shippingClearedNotice && (
-              <div className="rounded-[var(--radius-card)] border border-warn/30 bg-warn-bg px-5 py-4 text-sm text-warn">
+              <div className="rounded-[var(--radius-card)] border border-warn/30 bg-warn-bg p-4 text-sm text-warn">
                 {t("cart_shipping_address_changed" as any)}
               </div>
             )}

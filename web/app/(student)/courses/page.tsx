@@ -37,7 +37,7 @@ export default function CoursesPage() {
       />
 
       {isError && (
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">

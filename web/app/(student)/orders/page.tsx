@@ -61,7 +61,7 @@ function OrdersList({ orders }: { orders: Order[] }) {
   });
 
   return (
-    <ul className="flex flex-col gap-2.5">
+    <ul className="flex flex-col gap-4">
       {sorted.map((o) => {
         const { Icon, tone } = thumbOf(o.items?.[0]?.product_type);
         const extra = (o.items?.length ?? 0) - 1;
@@ -98,7 +98,7 @@ function OrdersList({ orders }: { orders: Order[] }) {
 
 function OrdersSkeleton() {
   return (
-    <ul className="flex flex-col gap-2.5">
+    <ul className="flex flex-col gap-4">
       {Array.from({ length: 5 }).map((_, i) => (
         <li key={i}>
           <Skeleton className="h-[68px] w-full rounded-[22px]" />
@@ -117,7 +117,7 @@ export default function OrdersPage() {
       <PageHead title={t("nav_billing")} sub={t("billing_subtitle")} />
 
       {isError ? (
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4 text-sm text-danger">
           <p>{t("orders_load_failed")} {(error as Error)?.message}</p>
           <button onClick={() => refetch()} className="mt-2 w-fit underline">
             {t("retry")}

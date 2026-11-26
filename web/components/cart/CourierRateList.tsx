@@ -114,7 +114,7 @@ export function CourierRateList({
         {t("cart_shipping_options") || "Shipping Options"}
       </p>
 
-      <div className="overflow-hidden rounded-2xl border-[1.5px] border-line">
+      <div className="overflow-hidden rounded-lg border-[1.5px] border-line">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

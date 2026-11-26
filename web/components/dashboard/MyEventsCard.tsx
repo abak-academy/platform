@@ -133,7 +133,7 @@ export function MyEventsCard({
   const { t } = useTranslation();
   const rows = eventRows(registrations, now);
   return (
-    <Card className="gap-4 p-5">
+    <Card className="gap-4 p-6">
       <div className="flex items-center gap-2">
         <Trophy className="size-5 text-gold-700" aria-hidden />
         <h2 className="type-h3 flex-1 text-ink-900">{t("stu_home_events_title")}</h2>

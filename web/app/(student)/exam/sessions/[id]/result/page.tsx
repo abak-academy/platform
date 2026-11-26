@@ -48,7 +48,7 @@ export default function SessionResultPage() {
   if (isError) {
     return (
       <>
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -306,7 +306,7 @@ function PembahasanItem({
           />
         )}
         {item.explanation && (
-          <div className="flex gap-3 rounded-2xl bg-gold-50 p-4">
+          <div className="flex gap-3 rounded-lg bg-gold-50 p-4">
             <Lightbulb className="mt-0.5 size-4 shrink-0 text-gold-700" aria-hidden />
             <p className="whitespace-pre-wrap text-ink-700">{item.explanation}</p>
           </div>

@@ -94,7 +94,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
           {!preview && <Badge variant={statusVariant}>{statusLabel}</Badge>}
         </div>
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
-          <section className="flex min-w-0 flex-col gap-1 rounded-[20px] bg-surface-sunken p-[18px]">
+          <section className="flex min-w-0 flex-col gap-1 rounded-lg bg-surface-sunken p-[18px]">
             <IconTile tone="sky">
               <CalendarDays className="size-5" />
             </IconTile>
@@ -132,7 +132,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
             <p className="mt-1.5 text-xs text-ink-600">{t("examdetail_access_caption")}</p>
           </section>
 
-          <section data-testid="duration-panel" className="flex min-w-0 flex-col gap-1 rounded-[20px] bg-surface-sunken p-[18px]">
+          <section data-testid="duration-panel" className="flex min-w-0 flex-col gap-1 rounded-lg bg-surface-sunken p-[18px]">
             <IconTile tone="ember">
               <Clock className="size-5" />
             </IconTile>
@@ -305,7 +305,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
           <h2 className="type-h2 text-ink-900">{resume ? t("continue_exam") : t("examdetail_ready_title")}</h2>
           {!resume && <p className="mt-1 text-sm text-ink-600">{t("examdetail_ready_body")}</p>}
           {!resume && (
-            <label className="mt-4 flex items-center gap-3 rounded-2xl bg-surface-sunken px-4 py-3.5 text-sm font-semibold text-ink-900">
+            <label className="mt-4 flex items-center gap-3 rounded-lg bg-surface-sunken px-4 py-3.5 text-sm font-semibold text-ink-900">
               <input
                 type="checkbox"
                 className="size-[19px] shrink-0 accent-brand-600"

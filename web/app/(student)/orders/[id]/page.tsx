@@ -245,7 +245,7 @@ export default function OrderDetailPage({
 
   if (isError || !order) {
     return (
-      <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+      <Card className="gap-0 border-danger/30 bg-danger-bg p-4 text-sm text-danger">
         <p>{t("orders_load_failed")} {(error as Error)?.message}</p>
         <button onClick={() => refetch()} className="mt-2 w-fit underline">
           {t("retry")}

@@ -55,7 +55,7 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
       className={
         flat
           ? "flex items-center gap-3 border-b border-dashed border-line py-3 last:border-b-0"
-          : "flex gap-4 rounded-lg border border-line bg-surface p-4 shadow-[var(--sh-sm)]"
+          : "flex gap-4 rounded-[var(--radius-card)] border border-line bg-card p-4 shadow-card"
       }
     >
       <div

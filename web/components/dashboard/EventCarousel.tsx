@@ -84,7 +84,7 @@ export function EventCarousel({ slides }: { slides: HeroSlide[] }) {
       role="region"
       aria-roledescription="carousel"
       aria-label={t("stu_home_carousel_label")}
-      className="rounded-2xl dash-hero-bg p-6 text-white sm:p-8"
+      className="rounded-[var(--radius-panel)] dash-hero-bg p-6 text-white sm:p-8"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}

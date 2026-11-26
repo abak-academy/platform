@@ -60,7 +60,7 @@ function Dashboard() {
   return (
     <>
       {isError && (
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -77,7 +77,7 @@ function Dashboard() {
       {isLoading ? (
         <DashboardSkeleton />
       ) : data ? (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           <PageHead
             eyebrow={today}
             title={t("stu_home_greeting").replace("{greeting}", greeting).replace("{name}", name)}
@@ -96,7 +96,7 @@ function Dashboard() {
 
           <div className={ROW_A}>
             {eventSeries.isLoading || registrations.isLoading ? (
-              <Skeleton className="h-64 rounded-xl" data-testid="carousel-skeleton" />
+              <Skeleton className="h-64 rounded-[var(--radius-card)]" data-testid="carousel-skeleton" />
             ) : (
               <EventCarousel slides={eventSeries.isError ? [] : slides} />
             )}
@@ -119,15 +119,15 @@ function Dashboard() {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-5" data-testid="dashboard-skeleton">
+    <div className="flex flex-col gap-4" data-testid="dashboard-skeleton">
       <Skeleton className="h-16 w-72" />
       <div className={ROW_A}>
-        <Skeleton className="h-64 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-[var(--radius-card)]" />
+        <Skeleton className="h-64 rounded-[var(--radius-card)]" />
       </div>
       <div className={ROW_B}>
-        <Skeleton className="h-48 rounded-lg" />
-        <Skeleton className="h-48 rounded-lg" />
+        <Skeleton className="h-48 rounded-[var(--radius-card)]" />
+        <Skeleton className="h-48 rounded-[var(--radius-card)]" />
       </div>
     </div>
   );

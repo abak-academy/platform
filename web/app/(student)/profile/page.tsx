@@ -442,7 +442,7 @@ export default function ProfilePage() {
     return (
       <>
         <PageHead title={t("profile_title")} />
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <div className="flex-1 text-sm text-ink-700">
               {t("load_failed")}

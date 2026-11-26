@@ -25,7 +25,7 @@ export function StudySummaryCard({ study }: { study: DashboardStudySummary }) {
   ];
 
   return (
-    <Card className="flex flex-col gap-3.5 border-line p-5">
+    <Card className="flex flex-col gap-3.5 border-line p-6">
       <div className="flex items-center gap-2.5">
         <span className="flex size-9 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
           <Clock className="size-5" />

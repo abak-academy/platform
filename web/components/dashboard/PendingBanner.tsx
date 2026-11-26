@@ -16,7 +16,7 @@ export function PendingBanner({ id, product, amount }: PendingBannerProps) {
   const { t } = useTranslation();
   return (
     <div
-      className="mb-8 flex items-center gap-4 rounded-lg border px-5 py-4"
+      className="mb-8 flex items-center gap-4 rounded-[var(--radius-card)] border p-4"
       style={{
         borderColor: "var(--color-warn)",
         background: "var(--color-warn-bg)",

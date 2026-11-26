@@ -33,7 +33,7 @@ export function ShippingStrip({ order }: { order: Order }) {
   };
 
   return (
-    <section className="flex flex-wrap items-center gap-5 rounded-xl border border-line bg-surface px-[18px] py-3.5">
+    <section className="flex flex-wrap items-center gap-5 rounded-[var(--radius-card)] border border-line bg-card px-[18px] py-3.5 shadow-card">
       <div className="flex min-w-[200px] items-center gap-2.5">
         <span className="flex size-9 items-center justify-center rounded-xl bg-ember-50 text-ember-600">
           <Truck className="size-5" />
