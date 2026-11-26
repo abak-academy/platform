@@ -44,10 +44,10 @@ export function useOrder(id: string) {
   });
 }
 
-export function useCart({ enabled = true }: { enabled?: boolean } = {}) {
+export function useCart({ enabled = true, redirectOn401 = true }: { enabled?: boolean; redirectOn401?: boolean } = {}) {
   return useQuery({
     queryKey: ordersKeys.cart(),
-    queryFn: () => authFetch<Order>(`/orders`, { method: "POST" }),
+    queryFn: () => authFetch<Order>(`/orders`, { method: "POST" }, { redirectOn401 }),
     enabled,
   });
 }

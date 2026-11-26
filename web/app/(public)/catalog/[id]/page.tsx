@@ -57,8 +57,8 @@ export default function ProductDetailPage({
   const addToCart = useAddToCart();
   const token = useAuthStore((s) => s.token);
   // a guest's 401 on these would hard-navigate to /login
-  const { data: cart } = useCart({ enabled: !!token });
-  const { data: profile } = useProfile({ enabled: !!token });
+  const { data: cart } = useCart({ enabled: !!token, redirectOn401: false });
+  const { data: profile } = useProfile({ enabled: !!token, redirectOn401: false });
   const bumpBadge = useCartStore((s) => s.setCount);
   const [qty, setQty] = useState(1);
 
