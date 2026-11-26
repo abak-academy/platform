@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/jackc/pgx/v5"
+
 	"akademi-bimbel/internal/model"
 )
 
@@ -49,8 +51,19 @@ func (r *Repository) ListVisibleTestimonials(ctx context.Context) ([]model.Testi
 }
 
 func (r *Repository) GetTestimonial(ctx context.Context, id string) (*model.Testimonial, error) {
+	return r.getTestimonial(ctx, r.pool, ``, id)
+}
+
+// GetTestimonialForUpdateTx locks the row so concurrent PATCHes and deletes serialize behind it.
+func (r *Repository) GetTestimonialForUpdateTx(ctx context.Context, tx pgx.Tx, id string) (*model.Testimonial, error) {
+	return r.getTestimonial(ctx, tx, ` FOR UPDATE OF t`, id)
+}
+
+func (r *Repository) getTestimonial(ctx context.Context, q interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, lock, id string) (*model.Testimonial, error) {
 	t := &model.Testimonial{}
-	if err := scanTestimonial(r.pool.QueryRow(ctx, testimonialSelect+` WHERE t.id = $1`, id), t); err != nil {
+	if err := scanTestimonial(q.QueryRow(ctx, testimonialSelect+` WHERE t.id = $1`+lock, id), t); err != nil {
 		if isNotFound(err) {
 			return nil, ErrNotFound
 		}
@@ -92,13 +105,13 @@ func (r *Repository) CreateTestimonial(ctx context.Context, t *model.Testimonial
 	return nil
 }
 
-// UpdateTestimonial writes every editable column, so callers merge a patch into the loaded row first.
-func (r *Repository) UpdateTestimonial(ctx context.Context, id string, t *model.Testimonial) error {
+// UpdateTestimonialTx writes every editable column, so callers merge a patch into a row loaded with GetTestimonialForUpdateTx.
+func (r *Repository) UpdateTestimonialTx(ctx context.Context, tx pgx.Tx, id string, t *model.Testimonial) error {
 	args, err := testimonialWriteArgs(t)
 	if err != nil {
 		return err
 	}
-	tag, err := r.pool.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`UPDATE testimonial SET name = $1, role_label = $2, photo_key = $3, content = $4, has_consent = $5, consent_note = $6,
 		consent_by = $7, consent_at = $8, is_visible = $9, sort_order = $10, updated_at = now() WHERE id = $11`,
 		append(args, id)...)
@@ -111,8 +124,8 @@ func (r *Repository) UpdateTestimonial(ctx context.Context, id string, t *model.
 	return nil
 }
 
-func (r *Repository) DeleteTestimonial(ctx context.Context, id string) error {
-	tag, err := r.pool.Exec(ctx, `DELETE FROM testimonial WHERE id = $1`, id)
+func (r *Repository) DeleteTestimonialTx(ctx context.Context, tx pgx.Tx, id string) error {
+	tag, err := tx.Exec(ctx, `DELETE FROM testimonial WHERE id = $1`, id)
 	if err != nil {
 		return err
 	}

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/require"
 
@@ -55,17 +56,17 @@ func TestTestimonial_CRUDRoundTrip(t *testing.T) {
 
 	got.Name = "Budi S"
 	got.SortOrder = 4
-	require.NoError(t, repo.UpdateTestimonial(ctx, got.ID, got))
+	require.NoError(t, inTestimonialTx(t, repo, func(tx pgx.Tx) error { return repo.UpdateTestimonialTx(ctx, tx, got.ID, got) }))
 	again, err := repo.GetTestimonial(ctx, got.ID)
 	require.NoError(t, err)
 	require.Equal(t, "Budi S", again.Name)
 	require.Equal(t, 4, again.SortOrder)
 
-	require.NoError(t, repo.DeleteTestimonial(ctx, got.ID))
+	require.NoError(t, inTestimonialTx(t, repo, func(tx pgx.Tx) error { return repo.DeleteTestimonialTx(ctx, tx, got.ID) }))
 	_, err = repo.GetTestimonial(ctx, got.ID)
 	require.ErrorIs(t, err, ErrNotFound)
-	require.ErrorIs(t, repo.DeleteTestimonial(ctx, got.ID), ErrNotFound)
-	require.ErrorIs(t, repo.UpdateTestimonial(ctx, got.ID, got), ErrNotFound)
+	require.ErrorIs(t, inTestimonialTx(t, repo, func(tx pgx.Tx) error { return repo.DeleteTestimonialTx(ctx, tx, got.ID) }), ErrNotFound)
+	require.ErrorIs(t, inTestimonialTx(t, repo, func(tx pgx.Tx) error { return repo.UpdateTestimonialTx(ctx, tx, got.ID, got) }), ErrNotFound)
 }
 
 func TestTestimonial_ChecksRejectUnpublishableVisible(t *testing.T) {
@@ -88,7 +89,7 @@ func TestTestimonial_ChecksRejectUnpublishableVisible(t *testing.T) {
 	require.NoError(t, repo.CreateTestimonial(ctx, draft), "a hidden draft needs no photo or consent")
 
 	draft.IsVisible = true
-	requireCheckViolation(t, repo.UpdateTestimonial(ctx, draft.ID, draft))
+	requireCheckViolation(t, inTestimonialTx(t, repo, func(tx pgx.Tx) error { return repo.UpdateTestimonialTx(ctx, tx, draft.ID, draft) }))
 }
 
 func TestTestimonial_ListVisibleAndConsentByName(t *testing.T) {
@@ -125,4 +126,16 @@ func TestTestimonial_ListVisibleAndConsentByName(t *testing.T) {
 	visible, err := repo.ListVisibleTestimonials(ctx)
 	require.NoError(t, err)
 	require.Equal(t, []string{"First", "Second"}, []string{visible[0].Name, visible[1].Name})
+}
+
+func inTestimonialTx(t *testing.T, repo *Repository, fn func(pgx.Tx) error) error {
+	t.Helper()
+	ctx := context.Background()
+	tx, err := repo.BeginTx(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+	if err := fn(tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }

@@ -125,8 +125,8 @@ func TestAdminTestimonials_Lifecycle(t *testing.T) {
 		{"photo_key": "avatars/x.jpg"},
 		{"content": map[string]any{"fr": map[string]any{"quote": "x"}}},
 	} {
-		if rec := testimonialCall(t, env, http.MethodPatch, "/"+id, token, bad); rec.Code != http.StatusBadRequest || decodeMap(t, rec)["code"] != "invalid_request" {
-			t.Errorf("%v = %d %s, want 400 invalid_request", bad, rec.Code, rec.Body.String())
+		if rec := testimonialCall(t, env, http.MethodPatch, "/"+id, token, bad); rec.Code != http.StatusUnprocessableEntity || decodeMap(t, rec)["code"] != "validation_failed" {
+			t.Errorf("%v = %d %s, want 422 validation_failed", bad, rec.Code, rec.Body.String())
 		}
 	}
 

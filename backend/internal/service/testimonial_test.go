@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync"
 	"testing"
+	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -215,15 +217,15 @@ func TestAdminTestimonial_InputValidation(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			base := TestimonialPatch{Name: tmStr("N"), RoleLabel: tmStr("R")}
 			tm := tmCreate(t, svc, actor, base)
-			if _, err := svc.AdminUpdateTestimonial(ctx, actor, tm.ID, p); !errors.Is(err, ErrInvalidTestimonial) {
-				t.Errorf("update err = %v, want ErrInvalidTestimonial", err)
+			if _, err := svc.AdminUpdateTestimonial(ctx, actor, tm.ID, p); !errors.Is(err, ErrValidation) {
+				t.Errorf("update err = %v, want ErrValidation", err)
 			}
 			if p.Name == nil {
 				p.Name = tmStr("N")
 			}
 			p.RoleLabel = tmStr("R")
-			if _, err := svc.AdminCreateTestimonial(ctx, actor, p); !errors.Is(err, ErrInvalidTestimonial) {
-				t.Errorf("create err = %v, want ErrInvalidTestimonial", err)
+			if _, err := svc.AdminCreateTestimonial(ctx, actor, p); !errors.Is(err, ErrValidation) {
+				t.Errorf("create err = %v, want ErrValidation", err)
 			}
 		})
 	}
@@ -284,5 +286,64 @@ func TestAdminTestimonial_AuditRows(t *testing.T) {
 	del := got[len(got)-1]
 	if del.Action != "testimonial.delete" {
 		t.Errorf("last audit action = %q, want testimonial.delete", del.Action)
+	}
+	old, ok := del.Old.(map[string]any)
+	if !ok || old["name"] != tm.Name || old["has_consent"] != false || old["is_visible"] != false {
+		t.Errorf("delete audit old = %#v, want the row's name and flags as last saved", del.Old)
+	}
+	if del.New != nil {
+		t.Errorf("delete audit new = %#v, want nil", del.New)
+	}
+}
+
+func TestAdminTestimonial_ConcurrentPatchesSerialize(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	actor := tmActor(t, repo)
+	ctx := context.Background()
+
+	p := tmFull()
+	p.IsVisible = tmBool(true)
+	tm := tmCreate(t, svc, actor, p)
+
+	holder, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Rollback(ctx)
+	if _, err := repo.GetTestimonialForUpdateTx(ctx, holder, tm.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	three := 3
+	patches := []TestimonialPatch{
+		{PhotoKey: NullableString{Set: true}},
+		{SortOrder: &three},
+	}
+	errs := make([]error, len(patches))
+	var wg sync.WaitGroup
+	for i := range patches {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = svc.AdminUpdateTestimonial(ctx, actor, tm.ID, patches[i])
+		}()
+	}
+	time.Sleep(500 * time.Millisecond)
+	if err := holder.Rollback(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wg.Wait()
+
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("patch %d: %v", i, err)
+		}
+	}
+	got, err := repo.GetTestimonial(ctx, tm.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.IsVisible || got.PhotoKey != nil || got.SortOrder != 3 {
+		t.Errorf("lost update: visible=%v photo=%v sort=%d, want hidden, no photo, sort 3", got.IsVisible, got.PhotoKey, got.SortOrder)
 	}
 }

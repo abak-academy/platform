@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -18,7 +18,6 @@ import (
 var (
 	ErrTestimonialNotFound   = errors.New("testimonial not found")
 	ErrTestimonialIncomplete = errors.New("testimonial cannot be visible yet")
-	ErrInvalidTestimonial    = errors.New("invalid testimonial")
 )
 
 const (
@@ -64,10 +63,6 @@ type TestimonialPatch struct {
 	SortOrder   *int                                 `json:"sort_order"`
 }
 
-func invalidTestimonial(format string, args ...any) error {
-	return fmt.Errorf("%w: %s", ErrInvalidTestimonial, fmt.Sprintf(format, args...))
-}
-
 func (p TestimonialPatch) apply(t *model.Testimonial, actor string, now time.Time) error {
 	if p.Name != nil {
 		t.Name = strings.TrimSpace(*p.Name)
@@ -76,7 +71,7 @@ func (p TestimonialPatch) apply(t *model.Testimonial, actor string, now time.Tim
 		t.RoleLabel = strings.TrimSpace(*p.RoleLabel)
 	}
 	if t.Name == "" || t.RoleLabel == "" {
-		return invalidTestimonial("name and role_label are required")
+		return validationf("name and role_label are required")
 	}
 	forceHidden := false
 	if p.PhotoKey.Set {
@@ -85,7 +80,7 @@ func (p TestimonialPatch) apply(t *model.Testimonial, actor string, now time.Tim
 		} else {
 			key := *p.PhotoKey.Value
 			if !strings.HasPrefix(key, testimonialPhotoPrefix) || strings.Contains(key, "..") {
-				return invalidTestimonial("photo_key must be an upload key under %s", testimonialPhotoPrefix)
+				return validationf("photo_key must be an upload key under %s", testimonialPhotoPrefix)
 			}
 			t.PhotoKey = &key
 		}
@@ -93,10 +88,10 @@ func (p TestimonialPatch) apply(t *model.Testimonial, actor string, now time.Tim
 	if p.Content != nil {
 		for locale, c := range *p.Content {
 			if locale != "id" && locale != "en" {
-				return invalidTestimonial("content locale %q is not supported", locale)
+				return validationf("content locale %q is not supported", locale)
 			}
 			if len(c.Achievements) > testimonialMaxChips {
-				return invalidTestimonial("content.%s has more than %d achievements", locale, testimonialMaxChips)
+				return validationf("content.%s has more than %d achievements", locale, testimonialMaxChips)
 			}
 		}
 		t.Content = *p.Content
@@ -170,44 +165,64 @@ func (s *Service) AdminCreateTestimonial(ctx context.Context, actor string, p Te
 	if err := s.storeRepo.CreateTestimonial(ctx, t); err != nil {
 		return nil, err
 	}
-	if err := s.auditTestimonialFlags(ctx, actor, t.ID, model.Testimonial{}, *t); err != nil {
+	if err := s.auditTestimonialFlags(ctx, nil, actor, t.ID, model.Testimonial{}, *t); err != nil {
 		return nil, err
 	}
 	return t, nil
 }
 
-// The read-then-write below is unlocked; a racing PATCH can at worst trip the table CHECKs
-// (consent/photo for visible rows), which is why the service gate is not the only guard.
 func (s *Service) AdminUpdateTestimonial(ctx context.Context, actor, id string, p TestimonialPatch) (*model.Testimonial, error) {
-	t, err := s.loadTestimonial(ctx, id)
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, ErrInvalidUUID
+	}
+	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	t, err := s.storeRepo.GetTestimonialForUpdateTx(ctx, tx, id)
+	if err != nil {
+		return nil, testimonialRepoErr(err)
 	}
 	old := *t
 	if err := p.apply(t, actor, time.Now()); err != nil {
 		return nil, err
 	}
-	if err := s.storeRepo.UpdateTestimonial(ctx, id, t); err != nil {
+	if err := s.storeRepo.UpdateTestimonialTx(ctx, tx, id, t); err != nil {
 		return nil, testimonialRepoErr(err)
 	}
-	if err := s.auditTestimonialFlags(ctx, actor, id, old, *t); err != nil {
+	if err := s.auditTestimonialFlags(ctx, tx, actor, id, old, *t); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return s.loadTestimonial(ctx, id)
 }
 
 func (s *Service) AdminDeleteTestimonial(ctx context.Context, actor, id string) error {
-	t, err := s.loadTestimonial(ctx, id)
+	if _, err := uuid.Parse(id); err != nil {
+		return ErrInvalidUUID
+	}
+	tx, err := s.storeRepo.BeginTx(ctx)
 	if err != nil {
 		return err
 	}
-	if err := s.storeRepo.DeleteTestimonial(ctx, id); err != nil {
+	defer tx.Rollback(ctx)
+	t, err := s.storeRepo.GetTestimonialForUpdateTx(ctx, tx, id)
+	if err != nil {
 		return testimonialRepoErr(err)
 	}
-	return s.storeRepo.InsertAuditLogMeta(ctx, nil, &actor, "testimonial", id, "testimonial.delete", map[string]any{
+	if err := s.storeRepo.DeleteTestimonialTx(ctx, tx, id); err != nil {
+		return testimonialRepoErr(err)
+	}
+	if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actor, "testimonial", id, "testimonial.delete", map[string]any{
 		"old": map[string]any{"name": t.Name, "has_consent": t.HasConsent, "is_visible": t.IsVisible},
 		"new": nil,
-	})
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Service) loadTestimonial(ctx context.Context, id string) (*model.Testimonial, error) {
@@ -225,7 +240,7 @@ func testimonialRepoErr(err error) error {
 	return err
 }
 
-func (s *Service) auditTestimonialFlags(ctx context.Context, actor, id string, old, cur model.Testimonial) error {
+func (s *Service) auditTestimonialFlags(ctx context.Context, tx pgx.Tx, actor, id string, old, cur model.Testimonial) error {
 	flags := []struct {
 		action   string
 		old, new bool
@@ -237,7 +252,7 @@ func (s *Service) auditTestimonialFlags(ctx context.Context, actor, id string, o
 		if f.old == f.new {
 			continue
 		}
-		if err := s.storeRepo.InsertAuditLogMeta(ctx, nil, &actor, "testimonial", id, f.action, map[string]any{"old": f.old, "new": f.new}); err != nil {
+		if err := s.storeRepo.InsertAuditLogMeta(ctx, tx, &actor, "testimonial", id, f.action, map[string]any{"old": f.old, "new": f.new}); err != nil {
 			return err
 		}
 	}

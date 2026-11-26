@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"akademi-bimbel/internal/model"
@@ -76,7 +77,7 @@ func TestPublicTestimonials_VisibleOnlyOrderedLocalised(t *testing.T) {
 func filterByName(in []PublicTestimonial, suffix string) []PublicTestimonial {
 	out := []PublicTestimonial{}
 	for _, p := range in {
-		if len(p.Name) > len(suffix) && p.Name[len(p.Name)-len(suffix):] == suffix && p.Name[:5] != "Draft" {
+		if strings.HasSuffix(p.Name, suffix) {
 			out = append(out, p)
 		}
 	}
