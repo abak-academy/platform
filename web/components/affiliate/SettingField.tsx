@@ -29,8 +29,8 @@ export function SettingField({ id, label, hint, help, value, onChange, placehold
   const { t } = useTranslation();
   const unit = help.unit ? t(UNIT_KEYS[help.unit]) : null;
   return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <div>
+      <Label htmlFor={id} className="mb-[7px] block font-[family-name:var(--font-display)] text-[13px] leading-[1.4] font-bold">{label}</Label>
       <div className="relative">
         <Input
           id={id}
@@ -43,10 +43,10 @@ export function SettingField({ id, label, hint, help, value, onChange, placehold
           className={unit ? "pr-16" : undefined}
         />
         {unit && (
-          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-ink-500">{unit}</span>
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-ink-600">{unit}</span>
         )}
       </div>
-      <p id={`${id}-hint`} className="text-xs leading-relaxed text-ink-500">
+      <p id={`${id}-hint`} className="mt-1.5 text-xs leading-relaxed text-ink-600">
         {hint} <span className="text-ink-600">{t("admin_aff_example")}: {help.example}</span>
       </p>
     </div>

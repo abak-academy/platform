@@ -10,8 +10,7 @@ import {
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Badge, badgeVariants, statusTone } from "@/components/ui/badge";
-import type { VariantProps } from "class-variance-authority";
+import { Badge, statusTone } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +36,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+} from "@/components/admin/ListToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DataTable, TableItem } from "@/components/ui/data-table";
 import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import {
@@ -49,15 +58,6 @@ import {
 } from "@/lib/hooks/admin-accounts";
 import type { AdminAccount, AdminAccountRole, AdminAccountStatus } from "@/lib/types";
 import { AbakAvatar } from "@/components/ui/abak-avatar";
-
-type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
-
-const ROLE_TONE: Record<AdminAccountRole, BadgeVariant> = {
-  super_admin: "danger",
-  admin_exam: "sky",
-  admin_school: "berry",
-  admin_store: "teal",
-};
 
 const ROLES: AdminAccountRole[] = ["super_admin", "admin_exam", "admin_school", "admin_store"];
 
@@ -89,6 +89,24 @@ export default function SystemAccountsPage() {
     roleFilter === "all" ? undefined : roleFilter,
     statusFilter === "all" ? undefined : statusFilter
   );
+
+  const roleOptions = ROLES.map((r) => ({ value: r, label: ROLE_LABEL[r] }));
+  const statusOptions = [
+    { value: "active", label: t("status_label_active") },
+    { value: "deactivated", label: t("status_label_inactive") },
+  ];
+  const activeChips = [
+    ...(roleFilter !== "all"
+      ? [{ key: "role", label: `${t("accounts_th_role")}: ${ROLE_LABEL[roleFilter]}`, clear: () => setRoleFilter("all") }]
+      : []),
+    ...(statusFilter !== "all"
+      ? [{ key: "status", label: `${t("accounts_th_status")}: ${statusOptions.find((o) => o.value === statusFilter)?.label}`, clear: () => setStatusFilter("all") }]
+      : []),
+  ];
+  const resetFilters = () => {
+    setRoleFilter("all");
+    setStatusFilter("all");
+  };
 
   const createAccount = useCreateAdminAccount();
   const changeRole = useChangeAccountRole();
@@ -175,9 +193,9 @@ export default function SystemAccountsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-4 fade-in">
+      <div className="flex flex-col gap-5 fade-in">
         <AdminPageHeader title={t("accounts_title")} description={t("sys_loading")} />
-        <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
+        <div className="py-12 text-center text-ink-600">{t("sys_loading_data")}</div>
       </div>
     );
   }
@@ -188,15 +206,15 @@ export default function SystemAccountsPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="space-y-4 fade-in">
+      <div className="flex flex-col gap-5 fade-in">
         <AdminPageHeader title={t("accounts_title")} description={t("sys_error_title")} />
-        <div className="py-12 text-center text-ink-500">{msg}</div>
+        <div className="py-12 text-center text-ink-600">{msg}</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("accounts_title")}
         description={t("accounts_subtitle")}
@@ -216,32 +234,43 @@ export default function SystemAccountsPage() {
             placeholder={t("accounts_search_placeholder")}
             clearLabel={t("list_toolbar_clear_search")}
           />
-          <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as AdminAccountRole | "all")}>
-            <SelectTrigger size="pill" aria-label={t("accounts_th_role")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("tab_all")}</SelectItem>
-              {ROLES.map((r) => (
-                <SelectItem key={r} value={r}>{ROLE_LABEL[r]}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select
-            value={statusFilter}
-            onValueChange={(v) => setStatusFilter(v as AdminAccountStatus | "all")}
-          >
-            <SelectTrigger size="pill" aria-label={t("accounts_th_status")}>
-              <SelectValue placeholder={t("accounts_status_placeholder")} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
-              <SelectItem value="active">{t("status_label_active")}</SelectItem>
-              <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <ToolbarFilterButton label={t("list_toolbar_filter")} count={activeChips.length} />
+            </PopoverTrigger>
+            <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
+              <div className="flex flex-col gap-3.5">
+                <FilterGrid>
+                  <FilterSelect
+                    label={t("accounts_th_role")}
+                    value={roleFilter === "all" ? "" : roleFilter}
+                    options={roleOptions}
+                    onChange={(v) => setRoleFilter((v || "all") as AdminAccountRole | "all")}
+                  />
+                  <FilterSelect
+                    label={t("accounts_th_status")}
+                    value={statusFilter === "all" ? "" : statusFilter}
+                    options={statusOptions}
+                    onChange={(v) => setStatusFilter((v || "all") as AdminAccountStatus | "all")}
+                  />
+                </FilterGrid>
+                <FilterPanelFooter
+                  onReset={resetFilters}
+                  showLabel={t("list_toolbar_show_n").replace("{n}", String(rows.length))}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
           <ToolbarCount>{rows.length} {t("accounts_th_account").toLowerCase()}</ToolbarCount>
         </div>
+        {activeChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
+            {activeChips.map((c) => (
+              <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+            ))}
+            <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
+          </div>
+        )}
         <DataTable
           surface="plain"
           rows={rows}
@@ -254,7 +283,7 @@ export default function SystemAccountsPage() {
               cell: (a) => (
                 <TableItem
                   thumb={
-                    <AbakAvatar name={a.name} size="sm" />
+                    <AbakAvatar name={a.name} size="xs" ring={false} />
                   }
                   title={a.name}
                   sub={a.email ?? "—"}
@@ -265,7 +294,9 @@ export default function SystemAccountsPage() {
               key: "role",
               header: t("accounts_th_role"),
               cell: (a) => (
-                <Badge variant={ROLE_TONE[a.role]} className="font-mono">{ROLE_LABEL[a.role]}</Badge>
+                <code title={ROLE_LABEL[a.role]} className="rounded-[9px] bg-brand-900 px-2 py-[3px] font-mono text-[11.5px] font-bold tracking-[.06em] text-white">
+                  {a.role}
+                </code>
               ),
             },
             {
@@ -290,7 +321,7 @@ export default function SystemAccountsPage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon-xs">
-                  <MoreHorizontal className="size-4 text-ink-500" />
+                  <MoreHorizontal className="size-4 text-ink-600" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

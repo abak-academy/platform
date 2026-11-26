@@ -30,7 +30,7 @@ export function ProductPicker({ id, value, onChange }: ProductPickerProps) {
       <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border border-line px-3 py-1.5 text-sm">
         <span className="min-w-0 truncate">
           <span className="font-medium text-ink-900">{value.name}</span>{" "}
-          <span className="text-xs text-ink-500">{affLabel(t, value.type)}</span>
+          <span className="text-xs text-ink-600">{affLabel(t, value.type)}</span>
         </span>
         <Button type="button" variant="ghost" size="icon" className="size-7" aria-label={t("admin_aff_ovr_clear")} onClick={() => onChange(null)}>
           <X className="size-4" aria-hidden />
@@ -63,9 +63,9 @@ export function ProductPicker({ id, value, onChange }: ProductPickerProps) {
           role="listbox"
           className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-line bg-surface p-1 shadow-lg"
         >
-          {results.isLoading && <li className="px-3 py-2 text-sm text-ink-500">{t("aff_loading")}</li>}
+          {results.isLoading && <li className="px-3 py-2 text-sm text-ink-600">{t("aff_loading")}</li>}
           {!results.isLoading && (results.data ?? []).length === 0 && (
-            <li className="px-3 py-2 text-sm text-ink-500">{t("admin_aff_ovr_no_product")}</li>
+            <li className="px-3 py-2 text-sm text-ink-600">{t("admin_aff_ovr_no_product")}</li>
           )}
           {(results.data ?? []).map((product) => (
             <li key={product.id} role="option" aria-selected={false}>
@@ -79,7 +79,7 @@ export function ProductPicker({ id, value, onChange }: ProductPickerProps) {
                 }}
               >
                 <span className="min-w-0 truncate">
-                  {product.name} <span className="text-xs text-ink-500">{affLabel(t, product.type)}</span>
+                  {product.name} <span className="text-xs text-ink-600">{affLabel(t, product.type)}</span>
                 </span>
                 {product.override_value !== null && product.override_type !== null && (
                   <span className="shrink-0 text-xs text-warn">

@@ -42,7 +42,7 @@ export default function SchoolDashboardPage() {
     }).format(new Date(iso));
 
   return (
-    <div className="fade-in flex flex-col gap-4">
+    <div className="fade-in flex flex-col gap-5">
       <DashboardHero
         badge={t("school_home_badge")}
         name={name}

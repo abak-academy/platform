@@ -23,12 +23,14 @@ interface ListToolbarProps {
   filters?: ToolbarFilter[];
   // Label of the date the range applies to (e.g. "Tanggal bayar"); omit for no date filter.
   dateLabel?: string;
+  // Drawn as the top band of a table card instead of its own card.
+  embedded?: boolean;
 }
 
 // One toolbar for every affiliator list: search, a filter popover (like the admin
 // products page), a date range, and the page size. The state itself lives in the
 // URL (useListParams); this component only renders and reports changes.
-export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filters = [], dateLabel }: ListToolbarProps) {
+export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filters = [], dateLabel, embedded }: ListToolbarProps) {
   const { t } = useTranslation();
   const [text, setText] = useState(params.q);
   const debounced = useDebouncedValue(text);
@@ -73,7 +75,13 @@ export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filt
   const hasPopover = filters.length > 0 || Boolean(dateLabel);
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-[var(--radius-card)] border border-line bg-surface px-3.5 py-3 shadow-card">
+    <div
+      className={
+        embedded
+          ? "flex flex-col gap-2.5 border-b border-line px-4 py-3.5"
+          : "flex flex-col gap-2.5 rounded-[var(--radius-card)] border border-line bg-surface px-3.5 py-3 shadow-card"
+      }
+    >
       <div className="flex flex-wrap items-center gap-2.5">
         {searchPlaceholder && (
           <ToolbarSearch value={text} onChange={setText} placeholder={searchPlaceholder} clearLabel={t("aff_search_clear")} />

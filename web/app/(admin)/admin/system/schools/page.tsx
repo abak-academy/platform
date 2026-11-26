@@ -319,11 +319,12 @@ export default function SystemSchoolsPage() {
     {
       key: "school",
       header: t("schools_field_name"),
+      nowrap: true,
       cell: (school) => (
         <TableItem
           thumb={
-            <span className="grid size-[38px] place-items-center rounded-xl bg-sky-50 text-sky-700">
-              <SchoolIcon className="size-5" aria-hidden />
+            <span className="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-sky-50 text-sky-700">
+              <SchoolIcon className="size-4" aria-hidden />
             </span>
           }
           title={school.name}
@@ -334,7 +335,7 @@ export default function SystemSchoolsPage() {
     {
       key: "npsn",
       header: t("schools_field_npsn"),
-      className: "font-mono text-xs",
+      align: "right",
       cell: (school) => school.npsn || "—",
     },
     {
@@ -346,6 +347,7 @@ export default function SystemSchoolsPage() {
     {
       key: "type",
       header: t("schools_field_school_types"),
+      nowrap: true,
       cell: (school) =>
         school.school_types?.length ? (
           <span>{school.school_types.join(" / ")}</span>
@@ -376,7 +378,7 @@ export default function SystemSchoolsPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-xs" className="rounded-full">
-              <MoreHorizontal className="size-4 text-ink-500" />
+              <MoreHorizontal className="size-4 text-ink-600" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -397,7 +399,7 @@ export default function SystemSchoolsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <PageHead
         title={t("schools_title")}
         sub={`${t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))} · ${stats.active.toLocaleString(numberLocale)} ${t("status_label_active")} · ${stats.students.toLocaleString(numberLocale)} ${t("schools_stat_students")}`}

@@ -141,11 +141,10 @@ describe("SystemAccountsPage", () => {
       expect(screen.getByText("Admin School")).toBeInTheDocument();
     });
 
-    // "Super Admin" is both a filter chip and a row value
     expect(screen.getAllByText("Super Admin").length).toBeGreaterThanOrEqual(1);
-    // "Store Manager" is both a filter chip and a role badge
-    expect(screen.getAllByText("Store Manager").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("School Operator").length).toBeGreaterThanOrEqual(1);
+    // Roles render as the prototype's code tag: the raw key, label in the title
+    expect(screen.getByText("admin_store")).toHaveAttribute("title", "Store Manager");
+    expect(screen.getByText("admin_school")).toHaveAttribute("title", "School Operator");
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
   });
 

@@ -34,7 +34,7 @@ export function JobsPanel() {
     <section className="md-card-outlined space-y-3 p-6">
       <div>
         <h2 className="font-semibold text-ink-900">{t("admin_aff_job_title")}</h2>
-        <p className="text-sm text-ink-500">{t("admin_aff_job_hint")}</p>
+        <p className="text-sm text-ink-600">{t("admin_aff_job_hint")}</p>
       </div>
       <form onSubmit={run} className="flex flex-wrap items-start gap-4">
         <div className="w-56 space-y-1.5">
@@ -51,7 +51,7 @@ export function JobsPanel() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-ink-500">{t(`admin_aff_job_scope_${scope}` as I18nKey)}</p>
+          <p className="text-xs text-ink-600">{t(`admin_aff_job_scope_${scope}` as I18nKey)}</p>
         </div>
         {scope === "levels" && (
           <div className="w-56 space-y-1.5">

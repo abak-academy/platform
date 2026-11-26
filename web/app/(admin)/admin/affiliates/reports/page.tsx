@@ -12,7 +12,8 @@ import { AffiliateList } from "@/components/affiliate/AffiliateList";
 import { ListToolbar } from "@/components/affiliate/ListToolbar";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
-import type { DataTableColumn } from "@/components/ui/data-table";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
+import { TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
@@ -68,7 +69,7 @@ function ReportsContent() {
   const changeTab = (value: string) => router.replace(value === "summary" ? pathname : `${pathname}?tab=${value}`, { scroll: false });
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
       <AdminPageHeader icon={FileBarChart} title={t("admin_aff_rep_title")} description={t("admin_aff_rep_desc")} />
       {tab === "partner" ? <PartnerSummary /> : <Liability />}
       <Tabs value={tab} onValueChange={changeTab}>
@@ -90,10 +91,10 @@ function Liability() {
   return (
     <section className="space-y-3" aria-label={t("admin_aff_rep_liability")}>
       <div>
-        <h2 className="text-title-large">{t("admin_aff_rep_liability")}</h2>
+        <h2 className="type-h2">{t("admin_aff_rep_liability")}</h2>
         <p className="text-sm text-ink-600">{t("admin_aff_rep_liability_desc")}</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label={t("admin_aff_rep_payout_liability")}
           value={data ? formatRupiah(data.payout_liability) : "—"}
@@ -135,10 +136,7 @@ function SummaryTab() {
       key: "who",
       header: t("admin_aff_col_affiliator"),
       cell: (r) => (
-        <div>
-          <div className="font-medium text-ink-900">{r.affiliator_name}</div>
-          <div className="text-xs text-ink-500">{r.affiliator_code}</div>
-        </div>
+        <TableItem thumb={<AbakAvatar name={r.affiliator_name} size="xs" ring={false} />} title={r.affiliator_name} sub={r.affiliator_code} />
       ),
     },
     { key: "level", header: t("admin_aff_col_level"), cell: (r) => affLabel(t, r.level) },
@@ -160,16 +158,19 @@ function SummaryTab() {
   const totals = summary.data?.totals;
 
   return (
-    <div className="space-y-4">
-      <ListToolbar
-        params={params}
-        onChange={update}
-        onReset={reset}
-        searchPlaceholder={t("admin_aff_search_queue")}
-        filters={[{ key: "type", label: t("admin_aff_col_level"), options: LEVELS.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
-        dateLabel={t("admin_aff_rep_period")}
-      />
+    <div className="flex flex-col gap-5">
       <AffiliateList
+        toolbar={
+          <ListToolbar
+            embedded
+            params={params}
+            onChange={update}
+            onReset={reset}
+            searchPlaceholder={t("admin_aff_search_queue")}
+            filters={[{ key: "type", label: t("admin_aff_col_level"), options: LEVELS.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
+            dateLabel={t("admin_aff_rep_period")}
+          />
+        }
         query={summary}
         columns={columns}
         rowKey={(r) => r.affiliator_id}
@@ -208,10 +209,7 @@ function OrdersTab() {
       key: "who",
       header: t("admin_aff_col_affiliator"),
       cell: (r) => (
-        <div>
-          <div className="font-medium text-ink-900">{r.affiliator_name}</div>
-          <div className="text-xs text-ink-500">{r.affiliator_code}</div>
-        </div>
+        <TableItem thumb={<AbakAvatar name={r.affiliator_name} size="xs" ring={false} />} title={r.affiliator_name} sub={r.affiliator_code} />
       ),
     },
     { key: "order", header: t("admin_aff_col_order"), cell: (r) => <Link href={`/admin/orders?order=${r.order_id}`} className="font-mono text-xs text-brand-700 underline-offset-2 hover:underline">#{r.order_id.slice(-8)}</Link> },
@@ -225,25 +223,28 @@ function OrdersTab() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
       <div className="flex justify-end">
         <Button variant="outline" onClick={exportCsv}>
           <Download className="size-4" aria-hidden />
           {t("admin_aff_export_csv")}
         </Button>
       </div>
-      <ListToolbar
-        params={params}
-        onChange={update}
-        onReset={reset}
-        searchPlaceholder={t("admin_aff_rep_orders_search")}
-        filters={[
-          { key: "status", label: t("aff_col_status"), options: COMMISSION_STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) },
-          { key: "type", label: t("aff_filter_category"), options: CATEGORIES.map((v) => ({ value: v, label: affLabel(t, v) })) },
-        ]}
-        dateLabel={t("admin_aff_rep_paid_date")}
-      />
       <AffiliateList
+        toolbar={
+          <ListToolbar
+            embedded
+            params={params}
+            onChange={update}
+            onReset={reset}
+            searchPlaceholder={t("admin_aff_rep_orders_search")}
+            filters={[
+              { key: "status", label: t("aff_col_status"), options: COMMISSION_STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) },
+              { key: "type", label: t("aff_filter_category"), options: CATEGORIES.map((v) => ({ value: v, label: affLabel(t, v) })) },
+            ]}
+            dateLabel={t("admin_aff_rep_paid_date")}
+          />
+        }
         query={query}
         columns={columns}
         rowKey={(r) => r.id}
@@ -271,7 +272,7 @@ function PartnerSummary() {
   const summary = useAdminPartnerReport({ q: params.q, status: params.status, from: params.from, to: params.to, page: params.page, per_page: params.per_page }).data?.summary;
   return (
     <section aria-label={t("admin_aff_rep_tab_partner")}>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label={t("admin_partner_rep_orders")} value={String(summary?.orders ?? 0)} icon={FileBarChart} />
         <StatCard label={t("admin_partner_rep_paid_orders")} value={String(summary?.paid_orders ?? 0)} icon={Wallet} accent="secondary" />
         <StatCard label={t("admin_partner_rep_seats")} value={String(summary?.seats ?? 0)} icon={Hourglass} accent="tertiary" />
@@ -297,7 +298,7 @@ function PartnerTab() {
 
   const columns: DataTableColumn<PartnerReportRow>[] = [
     { key: "date", header: t("aff_col_date"), cell: (r) => formatAffDate(r.created_at) },
-    { key: "partner", header: t("admin_partner_rep_col_partner"), cell: (r) => <span className="font-medium text-ink-900">{r.partner_name}</span> },
+    { key: "partner", header: t("admin_partner_rep_col_partner"), cell: (r) => <TableItem thumb={<AbakAvatar name={r.partner_name} size="xs" ring={false} />} title={r.partner_name} /> },
     { key: "products", header: t("admin_partner_rep_col_products"), cell: (r) => r.products },
     {
       key: "students",
@@ -309,7 +310,7 @@ function PartnerTab() {
         </Button>
       ),
     },
-    { key: "voucher", header: t("admin_partner_rep_col_voucher"), cell: (r) => (r.promo_code ? <span className="font-mono text-xs">{r.promo_code}</span> : "—") },
+    { key: "voucher", header: t("admin_partner_rep_col_voucher"), cell: (r) => (r.promo_code ? <code className="rounded-[9px] bg-brand-900 px-2 py-[3px] font-mono text-[11.5px] font-bold tracking-[.06em] text-white">{r.promo_code}</code> : "—") },
     { key: "discount", header: t("admin_partner_rep_col_discount"), align: "right", cell: (r) => formatRupiah(r.discount) },
     { key: "total", header: t("aff_col_purchase"), align: "right", cell: (r) => <span className="font-semibold">{formatRupiah(r.total)}</span> },
     { key: "status", header: t("aff_col_status"), cell: (r) => (r.status in PARTNER_STATUS_KEYS ? t(PARTNER_STATUS_KEYS[r.status as keyof typeof PARTNER_STATUS_KEYS]) : r.status) },
@@ -317,22 +318,25 @@ function PartnerTab() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
       <div className="flex justify-end">
         <Button variant="outline" onClick={exportCsv}>
           <Download className="size-4" aria-hidden />
           {t("admin_aff_export_csv")}
         </Button>
       </div>
-      <ListToolbar
-        params={params}
-        onChange={update}
-        onReset={reset}
-        searchPlaceholder={t("admin_partner_rep_search")}
-        filters={[{ key: "status", label: t("aff_col_status"), options: Object.entries(PARTNER_STATUS_KEYS).map(([value, key]) => ({ value, label: t(key) })) }]}
-        dateLabel={t("admin_partner_rep_date")}
-      />
       <AffiliateList
+        toolbar={
+          <ListToolbar
+            embedded
+            params={params}
+            onChange={update}
+            onReset={reset}
+            searchPlaceholder={t("admin_partner_rep_search")}
+            filters={[{ key: "status", label: t("aff_col_status"), options: Object.entries(PARTNER_STATUS_KEYS).map(([value, key]) => ({ value, label: t(key) })) }]}
+            dateLabel={t("admin_partner_rep_date")}
+          />
+        }
         query={query}
         columns={columns}
         rowKey={(r) => r.order_id}

@@ -20,7 +20,7 @@ import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { formatGrade, GRADE_GROUPS, gradeOptionsForJenjang } from "@/lib/grade";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -406,41 +406,35 @@ export default function SchoolStudentsPage() {
       key: "name",
       header: t("students_field_name"),
       cell: (s) => (
-        <div className="flex items-center gap-3">
-          <AbakAvatar name={s.name} size="sm" />
-          <div className="min-w-0">
-            <div className="font-medium text-ink-900">{s.name}</div>
-            <div className="mt-1 font-mono text-xs text-brand-700">
-              {s.username ? `@${s.username}` : "—"}
-            </div>
-          </div>
-        </div>
+        <TableItem
+          thumb={<AbakAvatar name={s.name} size="xs" ring={false} />}
+          title={s.name}
+          sub={s.username ? `@${s.username}` : "—"}
+        />
       ),
     },
     {
       key: "email",
       header: t("email"),
-      className: "text-xs text-ink-600",
       cell: (s) => s.email || "—",
     },
     {
       key: "school",
       header: t("students_field_school"),
-      className: "text-xs",
       cell: (s) => (
         <div>
           {s.school_name ? (
-            <span className="text-ink-600">{s.school_name}</span>
+            <span>{s.school_name}</span>
           ) : s.unlisted_school_name ? (
             <span className="text-warn" title={t("students_school_unconfirmed")}>
               {s.unlisted_school_name}
             </span>
           ) : (
-            <span className="text-ink-400">{t("students_school_none")}</span>
+            <span className="text-ink-600">{t("students_school_none")}</span>
           )}
-          <div className="mt-1 text-[11px] text-ink-400">
+          <small className="block text-xs text-ink-600">
             {t("students_field_grade")} {s.grade != null ? formatGrade(s.grade) : "—"}
-          </div>
+          </small>
         </div>
       ),
     },
@@ -461,7 +455,7 @@ export default function SchoolStudentsPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-xs" className="rounded-full">
-              <MoreHorizontal className="size-4 text-ink-500" />
+              <MoreHorizontal className="size-4 text-ink-600" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -513,7 +507,7 @@ export default function SchoolStudentsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <PageHead
         title={t("school_students_title")}
         sub={[!canManageAllStudents && adminOwnSchool?.name, t("adm_accounts_count").replace("{n}", String(stats.total))].filter(Boolean).join(" · ")}
@@ -832,7 +826,7 @@ export default function SchoolStudentsPage() {
                         type="button"
                         onClick={() => setShowRegisterPassword((p) => !p)}
                         aria-label={showRegisterPassword ? t("auth_hide_password") : t("auth_show_password")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-600 transition-colors hover:text-ink-900"
                       >
                         {showRegisterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
@@ -883,7 +877,7 @@ export default function SchoolStudentsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {jenjangOptions.length === 0 ? (
-                          <div className="px-2 py-3 text-center text-xs text-ink-500">
+                          <div className="px-2 py-3 text-center text-xs text-ink-600">
                             {t("students_field_jenjang_empty")}
                           </div>
                         ) : (
@@ -1213,7 +1207,7 @@ export default function SchoolStudentsPage() {
                   type="button"
                   onClick={() => setShowNewPassword((p) => !p)}
                   aria-label={showNewPassword ? t("auth_hide_password") : t("auth_show_password")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-600 transition-colors hover:text-ink-900"
                 >
                   {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -1237,7 +1231,7 @@ export default function SchoolStudentsPage() {
                   type="button"
                   onClick={() => setShowConfirmPassword((p) => !p)}
                   aria-label={showConfirmPassword ? t("auth_hide_password") : t("auth_show_password")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-600 transition-colors hover:text-ink-900"
                 >
                   {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -1289,7 +1283,7 @@ function RegisterSection({
     >
       <div className="flex items-center gap-2">
         <Icon className="size-4 text-brand-600" />
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-600">
           {label}
         </h4>
       </div>
@@ -1315,7 +1309,7 @@ function FormField({
         {label} {required && <span className="text-danger">*</span>}
       </Label>
       {children}
-      {hint && <p className="text-xs text-ink-500">{hint}</p>}
+      {hint && <p className="text-xs text-ink-600">{hint}</p>}
     </div>
   );
 }
