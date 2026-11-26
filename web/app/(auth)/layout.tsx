@@ -22,11 +22,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   }
 
   return (
-    <div className="flex min-h-screen">
-      <BrandPanel mode="login" />
-      <div className="flex flex-1 items-center justify-center bg-surface px-6 py-12">
-        {children}
-      </div>
+    <div className="grid min-h-screen grid-cols-1 bg-surface min-[900px]:grid-cols-[minmax(380px,1fr)_minmax(0,1.1fr)]">
+      <BrandPanel />
+      <main id="main" className="flex flex-col bg-surface p-4 min-[900px]:p-6">
+        <div className="m-auto w-[min(460px,100%)] py-6">{children}</div>
+      </main>
     </div>
   );
 }

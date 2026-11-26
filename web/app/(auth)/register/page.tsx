@@ -6,7 +6,7 @@ import { User, Mail, Lock, Eye, EyeOff, CheckCircle2, Loader2, AlertCircle } fro
 import { toast } from "sonner";
 
 import { useRegister } from "@/lib/hooks/auth";
-import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
+import { GoogleSignInButton, googleSignInAvailable } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { adoptResendBudget } from "@/lib/otp-budget";
 import { readAffRefCookie } from "@/lib/aff-ref";
@@ -124,28 +124,26 @@ function RegisterForm() {
   const passwordsMatch = confirm.length > 0 && confirm === password;
 
   return (
-    <div className="w-full max-w-[372px]">
-      <div className="mb-7">
-        <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.06em] text-success">
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <div className="self-start text-[11.5px] font-bold uppercase tracking-[0.06em] text-ember-600">
           {t("register_eyebrow")}
         </div>
-        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">
-          {t("register_title")}
-        </h2>
-        <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-500">
-          {t("register_subtitle")}
-        </p>
+        <h1 className="font-[family-name:var(--font-display)] text-[36px] font-extrabold leading-[1.05] tracking-[-0.04em] text-ink-900">{t("register_heading")}</h1>
+        <p className="text-ink-600">{t("register_subtitle")}</p>
       </div>
 
       <div className="mb-5">
         <GoogleSignInButton text="signup_with" next={next} />
       </div>
 
-      <div className="mb-5 flex items-center gap-3">
-        <div className="h-px flex-1 bg-line" />
-        <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
-        <div className="h-px flex-1 bg-line" />
-      </div>
+      {googleSignInAvailable && (
+        <div className="mb-5 flex items-center gap-3">
+          <div className="h-px flex-1 bg-line" />
+          <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
+          <div className="h-px flex-1 bg-line" />
+        </div>
+      )}
 
       <form onSubmit={onSubmit} noValidate>
         <div className="mb-3.5">
@@ -199,6 +197,7 @@ function RegisterForm() {
           )}
         </div>
 
+        <div className="sm:grid sm:grid-cols-2 sm:gap-3">
         <div className="mb-1.5">
           <Label htmlFor="password" className="mb-1.5 text-[12.5px] font-semibold text-ink-600">
             {t("register_password_label")}
@@ -282,6 +281,7 @@ function RegisterForm() {
             <div className="mt-1 text-[11.5px] text-danger">{errors.confirm}</div>
           )}
         </div>
+        </div>
 
         <ReferralCodeField value={referral} onChange={setReferral} />
 
@@ -317,7 +317,7 @@ function RegisterForm() {
 
 export default function RegisterPage() {
   return (
-    <React.Suspense fallback={<div className="w-full max-w-[372px]" />}>
+    <React.Suspense fallback={<div />}>
       <RegisterForm />
     </React.Suspense>
   );

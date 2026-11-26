@@ -23,6 +23,7 @@ vi.mock("@/components/auth/GoogleSignInButton", () => ({
   GoogleSignInButton: ({ text }: { text: string }) => (
     <div data-testid="google-sign-in" data-text={text} />
   ),
+  googleSignInAvailable: true,
 }));
 
 describe("RegisterPage", () => {
@@ -32,6 +33,18 @@ describe("RegisterPage", () => {
 
     expect(await screen.findByLabelText("Kode referral (opsional)")).toHaveValue("BUDI10");
     document.cookie = "aff_ref=; path=/; max-age=0";
+  });
+
+  it("hides the or-divider when Google sign-in is unconfigured", async () => {
+    vi.resetModules();
+    vi.doMock("@/components/auth/GoogleSignInButton", () => ({
+      GoogleSignInButton: () => null,
+      googleSignInAvailable: false,
+    }));
+    const { default: PageWithoutGoogle } = await import("./page");
+    render(<PageWithoutGoogle />);
+    expect(screen.queryByText("atau")).toBeNull();
+    vi.doUnmock("@/components/auth/GoogleSignInButton");
   });
 
   it("renders the Google sign-up button above the registration form", () => {

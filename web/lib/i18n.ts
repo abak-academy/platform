@@ -3241,6 +3241,13 @@ export const DICT = {
     gcart_empty_text: "Jelajahi toko dan tambahkan buku atau kursus favoritmu.",
     gcart_remove: "Hapus",
     gcart_subtotal: "Subtotal",
+    auth_brand_eyebrow: "ABAK ACADEMY HUB",
+    auth_brand_title: "Prestasi besar dimulai dari sini.",
+    auth_brand_text: "Daftar lomba, ikut les dan kursus, beli buku dan merchandise, sampai gabung edutrip dan event edukasi.",
+    auth_brand_proof: "pelajar",
+    login_heading: "Masuk",
+    login_intro: "Lanjutkan belajar dan cek jadwal kompetisimu.",
+    register_heading: "Buat akun baru",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -6474,6 +6481,13 @@ export const DICT = {
     gcart_empty_text: "Browse the shop and add your favorite books or courses.",
     gcart_remove: "Remove",
     gcart_subtotal: "Subtotal",
+    auth_brand_eyebrow: "ABAK ACADEMY HUB",
+    auth_brand_title: "Big goals start here.",
+    auth_brand_text: "Enter competitions, take courses, get your books and merchandise, and join our edu-trips & events.",
+    auth_brand_proof: "students",
+    login_heading: "Sign in",
+    login_intro: "Keep learning and check your competition schedule.",
+    register_heading: "Create a new account",
   },
 };
 
