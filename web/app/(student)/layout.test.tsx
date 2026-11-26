@@ -61,7 +61,8 @@ let ordersState = { data: [] as unknown[] };
 let schoolState = { data: undefined as { name: string } | undefined };
 
 vi.mock("@/lib/hooks/exam", () => ({ useRegistrations: () => regsState }));
-vi.mock("@/lib/hooks/orders", () => ({ useOrders: () => ordersState }));
+const signedInHooks = vi.hoisted(() => ({ orders: vi.fn() }));
+vi.mock("@/lib/hooks/orders", () => ({ useOrders: () => (signedInHooks.orders(), ordersState) }));
 vi.mock("@/lib/i18n", () => ({ useTranslation: () => ({ t: (k: string) => (k === "grade" ? "Kelas" : k) }) }));
 
 let profileState = {
@@ -110,6 +111,7 @@ vi.mock("@/components/auth/PasswordTemporaryModal", () => ({
 
 describe("StudentLayout", () => {
   beforeEach(() => {
+    signedInHooks.orders.mockClear();
     replace.mockClear();
     useGuestCartMerge.mockClear();
     pathname = "/orders";
@@ -358,8 +360,10 @@ describe("StudentLayout", () => {
       const { getByTestId, queryByText } = render(<StudentLayout>landing</StudentLayout>);
       expect(getByTestId("public-shell")).toHaveTextContent("landing");
       expect(queryByText("Memuat…")).not.toBeInTheDocument();
-      await waitFor(() => expect(useGuestCartMerge).toHaveBeenCalled());
       expect(replace).not.toHaveBeenCalled();
+      // the signed-in layout's endpoints 401 for a guest, and a 401 hard-navigates to /login
+      expect(signedInHooks.orders).not.toHaveBeenCalled();
+      expect(useGuestCartMerge).not.toHaveBeenCalled();
     });
 
     it("renders the public shell for a hydrated guest on /cart", () => {

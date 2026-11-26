@@ -27,11 +27,25 @@ const GUEST_PATHS = ["/", "/cart"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
-export default function StudentLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function StudentLayout({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((s) => s.token);
+  const pathname = usePathname();
+  const { hydrated } = useResolvedRole();
+
+  // Guests must never mount the signed-in layout: its profile/orders hooks 401, and a 401 sends the browser to /login.
+  if (GUEST_PATHS.includes(pathname) && !token) {
+    if (hydrated || pathname === "/") return <PublicShell>{children}</PublicShell>;
+    return (
+      <div className="flex min-h-screen items-center justify-center text-ink-500">
+        Memuat…
+      </div>
+    );
+  }
+
+  return <SignedInStudentLayout>{children}</SignedInStudentLayout>;
+}
+
+function SignedInStudentLayout({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
   const pathname = usePathname();
@@ -152,10 +166,6 @@ export default function StudentLayout({
   // Show loading while profile resolves (gate needs it) or during no-token/admin
   // checks. An unresolved role holds the shell back too — rendering it would put
   // an unidentified session inside the student UI.
-  if (isGuestPath && !token && (hydrated || pathname === "/")) {
-    return <PublicShell>{children}</PublicShell>;
-  }
-
   if (!hydrated || !token || !role || ADMIN_ROLES.includes(role) || role === "affiliator" || profilePending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
