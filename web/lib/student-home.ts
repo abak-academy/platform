@@ -1,7 +1,7 @@
 import { computeCardState } from "@/lib/exam-card-state";
 import { workingMinutes } from "@/lib/exam-schedule";
 import { isPhysicalType } from "@/lib/shipping";
-import type { Order, OrderItem, Product, ProductType, PublicEvent, RegistrationListItem } from "@/lib/types";
+import type { EventIllustration, EventTone, Order, OrderItem, Product, ProductType, PublicEvent, RegistrationListItem } from "@/lib/types";
 
 export { workingMinutes as minutesFor };
 
@@ -50,8 +50,8 @@ export interface HeroSlide {
   gradeMax: number | null;
   price: number;
   imageUrl: string | null;
-  illustration: string;
-  tone: string;
+  illustration: EventIllustration;
+  tone: EventTone;
 }
 
 export function heroEvents(events: PublicEvent[], regs: RegistrationListItem[]): HeroSlide[] {
@@ -69,8 +69,8 @@ export function heroEvents(events: PublicEvent[], regs: RegistrationListItem[]):
         gradeMax: ed.grade_max,
         price: ed.price,
         imageUrl: ed.image_url || null,
-        illustration: ev.illustration,
-        tone: ev.tone,
+        illustration: ev.illustration as EventIllustration,
+        tone: ev.tone as EventTone,
       })),
   );
 }

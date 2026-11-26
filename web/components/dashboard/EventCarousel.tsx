@@ -16,7 +16,9 @@ const INTERVAL_MS = 6000;
 export function EventCarousel({ slides }: { slides: HeroSlide[] }) {
   const { t } = useTranslation();
   const [index, setIndex] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
   const count = slides.length;
   const active = count ? index % count : 0;
 
@@ -62,7 +64,7 @@ export function EventCarousel({ slides }: { slides: HeroSlide[] }) {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={img} alt="" className="max-h-40 w-full rounded-xl object-cover" />
               ) : (
-                <EventMark tone={s.tone as never} illustration={s.illustration as never} className="size-32" />
+                <EventMark tone={s.tone} illustration={s.illustration} className="size-32" />
               )}
             </div>
           </div>
@@ -83,10 +85,12 @@ export function EventCarousel({ slides }: { slides: HeroSlide[] }) {
       aria-roledescription="carousel"
       aria-label={t("stu_home_carousel_label")}
       className="rounded-2xl dash-hero-bg p-6 text-white sm:p-8"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+      }}
     >
       <div className="grid">{items}</div>
       {count > 1 && (
@@ -101,7 +105,7 @@ export function EventCarousel({ slides }: { slides: HeroSlide[] }) {
                 .replace("{name}", s.eventName)}
               aria-current={i === active ? "true" : undefined}
               onClick={() => setIndex(i)}
-              className="group h-6 px-1 outline-none focus-visible:outline-2 focus-visible:outline-white"
+              className="group flex h-6 w-[30px] justify-center items-center outline-none focus-visible:outline-2 focus-visible:outline-white"
             >
               <span
                 className={cn(

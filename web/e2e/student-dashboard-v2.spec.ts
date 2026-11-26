@@ -323,8 +323,7 @@ test("5 carousel stable height, inert, autoplay, reduced motion", async ({ page,
   note(`[5] dots before=${JSON.stringify(before.dots.map((d) => d.slice(0, 2)))} after=${JSON.stringify(after.dots.map((d) => d.slice(0, 2)))}`);
   await shot(page, "carousel-slide2");
   expect(after.h).toBe(before.h);
-  // active dot widens (22px vs 8px) so x of later dots legitimately shifts; y and the button boxes' count must not move
-  expect(after.dots.map((d) => d[1])).toEqual(before.dots.map((d) => d[1]));
+  expect(after.dots.map((d) => [d[0], d[1]])).toEqual(before.dots.map((d) => [d[0], d[1]]));
   const inertState = await car.locator("[data-slide]").evaluateAll((els) => els.map((e) => (e as HTMLElement).inert));
   note(`[5] inert flags after click dot 2: ${JSON.stringify(inertState)}`);
   expect(inertState.filter((x) => !x).length).toBe(1);

@@ -101,6 +101,27 @@ describe("EventCarousel", () => {
     expect(activeIdx()).toBe(1);
   });
 
+  it("mouse leaving while focus is still inside keeps it paused", () => {
+    render(<EventCarousel slides={[A, B]} />);
+    const region = screen.getByRole("region");
+    fireEvent.focusIn(within(region).getByRole("link", { name: /Daftar sekarang/ }));
+    fireEvent.mouseEnter(region);
+    fireEvent.mouseLeave(region);
+    tick(6000);
+    expect(activeIdx()).toBe(0);
+  });
+
+  it("blur to an element inside the carousel keeps it paused", () => {
+    render(<EventCarousel slides={[A, B]} />);
+    const region = screen.getByRole("region");
+    const cta = within(region).getByRole("link", { name: /Daftar sekarang/ });
+    const mine = within(region).getAllByRole("link", { name: "Kompetisi Saya" })[0];
+    fireEvent.focusIn(cta);
+    fireEvent.focusOut(cta, { relatedTarget: mine });
+    tick(6000);
+    expect(activeIdx()).toBe(0);
+  });
+
   it("does not autoplay under prefers-reduced-motion", () => {
     mockMotion(true);
     render(<EventCarousel slides={[A, B]} />);
