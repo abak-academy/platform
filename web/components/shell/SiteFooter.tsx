@@ -33,7 +33,7 @@ export function SiteFooter() {
 
   return (
     <footer data-swarm-light className="bg-brand-900 text-white">
-      <div data-footer-divider className="border-t border-white/15" />
+      <div data-footer-divider className="mx-4 border-t border-white/15 md:mx-8" />
       <div className="mx-auto grid max-w-[var(--container-public)] gap-10 px-4 py-14 md:grid-cols-[1.6fr_1fr_1fr_1fr] md:px-6">
         <div className="space-y-4">
           <AbakWordmark light size={40} />
