@@ -337,11 +337,11 @@ func (s *Service) UpdateProductRelations(ctx context.Context, id string, examIDs
 // replaceProductExamsClearingCards drops the cached cards of every exam this
 // change moves into or out of an event, because the printed number carries the event prefix.
 func (s *Service) replaceProductExamsClearingCards(ctx context.Context, tx pgx.Tx, productID uuid.UUID, examIDs []uuid.UUID) error {
-	product, err := s.storeRepo.GetProductByID(ctx, productID.String())
+	groupingID, err := s.storeRepo.GetProductGroupingIDTx(ctx, tx, productID)
 	if err != nil {
 		return err
 	}
-	if product.GroupingID == nil {
+	if groupingID == nil {
 		return s.storeRepo.ReplaceProductExams(ctx, tx, productID, examIDs)
 	}
 	before, err := s.storeRepo.ListProductExamIDsTx(ctx, tx, []uuid.UUID{productID})

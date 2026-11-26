@@ -261,10 +261,9 @@ func TestAdminUpdateProductGrouping_FieldValidation(t *testing.T) {
 }
 
 func TestAdminUpdateProductGrouping_ScheduleReplaceIsAtomicAndOrdered(t *testing.T) {
-	svc, _ := newRealDBService(t)
+	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	g := newEventPublished(t, svc)
-	other := newEventPublished(t, svc)
 
 	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{Schedule: &[]model.ProductGroupingScheduleItem{
 		{Label: "Akhir", StartsOn: "2026-12-20"}, {Label: "Awal", LabelEN: grpStr("Start"), StartsOn: "2026-12-01", EndsOn: grpStr("2026-12-03")},
@@ -279,17 +278,29 @@ func TestAdminUpdateProductGrouping_ScheduleReplaceIsAtomicAndOrdered(t *testing
 		t.Fatal("en_complete = true with an untranslated schedule row and no content")
 	}
 
-	// The grouping update fails on a duplicate prefix; the schedule and name must stay as they were.
-	_, err = svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{
-		Name: grpStr("Renamed"), ParticipantPrefix: other.ParticipantPrefix,
-		Schedule: &[]model.ProductGroupingScheduleItem{{Label: "Baru", StartsOn: "2027-01-01"}},
+	// The schedule write fails after the grouping row was already updated in the same PATCH.
+	pool := repo.Pool()
+	for _, q := range []string{
+		`CREATE OR REPLACE FUNCTION grp_boom() RETURNS trigger AS $$ BEGIN IF NEW.label = 'boom' THEN RAISE EXCEPTION 'boom'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`,
+		`CREATE TRIGGER grp_boom_trg BEFORE INSERT ON product_grouping_schedule FOR EACH ROW EXECUTE FUNCTION grp_boom()`,
+	} {
+		if _, err := pool.Exec(ctx, q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DROP TRIGGER IF EXISTS grp_boom_trg ON product_grouping_schedule; DROP FUNCTION IF EXISTS grp_boom()`)
 	})
-	if !errors.Is(err, repository.ErrGroupingPrefixTaken) {
-		t.Fatalf("err = %v, want ErrGroupingPrefixTaken", err)
+	_, err = svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{
+		Name: grpStr("Renamed"), Description: grpStr("changed"),
+		Schedule: &[]model.ProductGroupingScheduleItem{{Label: "boom", StartsOn: "2027-01-01"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("err = %v, want the trigger's boom error", err)
 	}
 	d, _ = svc.AdminGetProductGroupingDetail(ctx, g.ID)
-	if len(d.Schedule) != 2 || d.Schedule[0].Label != "Awal" || d.Name == "Renamed" {
-		t.Fatalf("failed patch leaked: name=%q schedule=%+v", d.Name, d.Schedule)
+	if len(d.Schedule) != 2 || d.Schedule[0].Label != "Awal" || d.Name == "Renamed" || d.Description == "changed" {
+		t.Fatalf("failed patch leaked: name=%q description=%q schedule=%+v", d.Name, d.Description, d.Schedule)
 	}
 
 	// Absent schedule preserves; empty array clears.

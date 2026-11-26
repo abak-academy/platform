@@ -183,6 +183,11 @@ func TestExternalRound_PreviewReportsEveryErrorKindWithItsLine(t *testing.T) {
 		{Line: 3, ParticipantNo: f.no("", 2), Reason: ReasonAwardTooLong},
 		{Line: 4, ParticipantNo: f.no("", 3), Reason: ReasonBadCertificateURL},
 	}, preview.Errors)
+
+	key3 := store.put(f.examID, "bad3.csv", extHeader+f.no("", 1)+",1,2147483648,,\n")
+	preview, err = svc.PreviewExternalRound(ctx, f.examID, key3, "R")
+	require.NoError(t, err)
+	assert.Equal(t, []model.ExternalRowError{{Line: 2, ParticipantNo: f.no("", 1), Reason: ReasonBadRank}}, preview.Errors)
 }
 
 func TestExternalRound_FileLevelErrors(t *testing.T) {

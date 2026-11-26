@@ -86,9 +86,9 @@ func (r *Repository) CreateProductGrouping(ctx context.Context, g *model.Product
 	return mapGroupingUniqueViolation(err)
 }
 
-func (r *Repository) getProductGrouping(ctx context.Context, where string, arg string) (*model.ProductGrouping, error) {
+func (r *Repository) getProductGrouping(ctx context.Context, q queryer, where string, arg string) (*model.ProductGrouping, error) {
 	g := &model.ProductGrouping{}
-	err := scanProductGrouping(r.pool.QueryRow(ctx,
+	err := scanProductGrouping(q.QueryRow(ctx,
 		`SELECT `+productGroupingColumns+` FROM product_grouping WHERE `+where, arg,
 	), g)
 	if err != nil {
@@ -101,11 +101,16 @@ func (r *Repository) getProductGrouping(ctx context.Context, where string, arg s
 }
 
 func (r *Repository) GetProductGroupingByID(ctx context.Context, id string) (*model.ProductGrouping, error) {
-	return r.getProductGrouping(ctx, `id = $1`, id)
+	return r.getProductGrouping(ctx, r.pool, `id = $1`, id)
+}
+
+// GetProductGroupingForUpdateTx locks the grouping row so concurrent edits, member replaces and deletes serialize behind it.
+func (r *Repository) GetProductGroupingForUpdateTx(ctx context.Context, tx pgx.Tx, id string) (*model.ProductGrouping, error) {
+	return r.getProductGrouping(ctx, tx, `id = $1 FOR UPDATE`, id)
 }
 
 func (r *Repository) GetProductGroupingBySlug(ctx context.Context, slug string) (*model.ProductGrouping, error) {
-	return r.getProductGrouping(ctx, `slug = $1`, slug)
+	return r.getProductGrouping(ctx, r.pool, `slug = $1`, slug)
 }
 
 // ListProductGroupings returns groupings ordered for display. publishedOnly
@@ -199,7 +204,15 @@ func (r *Repository) CountGroupingProducts(ctx context.Context, id string) (int,
 }
 
 func (r *Repository) ListGroupingSchedule(ctx context.Context, groupingID string) ([]model.ProductGroupingScheduleItem, error) {
-	rows, err := r.pool.Query(ctx,
+	return r.listGroupingSchedule(ctx, r.pool, groupingID)
+}
+
+func (r *Repository) ListGroupingScheduleTx(ctx context.Context, tx pgx.Tx, groupingID string) ([]model.ProductGroupingScheduleItem, error) {
+	return r.listGroupingSchedule(ctx, tx, groupingID)
+}
+
+func (r *Repository) listGroupingSchedule(ctx context.Context, q queryer, groupingID string) ([]model.ProductGroupingScheduleItem, error) {
+	rows, err := q.Query(ctx,
 		`SELECT id, label, label_en, starts_on::text, ends_on::text FROM product_grouping_schedule
 		WHERE grouping_id = $1 ORDER BY starts_on, ends_on NULLS FIRST, id`, groupingID)
 	if err != nil {
@@ -235,9 +248,11 @@ func (r *Repository) ReplaceGroupingScheduleTx(ctx context.Context, tx pgx.Tx, g
 	return nil
 }
 
-func (r *Repository) DeleteProductGrouping(ctx context.Context, id string) error {
-	_, err := r.pool.Exec(ctx, `DELETE FROM product_grouping WHERE id = $1`, id)
-	return err
+// DeleteEmptyProductGrouping reports whether a row was deleted; false means the grouping is gone or has members.
+func (r *Repository) DeleteEmptyProductGrouping(ctx context.Context, id string) (bool, error) {
+	tag, err := r.pool.Exec(ctx,
+		`DELETE FROM product_grouping WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM product WHERE grouping_id = $1)`, id)
+	return tag.RowsAffected() > 0, err
 }
 
 // ReorderProductGroupings sets display_order to each grouping's position in

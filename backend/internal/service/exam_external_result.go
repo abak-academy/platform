@@ -226,12 +226,13 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 			continue
 		}
 		if v := get(rec, "rank"); v != "" {
-			n, err := strconv.Atoi(v)
+			n, err := strconv.ParseInt(v, 10, 32)
 			if err != nil || n < 1 {
 				fail(ReasonBadRank)
 				continue
 			}
-			in.Rank = &n
+			rank := int(n)
+			in.Rank = &rank
 		}
 		if v := get(rec, "award"); v != "" {
 			if utf8.RuneCountInString(v) > externalAwardMaxLen {

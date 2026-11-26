@@ -73,3 +73,4 @@ CREATE TABLE exam_external_result (
   certificate_url  TEXT NULL CHECK (certificate_url IS NULL OR certificate_url LIKE 'https://%'),
   PRIMARY KEY (round_id, registration_id)
 );
+CREATE INDEX exam_external_result_registration_idx ON exam_external_result (registration_id);

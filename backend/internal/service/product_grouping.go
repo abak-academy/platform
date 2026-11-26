@@ -335,7 +335,12 @@ func (s *Service) adminGetProductGroupingDetail(ctx context.Context, id string, 
 // grouping, a replaced schedule, and the card-cache clear on a prefix change
 // commit together.
 func (s *Service) AdminUpdateProductGrouping(ctx context.Context, id string, p ProductGroupingPatch) (model.ProductGrouping, error) {
-	existing, err := s.storeRepo.GetProductGroupingByID(ctx, id)
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
+		return model.ProductGrouping{}, err
+	}
+	defer tx.Rollback(ctx)
+	existing, err := s.storeRepo.GetProductGroupingForUpdateTx(ctx, tx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return model.ProductGrouping{}, ErrProductGroupingNotFound
@@ -404,7 +409,7 @@ func (s *Service) AdminUpdateProductGrouping(ctx context.Context, id string, p P
 	if existing.IsVisible {
 		current := schedule
 		if p.Schedule == nil {
-			if current, err = s.storeRepo.ListGroupingSchedule(ctx, id); err != nil {
+			if current, err = s.storeRepo.ListGroupingScheduleTx(ctx, tx, id); err != nil {
 				return model.ProductGrouping{}, err
 			}
 		}
@@ -413,11 +418,6 @@ func (s *Service) AdminUpdateProductGrouping(ctx context.Context, id string, p P
 		}
 	}
 
-	tx, err := s.storeRepo.BeginTx(ctx)
-	if err != nil {
-		return model.ProductGrouping{}, err
-	}
-	defer tx.Rollback(ctx)
 	if err := s.storeRepo.UpdateProductGroupingTx(ctx, tx, id, existing); err != nil {
 		return model.ProductGrouping{}, err
 	}
@@ -458,20 +458,17 @@ func (s *Service) clearCardsTx(ctx context.Context, tx pgx.Tx, examIDs []uuid.UU
 }
 
 func (s *Service) AdminDeleteProductGrouping(ctx context.Context, id string) error {
+	deleted, err := s.storeRepo.DeleteEmptyProductGrouping(ctx, id)
+	if err != nil || deleted {
+		return err
+	}
 	if _, err := s.storeRepo.GetProductGroupingByID(ctx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrProductGroupingNotFound
 		}
 		return err
 	}
-	n, err := s.storeRepo.CountGroupingProducts(ctx, id)
-	if err != nil {
-		return err
-	}
-	if n > 0 {
-		return ErrGroupingHasProducts
-	}
-	return s.storeRepo.DeleteProductGrouping(ctx, id)
+	return ErrGroupingHasProducts
 }
 
 func (s *Service) AdminReorderProductGroupings(ctx context.Context, groupingIDs []string) error {
@@ -491,12 +488,6 @@ func (s *Service) AdminSetGroupingProducts(ctx context.Context, groupingID strin
 	if err != nil {
 		return model.ProductGrouping{}, nil, err
 	}
-	if _, err := s.storeRepo.GetProductGroupingByID(ctx, groupingID); err != nil {
-		if errors.Is(err, repository.ErrNotFound) {
-			return model.ProductGrouping{}, nil, ErrProductGroupingNotFound
-		}
-		return model.ProductGrouping{}, nil, err
-	}
 	ids, err := parseUUIDs(productIDs)
 	if err != nil {
 		return model.ProductGrouping{}, nil, err
@@ -508,6 +499,12 @@ func (s *Service) AdminSetGroupingProducts(ctx context.Context, groupingID strin
 	}
 	defer tx.Rollback(ctx)
 
+	if _, err := s.storeRepo.GetProductGroupingForUpdateTx(ctx, tx, groupingID); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return model.ProductGrouping{}, nil, ErrProductGroupingNotFound
+		}
+		return model.ProductGrouping{}, nil, err
+	}
 	before, err := s.storeRepo.ListGroupingProductIDsTx(ctx, tx, gID)
 	if err != nil {
 		return model.ProductGrouping{}, nil, err

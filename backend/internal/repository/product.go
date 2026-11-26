@@ -331,6 +331,12 @@ func (r *Repository) LockProductType(ctx context.Context, tx pgx.Tx, id string) 
 	return productType, err
 }
 
+func (r *Repository) GetProductGroupingIDTx(ctx context.Context, tx pgx.Tx, productID uuid.UUID) (*string, error) {
+	var groupingID *string
+	err := tx.QueryRow(ctx, `SELECT grouping_id::text FROM product WHERE id = $1`, productID).Scan(&groupingID)
+	return groupingID, err
+}
+
 func (r *Repository) ProductHasLiveOrders(ctx context.Context, tx pgx.Tx, productID uuid.UUID) (bool, error) {
 	var exists bool
 	err := tx.QueryRow(ctx, `SELECT EXISTS (
