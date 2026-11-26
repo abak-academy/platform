@@ -88,7 +88,7 @@ export default function ProgramPage() {
   const { t } = useTranslation();
   return (
     <>
-      <section className="relative overflow-hidden bg-brand-50 pb-12 pt-16">
+      <section className="relative overflow-hidden bg-brand-50 pb-12 pt-32">
         <div aria-hidden="true" className="page-hero-fade absolute inset-0 bg-brand-100" />
         <div className={`${WRAP} relative`}>
           <span className="type-label text-brand-ink">{t("prog_page_eyebrow")}</span>
