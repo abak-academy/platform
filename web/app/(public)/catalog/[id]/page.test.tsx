@@ -50,13 +50,13 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/lib/hooks/orders", () => ({
   useAddToCart: () => ({ mutate: addToCartMutate, isPending: false }),
-  useCart: (opts?: { enabled?: boolean }) => (authedHookArgs("cart", opts?.enabled ?? true), { data: { items: cartItems } }),
+  useCart: (opts?: { enabled?: boolean; redirectOn401?: boolean }) => (authedHookArgs("cart", opts?.enabled ?? true, opts?.redirectOn401), { data: { items: cartItems } }),
 }));
 
 let profile: Record<string, unknown> | undefined;
 
 vi.mock("@/lib/hooks/students", () => ({
-  useProfile: (opts?: { enabled?: boolean }) => (authedHookArgs("profile", opts?.enabled ?? true), { data: profile }),
+  useProfile: (opts?: { enabled?: boolean; redirectOn401?: boolean }) => (authedHookArgs("profile", opts?.enabled ?? true, opts?.redirectOn401), { data: profile }),
 }));
 
 vi.mock("@/stores/cart", () => ({
@@ -312,6 +312,41 @@ describe("ProductDetailPage", () => {
   });
 });
 
+describe("stale token", () => {
+  it("opts cart and profile out of the /login redirect", async () => {
+    authedHookArgs.mockClear();
+    await renderPage();
+    expect(authedHookArgs).toHaveBeenCalledWith("cart", true, false);
+    expect(authedHookArgs).toHaveBeenCalledWith("profile", true, false);
+  });
+
+  it("a 401 through the real hooks never navigates to /login", async () => {
+    const { QueryClient, QueryClientProvider } = await import("@tanstack/react-query");
+    const { renderHook, waitFor } = await import("@testing-library/react");
+    const { useAuthStore } = await vi.importActual<typeof import("@/stores/auth")>("@/stores/auth");
+    const { useCart } = await vi.importActual<typeof import("@/lib/hooks/orders")>("@/lib/hooks/orders");
+    const { useProfile } = await vi.importActual<typeof import("@/lib/hooks/students")>("@/lib/hooks/students");
+    useAuthStore.setState({ token: "stale" });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: { code: "unauthorized", message: "x" } }), { status: 401 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const loc = { href: "/catalog/medal-1" };
+    vi.stubGlobal("location", loc);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(
+      () => [useCart({ redirectOn401: false }), useProfile({ redirectOn401: false })] as const,
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current[0].isError && result.current[1].isError).toBe(true));
+    expect(loc.href).toBe("/catalog/medal-1");
+    vi.unstubAllGlobals();
+  });
+});
+
 describe("guest add-to-cart", () => {
   beforeEach(() => {
     auth.token = null;
@@ -322,10 +357,10 @@ describe("guest add-to-cart", () => {
   it("never enables the signed-in cart or profile queries for a guest (their 401 redirects to /login)", async () => {
     authedHookArgs.mockClear();
     await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
-    expect(authedHookArgs).toHaveBeenCalledWith("cart", false);
-    expect(authedHookArgs).toHaveBeenCalledWith("profile", false);
-    expect(authedHookArgs).not.toHaveBeenCalledWith("cart", true);
-    expect(authedHookArgs).not.toHaveBeenCalledWith("profile", true);
+    expect(authedHookArgs).toHaveBeenCalledWith("cart", false, false);
+    expect(authedHookArgs).toHaveBeenCalledWith("profile", false, false);
+    expect(authedHookArgs).not.toHaveBeenCalledWith("cart", true, false);
+    expect(authedHookArgs).not.toHaveBeenCalledWith("profile", true, false);
   });
 
   it("adds to the guest cart instead of sending the guest to /login", async () => {

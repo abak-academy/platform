@@ -11,6 +11,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { useQuery } from "@tanstack/react-query";
 import { authFetch } from "@/lib/api";
+import { ordersKeys } from "@/lib/hooks/orders";
 import type { Order, RegistrationListItem } from "@/lib/types";
 import { kompetisiCount, pendingCount } from "@/lib/student-home";
 import { redirectForRole } from "@/lib/auth-redirect";
@@ -29,7 +30,7 @@ const isActive = (pathname: string, match: string[]) =>
 function StudentCount() {
   const { t } = useTranslation();
   const orders = useQuery({
-    queryKey: ["site-nav", "orders"],
+    queryKey: [...ordersKeys.list(), "site-nav"],
     queryFn: async () =>
       (await authFetch<{ data: Order[] }>("/orders", undefined, { redirectOn401: false })).data ?? [],
     retry: false,

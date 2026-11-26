@@ -31,7 +31,7 @@ Decisions (Panca, 2026-11-17, from prototype review at `#/admin/testimoni`), unc
    - Achievements in Indonesian and English, up to 3 short chips each (for example "Medali perak olimpiade 2025").
    - Consent: a checkbox "Ada persetujuan tertulis" plus a required note on where the consent is kept (for example "Formulir izin via WhatsApp, 12 Nov 2026"). The consent is from the person, or from a parent or guardian when the person is under 18.
    - Visibility ("Tampil di landing page") and a sort order.
-2. **Consent gate.** A testimonial can be made visible only when consent is recorded, the consent note is filled, the EN quote is filled, and a photo is uploaded (photo added 2026-11-26). The switch and the save are both rejected otherwise, with a message that names the missing part.
+2. **Consent gate.** A testimonial can be made visible only when consent is recorded, the consent note is filled, the ID and EN quotes are filled, and a photo is uploaded (photo added 2026-11-26). The switch and the save are both rejected otherwise, with a message that names the missing part.
 3. Unchecking consent on a visible testimonial hides it in the same save.
 4. The admin page is a card grid with the shared `ListToolbar` (`admin-list-toolbar.md`; built by the event-series PR, its D5 = a): search name or quote; filters Landing (shown/draft), Consent (yes/no), EN (complete/missing). Each card shows the person, quote, chips, flags (consent, ID + EN), a visibility switch, Edit, and Delete (with a confirm modal). The prototype's "Data contoh" flag marks its own sample data only; it has no column and is not built.
 5. The landing carousel shows visible testimonials in sort order, in the visitor's language, each slide with the speaker's own photo. With none visible, the section is not rendered.
@@ -86,7 +86,7 @@ Down migration drops the table.
 |---|---|---|
 | GET | `/admin/testimonials` | All, including drafts, with `consent_by` name |
 | POST | `/admin/testimonials` | Create. `is_visible` defaults to false |
-| PATCH | `/admin/testimonials/:id` | Partial update. 422 with `missing: ["has_consent", "consent_note", "content.en.quote", "photo_key"]` (the ones absent) when `is_visible` would be true without them. `has_consent: false` or `photo_key: null` also sets `is_visible: false` in the same write (behaviors 3, 12) |
+| PATCH | `/admin/testimonials/:id` | Partial update. 422 with `missing: ["has_consent", "consent_note", "content.id.quote", "content.en.quote", "photo_key"]` (the ones absent) when `is_visible` would be true without them. `has_consent: false` or `photo_key: null` also sets `is_visible: false` in the same write (behaviors 3, 12) |
 | DELETE | `/admin/testimonials/:id` | Hard delete; it is marketing content, not a record of a transaction. Audit entry kept |
 
 Audit: `InsertAuditLogMeta(ctx, nil, actor, "testimonial", id, "testimonial.consent_change" \| "testimonial.visibility_change" \| "testimonial.delete", {old, new})`, the same helper `admin_users.go` uses.

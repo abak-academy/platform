@@ -35,7 +35,7 @@ export function StorySlider({ items }: { items: PublicTestimonial[] }) {
         <div className="flex flex-col justify-center gap-5 py-2 md:pr-6">
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="type-overline text-brand-ink">{t("land_stories_eyebrow")}</h2>
-            <span className="type-overline text-ink-500">{`${pad(index + 1)}/${pad(items.length)}`}</span>
+            <span className="type-overline text-ink-600">{`${pad(index + 1)}/${pad(items.length)}`}</span>
           </div>
           <blockquote className="type-h1 text-ink-900">“{current.quote}”</blockquote>
           <div>

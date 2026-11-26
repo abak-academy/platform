@@ -4,10 +4,10 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { create } from "zustand";
-import { ApiError, authFetch } from "@/lib/api";
+import { apiFetch, ApiError, authFetch } from "@/lib/api";
 import { ordersKeys } from "@/lib/hooks/orders";
 import { useTranslation } from "@/lib/i18n";
-import type { Order } from "@/lib/types";
+import type { Order, Product } from "@/lib/types";
 import { useCartStore } from "@/stores/cart";
 import { useGuestCart, type GuestLine } from "@/stores/guest-cart";
 
@@ -31,7 +31,7 @@ export interface MergeOutcome {
 export interface MergeDeps {
   getCart: () => Promise<Order>;
   addItem: (orderId: string, body: { product_id: string; qty: number }) => Promise<Order>;
-  isUnavailable?: (productId: string) => boolean;
+  isUnavailable?: (productId: string) => Promise<boolean>;
 }
 
 export interface MergeResult {
@@ -39,6 +39,12 @@ export interface MergeResult {
   removeIds: string[];
   stopped: null | "unauthorized" | "failed";
   cartCount: number;
+}
+
+export function outsideWindow(p: Product, now: number): boolean {
+  const from = p.available_from ? Date.parse(p.available_from) : null;
+  const until = p.available_until ? Date.parse(p.available_until) : null;
+  return (from !== null && from > now) || (until !== null && until < now);
 }
 
 function classify(err: unknown): MergeCode {
@@ -69,10 +75,15 @@ export async function mergeGuestCart(lines: GuestLine[], deps: MergeDeps): Promi
 
   for (const line of lines) {
     const base = { product_id: line.product_id, name: line.name };
-    if (deps.isUnavailable?.(line.product_id)) {
-      outcomes.push({ ...base, code: "unavailable" });
-      removeIds.push(line.product_id);
-      continue;
+    try {
+      if (await deps.isUnavailable?.(line.product_id)) {
+        outcomes.push({ ...base, code: "unavailable" });
+        removeIds.push(line.product_id);
+        continue;
+      }
+    } catch (err) {
+      stopped = classify(err) === "unauthorized" ? "unauthorized" : "failed";
+      break;
     }
     if (serverIds.has(line.product_id)) {
       outcomes.push({ ...base, code: "already_in_cart" });
@@ -122,6 +133,16 @@ const realDeps: MergeDeps = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  isUnavailable: async (productId) => {
+    try {
+      // Relies on GET /products/:id staying unauthenticated: it 404s drafts and out-of-window products only for role "".
+      await apiFetch<Product>(`/products/${encodeURIComponent(productId)}`);
+      return false;
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return true;
+      throw err;
+    }
+  },
 };
 
 export function useGuestCartMerge(enabled: boolean) {
@@ -134,8 +155,7 @@ export function useGuestCartMerge(enabled: boolean) {
     const { lines, removeMany } = useGuestCart.getState();
     if (lines.length === 0) return;
     ran.current = true;
-    const flagged = new Set(lines.filter((l) => l.unavailable).map((l) => l.product_id));
-    void mergeGuestCart(lines, { ...realDeps, isUnavailable: (id) => flagged.has(id) }).then((res) => {
+    void mergeGuestCart(lines, realDeps).then((res) => {
       removeMany(res.removeIds);
       qc.invalidateQueries({ queryKey: ordersKeys.all });
       if (res.cartCount > 0) useCartStore.getState().setCount(res.cartCount);

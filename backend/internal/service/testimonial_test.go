@@ -102,10 +102,13 @@ func TestAdminTestimonial_VisibleRejectedPerMissingPart(t *testing.T) {
 		{"no consent", func(p *TestimonialPatch) { p.HasConsent = nil }, []string{"has_consent"}},
 		{"no note", func(p *TestimonialPatch) { p.ConsentNote = NullableString{} }, []string{"consent_note"}},
 		{"no en quote", func(p *TestimonialPatch) { p.Content = tmContent("") }, []string{"content.en.quote"}},
+		{"no id quote", func(p *TestimonialPatch) {
+			p.Content = &map[string]model.TestimonialContent{"id": {Quote: " "}, "en": {Quote: "Great"}}
+		}, []string{"content.id.quote"}},
 		{"no photo", func(p *TestimonialPatch) { p.PhotoKey = NullableString{} }, []string{"photo_key"}},
 		{"all missing in order", func(p *TestimonialPatch) {
 			p.HasConsent, p.ConsentNote, p.Content, p.PhotoKey = nil, NullableString{}, nil, NullableString{}
-		}, []string{"has_consent", "consent_note", "content.en.quote", "photo_key"}},
+		}, []string{"has_consent", "consent_note", "content.id.quote", "content.en.quote", "photo_key"}},
 	}
 	for _, c := range cases {
 		t.Run("create "+c.name, func(t *testing.T) {

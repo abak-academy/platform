@@ -11,6 +11,7 @@ export function LandingHero({ eventNames }: { eventNames: string[] }) {
   const { t } = useTranslation();
   return (
     <section data-hero data-swarm-light className="relative isolate flex min-h-[min(980px,100svh)] flex-col justify-end overflow-hidden bg-black">
+      <link rel="preload" as="image" href="/landing/hero-award.webp" fetchPriority="high" />
       <div data-hero-photo className="absolute inset-x-0 bottom-0 -z-20 h-[58%] md:inset-0 md:h-auto">
         <img
           src="/landing/hero-award.webp"
@@ -24,7 +25,7 @@ export function LandingHero({ eventNames }: { eventNames: string[] }) {
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-black/65 via-black/45 to-black/60" />
       <MathFloaters light />
       <div data-hero-content className="mx-auto flex w-full max-w-public flex-col gap-6 px-6 pt-32 pb-[110px] md:pb-[170px]">
-        <h1 className="type-display-hero max-w-[16ch] text-white">
+        <h1 className="type-display-hero min-h-[3em] max-w-[16ch] text-white">
           {t("land_hero_prefix")}{" "}
           <span className="[&>span]:text-ember-500">
             <RotatingWord words={eventNames} fallback={t("land_hero_word_fallback")} />

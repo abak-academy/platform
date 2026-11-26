@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { LandingHero } from "./LandingHero";
@@ -34,5 +35,22 @@ describe("LandingHero", () => {
     expect(fade.contains(content)).toBe(false);
     for (const s of SITE_CONFIG.stats) expect(content.contains(screen.getByText(s.value))).toBe(true);
     expect(fade.textContent).toBe("");
+  });
+
+  it("preloads the hero photo and reserves three headline lines so the rotating word cannot shift the layout", () => {
+    const { container } = render(<LandingHero eventNames={["IKMC"]} />);
+    const link = document.querySelector('link[rel="preload"][as="image"]') as HTMLLinkElement;
+    expect(link.getAttribute("href")).toBe("/landing/hero-award.webp");
+    expect(link.getAttribute("fetchpriority")).toBe("high");
+    expect(container.querySelector("[data-hero-content] h1")!.className).toContain("min-h-[3em]");
+  });
+});
+
+describe("landing contrast", () => {
+  it("keeps small light-background text on ink-600, not ink-500/400", () => {
+    for (const f of ["landing/AboutLines", "landing/StorySlider", "events/EventStoryCard", "events/EventSeriesPicker", "events/EventSchedule"]) {
+      const src = readFileSync(`components/${f}.tsx`, "utf8");
+      expect(src, f).not.toMatch(/type-(overline|caption)[^"]*text-ink-(500|400)/);
+    }
   });
 });

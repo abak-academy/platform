@@ -65,4 +65,16 @@ describe("ProductCard", () => {
     expect(screen.getByText("Rp20.000")).toBeTruthy();
     expect(screen.queryByText(/Deskripsi panjang/)).toBeNull();
   });
+
+  it("is lazy by default and eager with high fetch priority when priority is set", () => {
+    const product = { id: "b", type: "book" as const, name: "Buku A", price: 1000, image_url: "https://cdn.example.com/a.png" };
+    const { rerender } = render(<ProductCard product={product} />);
+    let img = screen.getByAltText("Buku A");
+    expect(img).toHaveAttribute("loading", "lazy");
+    expect(img).not.toHaveAttribute("fetchpriority");
+    rerender(<ProductCard product={product} priority />);
+    img = screen.getByAltText("Buku A");
+    expect(img).toHaveAttribute("loading", "eager");
+    expect(img).toHaveAttribute("fetchpriority", "high");
+  });
 });

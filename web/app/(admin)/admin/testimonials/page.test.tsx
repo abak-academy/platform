@@ -35,6 +35,8 @@ const bare: AdminTestimonial = {
 const noNote: AdminTestimonial = { ...draftNoPhoto, id: "t4", name: "Peserta Empat", photo_key: "question/b.jpg", consent_note: null };
 const noEn: AdminTestimonial = { ...draftNoPhoto, id: "t5", name: "Peserta Lima", photo_key: "question/c.jpg", content: { id: { quote: "Halo", achievements: [] } } };
 
+const noId: AdminTestimonial = { ...noEn, id: "t6", name: "Peserta Enam", content: { id: { quote: " ", achievements: [] }, en: { quote: "Hi", achievements: [] } } };
+
 type Call = { path: string; method: string; body: unknown };
 let calls: Call[];
 let patchError: unknown;
@@ -145,6 +147,7 @@ describe("visibility switch on a card", () => {
   it.each([
     [bare, "Centang persetujuan tertulis sebelum tampil di landing"],
     [noNote, "Isi catatan lokasi persetujuan sebelum tampil di landing"],
+    [noId, "Isi kutipan Indonesia sebelum tampil di landing"],
     [noEn, "Isi kutipan English sebelum tampil di landing"],
     [{ ...draftNoPhoto }, "Unggah foto peserta sebelum tampil di landing"],
   ])("blocks %# client-side naming the missing part", async (item, message) => {
@@ -251,6 +254,17 @@ describe("editor", () => {
     fireEvent.change(d.getByLabelText("Kutipan (English)"), { target: { value: "" } });
     fireEvent.click(d.getByRole("button", { name: "Simpan" }));
     expect(await d.findByRole("alert")).toHaveTextContent("Isi kutipan English sebelum tampil di landing");
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("blocks Save for a visible testimonial whose Indonesian quote was cleared", async () => {
+    mockApi([full]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const d = within(await screen.findByRole("dialog"));
+    fireEvent.change(d.getByLabelText("Kutipan (Indonesia)"), { target: { value: "" } });
+    fireEvent.click(d.getByRole("button", { name: "Simpan" }));
+    expect(await d.findByRole("alert")).toHaveTextContent("Isi kutipan Indonesia sebelum tampil di landing");
     expect(writes()).toHaveLength(0);
   });
 

@@ -16,7 +16,7 @@ export function ProductSpecTable({ specs }: ProductSpecTableProps) {
     <section aria-labelledby="product-specs-heading" className="flex flex-col gap-3">
       <h2
         id="product-specs-heading"
-        className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500"
+        className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-600"
       >
         {t("product_specs_heading" as any)}
       </h2>
@@ -29,7 +29,7 @@ export function ProductSpecTable({ specs }: ProductSpecTableProps) {
             key={`${s.key}-${i}`}
             className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-4 border-b border-line py-2 last:border-b-0"
           >
-            <dt className="text-ink-500">{s.label}</dt>
+            <dt className="text-ink-600">{s.label}</dt>
             <dd className="font-medium text-ink-900">{s.value}</dd>
           </div>
         ))}

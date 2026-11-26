@@ -65,6 +65,16 @@ beforeEach(() => {
 });
 
 describe("InvoiceDialog", () => {
+  it("lays the items table out with fixed columns so a wrapped description cannot reflow in the capture", () => {
+    show(DIGITAL);
+    const table = document.querySelector(".invoice-paper table") as HTMLElement;
+    expect(table).toHaveClass("table-fixed");
+    expect(table.querySelectorAll("colgroup col")).toHaveLength(4);
+    const cell = screen.getByText("Kursus Matematika");
+    expect(cell).toHaveClass("break-words");
+    expect(cell.querySelector("br")).toBeNull();
+  });
+
   it("renders the paid digital invoice fields", () => {
     show(DIGITAL);
     const paper = document.querySelector(".invoice-paper") as HTMLElement;

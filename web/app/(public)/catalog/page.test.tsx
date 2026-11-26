@@ -64,6 +64,28 @@ describe("CatalogPage", () => {
   it("wraps every product card for the tilt effect", () => {
     render(<CatalogPage />);
     expect(document.querySelectorAll("[data-reveal-grid] > [data-tilt]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-tilt]")).toHaveLength(2);
+    expect(document.querySelector("[data-tilt] [data-tilt]")).toBeNull();
+  });
+
+  it("reserves layout while loading: 10 cards with the same grid and 3:4 cover as the loaded grid", () => {
+    vi.mocked(useProducts).mockReturnValue({ data: undefined, isLoading: true, isError: false } as never);
+    render(<CatalogPage />);
+    const sk = screen.getByTestId("catalog-skeleton");
+    expect(sk.children).toHaveLength(10);
+    expect(sk.className).toContain("grid-cols-2");
+    expect(sk.className).toContain("xl:grid-cols-5");
+    expect(sk.querySelector(".aspect-\\[3\\/4\\]")).not.toBeNull();
+  });
+
+  it("loads only the first row of cover images eagerly", () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({
+      id: `p${i}`, type: "book", name: `Buku ${i}`, price: 1000, image_url: "https://cdn.example.com/a.png",
+    }));
+    vi.mocked(useProducts).mockReturnValue({ data: many, isLoading: false, isError: false } as never);
+    render(<CatalogPage />);
+    const imgs = screen.getAllByRole("img");
+    expect(imgs.map((i) => i.getAttribute("loading"))).toEqual(["eager", "eager", "eager", "eager", "lazy", "lazy"]);
   });
 
   describe("empty store", () => {
@@ -97,5 +119,19 @@ describe("CatalogPage", () => {
     render(<CatalogPage />);
     expect(useProducts).toHaveBeenCalledWith("course", undefined);
     expect(screen.getByRole("button", { name: "Kursus" })).toHaveAttribute("aria-current", "true");
+  });
+});
+
+describe("CatalogPage suspense shell", () => {
+  it("renders hero and skeleton grid while useSearchParams suspends", async () => {
+    const nav = await import("next/navigation");
+    const spy = vi.spyOn(nav, "useSearchParams").mockImplementation(() => {
+      throw new Promise(() => {});
+    });
+    render(<CatalogPage />);
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.getByTestId("catalog-skeleton")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/cari/i)).not.toBeInTheDocument();
+    spy.mockRestore();
   });
 });

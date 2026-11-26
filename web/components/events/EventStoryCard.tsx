@@ -29,7 +29,7 @@ export function EventStoryCard({ event }: { event: PublicEvent }) {
       </div>
       <div className="grid min-w-0 gap-5">
         <div>
-          <span className="type-overline text-ink-500">{event.full_name}</span>
+          <span className="type-overline text-ink-600">{event.full_name}</span>
           <h3 className="mt-1 type-h2 text-ink-900">{label}</h3>
           <p className="mt-1 type-body text-brand-ink">{event.tagline}</p>
         </div>
@@ -41,7 +41,7 @@ export function EventStoryCard({ event }: { event: PublicEvent }) {
         <EventSchedule schedule={event.schedule} />
         {event.rounds.length > 0 && (
           <div>
-            <span className="type-overline text-ink-500">{t("land_story_rounds")}</span>
+            <span className="type-overline text-ink-600">{t("land_story_rounds")}</span>
             <ol className="mt-3 flex flex-wrap gap-2">
               {event.rounds.map((r, i) => (
                 <li key={r} className="flex items-center gap-2 rounded-full bg-surface-sunken px-3 py-1 type-label-sm">
@@ -54,12 +54,12 @@ export function EventStoryCard({ event }: { event: PublicEvent }) {
         )}
         {event.categories.length > 0 && (
           <div>
-            <span className="type-overline text-ink-500">{t("land_story_categories")}</span>
+            <span className="type-overline text-ink-600">{t("land_story_categories")}</span>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {event.categories.map((c) => (
                 <div key={c.name} className="rounded-xl border border-line p-3">
                   <b className="type-label">{c.name}</b>
-                  <small className="block type-caption text-ink-500">{c.detail}</small>
+                  <small className="block type-caption text-ink-600">{c.detail}</small>
                 </div>
               ))}
             </div>
@@ -69,7 +69,7 @@ export function EventStoryCard({ event }: { event: PublicEvent }) {
           <dl className="grid gap-3 sm:grid-cols-3">
             {event.facts.map((f) => (
               <div key={f.label}>
-                <dt className="type-caption text-ink-500">{f.label}</dt>
+                <dt className="type-caption text-ink-600">{f.label}</dt>
                 <dd className="type-label">{f.value}</dd>
               </div>
             ))}

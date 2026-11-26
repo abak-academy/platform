@@ -3,6 +3,7 @@ import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SiteNav } from "./SiteNav";
+import { ordersKeys } from "@/lib/hooks/orders";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
 const auth = vi.hoisted(() => ({ token: null as string | null, user: null as { name: string } | null, role: undefined as string | undefined }));
@@ -32,12 +33,14 @@ const setY = (y: number) => {
 };
 const renderNav = () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastQc = qc;
   return render(
     <QueryClientProvider client={qc}>
       <SiteNav />
     </QueryClientProvider>,
   );
 };
+let lastQc: QueryClient;
 const header = () => screen.getByRole("banner");
 
 beforeEach(() => {
@@ -105,6 +108,19 @@ describe("SiteNav — signed in", () => {
     expect(await screen.findByText("3")).toBeInTheDocument();
     expect(authFetch).toHaveBeenCalledWith("/orders", undefined, { redirectOn401: false });
     expect(screen.queryByRole("link", { name: "pub_nav_login" })).not.toBeInTheDocument();
+  });
+
+  it("invalidating the orders root refetches the nav count", async () => {
+    auth.token = "t";
+    auth.role = "student";
+    renderNav();
+    await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("1")).not.toBeInTheDocument();
+    orders.data = [{ status: "payment_pending" }];
+    await act(async () => {
+      await lastQc.invalidateQueries({ queryKey: ordersKeys.all });
+    });
+    expect(await screen.findByText("1")).toBeInTheDocument();
   });
 
   it("student with nothing pending shows no count", () => {

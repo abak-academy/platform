@@ -74,10 +74,22 @@ describe("mergeGuestCart outcomes", () => {
 
   it("locally unavailable lines are not sent", async () => {
     const add = vi.fn(async (_o: string, b: { product_id: string }) => order([item(b.product_id)]));
-    const r = await mergeGuestCart([line("a"), line("b")], { ...deps(add), isUnavailable: (id) => id === "a" });
+    const r = await mergeGuestCart([line("a"), line("b")], { ...deps(add), isUnavailable: async (id) => id === "a" });
     expect(add).toHaveBeenCalledTimes(1);
     expect(r.outcomes.map((o) => o.code)).toEqual(["unavailable", "added"]);
     expect(r.removeIds).toEqual(["a", "b"]);
+  });
+
+  it("a failing availability check stops and keeps this and later lines", async () => {
+    const add = vi.fn(async (_o: string, b: { product_id: string }) => order([item(b.product_id)]));
+    const isUnavailable = vi.fn(async (id: string) => {
+      if (id === "b") throw err(503, "unavailable");
+      return false;
+    });
+    const r = await mergeGuestCart([line("a"), line("b"), line("c")], { ...deps(add), isUnavailable });
+    expect(r.stopped).toBe("failed");
+    expect(r.removeIds).toEqual(["a"]);
+    expect(add).toHaveBeenCalledTimes(1);
   });
 
   it("401 stops and keeps this and later lines", async () => {

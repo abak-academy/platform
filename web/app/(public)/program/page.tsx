@@ -45,7 +45,7 @@ function ProgramBlock({ program, index }: { program: Program; index: number }) {
             ] as const
           ).map(([label, value]) => (
             <div key={label} data-tilt className="rounded-2xl border border-line bg-surface p-4">
-              <dt className="type-label-sm text-ink-500">{t(label)}</dt>
+              <dt className="type-label-sm text-ink-600">{t(label)}</dt>
               <dd className="mt-1 text-ink-900">{t(value)}</dd>
             </div>
           ))}

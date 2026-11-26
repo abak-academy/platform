@@ -21,10 +21,10 @@ export function useDashboard() {
   });
 }
 
-export function useProfile({ enabled = true }: { enabled?: boolean } = {}) {
+export function useProfile({ enabled = true, redirectOn401 = true }: { enabled?: boolean; redirectOn401?: boolean } = {}) {
   return useQuery({
     queryKey: studentsKeys.profile(),
-    queryFn: () => authFetch<User>(`/students/profile`),
+    queryFn: () => authFetch<User>(`/students/profile`, undefined, { redirectOn401 }),
     enabled,
   });
 }
