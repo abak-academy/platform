@@ -134,6 +134,11 @@ func (r *Repository) ListProductGroupings(ctx context.Context, publishedOnly boo
 	return groupings, rows.Err()
 }
 
+const updateProductGroupingSQL = `UPDATE product_grouping SET name = $1, description = $2, status = $3, slug = $4, short_name = $5, scope = $6, subjects = $7,
+	tone = COALESCE(NULLIF($8, ''), 'brand'), illustration = COALESCE(NULLIF($9, ''), 'trophy'),
+	logo_key = $10, official_url = $11, content = $12, is_visible = $13, participant_prefix = $14, updated_at = now()
+	WHERE id = $15`
+
 // UpdateProductGrouping writes every editable column, so callers merge a patch
 // into the loaded grouping first.
 func (r *Repository) UpdateProductGrouping(ctx context.Context, id string, g *model.ProductGrouping) error {
@@ -141,14 +146,50 @@ func (r *Repository) UpdateProductGrouping(ctx context.Context, id string, g *mo
 	if err != nil {
 		return err
 	}
-	_, err = r.pool.Exec(ctx,
-		`UPDATE product_grouping SET name = $1, description = $2, status = $3, slug = $4, short_name = $5, scope = $6, subjects = $7,
-		tone = COALESCE(NULLIF($8, ''), 'brand'), illustration = COALESCE(NULLIF($9, ''), 'trophy'),
-		logo_key = $10, official_url = $11, content = $12, is_visible = $13, participant_prefix = $14, updated_at = now()
-		WHERE id = $15`,
-		append(args, id)...,
-	)
+	_, err = r.pool.Exec(ctx, updateProductGroupingSQL, append(args, id)...)
 	return mapGroupingUniqueViolation(err)
+}
+
+func (r *Repository) UpdateProductGroupingTx(ctx context.Context, tx pgx.Tx, id string, g *model.ProductGrouping) error {
+	args, err := groupingWriteArgs(g)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, updateProductGroupingSQL, append(args, id)...)
+	return mapGroupingUniqueViolation(err)
+}
+
+// ListGroupingExamIDsTx returns the exams sold by the grouping's member products.
+func (r *Repository) ListGroupingExamIDsTx(ctx context.Context, tx pgx.Tx, groupingID string) ([]uuid.UUID, error) {
+	return queryUUIDs(ctx, tx,
+		`SELECT DISTINCT pe.exam_id FROM product_exam pe JOIN product p ON p.id = pe.product_id WHERE p.grouping_id = $1`, groupingID)
+}
+
+// ListProductExamIDsTx returns the exams sold by the given products.
+func (r *Repository) ListProductExamIDsTx(ctx context.Context, tx pgx.Tx, productIDs []uuid.UUID) ([]uuid.UUID, error) {
+	return queryUUIDs(ctx, tx, `SELECT DISTINCT exam_id FROM product_exam WHERE product_id = ANY($1)`, productIDs)
+}
+
+// ListGroupingProductIDsTx returns the grouping's current member product ids.
+func (r *Repository) ListGroupingProductIDsTx(ctx context.Context, tx pgx.Tx, groupingID uuid.UUID) ([]uuid.UUID, error) {
+	return queryUUIDs(ctx, tx, `SELECT id FROM product WHERE grouping_id = $1`, groupingID)
+}
+
+func queryUUIDs(ctx context.Context, tx pgx.Tx, query string, args ...any) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func (r *Repository) CountGroupingProducts(ctx context.Context, id string) (int, error) {

@@ -171,6 +171,9 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 		AvailableUntil Nullable[time.Time]  `json:"available_until"`
 		CourseIDs      Nullable[[]string]   `json:"course_ids"`
 		ExamIDs        Nullable[[]string]   `json:"exam_ids"`
+		Stages         *[]string            `json:"stages"`    // absent preserves; [] clears
+		GradeMin       Nullable[int]        `json:"grade_min"` // absent preserves; null clears; value sets
+		GradeMax       Nullable[int]        `json:"grade_max"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
@@ -233,6 +236,31 @@ func (h *Handler) AdminUpdateProduct(c echo.Context) error {
 	if req.AvailableUntil.Set && req.AvailableUntil.Valid {
 		v := req.AvailableUntil.Value
 		p.AvailableUntil = &v
+	}
+
+	if req.Stages != nil && req.GradeMin.Set && req.GradeMax.Set {
+		p.Stages = *req.Stages
+	} else {
+		existing, err := h.svc.GetProduct(c.Request().Context(), id, role)
+		if err != nil {
+			return mapServiceError(c, err)
+		}
+		p.Stages, p.GradeMin, p.GradeMax = existing.Stages, existing.GradeMin, existing.GradeMax
+		if req.Stages != nil {
+			p.Stages = *req.Stages
+		}
+	}
+	if req.GradeMin.Set {
+		p.GradeMin = nil
+		if req.GradeMin.Valid {
+			p.GradeMin = &req.GradeMin.Value
+		}
+	}
+	if req.GradeMax.Set {
+		p.GradeMax = nil
+		if req.GradeMax.Valid {
+			p.GradeMax = &req.GradeMax.Value
+		}
 	}
 
 	product, err := h.svc.UpdateProduct(c.Request().Context(), id, p, role)

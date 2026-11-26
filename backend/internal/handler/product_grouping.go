@@ -4,15 +4,9 @@ import (
 	"net/http"
 
 	"akademi-bimbel/internal/model"
+	"akademi-bimbel/internal/service"
 	"github.com/labstack/echo/v4"
 )
-
-// groupingDetailResponse is the admin grouping detail read's shape: the
-// grouping plus its member products.
-type groupingDetailResponse struct {
-	model.ProductGrouping
-	Products []model.Product `json:"products"`
-}
 
 func (h *Handler) ListProductGroupings(c echo.Context) error {
 	groupings, err := h.svc.ListPublishedProductGroupings(c.Request().Context())
@@ -32,15 +26,25 @@ func (h *Handler) AdminListProductGroupings(c echo.Context) error {
 
 func (h *Handler) AdminCreateProductGrouping(c echo.Context) error {
 	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name              string                          `json:"name"`
+		Description       string                          `json:"description"`
+		ShortName         *string                         `json:"short_name"`
+		Scope             *string                         `json:"scope"`
+		Subjects          []string                        `json:"subjects"`
+		Tone              string                          `json:"tone"`
+		Illustration      string                          `json:"illustration"`
+		LogoKey           *string                         `json:"logo_key"`
+		OfficialURL       *string                         `json:"official_url"`
+		Content           map[string]model.EventNarrative `json:"content"`
+		ParticipantPrefix *string                         `json:"participant_prefix"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
 	grouping, err := h.svc.AdminCreateProductGrouping(c.Request().Context(), model.ProductGrouping{
-		Name:        req.Name,
-		Description: req.Description,
+		Name: req.Name, Description: req.Description, ShortName: req.ShortName, Scope: req.Scope, Subjects: req.Subjects,
+		Tone: req.Tone, Illustration: req.Illustration, LogoKey: req.LogoKey, OfficialURL: req.OfficialURL,
+		Content: req.Content, ParticipantPrefix: req.ParticipantPrefix,
 	})
 	if err != nil {
 		return mapServiceError(c, err)
@@ -49,27 +53,27 @@ func (h *Handler) AdminCreateProductGrouping(c echo.Context) error {
 }
 
 func (h *Handler) AdminGetProductGrouping(c echo.Context) error {
-	grouping, products, err := h.svc.AdminGetProductGrouping(c.Request().Context(), c.Param("id"))
+	detail, err := h.svc.AdminGetProductGroupingDetail(c.Request().Context(), c.Param("id"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, groupingDetailResponse{ProductGrouping: grouping, Products: products})
+	return c.JSON(http.StatusOK, detail)
 }
 
 func (h *Handler) AdminUpdateProductGrouping(c echo.Context) error {
-	var req struct {
-		Name        *string `json:"name"`
-		Description *string `json:"description"`
-		Status      *string `json:"status"`
-	}
+	var req service.ProductGroupingPatch
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	grouping, err := h.svc.AdminUpdateProductGrouping(c.Request().Context(), c.Param("id"), req.Name, req.Description, req.Status)
+	ctx := c.Request().Context()
+	if _, err := h.svc.AdminUpdateProductGrouping(ctx, c.Param("id"), req); err != nil {
+		return mapServiceError(c, err)
+	}
+	detail, err := h.svc.AdminGetProductGroupingDetail(ctx, c.Param("id"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, grouping)
+	return c.JSON(http.StatusOK, detail)
 }
 
 func (h *Handler) AdminDeleteProductGrouping(c echo.Context) error {
@@ -99,9 +103,13 @@ func (h *Handler) AdminSetGroupingProducts(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return badRequest(c, "invalid request body")
 	}
-	grouping, products, err := h.svc.AdminSetGroupingProducts(c.Request().Context(), c.Param("id"), req.ProductIDs)
+	ctx := c.Request().Context()
+	if _, _, err := h.svc.AdminSetGroupingProducts(ctx, c.Param("id"), req.ProductIDs); err != nil {
+		return mapServiceError(c, err)
+	}
+	detail, err := h.svc.AdminGetProductGroupingDetail(ctx, c.Param("id"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
-	return c.JSON(http.StatusOK, groupingDetailResponse{ProductGrouping: grouping, Products: products})
+	return c.JSON(http.StatusOK, detail)
 }

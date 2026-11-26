@@ -78,7 +78,7 @@ func TestAdminSetGroupingProducts_AssignsOrdersAndUnassignsRemoved(t *testing.T)
 	}
 }
 
-func TestAdminDeleteProductGrouping_UngroupsMembers(t *testing.T) {
+func TestAdminDeleteProductGrouping_RefusedWhileMembersExist(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	g, err := svc.AdminCreateProductGrouping(ctx, model.ProductGrouping{Name: "Grouping " + uniqueSuffix()})
@@ -90,16 +90,19 @@ func TestAdminDeleteProductGrouping_UngroupsMembers(t *testing.T) {
 		t.Fatalf("assign product: %v", err)
 	}
 
-	if err := svc.AdminDeleteProductGrouping(ctx, g.ID); err != nil {
-		t.Fatalf("AdminDeleteProductGrouping() err = %v", err)
+	if err := svc.AdminDeleteProductGrouping(ctx, g.ID); !errors.Is(err, ErrGroupingHasProducts) {
+		t.Fatalf("AdminDeleteProductGrouping() with members err = %v, want ErrGroupingHasProducts", err)
+	}
+	after, err := repo.GetProductByID(ctx, p.ID)
+	if err != nil || after.GroupingID == nil {
+		t.Fatalf("member must stay grouped after the refused delete: %+v err=%v", after, err)
 	}
 
-	after, err := repo.GetProductByID(ctx, p.ID)
-	if err != nil {
-		t.Fatalf("get product after grouping delete: %v", err)
+	if _, _, err := svc.AdminSetGroupingProducts(ctx, g.ID, nil); err != nil {
+		t.Fatalf("unassign product: %v", err)
 	}
-	if after.GroupingID != nil {
-		t.Fatalf("product.GroupingID = %v, want nil once its grouping is deleted", *after.GroupingID)
+	if err := svc.AdminDeleteProductGrouping(ctx, g.ID); err != nil {
+		t.Fatalf("AdminDeleteProductGrouping() when empty err = %v", err)
 	}
 	if _, _, err := svc.AdminGetProductGrouping(ctx, g.ID); !errors.Is(err, ErrProductGroupingNotFound) {
 		t.Fatalf("AdminGetProductGrouping() after delete err = %v, want ErrProductGroupingNotFound", err)
@@ -130,7 +133,7 @@ func TestListProducts_GroupingIDFilter_RespectsGroupingPublishStatus(t *testing.
 	}
 
 	published := model.ProductGroupingStatusPublished
-	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, nil, nil, &published); err != nil {
+	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{Status: &published}); err != nil {
 		t.Fatalf("publish grouping: %v", err)
 	}
 	products, _, err = svc.ListProducts(ctx, repository.ProductFilter{GroupingID: g.ID}, RoleStudent)
@@ -150,7 +153,7 @@ func TestAdminUpdateProductGrouping_RejectsInvalidStatus(t *testing.T) {
 		t.Fatalf("create grouping: %v", err)
 	}
 	bogus := "archived"
-	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, nil, nil, &bogus); !errors.Is(err, ErrValidation) {
+	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{Status: &bogus}); !errors.Is(err, ErrValidation) {
 		t.Fatalf("AdminUpdateProductGrouping() err = %v, want ErrValidation", err)
 	}
 }

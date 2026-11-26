@@ -151,6 +151,8 @@ func TestAdminExamCapabilities(t *testing.T) {
 		"product-relations:write",
 		"schools:read",
 		"exam-preview:read",
+		"product-groupings:write",
+		"exam-results-external:write",
 	}
 	got := Capabilities(RoleAdminExam)
 	if len(got) != len(want) {
@@ -312,5 +314,27 @@ func TestCanManageAllStudents(t *testing.T) {
 				t.Errorf("CanManageAllStudents(%q) = %v, want %v", tt.role, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestEventCapabilitiesPerRole(t *testing.T) {
+	cases := []struct {
+		role               string
+		groupings, results bool
+	}{
+		{RoleSuperAdmin, true, true},
+		{RoleAdminStore, true, true},
+		{RoleAdminExam, true, true},
+		{RoleAdminSchool, false, false},
+		{RoleAffiliator, false, false},
+		{RoleStudent, false, false},
+	}
+	for _, c := range cases {
+		if got := HasCapability(c.role, "product-groupings:write"); got != c.groupings {
+			t.Errorf("HasCapability(%s, product-groupings:write) = %v, want %v", c.role, got, c.groupings)
+		}
+		if got := HasCapability(c.role, "exam-results-external:write"); got != c.results {
+			t.Errorf("HasCapability(%s, exam-results-external:write) = %v, want %v", c.role, got, c.results)
+		}
 	}
 }
