@@ -178,10 +178,10 @@ describe("eventRows", () => {
 
 describe("courseRowText", () => {
   it("shows the next lesson and rounds percent", () => {
-    expect(courseRowText({ progress: 33.4, done_lessons: 2, total_lessons: 6 })).toEqual({ percent: 33, lesson: 3, total: 6, done: false });
+    expect(courseRowText({ progress: 0.334, done_lessons: 2, total_lessons: 6 })).toEqual({ percent: 33, lesson: 3, total: 6, done: false });
   });
-  it("clamps lesson to total and flags done at 100", () => {
-    expect(courseRowText({ progress: 100, done_lessons: 6, total_lessons: 6 })).toEqual({ percent: 100, lesson: 6, total: 6, done: true });
+  it("clamps lesson to total and flags done at a full fraction", () => {
+    expect(courseRowText({ progress: 1, done_lessons: 6, total_lessons: 6 })).toEqual({ percent: 100, lesson: 6, total: 6, done: true });
   });
 });
 

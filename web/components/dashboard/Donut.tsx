@@ -61,7 +61,7 @@ export function Donut({
         className="fill-ink-900"
         style={{ fontSize: size * 0.14, fontWeight: 700, fontFamily: "serif" }}
       >
-        {Math.round(value * 100)}%
+        {centerLabel}
       </text>
       <text
         x={cx}

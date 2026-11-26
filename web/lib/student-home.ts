@@ -115,12 +115,13 @@ export function eventRows(regs: RegistrationListItem[], now: number): EventRow[]
   return [...open, ...done].slice(0, MAX_EVENT_ROWS).map(({ finished: _, ...r }) => r);
 }
 
+// progress is a 0–1 fraction (service/student.go).
 export function courseRowText(c: { progress: number; done_lessons: number; total_lessons: number }) {
   return {
-    percent: Math.round(c.progress),
+    percent: Math.round(c.progress * 100),
     lesson: Math.min(c.done_lessons + 1, c.total_lessons),
     total: c.total_lessons,
-    done: c.progress >= 100,
+    done: c.progress >= 1,
   };
 }
 
