@@ -342,3 +342,40 @@ describe("AppSidebar — accordion", () => {
     });
   });
 });
+
+describe("AppSidebar — student", () => {
+  beforeEach(() => {
+    nav.pathname = "/";
+    authStore = { user: { name: "Budi", role: "student" } };
+  });
+
+  it("lists exactly the four student destinations", () => {
+    render(<AppSidebar role="student" />);
+    const hrefs = within(screen.getByRole("navigation")).getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/", "/exam", "/courses", "/orders"]);
+  });
+
+  it("badges Kompetisi and Tagihan with their counts and hides zero", () => {
+    const { rerender } = render(<AppSidebar role="student" counts={{ kompetisi: 2, tagihan: 0, cart: 0 }} />);
+    expect(screen.getByRole("link", { name: /nav_competition/ })).toHaveTextContent("2");
+    expect(screen.getByRole("link", { name: /nav_billing/ })).not.toHaveTextContent(/\d/);
+    rerender(<AppSidebar role="student" counts={{ kompetisi: 0, tagihan: 5, cart: 0 }} />);
+    expect(screen.getByRole("link", { name: /nav_billing/ })).toHaveTextContent("5");
+    expect(screen.getByRole("link", { name: /nav_competition/ })).not.toHaveTextContent(/\d/);
+  });
+
+  it("puts the cart count on the user card dot, for students only", () => {
+    const { unmount } = render(<AppSidebar role="student" counts={{ cart: 3 }} />);
+    expect(screen.getByTestId("user-menu-dot")).toHaveTextContent("3");
+    unmount();
+    authStore = { user: { name: "Admin", role: "super_admin" } };
+    render(<AppSidebar role="super_admin" counts={{ cart: 3 }} />);
+    expect(screen.queryByTestId("user-menu-dot")).toBeNull();
+  });
+
+  it("marks no nav item active on /cart", () => {
+    nav.pathname = "/cart";
+    render(<AppSidebar role="student" />);
+    expect(within(screen.getByRole("navigation")).queryByRole("link", { current: "page" })).toBeNull();
+  });
+});

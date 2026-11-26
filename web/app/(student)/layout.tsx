@@ -4,7 +4,13 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
-import { useProfile } from "@/lib/hooks/students";
+import { useProfile, useSchoolById } from "@/lib/hooks/students";
+import { useRegistrations } from "@/lib/hooks/exam";
+import { useOrders } from "@/lib/hooks/orders";
+import { useCartStore } from "@/stores/cart";
+import { kompetisiCount, pendingCount } from "@/lib/student-home";
+import { formatGrade } from "@/lib/grade";
+import { useTranslation } from "@/lib/i18n";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { isProfileComplete } from "@/lib/profile";
 import { AppShell } from "@/components/shell/AppShell";
@@ -50,6 +56,22 @@ export default function StudentLayout({
   // falling back to the persisted login user until the fetch lands.
   const authUser = useAuthStore((s) => s.user);
   const { data: me } = useMe({ enabled: hydrated && !!token && !meIsError });
+  const { t } = useTranslation();
+  const { data: regs } = useRegistrations();
+  const { data: orders } = useOrders();
+  const cart = useCartStore((s) => s.count);
+  const { data: school } = useSchoolById(profile?.unlisted_school_name ? "" : profile?.school_id);
+  const counts = {
+    kompetisi: kompetisiCount(regs ?? [], Date.now()),
+    tagihan: pendingCount(orders ?? []),
+    cart,
+  };
+  const subtitle = [
+    profile?.grade != null ? `${t("grade")} ${formatGrade(profile.grade)}` : "",
+    profile?.unlisted_school_name || school?.name || "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const [pwNoticeDismissed, setPwNoticeDismissed] = useState(false);
   const mustChangePassword =
     me?.password_temporary ?? authUser?.password_temporary ?? false;
@@ -141,7 +163,7 @@ export default function StudentLayout({
 
   return (
     <>
-      <AppShell role="student">{children}</AppShell>
+      <AppShell role="student" counts={counts} subtitle={subtitle}>{children}</AppShell>
       {mustChangePassword && !pwNoticeDismissed && (
         <PasswordTemporaryModal
           open

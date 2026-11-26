@@ -30,6 +30,7 @@ interface SidebarUserMenuProps {
   role: UserRole;
   counts?: Record<string, number>;
   dotCountKey?: string;
+  subtitle?: string;
 }
 
 const LANGS: Lang[] = ["id", "en"];
@@ -82,7 +83,7 @@ function LanguageRow({ item }: { item: UserMenuItem }) {
   );
 }
 
-function ThemeRow({ item }: { item: UserMenuItem }) {
+function ThemeRow() {
   const { t } = useTranslation();
   const theme = useUIStore((s) => s.theme);
   const toggleTheme = useUIStore((s) => s.toggleTheme);
@@ -90,7 +91,7 @@ function ThemeRow({ item }: { item: UserMenuItem }) {
   return (
     <DropdownMenuItem className={ROW} onSelect={toggleTheme}>
       <Icon className="size-5 text-ink-600" />
-      <span>{t(item.labelKey)}</span>
+      <span>{theme === "dark" ? t("light_mode") : t("dark_mode")}</span>
     </DropdownMenuItem>
   );
 }
@@ -122,7 +123,7 @@ function LinkRow({ item, count }: { item: UserMenuItem; count?: number }) {
   );
 }
 
-export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuProps) {
+export function SidebarUserMenu({ role, counts, dotCountKey, subtitle }: SidebarUserMenuProps) {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
   const logout = useLogout();
@@ -136,6 +137,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
       ? affiliatorRoleLabelKey(me.data?.affiliator_programs)
       : roleLabelKey(role ?? user?.role);
   const roleLabel = roleKey ? t(roleKey) : t("account");
+  const cardSubtitle = subtitle || roleLabel;
   const dot = dotCountKey ? counts?.[dotCountKey] : undefined;
 
   function handleLogout() {
@@ -165,7 +167,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
           {avatar}
           <span className="min-w-0 flex-1">
             <span className="block truncate type-label text-ink-900">{name}</span>
-            <span className="block truncate type-caption text-ink-600">{roleLabel}</span>
+            <span className="block truncate type-caption text-ink-600">{cardSubtitle}</span>
           </span>
           {dot !== undefined && dot > 0 && (
             <span
@@ -199,7 +201,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey }: SidebarUserMenuPr
           item.action === "language" ? (
             <LanguageRow key={item.labelKey} item={item} />
           ) : item.action === "theme" ? (
-            <ThemeRow key={item.labelKey} item={item} />
+            <ThemeRow key={item.labelKey} />
           ) : (
             <LinkRow key={item.labelKey} item={item} count={item.countKey ? counts?.[item.countKey] : undefined} />
           )

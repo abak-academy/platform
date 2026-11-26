@@ -40,10 +40,11 @@ function useIsLg() {
 interface AppShellProps {
   role: UserRole;
   counts?: Record<string, number>;
+  subtitle?: string;
   children: React.ReactNode;
 }
 
-export function AppShell({ role, counts, children }: AppShellProps) {
+export function AppShell({ role, counts, subtitle, children }: AppShellProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -77,7 +78,7 @@ export function AppShell({ role, counts, children }: AppShellProps) {
   return (
     <div className={cn("flex min-h-screen bg-paper", adminLook && "admin-shell")}>
       <aside inert={open} className="fixed left-0 top-0 z-30 hidden h-screen w-sidebar flex-col border-r border-line bg-surface lg:flex">
-        <AppSidebar role={role} counts={counts} />
+        <AppSidebar role={role} counts={counts} subtitle={subtitle} />
       </aside>
 
       {open && (
@@ -104,7 +105,7 @@ export function AppShell({ role, counts, children }: AppShellProps) {
             >
               <X className="size-5 text-ink-600" />
             </Button>
-            <AppSidebar role={role} counts={counts} />
+            <AppSidebar role={role} counts={counts} subtitle={subtitle} />
           </aside>
         </>
       )}

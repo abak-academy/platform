@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Trophy,
   BookOpen,
-  ShoppingBag,
   Receipt,
   User,
   Package,
@@ -32,6 +31,7 @@ import {
   Ticket,
   Layers,
   Languages,
+  Moon,
   Globe,
 } from "lucide-react";
 
@@ -90,11 +90,9 @@ const STUDENT_NAV: RoleNavConfig = [
   {
     items: [
       { labelKey: "nav_dashboard", href: "/", icon: LayoutDashboard, exact: true },
-      { labelKey: "nav_competition", href: "/exam", icon: Trophy },
+      { labelKey: "nav_competition", href: "/exam", icon: Trophy, countKey: "kompetisi" },
       { labelKey: "nav_courses", href: "/courses", icon: BookOpen },
-      { labelKey: "nav_store", href: "/catalog", icon: ShoppingBag },
-      { labelKey: "nav_billing", href: "/orders", icon: Receipt },
-      { labelKey: "nav_profile", href: "/profile", icon: User },
+      { labelKey: "nav_billing", href: "/orders", icon: Receipt, countKey: "tagihan" },
     ],
   },
 ];
@@ -231,6 +229,13 @@ const profileMenu = (href: string): UserMenuItem[] => [
   LANGUAGE_ITEM,
 ];
 
+const STUDENT_MENU: UserMenuItem[] = [
+  { labelKey: "stu_menu_cart", icon: ShoppingCart, href: "/cart", countKey: "cart" },
+  { labelKey: "dark_mode", icon: Moon, action: "theme" },
+  LANGUAGE_ITEM,
+  { labelKey: "stu_menu_profile", icon: User, href: "/profile" },
+];
+
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;
 const ADMIN_MENU: UserMenuItem[] = [
   { labelKey: "user_menu_account_role", icon: UserCog, href: "/admin/profile" },
@@ -241,7 +246,7 @@ const ADMIN_MENU: UserMenuItem[] = [
 ];
 
 export const USER_MENU: Record<UserRole, UserMenuItem[]> = {
-  student: profileMenu("/profile"),
+  student: STUDENT_MENU,
   affiliator: profileMenu("/affiliate/account"),
   admin_store: ADMIN_MENU,
   admin_exam: ADMIN_MENU,

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 interface AppSidebarProps {
   role: UserRole;
   counts?: Record<string, number>;
+  subtitle?: string;
 }
 
 function isNavActive(pathname: string, item: NavItem): boolean {
@@ -169,7 +170,7 @@ function GroupSection({
   );
 }
 
-export function AppSidebar({ role, counts }: AppSidebarProps) {
+export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
   const pathname = usePathname();
   const { t } = useTranslation();
   const me = useMe({ enabled: role === "affiliator" });
@@ -238,7 +239,7 @@ export function AppSidebar({ role, counts }: AppSidebarProps) {
       </nav>
 
       <div className="mt-auto border-t border-line p-3">
-        <SidebarUserMenu role={role} counts={counts} />
+        <SidebarUserMenu role={role} counts={counts} dotCountKey={role === "student" ? "cart" : undefined} subtitle={subtitle} />
       </div>
     </>
   );

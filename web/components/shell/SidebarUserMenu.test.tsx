@@ -84,18 +84,41 @@ describe("SidebarUserMenu", () => {
     );
   });
 
-  it("gives student and affiliator Profil, Bahasa, Keluar with today's routes", async () => {
+  it("gives the student Keranjang with count, theme, Bahasa, Profil & akun, Keluar and no Notifikasi", async () => {
     const user = userEvent.setup();
-    const { unmount } = render(<SidebarUserMenu role="student" />);
+    const { unmount } = render(<SidebarUserMenu role="student" counts={{ cart: 2 }} />);
     let menu = await openMenu(user);
     expect(within(menu).getAllByRole("menuitem").map((e) => e.textContent)).toEqual([
-      expect.stringContaining("nav_profile"),
+      expect.stringMatching(/stu_menu_cart.*2/),
+      expect.stringContaining("dark_mode"),
       expect.stringContaining("user_menu_language"),
+      expect.stringContaining("stu_menu_profile"),
       expect.stringContaining("logout"),
     ]);
-    expect(within(menu).getByRole("menuitem", { name: /nav_profile/ })).toHaveAttribute("href", "/profile");
+    expect(within(menu).getByRole("menuitem", { name: /stu_menu_cart/ })).toHaveAttribute("href", "/cart");
+    expect(within(menu).getByRole("menuitem", { name: /stu_menu_profile/ })).toHaveAttribute("href", "/profile");
+    expect(within(menu).queryByRole("menuitem", { name: /notif/i })).toBeNull();
     unmount();
 
+    useUIStore.setState({ theme: "dark" });
+    render(<SidebarUserMenu role="student" />);
+    menu = await openMenu(user);
+    expect(within(menu).getByRole("menuitem", { name: /light_mode/ })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: /dark_mode/ })).toBeNull();
+  });
+
+  it("shows the subtitle on the card instead of the role label, and falls back when empty", () => {
+    const { rerender } = render(<SidebarUserMenu role="student" subtitle="Kelas 12 · SMAN 1" />);
+    const card = screen.getByRole("button", { name: "user_menu_label" });
+    expect(within(card).getByText("Kelas 12 · SMAN 1")).toBeInTheDocument();
+    expect(within(card).queryByText("role_student")).toBeNull();
+    rerender(<SidebarUserMenu role="student" subtitle="" />);
+    expect(within(card).getByText("role_student")).toBeInTheDocument();
+  });
+
+  it("gives the affiliator Profil, Bahasa, Keluar", async () => {
+    const user = userEvent.setup();
+    let menu: HTMLElement;
     render(<SidebarUserMenu role="affiliator" />);
     menu = await openMenu(user);
     expect(within(menu).getByRole("menuitem", { name: /nav_profile/ })).toHaveAttribute("href", "/affiliate/account");

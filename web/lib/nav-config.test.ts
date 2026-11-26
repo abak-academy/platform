@@ -158,11 +158,27 @@ describe("USER_MENU", () => {
     }
   });
 
-  it("keeps Profil then Bahasa for student and affiliator", () => {
-    expect(USER_MENU.student.map((i) => [i.labelKey, i.href ?? i.action])).toEqual([
-      ["nav_profile", "/profile"],
-      ["user_menu_language", "language"],
+  it("gives the student exactly Beranda, Kompetisi, Kursus Saya, Tagihan in one ungrouped list", () => {
+    expect(NAV_CONFIG.student).toHaveLength(1);
+    expect(NAV_CONFIG.student[0].titleKey).toBeUndefined();
+    expect(NAV_CONFIG.student[0].items.map((i) => [i.href, i.countKey])).toEqual([
+      ["/", undefined],
+      ["/exam", "kompetisi"],
+      ["/courses", undefined],
+      ["/orders", "tagihan"],
     ]);
+  });
+
+  it("gives the student Keranjang, theme, Bahasa, Profil & akun", () => {
+    expect(USER_MENU.student.map((i) => [i.labelKey, i.href ?? i.action, i.countKey])).toEqual([
+      ["stu_menu_cart", "/cart", "cart"],
+      ["dark_mode", "theme", undefined],
+      ["user_menu_language", "language", undefined],
+      ["stu_menu_profile", "/profile", undefined],
+    ]);
+  });
+
+  it("keeps Profil then Bahasa for the affiliator", () => {
     expect(USER_MENU.affiliator.map((i) => [i.labelKey, i.href ?? i.action])).toEqual([
       ["nav_profile", "/affiliate/account"],
       ["user_menu_language", "language"],
