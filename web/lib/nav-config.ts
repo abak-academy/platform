@@ -18,6 +18,7 @@ import {
   Calendar,
   Building,
   Settings,
+  MessageSquareQuote,
   ShieldCheck,
   Store,
   Wallet,
@@ -107,6 +108,7 @@ const ANNOUNCEMENTS: NavItem = { labelKey: "nav_announcements", href: "/admin/no
 const ORDERS: NavItem = { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt };
 const PRODUCTS: NavItem = { labelKey: "admin_nav_products", href: "/admin/products", icon: Package };
 const EVENT: NavItem = { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Layers };
+const TESTIMONIALS: NavItem = { labelKey: "admin_nav_testimonials", href: "/admin/testimonials", icon: MessageSquareQuote };
 const COURSES: NavItem = { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library };
 const PROMOS: NavItem = { labelKey: "promos", href: "/admin/promos", icon: Tag };
 
@@ -135,6 +137,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   home("/admin"),
   academicItems(
     EVENT,
+    TESTIMONIALS,
     PACKAGES,
     MONITOR,
     TESTS,

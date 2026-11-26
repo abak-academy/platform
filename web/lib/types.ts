@@ -2349,3 +2349,36 @@ export interface PublicEvent {
   schedule: PublicMilestone[];
   open_editions: PublicEdition[];
 }
+
+export interface TestimonialLocaleContent {
+  quote: string;
+  achievements: string[];
+}
+
+export interface AdminTestimonial {
+  id: string;
+  name: string;
+  role_label: string;
+  photo_key: string | null;
+  content: { id?: TestimonialLocaleContent; en?: TestimonialLocaleContent };
+  has_consent: boolean;
+  consent_note: string | null;
+  consent_by: string | null;
+  consent_by_name: string | null;
+  consent_at: string | null;
+  is_visible: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminTestimonialInput {
+  name?: string;
+  role_label?: string;
+  photo_key?: string | null;
+  content?: AdminTestimonial["content"];
+  has_consent?: boolean;
+  consent_note?: string | null;
+  is_visible?: boolean;
+  sort_order?: number;
+}
