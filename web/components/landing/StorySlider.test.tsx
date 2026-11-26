@@ -20,6 +20,14 @@ describe("StorySlider", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("splits photo and text 1:1 and lets the photo fill the text's height, not a fixed 4:5", () => {
+    const { container } = render(<StorySlider items={[item(1)]} />);
+    const photo = container.querySelector<HTMLElement>("[data-story-photo]")!;
+    expect(photo.parentElement!.className).toContain("md:grid-cols-2");
+    expect(photo.className).not.toContain("aspect-[4/5]");
+    expect(photo.querySelector("img")!.className).toContain("absolute");
+  });
+
   it("shows one story with its photo, role, chips and counter", () => {
     render(<StorySlider items={[item(1, { achievements: ["A", "B", "C", "D"] }), item(2)]} />);
     expect(screen.getByRole("heading", { name: "Cerita peserta" })).toBeInTheDocument();
