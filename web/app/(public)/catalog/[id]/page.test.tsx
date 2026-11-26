@@ -95,7 +95,7 @@ describe("ProductDetailPage", () => {
   it("goes back in history instead of a fixed /catalog link", async () => {
     await renderPage();
 
-    await userEvent.click(screen.getByRole("button", { name: /katalog/i }));
+    await userEvent.click(screen.getByRole("button", { name: /toko/i }));
 
     expect(routerBack).toHaveBeenCalledTimes(1);
   });
