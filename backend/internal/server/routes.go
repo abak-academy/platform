@@ -37,6 +37,9 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	productGroupings := v1.Group("/product-groupings")
 	productGroupings.GET("", h.ListProductGroupings)
 
+	v1.GET("/event-series", h.ListEventSeries)
+	v1.GET("/event-series/:slug", h.GetEventSeries)
+
 	// Admin product routes
 	admin := v1.Group("/admin")
 	admin.Use(handler.JWTMiddleware(svc, jwtSigner))
