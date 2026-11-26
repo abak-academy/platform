@@ -330,6 +330,8 @@ test("5 carousel stable height, inert, autoplay, reduced motion", async ({ page,
   expect(inertState[1]).toBe(false);
 
   const active = () => dots.evaluateAll((els) => els.findIndex((e) => e.getAttribute("aria-current") === "true"));
+  // The dot click left focus inside the carousel, which pauses autoplay by design.
+  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await page.mouse.move(5, 5);
   await page.waitForTimeout(150);
   const a0 = await active();
