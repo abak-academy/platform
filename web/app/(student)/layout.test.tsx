@@ -5,8 +5,22 @@ import { useCartStore } from "@/stores/cart";
 
 const replace = vi.fn();
 
+let pathname = "/orders";
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
+  usePathname: () => pathname,
+}));
+
+const useGuestCartMerge = vi.fn();
+vi.mock("@/lib/guest-cart-merge", () => ({
+  useGuestCartMerge: (enabled: boolean) => useGuestCartMerge(enabled),
+}));
+
+vi.mock("@/components/shell/PublicShell", () => ({
+  PublicShell: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="public-shell">{children}</div>
+  ),
 }));
 
 vi.mock("next/script", () => ({
@@ -97,6 +111,8 @@ vi.mock("@/components/auth/PasswordTemporaryModal", () => ({
 describe("StudentLayout", () => {
   beforeEach(() => {
     replace.mockClear();
+    useGuestCartMerge.mockClear();
+    pathname = "/orders";
     PasswordTemporaryModal.mockClear();
     authStore = { token: null, user: null };
     roleState = { role: undefined, hydrated: true, meIsError: false };
@@ -333,6 +349,94 @@ describe("StudentLayout", () => {
     it("leaves the subtitle empty when the profile has neither", async () => {
       profileState.data = { auth_provider: "password" };
       expect((await mountStudent()).dataset.subtitle).toBe("");
+    });
+  });
+
+  describe("guest paths", () => {
+    it("renders the public shell for a hydrated guest on / without redirecting", async () => {
+      pathname = "/";
+      const { getByTestId, queryByText } = render(<StudentLayout>landing</StudentLayout>);
+      expect(getByTestId("public-shell")).toHaveTextContent("landing");
+      expect(queryByText("Memuat…")).not.toBeInTheDocument();
+      await waitFor(() => expect(useGuestCartMerge).toHaveBeenCalled());
+      expect(replace).not.toHaveBeenCalled();
+    });
+
+    it("renders the public shell for a hydrated guest on /cart", () => {
+      pathname = "/cart";
+      const { getByTestId } = render(<StudentLayout>cart</StudentLayout>);
+      expect(getByTestId("public-shell")).toBeInTheDocument();
+      expect(replace).not.toHaveBeenCalled();
+    });
+
+    it("still redirects a guest on any other path", async () => {
+      pathname = "/orders";
+      const { queryByTestId } = render(<StudentLayout>x</StudentLayout>);
+      await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+      expect(queryByTestId("public-shell")).not.toBeInTheDocument();
+    });
+
+    it("prerenders the landing on / before hydration, not Memuat", () => {
+      pathname = "/";
+      roleState = { role: undefined, hydrated: false, meIsError: false };
+      const { getByTestId, queryByText } = render(<StudentLayout>landing</StudentLayout>);
+      expect(getByTestId("public-shell")).toBeInTheDocument();
+      expect(queryByText("Memuat…")).not.toBeInTheDocument();
+    });
+
+    it("keeps Memuat on /cart before hydration", () => {
+      pathname = "/cart";
+      roleState = { role: undefined, hydrated: false, meIsError: false };
+      const { getByText, queryByTestId } = render(<StudentLayout>cart</StudentLayout>);
+      expect(getByText("Memuat…")).toBeInTheDocument();
+      expect(queryByTestId("public-shell")).not.toBeInTheDocument();
+    });
+
+    it("gives a student the app shell on /", async () => {
+      pathname = "/";
+      authStore = { token: "t", user: { role: "student" } };
+      roleState = { role: "student", hydrated: true, meIsError: false };
+      const { getByTestId, queryByTestId } = render(<StudentLayout>dash</StudentLayout>);
+      await waitFor(() => expect(getByTestId("shell")).toBeInTheDocument());
+      expect(queryByTestId("public-shell")).not.toBeInTheDocument();
+    });
+
+    it("redirects an admin on / to /admin", async () => {
+      pathname = "/";
+      authStore = { token: "t", user: { role: "super_admin" } };
+      roleState = { role: "super_admin", hydrated: true, meIsError: false };
+      const { queryByTestId } = render(<StudentLayout>x</StudentLayout>);
+      await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin"));
+      expect(queryByTestId("public-shell")).not.toBeInTheDocument();
+    });
+  });
+
+  describe("guest cart merge", () => {
+    const lastEnabled = () => useGuestCartMerge.mock.calls.at(-1)?.[0];
+
+    it("is enabled for a ready student", () => {
+      authStore = { token: "t", user: { role: "student" } };
+      roleState = { role: "student", hydrated: true, meIsError: false };
+      render(<StudentLayout>x</StudentLayout>);
+      expect(lastEnabled()).toBe(true);
+    });
+
+    it("is disabled while the profile is pending", () => {
+      authStore = { token: "t", user: { role: "student" } };
+      roleState = { role: "student", hydrated: true, meIsError: false };
+      profileState = { data: undefined, isLoading: true, isFetching: true, isError: false };
+      render(<StudentLayout>x</StudentLayout>);
+      expect(lastEnabled()).toBe(false);
+    });
+
+    it("is disabled for a guest and for an admin", () => {
+      render(<StudentLayout>x</StudentLayout>);
+      expect(lastEnabled()).toBe(false);
+      useGuestCartMerge.mockClear();
+      authStore = { token: "t", user: { role: "super_admin" } };
+      roleState = { role: "super_admin", hydrated: true, meIsError: false };
+      render(<StudentLayout>x</StudentLayout>);
+      expect(lastEnabled()).toBe(false);
     });
   });
 });

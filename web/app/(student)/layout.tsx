@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
 import { useProfile, useSchoolById } from "@/lib/hooks/students";
@@ -14,12 +14,16 @@ import { useTranslation } from "@/lib/i18n";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { isProfileComplete } from "@/lib/profile";
 import { AppShell } from "@/components/shell/AppShell";
+import { PublicShell } from "@/components/shell/PublicShell";
+import { useGuestCartMerge } from "@/lib/guest-cart-merge";
 import { PasswordTemporaryModal } from "@/components/auth/PasswordTemporaryModal";
 import { ADMIN_ROLES } from "@/lib/nav-config";
 
 const SNAP_SRC =
   process.env.NEXT_PUBLIC_MIDTRANS_SNAP_URL ??
   "https://app.sandbox.midtrans.com/snap/snap.js";
+
+const GUEST_PATHS = ["/", "/cart"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080/api/v1";
 
@@ -30,6 +34,8 @@ export default function StudentLayout({
 }) {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
+  const pathname = usePathname();
+  const isGuestPath = GUEST_PATHS.includes(pathname);
 
   // Server truth, not the persisted user object: a stored session that lost its
   // user (an old persisted blob, a hand-edited localStorage) left `role`
@@ -76,10 +82,12 @@ export default function StudentLayout({
   const mustChangePassword =
     me?.password_temporary ?? authUser?.password_temporary ?? false;
 
+  useGuestCartMerge(hydrated && !!token && role === "student" && !profilePending);
+
   useEffect(() => {
     if (!hydrated) return;
     if (!token) {
-      router.replace("/login");
+      if (!isGuestPath) router.replace("/login");
       return;
     }
     if (meIsError) {
@@ -92,7 +100,7 @@ export default function StudentLayout({
     if (role === "affiliator") {
       router.replace("/affiliate");
     }
-  }, [hydrated, token, meIsError, role, router]);
+  }, [hydrated, token, meIsError, role, router, isGuestPath]);
 
   // Google-only gate: incomplete Google students go to /complete-profile.
   // Password students with NULL school_id are never redirected.
@@ -144,6 +152,10 @@ export default function StudentLayout({
   // Show loading while profile resolves (gate needs it) or during no-token/admin
   // checks. An unresolved role holds the shell back too — rendering it would put
   // an unidentified session inside the student UI.
+  if (isGuestPath && !token && (hydrated || pathname === "/")) {
+    return <PublicShell>{children}</PublicShell>;
+  }
+
   if (!hydrated || !token || !role || ADMIN_ROLES.includes(role) || role === "affiliator" || profilePending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
