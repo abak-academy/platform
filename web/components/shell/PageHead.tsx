@@ -58,7 +58,7 @@ export function PageHead({ title, sub, eyebrow, actions, back, className, highli
   return (
     <header className={cn("flex flex-col gap-1", home && "pt-6 pb-1 max-narrow:pt-3", className)}>
       {back && (
-        <Link href={back.href} className="inline-flex w-fit items-center gap-1 type-label-sm text-ink-600 hover:text-ink-900">
+        <Link href={back.href} className="mb-5 inline-flex w-full items-center gap-1 text-[13px] leading-normal font-semibold text-ink-600 hover:text-ink-900">
           <ChevronLeft className="size-4" aria-hidden />
           {back.label}
         </Link>

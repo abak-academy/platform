@@ -66,7 +66,6 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
   return (
     <>
       <PageHead
-        className={BACK_HEAD}
         back={{ href: backHref, label: backLabel }}
         title={<span className="[overflow-wrap:anywhere]">{exam.title}</span>}
         sub={t("examdetail_subtitle")}
@@ -323,8 +322,6 @@ const TILE_TONE = {
   berry: "bg-berry-50 text-berry-700",
 } as const;
 
-// Prototype .back sits 4px above the head, then the shell's 20px gap; its label is 600, not the label-sm 700.
-export const BACK_HEAD = "gap-6 [&>a]:font-semibold [&>a]:leading-[normal]";
 const BTN = "px-[18px] has-[>svg]:px-[18px]";
 const PANEL = "flex min-w-0 flex-col gap-1 rounded-[20px] bg-surface-sunken p-[18px]";
 const PANEL_MONO = "mt-2 font-mono text-[10px] leading-[1.4] font-semibold tracking-[0.12em] text-ink-600 uppercase";

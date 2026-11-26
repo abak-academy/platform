@@ -14,7 +14,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHead } from "@/components/shell/PageHead";
 import { AbakAvatar } from "@/components/ui/abak-avatar";
-import { BACK_HEAD } from "@/components/exam/ExamBriefing";
 
 export default function SessionLeaderboardPage() {
   const { t } = useTranslation();
@@ -101,7 +100,6 @@ export default function SessionLeaderboardPage() {
 
   const head = (
     <PageHead
-      className={BACK_HEAD}
       back={{ href: `/exam/sessions/${sessionId}/result`, label: t("competition_detail_back") }}
       title={t("view_leaderboard")}
     />

@@ -72,17 +72,17 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo, a
   const { t } = useTranslation();
 
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-line bg-card px-4 py-3 shadow-card">
+    <div className="flex flex-wrap items-center gap-3.5 rounded-[20px] border border-line bg-card px-3.5 py-2.5">
       <span className="type-overline text-ink-600">{t("admin_home_period")}</span>
 
-      <div className={`flex ${allowAllTime ? "flex-wrap " : ""}gap-1 rounded-[var(--radius-pill)] bg-surface-sunken p-1`} role="group">
+      <div className={`flex ${allowAllTime ? "flex-wrap " : ""}gap-1 rounded-[var(--radius-pill)] border border-line bg-surface p-[5px]`} role="group">
         {(allowAllTime ? [...PRESETS, { id: "all_time" as const, key: "admin_unit_all_time" as const }] : PRESETS).map((p) => (
           <button
             key={p.id}
             type="button"
             aria-pressed={preset === p.id}
             onClick={() => onChange(p.id, p.id === "custom" ? range : presetRange(p.id))}
-            className={`rounded-[var(--radius-pill)] px-3 py-1.5 type-label-sm transition-colors ${
+            className={`rounded-[var(--radius-pill)] h-[27px] px-3 text-xs font-bold transition-colors ${
               preset === p.id ? "bg-brand-600 text-on-brand shadow-brand" : "text-ink-600 hover:text-ink-900"
             }`}
           >
@@ -115,8 +115,10 @@ export function PeriodBar({ preset, range, onChange, resolvedFrom, resolvedTo, a
       {resolvedFrom && resolvedTo && (
         <span className="ml-auto type-body-sm text-ink-600">
           {t("admin_home_period_showing")
-            .replace("{from}", resolvedFrom)
-            .replace("{to}", resolvedTo)}
+            .split(/(\{from\}|\{to\})/)
+            .map((part, i) =>
+              part === "{from}" || part === "{to}" ? <b key={i} className="font-bold text-ink-900">{part === "{from}" ? resolvedFrom : resolvedTo}</b> : part,
+            )}
         </span>
       )}
     </div>

@@ -328,7 +328,7 @@ function EditionRow({
 function Field({ id, label, children, hint }: { id: string; label: string; children: React.ReactNode; hint?: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
-      <Label htmlFor={id} className="font-[family-name:var(--font-display)] text-[13px] leading-[1.4] font-bold">{label}</Label>
+      <Label htmlFor={id}>{label}</Label>
       {children}
       {hint}
     </div>

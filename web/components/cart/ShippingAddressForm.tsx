@@ -184,21 +184,21 @@ export function ShippingAddressForm({
 
       <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-[7px]">
-          <Label htmlFor="penerima" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="penerima">
             {t("cart_address_recipient" as any)}
           </Label>
           <input id="penerima" className={FIELD_CLASS} value={penerima}
             onChange={(e) => setPenerima(e.target.value)} />
         </div>
         <div className="flex min-w-0 flex-col gap-[7px]">
-          <Label htmlFor="telepon" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="telepon">
             {t("cart_address_phone" as any)}
           </Label>
           <input id="telepon" className={FIELD_CLASS} value={telepon}
             onChange={(e) => setTelepon(e.target.value)} />
         </div>
         <div className="flex min-w-0 flex-col gap-[7px]">
-          <Label htmlFor="provinsi" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="provinsi">
             {t("students_field_provinsi") || "Province"}
           </Label>
           <Select
@@ -224,7 +224,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex min-w-0 flex-col gap-[7px]">
-          <Label htmlFor="kota" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="kota">
             {t("students_field_kota") || "City"}
           </Label>
           <Select
@@ -251,7 +251,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex min-w-0 flex-col gap-[7px]">
-          <Label htmlFor="kecamatan" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="kecamatan">
             {t("students_field_kecamatan") || "District"}
           </Label>
           <Select
@@ -278,7 +278,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex min-w-0 flex-col gap-[7px]">
-          <Label htmlFor="kode-pos" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="kode-pos">
             {t("students_field_kode_pos") || "Postal Code"}
           </Label>
           <Input
@@ -291,7 +291,7 @@ export function ShippingAddressForm({
           />
         </div>
         <div className="flex min-w-0 flex-col gap-[7px] sm:col-span-2">
-          <Label htmlFor="alamat" className="type-label-sm font-bold text-ink-900">
+          <Label htmlFor="alamat">
             {t("cart_address_street" as any)}
           </Label>
           <textarea id="alamat" className={cn(FIELD_CLASS, "h-auto min-h-24 resize-y py-3")} value={alamat}

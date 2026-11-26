@@ -63,4 +63,15 @@ describe("Button", () => {
     expect(cls("Go")).toContain("focus-visible:outline-brand-600");
     expect(cls("Go")).toContain("disabled:opacity-45");
   });
+
+  it("keeps 18px padding with an icon and a transparent border so outline and filled match", () => {
+    render(<><Button>md</Button><Button size="sm">sm</Button><Button size="lg">lg</Button></>);
+    expect(cls("md")).toContain("px-[18px]");
+    expect(cls("md")).not.toContain("has-[>svg]");
+    expect(cls("md")).toContain("border-transparent");
+    expect(cls("sm")).toContain("px-[13px]");
+    expect(cls("sm")).toContain("gap-1.5");
+    expect(cls("lg")).toContain("px-6");
+    expect(cls("lg")).toContain("text-[15px]");
+  });
 });

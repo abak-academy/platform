@@ -15,7 +15,7 @@ export const LEVEL_TONE: Record<string, string> = {
 export function LevelBadge({ level }: { level: string }) {
   const { t } = useTranslation();
   return (
-    <Badge variant={statusTone(level)} className="gap-[5px] [&>svg]:size-3.5">
+    <Badge variant={statusTone(level)}>
       <Crown aria-hidden />
       {affLabel(t, level)}
     </Badge>

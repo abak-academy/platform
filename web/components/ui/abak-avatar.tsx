@@ -30,7 +30,7 @@ export function avatarPosition(i: number): string {
 }
 
 const SIZES = { xs: 24, sm: 30, md: 44, lg: 64, xl: 104 } as const;
-const PAPER = "var(--color-paper)";
+const PAPER = "var(--color-surface)";
 
 export type AbakAvatarSize = keyof typeof SIZES | number;
 

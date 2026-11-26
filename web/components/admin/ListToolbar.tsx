@@ -1,9 +1,8 @@
 "use client";
 
-import { Filter, Search, X } from "lucide-react";
+import { Filter, List, Search, X } from "lucide-react";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
@@ -46,15 +45,20 @@ export function ToolbarSearch({
   className?: string;
 }) {
   return (
-    <div className={cn("relative w-full min-w-0 sm:w-80", className)}>
-      <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-ink-600" aria-hidden />
-      <Input
+    <div
+      className={cn(
+        "relative flex h-[var(--spacing-control-md)] w-full min-w-0 items-center gap-2 rounded-full border-[1.5px] border-line bg-surface pr-9 pl-3.5 focus-within:border-brand-600 focus-within:ring-4 focus-within:ring-brand-50 sm:w-80",
+        className
+      )}
+    >
+      <Search className="pointer-events-none size-4 shrink-0 text-ink-600" aria-hidden />
+      <input
         type="search"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-[var(--spacing-control-md)] rounded-full pr-9 pl-9 text-[15px]"
+        className="h-full min-w-0 flex-1 bg-transparent text-[15px] text-ink-900 outline-none placeholder:text-ink-600"
       />
       {value && (
         <button
@@ -77,7 +81,7 @@ export const ToolbarFilterButton = React.forwardRef<
   <Button
     ref={ref}
     variant="outline"
-    className={cn("data-[state=open]:border-brand-600 data-[state=open]:text-brand-ink", className)}
+    className={cn("border data-[state=open]:border-brand-600 data-[state=open]:text-brand-ink", className)}
     aria-label={`${label}${count ? ` (${count})` : ""}`}
     {...props}
   >
@@ -163,7 +167,8 @@ export function ToolbarSort({
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger size="pill" className="h-[var(--spacing-control-md)] min-w-0 flex-1 sm:flex-none" aria-label={label}>
+      <SelectTrigger size="pill" className="h-[var(--spacing-control-md)] min-w-0 flex-1 gap-1.5 pr-1.5 pl-3.5 sm:flex-none [&>span]:flex-1 [&>span]:text-left" aria-label={label}>
+        <List className="size-4 shrink-0 text-ink-600" aria-hidden />
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHead } from "@/components/shell/PageHead";
-import { BACK_HEAD } from "@/components/exam/ExamBriefing";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
@@ -135,7 +134,6 @@ export default function SessionResultPage() {
   return (
     <>
       <PageHead
-        className={BACK_HEAD}
         back={{ href: "/exam", label: t("competition_detail_back") }}
         title={t("result_page_title")}
         actions={

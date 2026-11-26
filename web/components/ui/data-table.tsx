@@ -46,7 +46,7 @@ export function TableItem({
       {thumb}
       <span>
         <b className="block font-[family-name:var(--font-display)] font-bold">{title}</b>
-        {sub && <small className="block text-xs text-ink-600">{sub}</small>}
+        {sub && <small className="block text-xs leading-[1.55] text-ink-600">{sub}</small>}
       </span>
     </span>
   );
@@ -81,8 +81,8 @@ export function DataTable<T>({
       }
       data-testid={dataTestId}
     >
-      <div className="overflow-x-auto">
-        <table role={role("table")} className={cn("w-full border-collapse text-[13.5px]", mc("max-sm:block"))}>
+      <div className="relative overflow-x-auto">
+        <table role={role("table")} className={cn("w-full border-collapse text-[13.5px] [&_[data-slot=abak-avatar]]:shadow-none!", mc("max-sm:block"))}>
           <thead role={role("rowgroup")} className={mc("max-sm:sr-only")}>
             <tr role={role("row")}>
               {columns.map((column) => (
@@ -90,7 +90,7 @@ export function DataTable<T>({
                   key={column.key}
                   role={role("columnheader")}
                   className={cn(
-                    "bg-surface-sunken px-4 py-3 text-left font-mono text-[10.5px] font-semibold tracking-[.1em] whitespace-nowrap text-ink-600 uppercase",
+                    "bg-surface-sunken px-4 py-3 text-left font-mono text-[10.5px] leading-normal font-semibold tracking-[.1em] whitespace-nowrap text-ink-600 uppercase",
                     column.align === "right" && "text-right",
                     stickyHeader && "sticky top-0 z-10"
                   )}

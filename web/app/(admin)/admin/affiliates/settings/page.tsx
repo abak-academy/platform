@@ -129,7 +129,7 @@ function SettingsContent() {
     if (key === "launch_date") {
       return (
         <div key={key}>
-          <Label htmlFor={id} className="mb-[7px] block font-[family-name:var(--font-display)] text-[13px] leading-[1.4] font-bold">{fieldLabel(key)}</Label>
+          <Label htmlFor={id} className="mb-[7px]">{fieldLabel(key)}</Label>
           <Input id={id} type="date" value={form.launchDate} onChange={(e) => setForm({ ...form, launchDate: e.target.value })} />
           <p className="mt-1.5 text-xs leading-relaxed text-ink-600">{t(hintKey(key))}</p>
         </div>
@@ -275,7 +275,7 @@ function RuleFieldCompact({ id, label, rule, onChange }: { id: string; label: st
   const { t } = useTranslation();
   return (
     <div>
-      <Label htmlFor={id} className="mb-[7px] block font-[family-name:var(--font-display)] text-[13px] leading-[1.4] font-bold">{label}</Label>
+      <Label htmlFor={id} className="mb-[7px]">{label}</Label>
       <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2">
         <RuleTypeSelect label={`${label} ${t("admin_aff_rule_type")}`} value={rule.type} onChange={(type) => onChange({ type })} />
         <Input id={id} inputMode="decimal" value={rule.value} onChange={(e) => onChange({ value: e.target.value })} />

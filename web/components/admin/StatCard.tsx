@@ -1,3 +1,4 @@
+import type * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +9,7 @@ interface StatCardProps {
   label: string;
   value: string;
   icon?: LucideIcon;
-  trend?: string;
+  trend?: React.ReactNode;
   accent?: StatAccent;
   tone?: StatTone;
   className?: string;
@@ -50,7 +51,7 @@ export function StatCard({ label, value, icon: Icon, trend, accent = "primary", 
       <div className="font-[family-name:var(--font-display)] text-[28px] leading-[1.15] font-extrabold tracking-[-0.03em] text-ink-900 max-narrow:text-[22px]">
         {value}
       </div>
-      {trend ? <div className="text-xs text-ink-600">{trend}</div> : null}
+      {trend ? <div className="text-xs leading-[1.55] text-ink-600">{trend}</div> : null}
     </div>
   );
 }

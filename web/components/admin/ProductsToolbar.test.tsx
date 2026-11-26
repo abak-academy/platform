@@ -54,7 +54,7 @@ describe("ProductsToolbar", () => {
   it("has no count, chips or clear button without active filters", () => {
     renderToolbar();
     expect(screen.getByRole("button", { name: "Filters" })).toHaveTextContent(/^Filters$/);
-    expect(screen.getByRole("searchbox", { name: "Search product name" })).toHaveClass("rounded-full");
+    expect(screen.getByRole("searchbox", { name: "Search product name" }).parentElement).toHaveClass("rounded-full");
     expect(screen.queryByRole("group", { name: "Active filters" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Rows per page" })).not.toBeInTheDocument();

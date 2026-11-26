@@ -5,7 +5,7 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex h-[26px] w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-[var(--radius-pill)] border border-transparent px-[11px] type-label-xs whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
+  "inline-flex h-[26px] w-fit shrink-0 items-center justify-center gap-[5px] overflow-hidden rounded-[var(--radius-pill)] border border-transparent px-[11px] type-label-xs whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3.5",
   {
     variants: {
       variant: {
@@ -27,7 +27,7 @@ const badgeVariants = cva(
         navy: "bg-brand-100 text-brand-800",
         berry: "bg-berry-50 text-berry-700",
         ember: "bg-ember-50 text-ember-700",
-        live: "gap-1.5 bg-ember-600 text-on-ember before:size-1.5 before:rounded-full before:bg-current before:animate-live before:content-['']",
+        live: "gap-[5px] bg-ember-600 text-on-ember before:size-1.5 before:rounded-full before:bg-current before:animate-live before:content-['']",
         count: "h-5 min-w-5 bg-ember-600 px-1.5 text-on-ember",
       },
     },

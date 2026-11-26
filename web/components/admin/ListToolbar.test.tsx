@@ -148,7 +148,7 @@ describe("ListToolbar — prototype chrome", () => {
 
   it("uses a 42px pill search, a 42px filter button with a count pill and a mono count", () => {
     render(<Harness initial={{ q: "", filters: { status: "live" } }} />);
-    expect(screen.getByRole("searchbox")).toHaveClass("h-[var(--spacing-control-md)]", "rounded-full");
+    expect(screen.getByRole("searchbox").parentElement).toHaveClass("h-[var(--spacing-control-md)]", "rounded-full");
     const filter = screen.getByRole("button", { name: "Filter (1)" });
     expect(filter).toHaveClass("rounded-[var(--radius-pill)]");
     expect(within(filter).getByText("1")).toHaveClass("bg-brand-600", "rounded-full");
@@ -164,7 +164,7 @@ describe("ListToolbar — prototype chrome", () => {
     expect(screen.getByRole("combobox", { name: "Jenis" })).toHaveTextContent("Semua");
     expect(status.closest(".grid")).toHaveClass("grid-cols-1", "sm:grid-cols-2", "gap-3");
     expect(document.querySelector(".md-fchip")).toBeNull();
-    expect(screen.getByRole("button", { name: "Tampilkan 12 hasil" })).toHaveClass("bg-ink-900");
+    expect(screen.getByRole("button", { name: "Tampilkan 12 hasil" })).toHaveClass("bg-brand-600");
   });
 
   it("renders the sort as a pill trigger", () => {

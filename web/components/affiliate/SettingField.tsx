@@ -30,7 +30,7 @@ export function SettingField({ id, label, hint, help, value, onChange, placehold
   const unit = help.unit ? t(UNIT_KEYS[help.unit]) : null;
   return (
     <div>
-      <Label htmlFor={id} className="mb-[7px] block font-[family-name:var(--font-display)] text-[13px] leading-[1.4] font-bold">{label}</Label>
+      <Label htmlFor={id} className="mb-[7px]">{label}</Label>
       <div className="relative">
         <Input
           id={id}

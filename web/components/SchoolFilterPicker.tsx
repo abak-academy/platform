@@ -87,7 +87,7 @@ export function SchoolFilterPicker({
   if (compact) {
     return (
       <Select value={selectValue} onValueChange={handleSelect}>
-        <SelectTrigger className={cn("h-9 text-xs", className)} aria-label={label}>
+        <SelectTrigger className={cn("h-[var(--spacing-control-md)] rounded-full text-xs text-ink-600", className)} aria-label={label}>
           <SelectValue placeholder={allLabel} />
         </SelectTrigger>
         <SelectContent>
