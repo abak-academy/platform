@@ -167,28 +167,25 @@ describe("SystemSchoolsPage", () => {
     vi.useRealTimers();
   });
 
-  it("uses the full dashboard width with the white workspace and detail panel", async () => {
+  it("renders the list as one flush card with a toolbar, no detail side panel", async () => {
     renderPage(<SystemSchoolsPage />);
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
-    const table = screen.getByTestId("schools-table");
-    expect(table).not.toHaveClass("md-card-outlined");
-    expect(table.closest(".max-w-6xl")).toBeNull();
-    expect(table.closest(".school-management-workspace")).toHaveClass("bg-surface");
-    expect(screen.getByRole("complementary", { name: "Detail sekolah" })).toBeInTheDocument();
+    const list = screen.getByRole("region", { name: "Daftar sekolah" });
+    expect(list).toHaveClass("md-card-flush");
+    expect(within(list).getByTestId("schools-table")).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Detail sekolah" })).toBeNull();
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   });
 
-  it("updates the detail panel when a school name is selected", async () => {
+  it("opens the edit dialog when a row is clicked", async () => {
     renderPage(<SystemSchoolsPage />);
 
-    const detail = await screen.findByRole("complementary", { name: "Detail sekolah" });
-    expect(within(detail).getByRole("heading", { name: "SMAN 1 Jakarta" })).toBeInTheDocument();
+    fireEvent.click(await screen.findByText("SMAN 2 Jakarta"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Lihat detail SMAN 2 Jakarta" }));
-
-    expect(within(detail).getByRole("heading", { name: "SMAN 2 Jakarta" })).toBeInTheDocument();
-    expect(within(detail).getByText("NPSN 87654321")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByDisplayValue("SMAN 2 Jakarta")).toBeInTheDocument();
   });
 
   it("renders loading state when data is loading and no schools exist", async () => {
@@ -241,10 +238,8 @@ describe("SystemSchoolsPage", () => {
   it("shows total, active, and student counts", async () => {
     renderPage(<SystemSchoolsPage />);
 
-    expect(
-      await screen.findByRole("heading", { name: "2 sekolah ditemukan" }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("500").length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText(/2 sekolah/)).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/500/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders filter chips", async () => {

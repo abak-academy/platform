@@ -6,7 +6,7 @@ import {
   MoreHorizontal,
   Edit,
   Lock,
-  Search,
+  School as SchoolIcon,
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,7 +14,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, TableItem, type DataTableColumn } from "@/components/ui/data-table";
+import { PageHead } from "@/components/shell/PageHead";
+import { ToolbarSearch, ToolbarCount, FilterChip } from "@/components/admin/ListToolbar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -31,7 +33,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { SchoolBulkImportModal } from "@/components/admin/SchoolBulkImportModal";
 import {
@@ -83,7 +84,6 @@ export default function SystemSchoolsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
-  const [inspectedSchoolId, setInspectedSchoolId] = useState("");
   const queryClient = useQueryClient();
   const [createForm, setCreateForm] = useState<SchoolForm>({ ...EMPTY_FORM });
   const [editForm, setEditForm] = useState<SchoolForm>({ ...EMPTY_FORM });
@@ -146,10 +146,6 @@ export default function SystemSchoolsPage() {
   }, [data]);
 
   const rows = schools;
-  const inspectedSchool =
-    schools.find((school) => school.id === inspectedSchoolId) ?? schools[0] ?? null;
-  const inspectorLabel = lang === "en" ? "School details" : "Detail sekolah";
-
   function resetPagination() {
     setSchools([]);
     setFetchCursor(undefined);
@@ -279,32 +275,27 @@ export default function SystemSchoolsPage() {
       key: "school",
       header: t("schools_field_name"),
       cell: (school) => (
-        <button
-          type="button"
-          aria-label={lang === "en" ? `View details for ${school.name}` : `Lihat detail ${school.name}`}
-          className="min-w-0 text-left"
-          onClick={() => setInspectedSchoolId(school.id)}
-        >
-          <span className={cn(
-            "block font-medium",
-            inspectedSchool?.id === school.id ? "text-brand-700" : "text-ink-900",
-          )}>
-            {school.name}
-          </span>
-          <span className="mt-1 block font-mono text-xs text-brand-700">{school.code || "—"}</span>
-        </button>
+        <TableItem
+          thumb={
+            <span className="grid size-[38px] place-items-center rounded-xl bg-sky-50 text-sky-700">
+              <SchoolIcon className="size-5" aria-hidden />
+            </span>
+          }
+          title={school.name}
+          sub={school.code || "—"}
+        />
       ),
     },
     {
       key: "npsn",
       header: t("schools_field_npsn"),
-      className: "font-mono text-xs text-ink-600",
+      className: "font-mono text-xs",
       cell: (school) => school.npsn || "—",
     },
     {
       key: "address",
       header: t("schools_field_alamat"),
-      className: "max-w-xs text-xs text-ink-600",
+      className: "max-w-xs truncate",
       cell: (school) => school.alamat || "—",
     },
     {
@@ -312,7 +303,7 @@ export default function SystemSchoolsPage() {
       header: t("schools_field_school_types"),
       cell: (school) =>
         school.school_types?.length ? (
-          <span className="text-xs text-ink-600">{school.school_types.join(" / ")}</span>
+          <span>{school.school_types.join(" / ")}</span>
         ) : (
           "—"
         ),
@@ -320,22 +311,14 @@ export default function SystemSchoolsPage() {
     {
       key: "students",
       header: t("schools_field_student_count"),
-      className: "text-xs text-ink-600",
+      align: "right",
       cell: (school) => (school.student_count ?? 0).toLocaleString(numberLocale),
     },
     {
       key: "status",
       header: t("accounts_th_status"),
       cell: (school) => (
-        <Badge
-          variant="outline"
-          className={cn(
-            "text-[11px] font-semibold",
-            school.status === "active"
-              ? "border-success bg-success-bg text-success"
-              : "border-danger bg-danger-bg text-danger",
-          )}
-        >
+        <Badge variant={school.status === "active" ? "teal" : "danger"}>
           {school.status === "active" ? t("status_label_active") : t("status_label_inactive")}
         </Badge>
       ),
@@ -369,154 +352,67 @@ export default function SystemSchoolsPage() {
   ];
 
   return (
-    <div className="space-y-6 fade-in">
-      <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
-            {t("schools_title")}
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
-            {lang === "en"
-              ? "Find a registry record, check its identity, then manage the school without leaving the index."
-              : "Cari data sekolah, periksa identitasnya, lalu kelola sekolah tanpa meninggalkan daftar."}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button className="rounded-md" variant="outline" onClick={() => setBulkOpen(true)}>
-            <Upload className="mr-1 size-4" />
-            {t("bulk_school_import_button")}
-          </Button>
-          <Button className="rounded-md" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 size-4" />
-            {t("create")}
-          </Button>
-        </div>
-      </header>
+    <div className="flex flex-col gap-5 fade-in">
+      <PageHead
+        title={t("schools_title")}
+        sub={`${stats.total.toLocaleString(numberLocale)} ${lang === "en" ? "schools" : "sekolah"} · ${stats.active.toLocaleString(numberLocale)} ${t("status_label_active")} · ${stats.students.toLocaleString(numberLocale)} ${t("schools_stat_students")}`}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setBulkOpen(true)}>
+              <Upload className="size-4" />
+              {t("bulk_school_import_button")}
+            </Button>
+            <Button onClick={() => setCreateOpen(true)}>
+              <Plus className="size-4" />
+              {t("create")}
+            </Button>
+          </>
+        }
+      />
 
-      <div className="school-management-workspace overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)]">
-        <div className="flex flex-col gap-3 border-b border-line bg-surface p-4 lg:flex-row lg:items-center">
-          <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-            <Input
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder={t("schools_search_placeholder")}
-              className="h-10 rounded-sm bg-surface pl-9 text-xs"
-            />
-          </div>
+      <section aria-label={lang === "en" ? "School list" : "Daftar sekolah"} className="md-card-flush">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
+          <ToolbarSearch
+            value={searchInput}
+            onChange={setSearchInput}
+            placeholder={t("schools_search_placeholder")}
+            clearLabel={t("list_toolbar_clear_search")}
+          />
           <div className="flex flex-wrap gap-2">
-            <FilterChip
-              active={statusFilter === "all"}
-              onClick={() => setStatusFilter("all")}
-            >
+            <FilterChip on={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
               {t("tab_all")}
             </FilterChip>
-            <FilterChip
-              active={statusFilter === "active"}
-              onClick={() => setStatusFilter("active")}
-            >
+            <FilterChip on={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
               {t("status_label_active")}
             </FilterChip>
-            <FilterChip
-              active={statusFilter === "deactivated"}
-              onClick={() => setStatusFilter("deactivated")}
-            >
+            <FilterChip on={statusFilter === "deactivated"} onClick={() => setStatusFilter("deactivated")}>
               {t("status_label_inactive")}
             </FilterChip>
           </div>
+          <ToolbarCount>
+            {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "schools" : "sekolah"}
+          </ToolbarCount>
         </div>
 
-        <div className="grid xl:grid-cols-[minmax(0,1fr)_20rem]">
-          <section
-            aria-label={lang === "en" ? "School list" : "Daftar sekolah"}
-            className="min-w-0 px-5 py-6 md:px-7"
-          >
-            <div className="mb-4 flex flex-col gap-3 border-b border-line pb-4 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 className="text-2xl font-bold tracking-[-0.035em] text-ink-900">
-                  {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "matching schools" : "sekolah ditemukan"}
-                </h2>
-                <p className="mt-1 text-xs text-ink-500">
-                  {lang === "en" ? "Sorted by school name" : "Diurutkan berdasarkan nama sekolah"}
-                </p>
-              </div>
-              <div className="flex gap-5 text-xs text-ink-500">
-                <span><strong className="text-base text-ink-900">{stats.active}</strong> {t("status_label_active")}</span>
-                <span><strong className="text-base text-ink-900">{stats.students.toLocaleString(numberLocale)}</strong> {t("schools_stat_students")}</span>
-              </div>
-            </div>
-
-            <div className="border-y border-line">
-              <DataTable
-                columns={columns}
-                rows={rows}
-                rowKey={(school) => school.id}
-                empty={tableEmpty}
-                surface="plain"
-                data-testid="schools-table"
-              />
-            </div>
-
-            {nextCursor && (
-              <div className="mt-4 text-center">
-                <Button variant="outline" size="sm" className="rounded-sm" onClick={handleLoadMore} disabled={isLoading}>
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(school) => school.id}
+          empty={tableEmpty}
+          surface="plain"
+          onRowClick={handleEditOpen}
+          data-testid="schools-table"
+          footer={
+            nextCursor ? (
+              <div className="border-t border-line px-4 py-3 text-center">
+                <Button variant="outline" size="sm" onClick={handleLoadMore} disabled={isLoading}>
                   {isLoading ? t("sys_loading") : lang === "en" ? "Load more" : "Muat lebih banyak"}
                 </Button>
               </div>
-            )}
-          </section>
-
-          <aside
-            aria-label={inspectorLabel}
-            className="border-t border-line bg-surface p-6 xl:border-l xl:border-t-0"
-          >
-            {inspectedSchool ? (
-              <>
-                <div className="rounded-[16px] border border-line bg-surface p-5">
-                  <span className="text-xs font-bold tracking-[0.04em] text-brand-700">
-                    {inspectedSchool.npsn ? `NPSN ${inspectedSchool.npsn}` : "NPSN —"}
-                  </span>
-                  <h2
-                    aria-label={inspectedSchool.name}
-                    className="mt-3 text-2xl font-bold leading-tight tracking-[-0.035em] text-ink-900"
-                  >
-                    {inspectedSchool.name.split(" ").map((part, index) => (
-                      <span key={`${part}-${index}`}>{part} </span>
-                    ))}
-                  </h2>
-                  <p className="mt-3 text-xs leading-5 text-ink-500">
-                    {inspectedSchool.alamat ?? (lang === "en" ? "Address not provided" : "Alamat belum tersedia")}
-                  </p>
-                  <Button className="mt-5 rounded-md" onClick={() => handleEditOpen(inspectedSchool)}>
-                    <Edit className="mr-2 size-4" />
-                    {lang === "en" ? "Edit school record" : "Edit data sekolah"}
-                  </Button>
-                </div>
-                <div className="mt-6 border-t border-line pt-5">
-                  <h3 className="text-sm font-semibold text-ink-900">
-                    {lang === "en" ? "School identity" : "Identitas sekolah"}
-                  </h3>
-                  {[
-                    [t("accounts_th_status"), inspectedSchool.status === "active" ? t("status_label_active") : t("status_label_inactive")],
-                    [t("schools_field_code"), inspectedSchool.code ? `#${inspectedSchool.code}` : "—"],
-                    [t("schools_field_school_types"), inspectedSchool.school_types?.join(", ") || "—"],
-                    [t("schools_field_student_count"), (inspectedSchool.student_count ?? 0).toLocaleString(numberLocale)],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="mt-3 flex items-start justify-between gap-4 text-xs">
-                      <span className="text-ink-500">{label}</span>
-                      <strong className="max-w-[11rem] text-right text-ink-900">{value}</strong>
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : (
-              <p className="text-sm text-ink-500">
-                {lang === "en" ? "Select a school to inspect its record." : "Pilih sekolah untuk melihat detailnya."}
-              </p>
-            )}
-          </aside>
-        </div>
-      </div>
+            ) : undefined
+          }
+        />
+      </section>
 
       <SchoolBulkImportModal
         open={bulkOpen}
@@ -532,9 +428,9 @@ export default function SystemSchoolsPage() {
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">
+            <DialogTitle>
               {t("schools_dialog_create_title")}
             </DialogTitle>
             <DialogDescription>
@@ -579,7 +475,7 @@ export default function SystemSchoolsPage() {
                   value={createForm.provinsi_id}
                   onChange={(e) =>
                     setCreateForm((f) => ({ ...f, provinsi_id: e.target.value, kota_id: "" }))}
-                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
+                  className="mt-2 h-[46px] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-50"
                 >
                   <option value="">{t("school_picker_province")}</option>
                   {(provinces ?? []).map((province) => (
@@ -595,7 +491,7 @@ export default function SystemSchoolsPage() {
                   value={createForm.kota_id}
                   onChange={(e) => setCreateForm((f) => ({ ...f, kota_id: e.target.value }))}
                   disabled={!createForm.provinsi_id}
-                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-2 h-[46px] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">{t("school_picker_city")}</option>
                   {(createCities ?? []).map((city) => (
@@ -640,9 +536,9 @@ export default function SystemSchoolsPage() {
           if (!open) setEditTarget(null);
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">
+            <DialogTitle>
               {t("schools_action_edit")}
             </DialogTitle>
             <DialogDescription>
@@ -691,7 +587,7 @@ export default function SystemSchoolsPage() {
                   value={editForm.provinsi_id}
                   onChange={(e) =>
                     setEditForm((f) => ({ ...f, provinsi_id: e.target.value, kota_id: "" }))}
-                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50"
+                  className="mt-2 h-[46px] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-50"
                 >
                   <option value="">{t("school_picker_province")}</option>
                   {(provinces ?? []).map((province) => (
@@ -707,7 +603,7 @@ export default function SystemSchoolsPage() {
                   value={editForm.kota_id}
                   onChange={(e) => setEditForm((f) => ({ ...f, kota_id: e.target.value }))}
                   disabled={!editForm.provinsi_id}
-                  className="mt-2 h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-brand-300/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="mt-2 h-[46px] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none focus:border-brand-600 focus:ring-4 focus:ring-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <option value="">{t("school_picker_city")}</option>
                   {(editCities ?? []).map((city) => (
@@ -746,29 +642,5 @@ export default function SystemSchoolsPage() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border px-3 py-[7px] text-xs font-semibold transition-colors",
-        active
-          ? "border-brand-600 bg-brand-600 text-white"
-          : "border-line bg-surface text-ink-600 hover:text-ink-900",
-      )}
-    >
-      {children}
-    </button>
   );
 }

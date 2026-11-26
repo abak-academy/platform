@@ -199,6 +199,8 @@ const paginatedResponse = (students: AdminStudent[], next_cursor?: string): Stud
   deactivated: students.filter((s) => s.status === "deactivated").length,
 });
 
+const openFilters = () => fireEvent.click(screen.getByRole("button", { name: /filter siswa/i }));
+
 describe("SchoolStudentsPage", () => {
   beforeEach(() => {
     authStore = {
@@ -699,46 +701,47 @@ describe("SchoolStudentsPage", () => {
     });
 
     expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    openFilters();
     expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
   });
 
-  it("groups school, status, and student search in a neutral filter panel", async () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-
-    render(<SchoolStudentsPage />);
-    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
-
-    const filters = screen.getByRole("region", { name: "Filter siswa" });
-    expect(filters).not.toHaveClass("bg-brand-700");
-    expect(within(filters).getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
-    expect(within(filters).getByRole("combobox", { name: /status/i })).toBeInTheDocument();
-    expect(within(filters).getByPlaceholderText(/cari nama|search name/i)).toBeInTheDocument();
-  });
-
-  it("uses the full dashboard content width", async () => {
-    authStore = { token: "t", user: { role: "super_admin" } };
-
-    render(<SchoolStudentsPage />);
-    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
-
-    const filters = screen.getByRole("region", { name: "Filter siswa" });
-    expect(filters).toHaveClass("bg-surface");
-    expect(filters).not.toHaveClass("bg-surface-2");
-    expect(filters.parentElement).toHaveClass("rounded-[20px]");
-    expect(filters.closest(".max-w-6xl")).toBeNull();
-  });
-
-  it("places the roster title above its totals and renders the table without a card shell", async () => {
+  it("groups school, status chips, and search in one toolbar card with a filter popover", async () => {
     authStore = { token: "t", user: { role: "super_admin" } };
 
     render(<SchoolStudentsPage />);
     await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
 
     const roster = screen.getByRole("region", { name: "Daftar siswa" });
-    const title = within(roster).getByRole("heading", { name: "Daftar siswa" });
-    const total = within(roster).getByText("Total akun");
-    expect(title.compareDocumentPosition(total) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(within(roster).getByTestId("school-students-table")).not.toHaveClass("md-card-outlined");
+    expect(roster).toHaveClass("md-card-flush");
+    expect(within(roster).getByPlaceholderText(/cari nama|search name/i)).toBeInTheDocument();
+    expect(within(roster).getByTestId("school-students-table")).toBeInTheDocument();
+
+    openFilters();
+    const filters = screen.getByRole("region", { name: "Filter siswa" });
+    expect(within(filters).getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
+    expect(within(filters).getByRole("button", { name: "Aktif" })).toBeInTheDocument();
+    expect(within(filters).getByRole("button", { name: "Nonaktif" })).toBeInTheDocument();
+  });
+
+  it("sends the status chip to the server and shows it as an active chip", async () => {
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    openFilters();
+    fireEvent.click(within(screen.getByRole("region", { name: "Filter siswa" })).getByRole("button", { name: "Nonaktif" }));
+
+    expect(useAdminStudentsCalls.at(-1)).toEqual(expect.objectContaining({ status: "deactivated" }));
+    expect(screen.getByRole("group", { name: /filter aktif|active/i })).toHaveTextContent("Nonaktif");
+  });
+
+  it("renders the three counts as stat tiles above the roster", async () => {
+    authStore = { token: "t", user: { role: "super_admin" } };
+
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    expect(screen.getByText("Total akun")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Manajemen Siswa" })).toBeInTheDocument();
   });
 
   it("keeps username with the student name, grade with the school, and omits created date", async () => {
@@ -767,12 +770,11 @@ describe("SchoolStudentsPage", () => {
     render(<SchoolStudentsPage />);
     await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
 
+    openFilters();
     fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
 
-    const context = screen.getByRole("region", { name: "Filter siswa" });
-    expect(
-      within(context).getByRole("heading", { name: "SMAN 2 Bandung" }),
-    ).toBeInTheDocument();
+    const chips = screen.getByRole("group", { name: /filter aktif|active/i });
+    expect(chips).toHaveTextContent("SMAN 2 Bandung");
     expect(useAdminStudentsCalls.at(-1)).toEqual(
       expect.objectContaining({ schoolId: "s2" }),
     );
@@ -784,11 +786,11 @@ describe("SchoolStudentsPage", () => {
     render(<SchoolStudentsPage />);
     await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
 
+    openFilters();
     fireEvent.click(screen.getByRole("option", { name: "SMAN 2 Bandung" }));
     fireEvent.click(screen.getByRole("button", { name: "Semua sekolah" }));
 
     expect(useAdminStudentsCalls.at(-1)).not.toHaveProperty("schoolId");
-    expect(screen.getByRole("heading", { name: "Semua sekolah" })).toBeInTheDocument();
   });
 
   it("does not show school filter for admin_school role", async () => {
@@ -930,6 +932,7 @@ describe("SchoolStudentsPage", () => {
     await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
 
     expect(screen.queryByTestId("legacy-school-filter-dropdown")).not.toBeInTheDocument();
+    openFilters();
     expect(screen.getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
   });
 

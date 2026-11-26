@@ -3,14 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import {
   FileText,
-  Search,
   Download,
   Loader2,
   Eye,
+  Inbox,
+  AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ToolbarSearch } from "@/components/admin/ListToolbar";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
   Select,
@@ -188,10 +190,9 @@ export default function SchoolReportsPage() {
   // No exam selected — show empty state
   if (!selectedExamId) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+      <div className="fade-in flex flex-col gap-5">
         <AdminPageHeader
-          icon={FileText}
-          title={t("school_reports_title")}
+            title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
           actions={
             <Button
@@ -209,7 +210,7 @@ export default function SchoolReportsPage() {
             onChange={setSelectedSchoolId}
             label={t("select_school")}
             allLabel={t("select_school")}
-            className="mb-4"
+            
           />
         )}
         <ExamPicker
@@ -219,9 +220,7 @@ export default function SchoolReportsPage() {
           examsLoading={examsLoading}
           label={t("school_reports_select_exam")}
         />
-        <div className="py-12 text-center text-ink-500">
-          {t("school_reports_no_exam")}
-        </div>
+        <EmptyState framed icon={FileText} title={t("school_reports_no_exam")} />
       </div>
     );
   }
@@ -229,10 +228,9 @@ export default function SchoolReportsPage() {
   // Loading state (first page only)
   if (query.isLoading && accumulated.length === 0) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+      <div className="fade-in flex flex-col gap-5">
         <AdminPageHeader
-          icon={FileText}
-          title={t("school_reports_title")}
+            title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
           actions={
             <Button
@@ -255,7 +253,7 @@ export default function SchoolReportsPage() {
             onChange={setSelectedSchoolId}
             label={t("select_school")}
             allLabel={t("select_school")}
-            className="mb-4"
+            
           />
         )}
         <ExamPicker
@@ -265,19 +263,16 @@ export default function SchoolReportsPage() {
           examsLoading={examsLoading}
           label={t("school_reports_select_exam")}
         />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_loading_data")}
-        </div>
+        <EmptyState framed icon={Loader2} title={t("sys_loading_data")} />
       </div>
     );
   }
 
   if (query.error && accumulated.length === 0) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+      <div className="fade-in flex flex-col gap-5">
         <AdminPageHeader
-          icon={FileText}
-          title={t("school_reports_title")}
+            title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
           actions={
             <Button
@@ -300,7 +295,7 @@ export default function SchoolReportsPage() {
             onChange={setSelectedSchoolId}
             label={t("select_school")}
             allLabel={t("select_school")}
-            className="mb-4"
+            
           />
         )}
         <ExamPicker
@@ -310,17 +305,14 @@ export default function SchoolReportsPage() {
           examsLoading={examsLoading}
           label={t("school_reports_select_exam")}
         />
-        <div className="py-12 text-center text-ink-500">
-          {t("sys_error_load")}
-        </div>
+        <EmptyState framed icon={AlertTriangle} title={t("sys_error_load")} />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+    <div className="fade-in flex flex-col gap-5">
       <AdminPageHeader
-        icon={FileText}
         title={t("school_reports_title")}
         description={t("school_reports_subtitle")}
         actions={
@@ -345,7 +337,7 @@ export default function SchoolReportsPage() {
           onChange={setSelectedSchoolId}
           label={t("select_school")}
           allLabel={t("select_school")}
-          className="mb-4"
+          
         />
       )}
 
@@ -358,15 +350,12 @@ export default function SchoolReportsPage() {
       />
 
       {/* Search */}
-      <div className="mb-4 flex items-center gap-2">
-        <Search className="size-4 text-ink-400" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("students_search_placeholder")}
-          className="h-9 w-[220px] text-xs"
-        />
-      </div>
+      <ToolbarSearch
+        value={search}
+        onChange={setSearch}
+        placeholder={t("students_search_placeholder")}
+        clearLabel={t("list_toolbar_clear_search")}
+      />
 
       {/* Results Table */}
       <DataTable
@@ -398,14 +387,14 @@ export default function SchoolReportsPage() {
           if (!open) handleCloseDetail();
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">
+            <DialogTitle>
               {t("school_reports_detail_title")}
             </DialogTitle>
           </DialogHeader>
           {detailResult.isLoading ? (
-            <div className="py-8 text-center text-ink-500">
+            <div className="py-8 text-center text-ink-600">
               {t("sys_loading_data")}
             </div>
           ) : detailResult.data ? (
@@ -441,18 +430,18 @@ function ExamPicker({
 }) {
   if (examsLoading) {
     return (
-      <div className="mb-6">
-        <p className="text-xs text-ink-500">{label}</p>
-        <div className="mt-1 h-9 w-[240px] animate-pulse rounded-md bg-surface-2" />
+      <div>
+        <p className="type-label-sm text-ink-600">{label}</p>
+        <div className="mt-1 h-[46px] w-[240px] animate-pulse rounded-[14px] bg-surface-sunken" />
       </div>
     );
   }
 
   return (
-    <div className="mb-6">
-      <p className="text-xs text-ink-500">{label}</p>
+    <div>
+      <p className="type-label-sm text-ink-600">{label}</p>
       <Select value={selectedExamId} onValueChange={onSelect}>
-        <SelectTrigger className="mt-1 h-9 w-[240px] text-xs">
+        <SelectTrigger className="mt-1 w-[240px]">
           <SelectValue placeholder={label} />
         </SelectTrigger>
         <SelectContent>

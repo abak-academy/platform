@@ -106,9 +106,9 @@ export function SchoolBulkImportModal({ open, onOpenChange, onImportSuccess }: S
         if (!o) handleClose();
       }}
     >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-w-[740px]">
         <DialogHeader>
-          <DialogTitle className="font-serif">{t("bulk_school_title")}</DialogTitle>
+          <DialogTitle>{t("bulk_school_title")}</DialogTitle>
           <DialogDescription>{t("bulk_school_subtitle")}</DialogDescription>
         </DialogHeader>
 
