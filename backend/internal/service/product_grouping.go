@@ -17,8 +17,38 @@ import (
 	"akademi-bimbel/internal/repository"
 )
 
-func (s *Service) AdminListProductGroupings(ctx context.Context) ([]model.ProductGrouping, error) {
-	return s.storeRepo.ListProductGroupings(ctx, false)
+// GroupingListItem is a row of the admin event list.
+type GroupingListItem struct {
+	model.ProductGrouping
+	LogoURL          string           `json:"logo_url"`
+	EditionCount     int              `json:"edition_count"`
+	OpenEditionCount int              `json:"open_edition_count"`
+	NextMilestone    *PublicMilestone `json:"next_milestone"`
+}
+
+// AdminListProductGroupings runs one summary per event (a few queries each); fine at tens of events.
+func (s *Service) AdminListProductGroupings(ctx context.Context) ([]GroupingListItem, error) {
+	return s.adminListProductGroupings(ctx, time.Now())
+}
+
+func (s *Service) adminListProductGroupings(ctx context.Context, now time.Time) ([]GroupingListItem, error) {
+	groupings, err := s.storeRepo.ListProductGroupings(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]GroupingListItem, 0, len(groupings))
+	for _, g := range groupings {
+		sum, err := s.GroupingEventSummaryAt(ctx, g.ID, now)
+		if err != nil {
+			return nil, err
+		}
+		item := GroupingListItem{ProductGrouping: g, EditionCount: sum.EditionCount, OpenEditionCount: sum.OpenEditionCount, NextMilestone: sum.NextMilestone}
+		if g.LogoKey != nil {
+			item.LogoURL = *g.LogoKey
+		}
+		items = append(items, item)
+	}
+	return items, nil
 }
 
 // ListPublishedProductGroupings is the student-facing landing list.
@@ -69,9 +99,18 @@ type ProductGroupingPatch struct {
 // GroupingDetail is the admin read: the event, its members, schedule and EN completeness.
 type GroupingDetail struct {
 	model.ProductGrouping
-	Products   []model.Product                     `json:"products"`
+	LogoURL    string                              `json:"logo_url"`
+	Products   []GroupingMember                    `json:"products"`
 	Schedule   []model.ProductGroupingScheduleItem `json:"schedule"`
 	EnComplete bool                                `json:"en_complete"`
+}
+
+// GroupingMember is a member product with its edition phase (exam products only)
+// and whether any of its exams is also sold under a different event.
+type GroupingMember struct {
+	model.Product
+	Phase      *string `json:"phase,omitempty"`
+	MultiEvent bool    `json:"multi_event"`
 }
 
 func slugify(name string) string {
@@ -258,6 +297,10 @@ func (s *Service) AdminGetProductGrouping(ctx context.Context, id string) (model
 }
 
 func (s *Service) AdminGetProductGroupingDetail(ctx context.Context, id string) (GroupingDetail, error) {
+	return s.adminGetProductGroupingDetail(ctx, id, time.Now())
+}
+
+func (s *Service) adminGetProductGroupingDetail(ctx context.Context, id string, now time.Time) (GroupingDetail, error) {
 	g, products, err := s.AdminGetProductGrouping(ctx, id)
 	if err != nil {
 		return GroupingDetail{}, err
@@ -266,7 +309,26 @@ func (s *Service) AdminGetProductGroupingDetail(ctx context.Context, id string) 
 	if err != nil {
 		return GroupingDetail{}, err
 	}
-	return GroupingDetail{ProductGrouping: g, Products: products, Schedule: schedule, EnComplete: groupingEnComplete(&g, schedule)}, nil
+	sum, err := s.GroupingEventSummaryAt(ctx, id, now)
+	if err != nil {
+		return GroupingDetail{}, err
+	}
+	multi, err := s.storeRepo.ListMultiEventProductIDs(ctx, id)
+	if err != nil {
+		return GroupingDetail{}, err
+	}
+	members := make([]GroupingMember, len(products))
+	for i, p := range products {
+		members[i] = GroupingMember{Product: p, MultiEvent: multi[p.ID]}
+		if ph, ok := sum.Phases[p.ID]; ok {
+			members[i].Phase = &ph
+		}
+	}
+	d := GroupingDetail{ProductGrouping: g, Products: members, Schedule: schedule, EnComplete: groupingEnComplete(&g, schedule)}
+	if g.LogoKey != nil {
+		d.LogoURL = *g.LogoKey
+	}
+	return d, nil
 }
 
 // AdminUpdateProductGrouping overlays only the fields the caller set. The

@@ -58,3 +58,28 @@ func (r *Repository) ListGroupingEditionExams(ctx context.Context, groupingID st
 	}
 	return exams, rows.Err()
 }
+
+// ListMultiEventProductIDs returns the grouping's member products that share an
+// exam with a product in a different grouping.
+func (r *Repository) ListMultiEventProductIDs(ctx context.Context, groupingID string) (map[string]bool, error) {
+	rows, err := r.pool.Query(ctx, `SELECT DISTINCT p.id
+		FROM product p
+		JOIN product_exam pe ON pe.product_id = p.id
+		JOIN product_exam pe2 ON pe2.exam_id = pe.exam_id
+		JOIN product p2 ON p2.id = pe2.product_id
+		WHERE p.grouping_id = $1 AND p2.grouping_id IS NOT NULL AND p2.grouping_id <> $1`, groupingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := map[string]bool{}
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}

@@ -259,3 +259,72 @@ func TestAdminProductGroupings_DeleteWithMembersConflicts(t *testing.T) {
 		t.Fatalf("delete empty event = %d, want 204", rec.Code)
 	}
 }
+
+func TestAdminProductGroupings_ListAndMemberWireShape(t *testing.T) {
+	env := newGroupingDBEnv(t)
+	token := mintProductToken(t, env, uuid.NewString(), service.RoleAdminStore)
+	g := createEvent(t, env, token)
+	id := g["id"].(string)
+	ctx := t.Context()
+
+	var examID, examProduct, book string
+	if err := env.pool.QueryRow(ctx, `INSERT INTO exam (title, scheduled_at) VALUES ($1, now() + interval '30 days') RETURNING id`, "E "+uuid.NewString()).Scan(&examID); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.pool.QueryRow(ctx, `INSERT INTO product (type, name, price, status) VALUES ('exam', $1, 1, 'published') RETURNING id`, "X "+uuid.NewString()).Scan(&examProduct); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.pool.Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, examProduct, examID); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.pool.QueryRow(ctx, `INSERT INTO product (type, name, price, status) VALUES ('book', $1, 1, 'published') RETURNING id`, "B "+uuid.NewString()).Scan(&book); err != nil {
+		t.Fatal(err)
+	}
+	if rec := groupingCall(t, env, http.MethodPatch, "/"+id, token, map[string]any{"logo_key": "question/u/logo.png"}); rec.Code != http.StatusOK {
+		t.Fatalf("patch logo = %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec := groupingCall(t, env, http.MethodPut, "/"+id+"/products", token, map[string]any{"product_ids": []string{examProduct, book}})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("PUT products = %d %s", rec.Code, rec.Body.String())
+	}
+	detail := decodeMap(t, rec)
+	if detail["logo_url"] != "question/u/logo.png" {
+		t.Errorf("detail logo_url = %v", detail["logo_url"])
+	}
+	members := detail["products"].([]any)
+	exam, nonExam := members[0].(map[string]any), members[1].(map[string]any)
+	if exam["phase"] != "open" || exam["multi_event"] != false {
+		t.Errorf("exam member = phase %v multi_event %v, want open/false", exam["phase"], exam["multi_event"])
+	}
+	if _, has := nonExam["phase"]; has || nonExam["multi_event"] != false {
+		t.Errorf("non-exam member = %v, want no phase key and multi_event false", nonExam)
+	}
+
+	var row map[string]any
+	for _, it := range decodeList(t, groupingCall(t, env, http.MethodGet, "", token, nil)) {
+		if it["id"] == id {
+			row = it
+		}
+	}
+	if row == nil {
+		t.Fatal("event missing from list")
+	}
+	if row["logo_url"] != "question/u/logo.png" || row["edition_count"] != float64(1) || row["open_edition_count"] != float64(1) {
+		t.Errorf("list row = logo %v editions %v open %v", row["logo_url"], row["edition_count"], row["open_edition_count"])
+	}
+	if v, has := row["next_milestone"]; !has || v != nil {
+		t.Errorf("next_milestone = %v (present %v), want explicit null", v, has)
+	}
+}
+
+func decodeList(t *testing.T, rec *httptest.ResponseRecorder) []map[string]any {
+	t.Helper()
+	var body struct {
+		Data []map[string]any `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("list = %d %s (%v)", rec.Code, rec.Body.String(), err)
+	}
+	return body.Data
+}
