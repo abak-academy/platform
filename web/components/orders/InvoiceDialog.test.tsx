@@ -42,7 +42,10 @@ const PHYSICAL = {
   shipping_cost: 18000,
   subtotal: 100000,
   total: 118000,
-  shipping_address: { penerima: "Penerima Uji", alamat: "Jl. Contoh 1", kode_pos: "40111" },
+  shipping_address: { penerima: "Penerima Uji", telepon: "080000000000", alamat: "Jl. Contoh 1", kode_pos: "40111" },
+  selected_courier: "JNE",
+  selected_service: "REG",
+  tracking_number: "",
   items: [{ id: "i2", order_id: "o2", product_id: "p2", product_type: "book", name: "Buku Latihan", unit_price: 100000, qty: 1, jumlah: 100000 }],
 } as unknown as Order;
 
@@ -75,8 +78,10 @@ describe("InvoiceDialog", () => {
     expect(paper).toHaveTextContent("Rp150.000");
     expect(paper).toHaveTextContent("Diskon");
     expect(paper).toHaveTextContent("Rp130.000");
-    expect(paper).toHaveTextContent(/Pembayaran: gopay · /);
+    expect(paper).toHaveTextContent(/Metode pembayaran: GoPay · /);
+    expect(paper).toHaveTextContent("Invoice ini berfungsi sebagai bukti pemesanan dan/atau pembelian.");
     expect(paper).not.toHaveTextContent("Ongkos kirim");
+    expect(paper).not.toHaveTextContent("Rincian pengiriman");
   });
 
   it("stamps an unpaid physical order and shows shipping with the address", () => {
@@ -86,19 +91,36 @@ describe("InvoiceDialog", () => {
     expect(paper).not.toHaveTextContent("LUNAS");
     expect(paper).toHaveTextContent("Ongkos kirim");
     expect(paper).toHaveTextContent("Rp18.000");
-    expect(paper).toHaveTextContent("Jl. Contoh 1");
     expect(paper).not.toHaveTextContent("Diskon");
+  });
+
+  it("lists recipient, address, courier and a pending resi for a physical order", () => {
+    show(PHYSICAL);
+    const ship = screen.getByText("Rincian pengiriman").closest("section") as HTMLElement;
+    expect(ship).toHaveTextContent("PenerimaPenerima Uji · 080000000000");
+    expect(ship).toHaveTextContent("AlamatJl. Contoh 1 40111");
+    expect(ship).toHaveTextContent("KurirJNE · REG");
+    expect(ship).toHaveTextContent("No. resiBelum tersedia");
+  });
+
+  it("shows the resi once the order has one", () => {
+    show({ ...PHYSICAL, status: "shipped", tracking_number: "JNE0012345678" } as Order);
+    const ship = screen.getByText("Rincian pengiriman").closest("section") as HTMLElement;
+    expect(ship).toHaveTextContent("No. resiJNE0012345678");
+    expect(ship).not.toHaveTextContent("Belum tersedia");
   });
 
   it("falls back to a dash when the payment method is an empty string", () => {
     show(PHYSICAL);
-    expect(document.querySelector(".invoice-paper")).toHaveTextContent(/Pembayaran: —/);
+    expect(document.querySelector(".invoice-paper")).toHaveTextContent(/Metode pembayaran: —/);
   });
 
   it("formats dates in the active language in Jakarta time", () => {
     useUIStore.setState({ lang: "en" });
     show({ ...DIGITAL, created_at: "2026-11-30T20:00:00Z" });
-    expect(document.querySelector(".invoice-paper")).toHaveTextContent("Dec 1, 2026");
+    const paper = document.querySelector(".invoice-paper") as HTMLElement;
+    expect(paper).toHaveTextContent("Dec 1, 2026");
+    expect(paper).toHaveTextContent("This invoice serves as proof of order and/or purchase.");
   });
 
   it("scopes the A4 @page rule to the open dialog, not globals.css", () => {
