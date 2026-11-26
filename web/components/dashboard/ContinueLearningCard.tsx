@@ -44,7 +44,7 @@ export function ContinueLearningCard({ courses }: { courses: Dashboard["enrolled
                     className="relative flex h-[58px] w-[76px] flex-none items-center justify-center overflow-hidden rounded-xl bg-brand-50"
                   >
                     {cover && <img src={cover} alt="" className="size-full object-cover" />}
-                    <span className="absolute bottom-1 right-1 flex size-5 items-center justify-center rounded-full bg-white text-ink-900">
+                    <span className="absolute bottom-1 right-1 flex size-5 items-center justify-center rounded-full bg-surface text-ink-900">
                       <Play className="size-2.5" />
                     </span>
                   </span>

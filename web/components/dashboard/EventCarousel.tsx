@@ -82,7 +82,7 @@ export function EventCarousel({ slides }: { slides: HeroSlide[] }) {
       role="region"
       aria-roledescription="carousel"
       aria-label={t("stu_home_carousel_label")}
-      className="rounded-2xl bg-gradient-to-br from-brand-700 to-brand-900 p-6 text-white sm:p-8"
+      className="rounded-2xl dash-hero-bg p-6 text-white sm:p-8"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}

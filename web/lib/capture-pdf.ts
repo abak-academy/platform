@@ -47,7 +47,7 @@ export function imagePdf(pages: PdfPage[]): Blob {
 
 async function captureJpeg(node: HTMLElement, background: string) {
   const { toJpeg } = await import("html-to-image");
-  const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, backgroundColor: background, cacheBust: false });
+  const dataUrl = await toJpeg(node, { quality: 0.95, pixelRatio: 2, backgroundColor: background, cacheBust: false, style: { margin: "0" } });
   const jpeg = new Uint8Array(await (await fetch(dataUrl)).arrayBuffer());
   const bitmap = await createImageBitmap(new Blob([jpeg as BlobPart], { type: "image/jpeg" }));
   const { width, height } = bitmap;

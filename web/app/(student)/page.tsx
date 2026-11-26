@@ -21,8 +21,8 @@ import { StudySummaryCard } from "@/components/dashboard/StudySummaryCard";
 import { ShopPicks } from "@/components/dashboard/ShopPicks";
 import { greetingKey } from "./home-greeting";
 
-const ROW_A = "grid gap-4 min-[1200px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
-const ROW_B = "grid gap-4 min-[1200px]:grid-cols-[minmax(0,40fr)_minmax(0,60fr)]";
+const ROW_A = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
+const ROW_B = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,40fr)_minmax(0,60fr)]";
 
 function firstName(name?: string): string {
   if (!name) return "";
