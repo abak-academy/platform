@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Tag } from "lucide-react";
+import { Plus, Tag } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminPromoCodes,
@@ -15,6 +15,10 @@ import { PromoModal } from "@/components/admin/PromoModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Progress } from "@/components/ui/progress";
+import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolbar";
+import { cn } from "@/lib/utils";
 import { formatRupiah } from "@/lib/format";
 import type { PromoCode, AdminCreatePromoCodeInput, AdminUpdatePromoCodeInput } from "@/lib/types";
 
@@ -22,6 +26,12 @@ function discountLabel(promo: PromoCode): string {
   if (promo.discount_percent != null) return `${promo.discount_percent}%`;
   if (promo.discount_amount != null) return formatRupiah(promo.discount_amount);
   return "-";
+}
+
+function promoStatus(promo: PromoCode): "active" | "expired" | "exhausted" {
+  if (promo.expires_at && new Date(promo.expires_at).getTime() <= Date.now()) return "expired";
+  if (promo.max_uses != null && promo.used_count >= promo.max_uses) return "exhausted";
+  return "active";
 }
 
 function usageText(promo: PromoCode): string {
@@ -101,17 +111,43 @@ export default function PromosPage() {
     }
   }
 
+  const [toolbar, setToolbar] = useState<ListToolbarValue>({ q: "", filters: {}, sort: "used" });
+  const shown = useMemo(() => {
+    const q = toolbar.q.trim().toLowerCase();
+    const rows = (promos ?? []).filter(
+      (p) => p.code.toLowerCase().includes(q) && (!toolbar.filters.status || promoStatus(p) === toolbar.filters.status),
+    );
+    const endsAt = (p: PromoCode) => (p.expires_at ? new Date(p.expires_at).getTime() : Infinity);
+    return rows.sort((a, b) => (toolbar.sort === "ending" ? endsAt(a) - endsAt(b) : b.used_count - a.used_count));
+  }, [promos, toolbar]);
+
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={Tag}
         title={t("promos_page_title")}
         description={t("promos_page_description")}
-        actions={<Button onClick={openCreate}>{t("promo_create")}</Button>}
+        actions={<Button variant="secondary" onClick={openCreate}><Plus aria-hidden />{t("promo_create")}</Button>}
       />
 
+      {!isLoading && !isError && (
+        <ListToolbar
+          variant="standalone"
+          value={toolbar}
+          onChange={setToolbar}
+          count={shown.length}
+          unit={t("promos_unit")}
+          searchPlaceholder={t("promos_search")}
+          filters={[{
+            key: "status",
+            label: t("th_status"),
+            options: (["active", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}`) })),
+          }]}
+          sorts={[{ value: "used", label: t("promos_sort_used") }, { value: "ending", label: t("promos_sort_ending") }]}
+        />
+      )}
+
       {isLoading && (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
@@ -124,65 +160,49 @@ export default function PromosPage() {
         </div>
       )}
 
-      {!isLoading && !isError && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">{t("th_code")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_discount")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_usage")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_expiry")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_public")}</th>
-                <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {promos?.map((promo) => (
-                <tr key={promo.id} className="border-t hover:bg-muted/40">
-                  <td className="px-4 py-3 font-medium">{promo.code}</td>
-                  <td className="px-4 py-3">{discountLabel(promo)}</td>
-                  <td className="px-4 py-3">{usageText(promo)}</td>
-                  <td className="px-4 py-3">{expiryText(promo.expires_at)}</td>
-                  <td className="px-4 py-3">
-                    {promo.affiliator_only ? (
-                      <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
-                        {t("th_affiliator_only")}
-                      </Badge>
-                    ) : promo.is_public ? (
-                      <Badge variant="outline" className="border-transparent bg-success-bg text-success">
-                        {t("th_public")}
-                      </Badge>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
-                        {t("action_edit")}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => handleDelete(promo.id)}
-                        disabled={remove.isPending}
-                      >
-                        {t("action_delete")}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {(promos?.length ?? 0) === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                    {t("empty_promos")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {!isLoading && !isError && shown.length === 0 && (
+        <EmptyState framed icon={Tag} title={t("empty_promos")} />
+      )}
+
+      {!isLoading && !isError && shown.length > 0 && (
+        <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(255px,1fr))]">
+          {shown.map((promo) => {
+            const status = promoStatus(promo);
+            const pct = promo.max_uses ? Math.min(100, Math.round((promo.used_count / promo.max_uses) * 100)) : null;
+            return (
+              <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "opacity-65")}>
+                <div className="flex items-center gap-2">
+                  <code className="rounded-[9px] bg-ink-900 px-2.5 py-1.5 font-mono text-[13px] font-bold tracking-[.06em] text-surface">{promo.code}</code>
+                  <span className="flex-1" />
+                  {promo.affiliator_only ? (
+                    <Badge variant="brand">{t("th_affiliator_only")}</Badge>
+                  ) : promo.is_public ? (
+                    <Badge variant="teal">{t("th_public")}</Badge>
+                  ) : null}
+                </div>
+                <div className="font-[family-name:var(--font-display)] text-[46px] leading-none font-extrabold tracking-[-0.04em] text-ember-700">
+                  {discountLabel(promo)}
+                </div>
+                <p className="text-xs text-ink-600">{expiryText(promo.expires_at)}</p>
+                <div>
+                  <div className="mb-1.5 flex justify-between text-xs text-ink-600">
+                    <span>{t("promos_used")}</span>
+                    <span className="tabular-nums">{usageText(promo)}</span>
+                  </div>
+                  {pct !== null && <Progress value={pct} variant={pct > 80 ? "hatch" : "ember"} aria-label={t("promos_used")} />}
+                </div>
+                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="self-start">{t(`promos_status_${status}`)}</Badge>
+                <div className="mt-auto flex items-center justify-end gap-1.5 border-t border-line pt-3">
+                  <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
+                    {t("action_edit")}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => handleDelete(promo.id)} disabled={remove.isPending}>
+                    {t("action_delete")}
+                  </Button>
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 

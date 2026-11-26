@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -49,23 +50,23 @@ export function PurchaseNotificationFeed() {
   );
 
   return (
-    <section className="space-y-4">
+    <section className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-[15px] font-semibold text-ink-900">
+          <h2 className="type-h2 text-ink-900">
             {t("notification_inbox_title")}
           </h2>
           <p className="text-xs text-ink-600">{t("notification_inbox_description")}</p>
         </div>
 
-        <div className="inline-flex rounded-full border border-line bg-surface-2 p-0.5">
+        <div className="inline-flex rounded-full border border-line bg-surface p-[5px]">
           <button
             type="button"
             onClick={() => setUnreadOnly(false)}
             aria-pressed={!unreadOnly}
             className={cn(
-              "rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-              unreadOnly ? "text-ink-600 hover:text-ink-900" : "bg-surface text-ink-900 shadow-sm"
+              "rounded-full px-3 py-1.5 text-[13px] font-bold transition-colors",
+              unreadOnly ? "text-ink-600 hover:text-ink-900" : "bg-brand-600 text-on-brand"
             )}
           >
             {t("notification_show_all")}
@@ -75,13 +76,13 @@ export function PurchaseNotificationFeed() {
             onClick={() => setUnreadOnly(true)}
             aria-pressed={unreadOnly}
             className={cn(
-              "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors",
-              unreadOnly ? "bg-surface text-ink-900 shadow-sm" : "text-ink-600 hover:text-ink-900"
+              "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-bold transition-colors",
+              unreadOnly ? "bg-brand-600 text-on-brand" : "text-ink-600 hover:text-ink-900"
             )}
           >
             {t("notification_unread_only")}
             {unreadCount > 0 && (
-              <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-brand-600 px-1 text-[10px] font-bold text-white tabular-nums">
+              <span className="inline-flex min-w-4 items-center justify-center rounded-full bg-ember-600 px-1.5 text-[10.5px] leading-[18px] font-bold text-on-ember tabular-nums">
                 {unreadCount}
               </span>
             )}
@@ -90,7 +91,7 @@ export function PurchaseNotificationFeed() {
       </div>
 
       {isLoading ? (
-        <div className="overflow-hidden rounded-xl border border-line bg-surface divide-y divide-line">
+        <div className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card divide-y divide-line">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3.5">
               <Skeleton className="size-9 shrink-0 rounded-full" />
@@ -107,20 +108,15 @@ export function PurchaseNotificationFeed() {
           {t("notification_inbox_failed")}
         </div>
       ) : items.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-line bg-surface px-6 py-12 text-center">
-          <span className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-ink-500">
-            <Inbox className="size-6" />
-          </span>
-          <p className="text-sm font-medium text-ink-900">
-            {unreadOnly ? t("notification_inbox_empty_unread") : t("notification_inbox_empty")}
-          </p>
-          {!unreadOnly && (
-            <p className="max-w-sm text-xs text-ink-600">{t("notification_inbox_empty_hint")}</p>
-          )}
-        </div>
+        <EmptyState
+          framed
+          icon={Inbox}
+          title={unreadOnly ? t("notification_inbox_empty_unread") : t("notification_inbox_empty")}
+          text={unreadOnly ? undefined : t("notification_inbox_empty_hint")}
+        />
       ) : (
         <>
-          <ul className="overflow-hidden rounded-xl border border-line bg-surface divide-y divide-line">
+          <ul className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card divide-y divide-line">
             {items.map((notif) => (
               <li key={notif.id}>
                 <button

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ActiveChip, FilterChip, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
 import { Popover, PopoverTrigger, PopoverContent, PopoverClose } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import {
@@ -169,41 +169,18 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
   ];
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-full min-w-0 sm:w-auto sm:min-w-56 sm:flex-1">
-          <Search
-            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-600"
-            aria-hidden
-          />
-          <Input
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("orders_search_placeholder")}
-            aria-label={t("orders_search_placeholder")}
-            className="pr-10 pl-9"
-          />
-          {search && (
-            <Button type="button" variant="ghost" size="icon" className="absolute top-0 right-0 size-9"
-              aria-label={t("orders_clear_search")} onClick={() => setSearch("")}>
-              <X className="size-4" aria-hidden />
-            </Button>
-          )}
-        </div>
+    <div className="flex flex-col gap-2.5 border-b border-line px-4 py-3.5">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <ToolbarSearch value={search} onChange={setSearch} placeholder={t("orders_search_placeholder")} clearLabel={t("orders_clear_search")} />
 
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="h-9" aria-label={`${t("orders_filters")}${chips.length ? ` (${chips.length})` : ""}`}>
-              <SlidersHorizontal className="size-4" aria-hidden />
-              {t("orders_filters")}
-              {chips.length > 0 && <span className="tabular-nums">{chips.length}</span>}
-            </Button>
+            <ToolbarFilterButton label={t("orders_filters")} count={chips.length} />
           </PopoverTrigger>
           <PopoverContent align="end" className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto" aria-label={t("orders_filter_orders")}>
-            <div className="space-y-3">
-              <h2 className="font-semibold">{t("orders_filter_orders")}</h2>
-              <span className="block text-sm font-medium">{t("th_status")}</span>
+            <div className="flex flex-col gap-3">
+              <h2 className="sr-only">{t("orders_filter_orders")}</h2>
+              <span className="block type-overline text-ink-600">{t("th_status")}</span>
               <Select
                 value={selected}
                 onValueChange={(v) => selectFilter(v as FilterOption)}
@@ -218,7 +195,7 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
                 </SelectContent>
               </Select>
 
-              <span className="block text-sm font-medium">{t("orders_product_type")}</span>
+              <span className="block type-overline text-ink-600">{t("orders_product_type")}</span>
               <Select value={value.type ?? "all"} onValueChange={(v) => onChange({ ...value, type: v === "all" ? undefined : v as ProductType })}>
                 <SelectTrigger className="w-full" aria-label={t("orders_product_type")}>
                   <SelectValue />
@@ -231,7 +208,7 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
                 </SelectContent>
               </Select>
 
-              <span className="block text-sm font-medium">{t("orders_courier")}</span>
+              <span className="block type-overline text-ink-600">{t("orders_courier")}</span>
               <Select value={value.courier ?? "all"} onValueChange={(v) => onChange({ ...value, courier: v === "all" ? undefined : v })}>
                 <SelectTrigger className="w-full" aria-label={t("orders_courier")}>
                   <SelectValue />
@@ -242,22 +219,18 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
                 </SelectContent>
               </Select>
 
-              <span className="block text-sm font-medium">{t("orders_date_single")}</span>
+              <span className="block type-overline text-ink-600">{t("orders_date_single")}</span>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="flex w-full items-center gap-1" role="group" aria-label={t("orders_date_single")}>
                   {(["single", "range"] as const).map((m) => (
-                    <button
+                    <FilterChip
                       key={m}
-                      type="button"
-                      aria-pressed={dateMode === m}
+                      on={dateMode === m}
                       data-testid={`orders-date-mode-${m}`}
                       onClick={() => switchMode(m)}
-                      className={`md-chip cursor-pointer text-[13px] transition-colors ${
-                        dateMode === m ? "md-chip-primary ring-1 ring-[var(--md-sys-color-primary)]" : ""
-                      }`}
                     >
                       {t(m === "single" ? "orders_date_mode_single" : "orders_date_mode_range")}
-                    </button>
+                    </FilterChip>
                   ))}
                 </div>
 
@@ -302,45 +275,35 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
                   </>
                 )}
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                <Button variant="ghost" onClick={() => onChange({ ...value, status: "all", queue: undefined, type: undefined, courier: undefined, from: undefined, to: undefined })}>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
+                <Button variant="ghost" size="sm" onClick={() => onChange({ ...value, status: "all", queue: undefined, type: undefined, courier: undefined, from: undefined, to: undefined })}>
                   {t("orders_reset_filters")}
                 </Button>
                 <PopoverClose asChild>
-                  <Button>{t("orders_show_orders")}</Button>
+                  <Button variant="secondary" size="sm">{t("orders_show_orders")}</Button>
                 </PopoverClose>
               </div>
             </div>
           </PopoverContent>
         </Popover>
 
-        <Select value={`${value.sort ?? "order_at"}:${value.dir ?? "desc"}`}
-          onValueChange={(v) => {
+        <ToolbarSort
+          value={`${value.sort ?? "order_at"}:${value.dir ?? "desc"}`}
+          onChange={(v) => {
             const [sort, dir] = v.split(":") as [AdminOrderSort, "asc" | "desc"];
             onChange({ ...value, sort, dir });
-          }}>
-          <SelectTrigger className="w-60 min-w-0 flex-1 sm:flex-none" aria-label={t("orders_sort")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {(["order_at", "paid_at", "item_qty"] as const).flatMap((sort) =>
-              (["desc", "asc"] as const).map((dir) => (
-                <SelectItem key={`${sort}:${dir}`} value={`${sort}:${dir}`}>{t(`orders_sort_${sort}_${dir}`)}</SelectItem>
-              )),
-            )}
-          </SelectContent>
-        </Select>
+          }}
+          label={t("orders_sort")}
+          options={(["order_at", "paid_at", "item_qty"] as const).flatMap((sort) =>
+            (["desc", "asc"] as const).map((dir) => ({ value: `${sort}:${dir}`, label: t(`orders_sort_${sort}_${dir}`) })),
+          )}
+        />
       </div>
 
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("orders_active_filters")}>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("orders_active_filters")}>
           {chips.map((chip) => (
-            <span key={chip.key} className="md-chip md-chip-primary gap-1">
-              {chip.label}
-              <Button variant="ghost" size="icon" className="size-8" aria-label={`${t("orders_remove_filter")}: ${chip.label}`} onClick={chip.clear}>
-                <X className="size-4" aria-hidden />
-              </Button>
-            </span>
+            <ActiveChip key={chip.key} label={chip.label} removeLabel={`${t("orders_remove_filter")}: ${chip.label}`} onRemove={chip.clear} />
           ))}
         </div>
       )}

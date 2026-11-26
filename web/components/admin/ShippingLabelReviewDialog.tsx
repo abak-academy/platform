@@ -71,7 +71,7 @@ export function ShippingLabelReviewDialog({ orders, onClose, mode = "bulk", focu
                   <input type="radio" name="label-size" value={value} checked={size === value} onChange={() => setSize(value)} className="mt-1 size-4 shrink-0 accent-[var(--md-sys-color-primary)]" />
                   <span className="min-w-0">
                     <span className="block font-semibold">{t(value === "100x150" ? "labels_size_fixed" : "labels_size_roll")}</span>
-                    <span className="mt-1 block text-muted-foreground">{t(value === "100x150" ? "labels_size_fixed_description" : "labels_size_roll_description")}</span>
+                    <span className="mt-1 block text-ink-600">{t(value === "100x150" ? "labels_size_fixed_description" : "labels_size_roll_description")}</span>
                   </span>
                 </label>
               ))}
@@ -84,7 +84,7 @@ export function ShippingLabelReviewDialog({ orders, onClose, mode = "bulk", focu
                 const reason = skipped.find((entry) => entry.order_id === order.id)?.reason;
                 return <li key={order.id} className={`space-y-1 break-words p-3 ${reason ? "bg-muted" : ""}`}>
                   <p className="font-medium">{order.student_name?.trim() || order.student_id} · #{order.id.slice(-8)}</p>
-                  {reason ? <p className="text-destructive">{t("labels_skipped")} — <span>{reasonLabels[reason]}</span></p> : <p className="break-all font-mono text-muted-foreground">{order.tracking_number}</p>}
+                  {reason ? <p className="text-destructive">{t("labels_skipped")} — <span>{reasonLabels[reason]}</span></p> : <p className="break-all font-mono text-ink-600">{order.tracking_number}</p>}
                 </li>;
               })}
             </ul>

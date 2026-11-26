@@ -1,10 +1,8 @@
 "use client";
 
-import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ActiveChip, FilterChip, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
 import { Popover, PopoverTrigger, PopoverContent, PopoverClose } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
 import type { Product, ProductType, ProductStatus } from "@/lib/types";
 
@@ -71,69 +69,45 @@ export function ProductsToolbar({ value, onChange, types }: {
   ];
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative w-full min-w-0 sm:w-auto sm:min-w-56 sm:flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-600" aria-hidden />
-          <Input type="search" value={value.q ?? ""} onChange={(e) => onChange({ ...value, q: e.target.value || undefined })}
-            placeholder={t("products_search_placeholder")} aria-label={t("products_search_placeholder")} className="pr-10 pl-9" />
-          {value.q && (
-            <Button type="button" variant="ghost" size="icon" className="absolute top-0 right-0 size-9"
-              aria-label={t("products_clear_search")} onClick={() => onChange({ ...value, q: undefined })}>
-              <X className="size-4" aria-hidden />
-            </Button>
-          )}
-        </div>
+    <div className="flex flex-col gap-2.5 border-b border-line px-4 py-3.5">
+      <div className="flex flex-wrap items-center gap-2.5">
+        <ToolbarSearch value={value.q ?? ""} onChange={(q) => onChange({ ...value, q: q || undefined })}
+          placeholder={t("products_search_placeholder")} clearLabel={t("products_clear_search")} />
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="outline" className="h-9" aria-label={`${t("products_filters")}${chips.length ? ` (${chips.length})` : ""}`}>
-              <SlidersHorizontal className="size-4" aria-hidden />
-              {t("products_filters")}
-              {chips.length > 0 && <span className="tabular-nums">{chips.length}</span>}
-            </Button>
+            <ToolbarFilterButton label={t("products_filters")} count={chips.length} />
           </PopoverTrigger>
           <PopoverContent align="end" className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto" aria-label={t("products_filter_products")}>
-            <div className="space-y-3">
-              <h2 className="font-semibold">{t("products_filter_products")}</h2>
-              <span className="block text-sm font-medium">{t("products_type")}</span>
-              <Select value={value.type ?? "all"} onValueChange={(v) => onChange({ ...value, type: v === "all" ? undefined : v as ProductType })}>
-                <SelectTrigger className="w-full" aria-label={t("products_type")}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("products_all_types")}</SelectItem>
-                  {types.map((type) => <SelectItem key={type} value={type}>{t(`product_type_${type}`)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <span className="block text-sm font-medium">{t("th_status")}</span>
-              <Select value={value.status ?? "all"} onValueChange={(v) => onChange({ ...value, status: v === "all" ? undefined : v as ProductStatus })}>
-                <SelectTrigger className="w-full" aria-label={t("th_status")}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("tab_all")}</SelectItem>
-                  {STATUSES.map((status) => <SelectItem key={status} value={status}>{t(`products_status_${status}`)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                <Button variant="ghost" onClick={() => onChange({ ...value, type: undefined, status: undefined })}>{t("products_reset_filters")}</Button>
-                <PopoverClose asChild><Button>{t("products_show_products")}</Button></PopoverClose>
+            <div className="flex flex-col gap-3.5">
+              <h2 className="sr-only">{t("products_filter_products")}</h2>
+              <div role="group" aria-label={t("products_type")}>
+                <span className="mb-2 block type-overline text-ink-600">{t("products_type")}</span>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip on={!value.type} onClick={() => onChange({ ...value, type: undefined })}>{t("products_all_types")}</FilterChip>
+                  {types.map((type) => <FilterChip key={type} on={value.type === type} onClick={() => onChange({ ...value, type })}>{t(`product_type_${type}`)}</FilterChip>)}
+                </div>
+              </div>
+              <div role="group" aria-label={t("th_status")}>
+                <span className="mb-2 block type-overline text-ink-600">{t("th_status")}</span>
+                <div className="flex flex-wrap gap-2">
+                  <FilterChip on={!value.status} onClick={() => onChange({ ...value, status: undefined })}>{t("tab_all")}</FilterChip>
+                  {STATUSES.map((status) => <FilterChip key={status} on={value.status === status} onClick={() => onChange({ ...value, status })}>{t(`products_status_${status}`)}</FilterChip>)}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
+                <Button variant="ghost" size="sm" onClick={() => onChange({ ...value, type: undefined, status: undefined })}>{t("products_reset_filters")}</Button>
+                <PopoverClose asChild><Button variant="secondary" size="sm">{t("products_show_products")}</Button></PopoverClose>
               </div>
             </div>
           </PopoverContent>
         </Popover>
-        <Select value={value.sort} onValueChange={(sort) => onChange({ ...value, sort: sort as ProductsSort })}>
-          <SelectTrigger className="w-60 min-w-0 flex-1 sm:flex-none" aria-label={t("products_sort")}><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {SORTS.map((sort) => <SelectItem key={sort} value={sort}>{t(`products_sort_${sort}`)}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <ToolbarSort value={value.sort} onChange={(sort) => onChange({ ...value, sort: sort as ProductsSort })}
+          options={SORTS.map((sort) => ({ value: sort, label: t(`products_sort_${sort}`) }))} label={t("products_sort")} />
       </div>
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("products_active_filters")}>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("products_active_filters")}>
           {chips.map((chip) => (
-            <span key={chip.key} className="md-chip md-chip-primary gap-1">
-              {chip.label}
-              <Button variant="ghost" size="icon" className="size-8" aria-label={`${t("products_remove_filter")}: ${chip.label}`} onClick={chip.clear}>
-                <X className="size-4" aria-hidden />
-              </Button>
-            </span>
+            <ActiveChip key={chip.key} label={chip.label} removeLabel={`${t("products_remove_filter")}: ${chip.label}`} onRemove={chip.clear} />
           ))}
         </div>
       )}

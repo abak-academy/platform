@@ -101,6 +101,17 @@ describe("PromosPage", () => {
     expect(screen.getByText("Rp20.000")).toBeInTheDocument();
     expect(screen.getByText("12 / 100")).toBeInTheDocument();
     expect(screen.getByText("5 / 50")).toBeInTheDocument();
+    expect(screen.getAllByRole("article")).toHaveLength(2);
+    expect(screen.getByText("12 / 100").closest("article")).toHaveTextContent("Aktif");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+  });
+
+  it("filters the cards by code in the toolbar", async () => {
+    render(<PromosPage />);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "cashback" } });
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByText("CASHBACK20K")).toBeInTheDocument();
+    expect(screen.queryByText("DISKON10")).not.toBeInTheDocument();
   });
 
   it("opens create modal and calls create mutation on save", async () => {
@@ -128,7 +139,7 @@ describe("PromosPage", () => {
 
     await waitFor(() => expect(screen.getByText("DISKON10")).toBeInTheDocument());
 
-    const row = screen.getByText("DISKON10").closest("tr");
+    const row = screen.getByText("DISKON10").closest("article");
     expect(row).toBeTruthy();
     const editButton = within(row!).getByRole("button", { name: /edit/i });
     fireEvent.click(editButton);
@@ -151,7 +162,7 @@ describe("PromosPage", () => {
 
     await waitFor(() => expect(screen.getByText("CASHBACK20K")).toBeInTheDocument());
 
-    const row = screen.getByText("CASHBACK20K").closest("tr");
+    const row = screen.getByText("CASHBACK20K").closest("article");
     expect(row).toBeTruthy();
     const deleteButton = within(row!).getByRole("button", { name: /hapus/i });
     fireEvent.click(deleteButton);

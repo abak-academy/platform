@@ -76,6 +76,7 @@ describe("CourseBuilderPage", () => {
     });
 
     expect(screen.getByTestId("section-editor")).toHaveTextContent("c1");
+    expect(screen.getByRole("link", { name: /kembali ke kursus/i })).toHaveAttribute("href", "/admin/courses");
   });
 
   it("calls update mutation when metadata is changed and saved", async () => {

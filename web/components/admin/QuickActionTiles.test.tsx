@@ -25,6 +25,7 @@ describe("QuickActionTiles", () => {
       "href",
       "/admin/orders",
     );
+    expect(screen.getByRole("link", { name: "Kelola Produk" })).toHaveClass("flex", "bg-surface-sunken", "text-[13px]");
   });
 
   it("renders nothing at all when there are no actions", () => {

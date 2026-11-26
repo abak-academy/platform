@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { toast } from "sonner";
 import { useAdminCourse, useUpdateCourse } from "@/lib/hooks/admin-courses";
 import { useTranslation } from "@/lib/i18n";
@@ -11,13 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, BookOpen } from "lucide-react";
 import type { AdminUpdateCourseInput } from "@/lib/types";
 
 export default function CourseBuilderPage() {
   const { t } = useTranslation();
   const params = useParams();
-  const router = useRouter();
   const courseId = typeof params.id === "string" ? params.id : "";
 
   const { data: course, isLoading, isError, error } = useAdminCourse(courseId);
@@ -73,7 +71,7 @@ export default function CourseBuilderPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="flex flex-col gap-5">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-48 w-full" />
         <Skeleton className="h-64 w-full" />
@@ -90,13 +88,9 @@ export default function CourseBuilderPage() {
   }
 
   return (
-    <div className="space-y-8 fade-in">
-      <Button variant="ghost" size="sm" onClick={() => router.push("/admin/courses")}>
-        <ArrowLeft className="mr-1 size-4" />
-        {t("course_back")}
-      </Button>
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={BookOpen}
+        back={{ href: "/admin/courses", label: t("course_back") }}
         title={course?.title ?? t("courses_edit")}
         description={
           course
@@ -107,7 +101,7 @@ export default function CourseBuilderPage() {
 
       <form onSubmit={handleSaveMetadata} className="md-card-outlined">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-medium">{t("course_metadata")}</h2>
+          <h2 className="type-h2">{t("course_metadata")}</h2>
           <Button type="submit" disabled={!dirty || !title.trim() || update.isPending}>
             {update.isPending ? t("saving") : t("course_save_metadata")}
           </Button>
@@ -161,7 +155,7 @@ export default function CourseBuilderPage() {
       </form>
 
       <div className="md-card-outlined">
-        <h2 className="mb-4 text-lg font-medium">{t("course_curriculum")}</h2>
+        <h2 className="mb-4 type-h2">{t("course_curriculum")}</h2>
         <SectionEditor courseId={courseId} />
       </div>
     </div>

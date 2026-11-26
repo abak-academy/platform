@@ -54,7 +54,7 @@ export function ShipOrderModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{t("orders_ship_title")}</DialogTitle>
           <DialogDescription>

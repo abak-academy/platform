@@ -141,9 +141,9 @@ export function AnnouncementComposer({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle className="font-serif">
+          <DialogTitle>
             {(announcement ? t("update") : t("create")) + " " + t("notification")}
           </DialogTitle>
         </DialogHeader>
@@ -168,7 +168,7 @@ export function AnnouncementComposer({
               className={cn(
                 "min-h-[96px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow]",
                 "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50",
-                "placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
+                "placeholder:text-ink-600 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"
               )}
             />
           </div>

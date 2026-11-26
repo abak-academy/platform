@@ -112,15 +112,15 @@ function SectionLessons({
   return (
     <>
       {lessons.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Belum ada materi.</p>
+        <p className="text-sm text-ink-600">Belum ada materi.</p>
       ) : (
         <ul className="space-y-2">
           {lessons.map((lesson, index) => (
-            <li key={lesson.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+            <li key={lesson.id} className="flex items-center justify-between gap-2 rounded-2xl bg-surface-sunken px-3.5 py-3">
               <div className="flex flex-1 items-center gap-3 min-w-0">
-                <span className="text-xs text-muted-foreground">#{lesson.position ?? index + 1}</span>
+                <span className="text-xs text-ink-600">#{lesson.position ?? index + 1}</span>
                 <span className="text-sm truncate">{lesson.title}</span>
-                <span className="text-xs text-muted-foreground">{formatDuration(lesson.duration_seconds)}</span>
+                <span className="text-xs text-ink-600">{formatDuration(lesson.duration_seconds)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <Button size="icon-xs" variant="ghost" onClick={() => setEditLesson(lesson)}>
@@ -291,7 +291,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
       </form>
 
       {sectionList.length === 0 && (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
+        <div className="rounded-2xl border border-line p-8 text-center text-ink-600">
           Belum ada bab. Tambahkan bab pertama di atas.
         </div>
       )}
@@ -300,10 +300,10 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
         {sectionList.map((section, index) => {
           const isEditing = editingSectionId === section.id;
           return (
-            <div key={section.id} className="rounded-lg border bg-card">
-              <div className="flex items-center justify-between gap-2 border-b p-4">
+            <div key={section.id} className="rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
+              <div className="flex items-center justify-between gap-2 border-b border-line p-4">
                 <div className="flex flex-1 items-center gap-2 min-w-0">
-                  <span className="text-sm text-muted-foreground">#{section.position ?? index + 1}</span>
+                  <span className="text-sm text-ink-600">#{section.position ?? index + 1}</span>
                   {isEditing ? (
                     <Input
                       value={editingSectionTitle}
@@ -311,7 +311,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
                       className="h-8"
                     />
                   ) : (
-                    <h3 className="font-medium truncate">{section.title}</h3>
+                    <h3 className="type-h3 truncate">{section.title}</h3>
                   )}
                 </div>
 

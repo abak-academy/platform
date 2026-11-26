@@ -68,7 +68,7 @@ export function TrackingModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-md [&>button[data-slot=dialog-close]]:top-5 [&>button[data-slot=dialog-close]]:text-white/70 [&>button[data-slot=dialog-close]]:hover:text-white">
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[480px] [&>button[data-slot=dialog-close]]:top-5 [&>button[data-slot=dialog-close]]:text-white/70 [&>button[data-slot=dialog-close]]:hover:text-white">
         {/* The label band: this is the sticker on the box, quoted.
 
             The navy is a literal rather than bg-ink-900 on purpose. Every ink

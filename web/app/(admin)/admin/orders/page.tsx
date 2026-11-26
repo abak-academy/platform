@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Receipt } from "lucide-react";
+import { Inbox } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminOrder,
@@ -24,7 +24,9 @@ import { CancelShipmentModal } from "@/components/admin/CancelShipmentModal";
 import { TrackingModal } from "@/components/admin/TrackingModal";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TableFooter } from "@/components/ui/table-footer";
 import {
   Dialog,
   DialogContent,
@@ -104,6 +106,8 @@ function shipAllowed(order: Order): boolean {
     (order.status === "shipped" && isShipmentFailure(order.shipment_status))
   );
 }
+
+const TH = "bg-surface-sunken px-4 py-3 text-left font-mono text-[10.5px] font-semibold tracking-[.1em] whitespace-nowrap text-ink-600 uppercase";
 
 export default function OrdersPage() {
   const { t } = useTranslation();
@@ -361,17 +365,14 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={Receipt}
         title={t("admin_orders_page_title")}
         description={t("admin_orders_page_description")}
       />
 
-      <OrdersToolbar value={query} onChange={changeQuery} couriers={summary?.couriers} />
-
       {selectedOrders.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-lg border p-3" role="region" aria-label={t("labels_selected")}>
+        <div className="flex flex-wrap items-center gap-3 rounded-[var(--radius-card)] border border-line bg-surface p-3 shadow-card" role="region" aria-label={t("labels_selected")}>
           <span className="text-sm">{t("labels_selected")}: {selectedOrders.length}</span>
           <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>{t("labels_clear")}</Button>
           <Button size="sm" disabled={isFetching || isPlaceholderData} onClick={() => { setReviewMode("bulk"); setReviewOrders(selectedOrders); }}>{t("labels_print")}</Button>
@@ -393,20 +394,21 @@ export default function OrdersPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="space-y-3">
-          <div className="overflow-x-auto md-card-outlined">
-            <table className="w-full text-sm">
-              <thead className="bg-muted">
+        <div className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
+          <OrdersToolbar value={query} onChange={changeQuery} couriers={summary?.couriers} />
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-[13.5px]">
+              <thead>
                 <tr>
-                  <th className="px-4 py-3.5">
+                  <th className={TH}>
                     <input type="checkbox" className="size-4 accent-brand-700" aria-label={t("labels_select_all")} checked={orders.length > 0 && selectedOrders.length === orders.length} disabled={orders.length === 0 || isFetching || isPlaceholderData} ref={(el) => { if (el) el.indeterminate = selectedOrders.length > 0 && selectedOrders.length < orders.length; }} onChange={(e) => setSelectedIds(e.target.checked ? orders.map((order) => order.id) : [])} />
                   </th>
-                  <th className="px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("orders")}</th>
-                  <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_buyer")}</th>
-                  <th className="hidden px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_product")}</th>
-                  <th className="hidden px-4 py-3.5 text-right text-[13px] font-semibold tracking-wide text-ink-600 uppercase md:table-cell">{t("th_total")}</th>
-                  <th className="px-4 py-3.5 text-left text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("th_status")}</th>
-                  <th className="px-4 py-3.5 text-right text-[13px] font-semibold tracking-wide text-ink-600 uppercase">{t("th_actions")}</th>
+                  <th className={TH}>{t("orders")}</th>
+                  <th className={`${TH} hidden md:table-cell`}>{t("th_buyer")}</th>
+                  <th className={`${TH} hidden md:table-cell`}>{t("th_product")}</th>
+                  <th className={`${TH} hidden text-right md:table-cell`}>{t("th_total")}</th>
+                  <th className={TH}>{t("th_status")}</th>
+                  <th className={`${TH} text-right`}>{t("th_actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -423,8 +425,8 @@ export default function OrdersPage() {
                 ))}
                 {orders.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
-                      {t("empty_orders")}
+                    <td colSpan={7} className="border-t border-line p-0">
+                      <EmptyState icon={Inbox} title={t("empty_orders")} />
                     </td>
                   </tr>
                 )}
@@ -432,35 +434,22 @@ export default function OrdersPage() {
             </table>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-ink-600">{t("orders_page_size")}</span>
-              <Select value={String(query.limit ?? 20)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
-                <SelectTrigger className="w-24" aria-label={t("orders_page_size")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <p className="text-xs tabular-nums text-ink-600">
-                {t("orders_showing")} {firstRow}-{lastRow}
-                {total !== undefined && ` ${t("orders_of_total")} ${total}`}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={cursorStack.length === 1 || isFetching}
-                  onClick={() => { setSelectedIds([]); setCursorStack((stack) => stack.slice(0, -1)); }}>
-                  {t("pagination_prev")}
-                </Button>
-                <Button variant="outline" size="sm" disabled={!data?.next_cursor || isFetching || isPlaceholderData}
-                  onClick={() => { if (data?.next_cursor) { setSelectedIds([]); setCursorStack((stack) => [...stack, data.next_cursor]); } }}>
-                  {t("pagination_next")}
-                </Button>
-              </div>
-            </div>
-          </div>
+          <TableFooter
+            summary={<>{t("orders_showing")} {firstRow}-{lastRow}{total !== undefined && ` ${t("orders_of_total")} ${total}`}</>}
+            hasPrev={cursorStack.length > 1 && !isFetching}
+            hasNext={!!data?.next_cursor && !isFetching && !isPlaceholderData}
+            onPrev={() => { setSelectedIds([]); setCursorStack((stack) => stack.slice(0, -1)); }}
+            onNext={() => { if (data?.next_cursor) { setSelectedIds([]); setCursorStack((stack) => [...stack, data.next_cursor]); } }}
+          >
+            <Select value={String(query.limit ?? 20)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
+              <SelectTrigger size="sm" className="w-24" aria-label={t("orders_page_size")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </TableFooter>
         </div>
       )}
 

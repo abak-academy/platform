@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAdminCourses, useCreateCourse } from "@/lib/hooks/admin-courses";
 import { useTranslation } from "@/lib/i18n";
-import { Library } from "lucide-react";
+import { Library, Plus } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   Dialog,
@@ -15,7 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolbar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,7 +58,7 @@ function CreateCourseModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-[480px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{t("courses_create")}</DialogTitle>
@@ -150,17 +153,44 @@ export default function CoursesPage() {
     router.push(`/admin/courses/${course.id}`);
   }
 
+  const [toolbar, setToolbar] = useState<ListToolbarValue>({ q: "", filters: {} });
+  const all = courses ?? [];
+  const distinct = (pick: (c: Course) => string | undefined) =>
+    [...new Set(all.map(pick).filter((v): v is string => !!v))].sort().map((v) => ({ value: v, label: v }));
+  const shown = all.filter((c) => {
+    const q = toolbar.q.trim().toLowerCase();
+    return (
+      (!q || c.title.toLowerCase().includes(q) || (c.instructor_name ?? "").toLowerCase().includes(q)) &&
+      (!toolbar.filters.level || c.level === toolbar.filters.level) &&
+      (!toolbar.filters.subject || c.subject === toolbar.filters.subject)
+    );
+  });
+
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={Library}
         title={t("courses_page_title")}
         description={t("courses_page_description")}
-        actions={<Button onClick={() => setModalOpen(true)}>{t("courses_create")}</Button>}
+        actions={<Button variant="secondary" onClick={() => setModalOpen(true)}><Plus aria-hidden />{t("courses_create")}</Button>}
       />
 
+      {!isLoading && !isError && (
+        <ListToolbar
+          variant="standalone"
+          value={toolbar}
+          onChange={setToolbar}
+          count={shown.length}
+          unit={t("courses_unit")}
+          searchPlaceholder={t("courses_search")}
+          filters={[
+            { key: "level", label: t("th_level"), options: distinct((c) => c.level) },
+            { key: "subject", label: t("subject"), options: distinct((c) => c.subject) },
+          ]}
+        />
+      )}
+
       {isLoading && (
-        <div className="space-y-2">
+        <div className="flex flex-col gap-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
           ))}
@@ -173,39 +203,28 @@ export default function CoursesPage() {
         </div>
       )}
 
-      {!isLoading && !isError && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">{t("th_title")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_level")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("subject")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("th_instructor")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(courses ?? []).map((course) => (
-                <tr
-                  key={course.id}
-                  className="border-t cursor-pointer transition-colors hover:bg-muted/40"
-                  onClick={() => openCourse(course)}
-                >
-                  <td className="px-4 py-3 font-medium">{course.title}</td>
-                  <td className="px-4 py-3">{course.level ?? "-"}</td>
-                  <td className="px-4 py-3">{course.subject ?? "-"}</td>
-                  <td className="px-4 py-3">{course.instructor_name ?? "-"}</td>
-                </tr>
-              ))}
-              {(courses ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                    {t("empty_courses")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {!isLoading && !isError && shown.length === 0 && <EmptyState framed icon={Library} title={t("empty_courses")} />}
+
+      {!isLoading && !isError && shown.length > 0 && (
+        <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(255px,1fr))]">
+          {shown.map((course) => (
+            <button
+              key={course.id}
+              type="button"
+              onClick={() => openCourse(course)}
+              className="md-card-flush group flex flex-col text-left transition-all duration-300 ease-spring hover:-translate-y-[5px] hover:shadow-pop focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+            >
+              <span className="relative grid h-[120px] place-items-center bg-[radial-gradient(120%_110%_at_100%_0%,var(--color-teal-100),var(--color-brand-100))] text-brand-700">
+                <Library className="size-10" aria-hidden />
+                {course.subject && <Badge variant="teal" className="absolute top-3 left-3">{course.subject}</Badge>}
+              </span>
+              <span className="flex flex-col gap-2 px-[18px] pt-4 pb-[18px]">
+                <h3 className="type-h3 text-ink-900">{course.title}</h3>
+                <span className="text-[13px] text-ink-600">{course.instructor_name ?? "-"}</span>
+                <span className="text-[13px] font-bold text-ink-700">{course.level ?? "-"}</span>
+              </span>
+            </button>
+          ))}
         </div>
       )}
 

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PeriodBar, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
 import { useAdminUnitSales } from "@/lib/hooks/admin-unit-sales";
 import { explicitUnitRange, parseUnitPeriod, unitPeriodSearch } from "@/lib/unit-sales-period";
 import { useTranslation } from "@/lib/i18n";
@@ -49,29 +50,27 @@ function UnitSalesOverview() {
     router.replace(`/admin/store?${unitPeriodSearch(applied)}`, { scroll: false });
   }
 
-  return <section className="md-card-elevated space-y-4" aria-labelledby="unit-sales-title">
-    <h2 id="unit-sales-title" className="text-title-medium">{t("admin_unit_title")}</h2>
-    <p className="text-sm" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("admin_unit_explanation")}</p>
+  const href = (type: string) => `/admin/store/units/${type}?${unitPeriodSearch(period)}`;
+  const rows = TYPES.map((type) => ({ type, row: query.data?.types.find((item) => item.type === type) }));
+
+  return <section className="md-card-outlined flex flex-col gap-4" aria-labelledby="unit-sales-title">
+    <h2 id="unit-sales-title" className="type-h2">{t("admin_unit_title")}</h2>
+    <p className="text-sm text-ink-600">{t("admin_unit_explanation")}</p>
     <PeriodBar preset={preset} range={range} allowAllTime resolvedFrom={period.range.from} resolvedTo={period.range.to}
       onChange={handlePeriodChange} />
     {query.isLoading ? <p role="status">{t("admin_unit_loading")}</p> : query.isError ?
       <div role="alert"><p>{t("admin_unit_error")}</p><Button variant="outline" onClick={() => query.refetch()}>{t("retry")}</Button></div> :
-      <div><table className="block w-full text-sm sm:table">
-        <thead className="sr-only sm:not-sr-only sm:table-header-group"><tr><th scope="col" className="p-3 text-left">{t("admin_unit_type")}</th>
-          {UNITS.map((key) => <th key={key} scope="col" className="p-3 text-right">{t(`admin_unit_${key}`)}</th>)}
-        </tr></thead>
-        <tbody className="block sm:table-row-group">{TYPES.map((type) => {
-          const row = query.data?.types.find((item) => item.type === type);
-          return <tr key={type} className="group relative grid grid-cols-3 sm:table-row border-t border-line hover:bg-muted focus-within:outline focus-within:outline-2 focus-within:outline-offset-[-2px]" style={{ outlineColor: "var(--md-sys-color-primary)" }}>
-            <td className="col-span-3 block p-3 text-left font-medium sm:table-cell"><Link
-              href={`/admin/store/units/${type}?${unitPeriodSearch(period)}`}
-              aria-label={t("admin_unit_open").replace("{type}", t(`admin_unit_${type}`))}
-              className="after:absolute after:inset-0 after:z-10 focus-visible:outline-none">
-              {t(`admin_unit_${type}`)}
-            </Link></td>
-            {UNITS.map((key) => <td key={key} className={`block min-w-0 px-1 py-3 sm:table-cell sm:p-3 text-right tabular-nums ${key === "net_units" ? "font-bold text-title-large" : ""}`}><span aria-hidden="true" className="block text-xs font-normal sm:hidden" style={{ color: "var(--md-sys-color-on-surface)" }}>{t(`admin_unit_${key}`)}</span>{row?.[key] ?? 0}</td>)}
-          </tr>;
-        })}</tbody>
-      </table></div>}
+      <DataTable
+        rows={rows}
+        rowKey={(r) => r.type}
+        empty={t("admin_unit_empty")}
+        onRowClick={(r) => router.push(href(r.type))}
+        columns={[
+          { key: "type", header: t("admin_unit_type"), strong: true, cell: (r) => <Link href={href(r.type)}
+            aria-label={t("admin_unit_open").replace("{type}", t(`admin_unit_${r.type}`))}>{t(`admin_unit_${r.type}`)}</Link> },
+          ...UNITS.map((key) => ({ key, header: t(`admin_unit_${key}`), align: "right" as const, strong: key === "net_units",
+            className: "tabular-nums", cell: (r: (typeof rows)[number]) => r.row?.[key] ?? 0 })),
+        ]}
+      />}
   </section>;
 }

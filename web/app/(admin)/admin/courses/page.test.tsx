@@ -57,7 +57,7 @@ describe("CoursesPage", () => {
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
   });
 
-  it("renders the courses table with title, level, subject, instructor", async () => {
+  it("renders a card per course with title, level, subject, instructor", async () => {
     render(<CoursesPage />);
 
     await waitFor(() => {
@@ -66,6 +66,15 @@ describe("CoursesPage", () => {
     });
 
     expect(screen.getByText("Pak Budi")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByText("Matematika Dasar").closest("button")).toHaveClass("md-card-flush");
+  });
+
+  it("filters the cards by title or instructor", async () => {
+    render(<CoursesPage />);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "budi" } });
+    expect(screen.getByText("Matematika Dasar")).toBeInTheDocument();
+    expect(screen.queryByText("Fisika SMA")).not.toBeInTheDocument();
   });
 
   it("navigates to builder when a row is clicked", async () => {
@@ -73,7 +82,7 @@ describe("CoursesPage", () => {
 
     await waitFor(() => expect(screen.getByText("Matematika Dasar")).toBeInTheDocument());
 
-    const row = screen.getByText("Matematika Dasar").closest("tr");
+    const row = screen.getByText("Matematika Dasar").closest("button");
     fireEvent.click(row!);
 
     expect(mockPush).toHaveBeenCalledWith("/admin/courses/c1");
@@ -90,10 +99,10 @@ describe("CoursesPage", () => {
 
     expect(screen.getByRole("dialog", { name: /buat kursus/i })).toBeInTheDocument();
 
-    const nameInput = screen.getByLabelText(/judul/i);
+    const nameInput = screen.getByLabelText(/^judul$/i);
     fireEvent.input(nameInput, { target: { value: "Kimia SMA" } });
 
-    const levelInput = screen.getByLabelText(/jenjang/i);
+    const levelInput = screen.getByLabelText(/^jenjang$/i);
     fireEvent.input(levelInput, { target: { value: "SMA" } });
 
     fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));

@@ -1,5 +1,6 @@
 "use client";
 
+import { DataTable } from "@/components/ui/data-table";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { TopProduct, TopProductWithRevenue } from "@/lib/types";
@@ -34,59 +35,36 @@ export function TopProductsTable({ products, showRevenue = false, emptyLabel }: 
   const maxQty = Math.max(...products.map((p) => p.qty_sold), 1);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-line">
-            <th className="w-8 px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-600">
-              #
-            </th>
-            <th className="px-2 py-2 text-left text-xs font-semibold uppercase tracking-wide text-ink-600">
-              {t("th_product")}
-            </th>
-            <th className="px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-ink-600">
-              {t("th_qty_sold")}
-            </th>
-            <th className="px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-ink-600">
-              {t("th_order_count")}
-            </th>
-            {showRevenue && (
-              <th className="px-2 py-2 text-right text-xs font-semibold uppercase tracking-wide text-ink-600">
-                {t("revenue")}
-              </th>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {products.map((p, i) => (
-            <tr key={p.product_id} className="border-b border-line/60 last:border-0">
-              <td className="px-2 py-2.5 text-right align-top text-xs font-bold tabular-nums text-ink-600">
-                {i + 1}
-              </td>
-              <td className="px-2 py-2.5 align-top">
-                <div className="font-medium">{p.name}</div>
-                <div className="mt-0.5 text-xs text-ink-600">{p.product_type}</div>
-                {!showRevenue && (
-                  // Ranking is by quantity on the money-free view, so the bar
-                  // makes the order legible without printing a second number.
-                  <div
-                    className="mt-1.5 h-1 rounded-full bg-brand-500/70 transition-[width] duration-500 motion-reduce:transition-none"
-                    style={{ width: `${Math.max((p.qty_sold / maxQty) * 100, 4)}%` }}
-                    aria-hidden
-                  />
-                )}
-              </td>
-              <td className="px-2 py-2.5 text-right align-top tabular-nums">{p.qty_sold}</td>
-              <td className="px-2 py-2.5 text-right align-top tabular-nums">{p.order_count}</td>
-              {showRevenue && (
-                <td className="px-2 py-2.5 text-right align-top font-medium tabular-nums">
-                  {hasRevenue(p) ? formatRupiah(p.product_revenue) : "—"}
-                </td>
+    <DataTable
+      surface="plain"
+      rows={products}
+      rowKey={(p) => p.product_id}
+      empty=""
+      columns={[
+        { key: "rank", header: "#", className: "w-8 text-xs font-bold tabular-nums text-ink-600", cell: (p) => products.indexOf(p) + 1 },
+        {
+          key: "name",
+          header: t("th_product"),
+          cell: (p) => (
+            <>
+              <div className="font-bold text-ink-900">{p.name}</div>
+              <div className="mt-0.5 text-xs text-ink-600">{p.product_type}</div>
+              {!showRevenue && (
+                <div
+                  className="mt-1.5 h-2.5 rounded-full bg-gradient-to-r from-ember-600 to-gold-500 transition-[width] duration-500 motion-reduce:transition-none"
+                  style={{ width: `${Math.max((p.qty_sold / maxQty) * 100, 4)}%` }}
+                  aria-hidden
+                />
               )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+            </>
+          ),
+        },
+        { key: "qty", header: t("th_qty_sold"), align: "right", className: "tabular-nums", cell: (p) => p.qty_sold },
+        { key: "orders", header: t("th_order_count"), align: "right", className: "tabular-nums", cell: (p) => p.order_count },
+        ...(showRevenue
+          ? [{ key: "revenue", header: t("revenue"), align: "right" as const, strong: true, className: "tabular-nums", cell: (p: TopProduct) => (hasRevenue(p) ? formatRupiah(p.product_revenue) : "—") }]
+          : []),
+      ]}
+    />
   );
 }

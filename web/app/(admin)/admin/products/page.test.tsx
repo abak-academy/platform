@@ -82,6 +82,9 @@ async function choose(name: string, option: string) {
   fireEvent.click(within(listbox).getByRole("option", { name: option }));
   await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
 }
+function pick(group: string, chip: string) {
+  fireEvent.click(within(screen.getByRole("group", { name: group })).getByRole("button", { name: chip }));
+}
 function openFilters() {
   fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
 }
@@ -131,15 +134,20 @@ describe("ProductsPage", () => {
 
     expect(screen.getByText("Rp75.000")).toBeInTheDocument();
     expect(screen.getByText("12")).toBeInTheDocument();
-    expect(screen.getByText("published")).toBeInTheDocument();
+    const published = within(screen.getByText("Buku Matematika").closest("tr")!).getByRole("switch");
+    expect(published).toBeChecked();
+    expect(published).toBeDisabled();
+    expect(within(screen.getByText("Kursus Fisika").closest("tr")!).getByRole("switch")).not.toBeChecked();
+    expect(within(screen.getByText("Paket UTBK").closest("tr")!).getByText("Disembunyikan")).toBeInTheDocument();
+    expect(screen.getAllByRole("columnheader")[0]).toHaveClass("font-mono", "uppercase");
   });
 
   it("filters rows by type in the Filters panel", async () => {
     render(<ProductsPage />);
     openFilters();
-    await choose("Jenis produk", "Kursus");
+    pick("Jenis produk", "Kursus");
     expect(rowNames()).toEqual(["Kursus Fisika"]);
-    await choose("Jenis produk", "Semua jenis");
+    pick("Jenis produk", "Semua jenis");
     expect(rowNames()).toEqual(sampleProducts.map((p) => p.name));
   });
 
@@ -210,7 +218,7 @@ describe("ProductsPage", () => {
 
     const row = screen.getByText("Kursus Fisika").closest("tr");
     expect(row).toBeTruthy();
-    const publishButton = within(row!).getByRole("button", { name: /publikasikan/i });
+    const publishButton = within(row!).getByRole("switch", { name: /publikasikan/i });
     fireEvent.click(publishButton);
 
     await waitFor(() => {
@@ -255,9 +263,7 @@ describe("ProductsPage", () => {
     mockRole = "admin_exam";
     render(<ProductsPage />);
     openFilters();
-    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Jenis produk" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
-    const listbox = await screen.findByRole("listbox");
-    expect(within(listbox).getAllByRole("option").map((o) => o.textContent)).toEqual(["Semua jenis", "Kursus", "Ujian"]);
+    expect(within(screen.getByRole("group", { name: "Jenis produk" })).getAllByRole("button").map((o) => o.textContent)).toEqual(["Semua jenis", "Kursus", "Ujian"]);
   });
 
   it("shows a store admin every product", async () => {
@@ -372,7 +378,7 @@ describe("ProductsPage", () => {
     if (field === "search") fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Produk" } });
     if (field === "type" || field === "status") {
       openFilters();
-      await choose(field === "type" ? "Jenis produk" : "Status", field === "type" ? "Kursus" : "Draf");
+      pick(field === "type" ? "Jenis produk" : "Status", field === "type" ? "Kursus" : "Draf");
       fireEvent.click(screen.getByRole("button", { name: "Tampilkan produk" }));
     }
     if (field === "sort") await choose("Urutkan produk", "Nama Z-A");
@@ -401,7 +407,7 @@ describe("ProductsPage", () => {
   it("uses the existing empty state when filters match nothing", async () => {
     render(<ProductsPage />);
     openFilters();
-    await choose("Status", "Diarsipkan");
+    pick("Status", "Diarsipkan");
     fireEvent.click(screen.getByRole("button", { name: "Tampilkan produk" }));
     expect(screen.getByText("Tidak ada produk.")).toBeInTheDocument();
     expect(screen.getByText("Menampilkan 0-0 dari 0")).toBeInTheDocument();

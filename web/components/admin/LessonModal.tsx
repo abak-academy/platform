@@ -68,7 +68,7 @@ export function LessonModal({ open, onOpenChange, lesson, onSubmit, isPending }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[480px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit materi" : "Tambah materi"}</DialogTitle>
