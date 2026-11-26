@@ -207,10 +207,10 @@ describe("ExamBriefing information card", () => {
     expect(hours.textContent).toMatch(/08[.:]00\s*–\s*10[.:]00\s*WIB/);
   });
 
-  it("splits a cross-day window into two dated lines", () => {
+  it("shows a cross-day window as the start date over the start time and the dated end", () => {
     renderBriefing({ scheduled_at: "2026-11-07T01:00:00Z", scheduled_end_at: "2026-11-08T03:00:00Z" });
-    expect(screen.getByText(/Sabtu, 7 Nov 2026, 08[.:]00 WIB/)).toBeInTheDocument();
-    expect(screen.getByText(/Minggu, 8 Nov 2026, 10[.:]00 WIB/)).toBeInTheDocument();
+    expect(screen.getByText("Sabtu, 7 Nov 2026")).toBeInTheDocument();
+    expect(screen.getByText(/^08[.:]00 – Minggu, 8 Nov 2026, 10[.:]00 WIB$/)).toBeInTheDocument();
   });
 
   it("shows total minutes and the per-section timer scope", () => {
@@ -268,10 +268,11 @@ describe("ExamBriefing how-to card", () => {
   });
 
   it("renders the exam title as the page heading with a back link, and numbers the sections", () => {
-    renderBriefing();
+    const { container } = renderBriefing();
     expect(screen.getByRole("heading", { level: 1, name: "Try Out Nasional" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Kembali" })).toHaveAttribute("href", "/exam");
-    expect(screen.getByRole("listitem")).toHaveTextContent(/^1Penalaran/);
+    expect(container.querySelectorAll("ol > li")).toHaveLength(1);
+    expect(container.querySelector("ol > li")).toHaveTextContent(/^1Penalaran/);
   });
 
   it("places the token and check-in cards after the how-to card", () => {

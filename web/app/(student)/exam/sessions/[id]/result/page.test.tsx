@@ -382,7 +382,7 @@ describe("SessionResultPage", () => {
     expect(screen.getByText("Berdasarkan Topik")).toBeInTheDocument();
     expect(screen.getByText("Tes Matematika")).toBeInTheDocument();
     expect(screen.getByText("8/10")).toBeInTheDocument();
-    expect(screen.getByText("Pembahasan")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Pembahasan" })).toBeInTheDocument();
     expect(screen.getByText(/Berapa 2\+2\?/)).toBeInTheDocument();
   });
 

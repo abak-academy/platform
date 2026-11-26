@@ -158,18 +158,16 @@ describe("ExamPage", () => {
     render(<ExamPage />);
 
     const card = (await screen.findByText("Ujian Akhir Matematika")).closest("[data-slot='card']") as HTMLElement;
-    expect(within(card).getByText("Total waktu")).toBeInTheDocument();
-    expect(within(card).getByText("75")).toBeInTheDocument();
+    expect(within(card).getByText("75′")).toBeInTheDocument();
     expect(within(card).getByText("Timer per section")).toBeInTheDocument();
     expect(within(card).getByText("3")).toBeInTheDocument();
     expect(within(card).getByText("60")).toBeInTheDocument();
-    expect(within(card).getByText("Section berurutan")).toBeInTheDocument();
+    expect(within(card).getByText(/Section berurutan/)).toBeInTheDocument();
 
     const free = (await screen.findByText("Try Out UTBK Gratis #12")).closest("[data-slot='card']") as HTMLElement;
-    expect(within(free).getByText("Waktu pengerjaan")).toBeInTheDocument();
-    expect(within(free).getByText("90")).toBeInTheDocument();
+    expect(within(free).getByText("90′")).toBeInTheDocument();
     expect(within(free).getByText("Satu timer ujian")).toBeInTheDocument();
-    expect(within(free).getByText("Bebas pindah section")).toBeInTheDocument();
+    expect(within(free).getByText(/Bebas pindah section/)).toBeInTheDocument();
   });
 
   it("shows a same-day schedule as one date and a time range, and a cross-day one as two dates", async () => {

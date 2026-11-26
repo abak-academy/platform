@@ -3294,6 +3294,10 @@ export const DICT = {
     filter_sort_name: "Nama A–Z",
     schools_filter_province: "Provinsi",
     students_filter_jenjang: "Jenjang",
+    comp_empty_text: "Ikut tryout nasional gratis untuk tahu posisimu.",
+    comp_empty_cta: "Ikut tryout gratis",
+    examdetail_attempts_hint: "Pastikan koneksi stabil sebelum mulai.",
+    result_strengthen_cta: "Perkuat lewat kursus",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -6580,6 +6584,10 @@ export const DICT = {
     filter_sort_name: "Name A–Z",
     schools_filter_province: "Province",
     students_filter_jenjang: "Level",
+    comp_empty_text: "Join a free national mock exam to see where you stand.",
+    comp_empty_cta: "Join a free mock exam",
+    examdetail_attempts_hint: "Make sure your connection is stable before you start.",
+    result_strengthen_cta: "Strengthen it with a course",
   },
 };
 
