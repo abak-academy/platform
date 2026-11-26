@@ -248,9 +248,9 @@ func (r *Repository) ReplaceGroupingScheduleTx(ctx context.Context, tx pgx.Tx, g
 	return nil
 }
 
-// DeleteEmptyProductGrouping reports whether a row was deleted; false means the grouping is gone or has members.
-func (r *Repository) DeleteEmptyProductGrouping(ctx context.Context, id string) (bool, error) {
-	tag, err := r.pool.Exec(ctx,
+// DeleteEmptyProductGroupingTx reports whether a row was deleted; false means the grouping has members.
+func (r *Repository) DeleteEmptyProductGroupingTx(ctx context.Context, tx pgx.Tx, id string) (bool, error) {
+	tag, err := tx.Exec(ctx,
 		`DELETE FROM product_grouping WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM product WHERE grouping_id = $1)`, id)
 	return tag.RowsAffected() > 0, err
 }

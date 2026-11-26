@@ -458,17 +458,26 @@ func (s *Service) clearCardsTx(ctx context.Context, tx pgx.Tx, examIDs []uuid.UU
 }
 
 func (s *Service) AdminDeleteProductGrouping(ctx context.Context, id string) error {
-	deleted, err := s.storeRepo.DeleteEmptyProductGrouping(ctx, id)
-	if err != nil || deleted {
+	tx, err := s.storeRepo.BeginTx(ctx)
+	if err != nil {
 		return err
 	}
-	if _, err := s.storeRepo.GetProductGroupingByID(ctx, id); err != nil {
+	defer tx.Rollback(ctx)
+	// The row lock serializes with a membership PUT, so the member check below sees its commit.
+	if _, err := s.storeRepo.GetProductGroupingForUpdateTx(ctx, tx, id); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return ErrProductGroupingNotFound
 		}
 		return err
 	}
-	return ErrGroupingHasProducts
+	deleted, err := s.storeRepo.DeleteEmptyProductGroupingTx(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrGroupingHasProducts
+	}
+	return tx.Commit(ctx)
 }
 
 func (s *Service) AdminReorderProductGroupings(ctx context.Context, groupingIDs []string) error {
