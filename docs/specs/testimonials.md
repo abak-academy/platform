@@ -91,7 +91,7 @@ Down migration drops the table.
 
 Audit: `InsertAuditLogMeta(ctx, nil, actor, "testimonial", id, "testimonial.consent_change" \| "testimonial.visibility_change" \| "testimonial.delete", {old, new})`, the same helper `admin_users.go` uses.
 
-**Photo.** Uses `POST /admin/uploads/image` with no backend change; the key lands under `question/`, which the anonymous `GET /files/*` already serves (verified 2026-11-26; D3, shared with event-series logos). Privacy: a **draft** photo of a minor is fetchable by anyone holding its key, and stays so after removal (behavior 9). Keys are not listed anywhere public; the T1 PR confirms they are unguessable and records it here.
+**Photo.** Uses `POST /admin/uploads/image` with no backend change; the key lands under `question/`, which the anonymous `GET /files/*` already serves (verified 2026-11-26; D3, shared with event-series logos). Privacy: a **draft** photo of a minor is fetchable by anyone holding its key, and stays so after removal (behavior 9). Keys are not listed anywhere public and are unguessable: `question/<uploader-id>/<uuid v4>-<filename>` (`GeneratePresignedUploadURL`; confirmed in PR #262).
 
 What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`handler/admin_uploads.go`) only requires `content_type` to start with `image/`; `GeneratePresignedUploadURL` (`service/student.go`) returns a 15-minute presigned **PUT** with no size cap and no dimension check, and the bytes go straight to storage, never through the API. So nothing server-side enforces 5 MB, 1200 × 1500, or the format; the admin web's crop is the only gate (accepted, D2 = a: only `super_admin` can write, and a direct API caller with that token could store any image). `GET /files/*` serves `image/jpeg` and `image/webp` inline (`safeInlineImageTypes`, `handler/student.go`).
 
@@ -99,7 +99,7 @@ What the upload path checks today (verified 2026-11-26): `AdminUploadImage` (`ha
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/testimonials?lang=id\|en` | Visible only (`is_visible`, which the CHECKs tie to consent and a photo), `sort_order` then `created_at`; each `{id, name, role_label, photo_url, quote, achievements}` for `lang` (default `id`). `photo_url` (`<api>/files/<photo_key>`, as event-series `logo_url`) is always present. Never returns consent fields, `photo_key`, or `sort_order`. `Cache-Control: public, max-age=300` |
+| GET | `/testimonials?lang=id\|en` | Visible only (`is_visible`, which the CHECKs tie to consent and a photo), `sort_order` then `created_at`; each `{id, name, role_label, photo_url, quote, achievements}` for `lang` (default `id`). `photo_url` is always present and, like event-series `logo_url`, carries the object key; the web builds the URL with `fileUrl()` (the API has no base URL of its own). Never returns consent fields, `photo_key`, or `sort_order`. `Cache-Control: public, max-age=300` |
 
 ## Admin UI (web)
 
