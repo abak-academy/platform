@@ -17,7 +17,7 @@ const buttonVariants = cva(
           "border-[1.5px] border-line bg-surface text-ink-900 hover:border-ink-900",
         ghost: "text-ink-900 hover:bg-surface-sunken",
         destructive: "bg-danger-600 text-on-danger hover:bg-danger-600/90",
-        dark: "bg-ink-900 text-surface hover:-translate-y-0.5",
+        dark: "bg-brand-600 text-white shadow-[var(--shadow-brand)] hover:-translate-y-0.5 hover:bg-brand-600",
         light: "bg-white text-brand-900 hover:-translate-y-0.5",
         "line-light": "border-[1.5px] border-white/60 text-white hover:bg-white/10",
         link: "text-brand-ink underline-offset-4 hover:underline",

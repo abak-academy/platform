@@ -77,7 +77,7 @@ export function PageHead({ title, sub, eyebrow, actions, back, className, highli
           >
             {highlighted(title, highlight)}
           </h1>
-          {sub && <p className={cn("text-ink-600", home ? "text-[15px]" : "mt-1 text-sm")}>{sub}</p>}
+          {sub && <p className={cn("text-ink-600", home ? "text-[15px]" : "mt-1 text-sm leading-[1.55]")}>{sub}</p>}
         </div>
         {(actions || (chrome && showActions)) && (
           <div className="flex flex-wrap items-center gap-2 max-narrow:w-full">

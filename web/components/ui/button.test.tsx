@@ -39,10 +39,10 @@ describe("Button", () => {
     expect(cls("line")).toContain("border-white");
   });
 
-  it("dark is an ink fill", () => {
+  it("dark is the prototype .ab-btn.dark: brand fill with the brand shadow", () => {
     render(<Button variant="dark">dk</Button>);
-    expect(cls("dk")).toContain("bg-ink-900");
-    expect(cls("dk")).toContain("text-surface");
+    expect(cls("dk")).toContain("bg-brand-600");
+    expect(cls("dk")).toContain("shadow-[var(--shadow-brand)]");
   });
 
   it("sizes map to the control heights", () => {

@@ -29,7 +29,7 @@ export function ContinueLearningCard({ courses }: { courses: Dashboard["enrolled
                   {/* No subject/tone on the dashboard payload: brand gradient + the prototype's fallback spot. */}
                   <span
                     data-testid="learn-cover"
-                    className="relative grid h-[58px] w-[76px] flex-none place-items-center overflow-hidden rounded-xl bg-[radial-gradient(120%_110%_at_100%_0%,var(--color-brand-400),var(--color-brand-600))]"
+                    className="relative grid h-[58px] w-[76px] flex-none place-items-center overflow-hidden rounded-[12px] bg-[radial-gradient(120%_110%_at_100%_0%,var(--color-brand-400),var(--color-brand-600))]"
                   >
                     {cover ? <img src={cover} alt="" className="size-full object-cover" /> : <Spot className="size-[46px]" />}
                     <span className="absolute right-[5px] bottom-[5px] grid size-5 place-items-center rounded-full bg-white text-[#14202b]">
