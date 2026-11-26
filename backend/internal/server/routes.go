@@ -39,6 +39,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	v1.GET("/event-series", h.ListEventSeries)
 	v1.GET("/event-series/:slug", h.GetEventSeries)
+	v1.GET("/testimonials", h.ListTestimonials)
 
 	// Admin product routes
 	admin := v1.Group("/admin")

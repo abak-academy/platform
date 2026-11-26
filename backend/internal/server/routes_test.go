@@ -383,9 +383,10 @@ func TestRegisterRoutes_EventSeriesIsPublic(t *testing.T) {
 	for _, r := range e.Routes() {
 		registered[r.Method+" "+r.Path] = true
 	}
-	for _, want := range []string{"GET /api/v1/event-series", "GET /api/v1/event-series/:slug"} {
+	for _, want := range []string{"GET /api/v1/event-series", "GET /api/v1/event-series/:slug", "GET /api/v1/testimonials"} {
 		if !registered[want] {
 			t.Errorf("route %s not registered", want)
 		}
 	}
 }
+
