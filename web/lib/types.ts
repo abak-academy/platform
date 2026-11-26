@@ -1298,6 +1298,50 @@ export interface RegistrationListItem {
   section_count: number;
   question_count: number;
   sections_duration_minutes: number | null;
+  external_results?: StudentExternalResult[];
+}
+
+export interface StudentExternalResult {
+  round_id: string;
+  round_label: string;
+  score: number;
+  rank: number | null;
+  award: string | null;
+  certificate_url: string | null;
+  published_at: string;
+}
+
+export interface ExternalRound {
+  id: string;
+  exam_id: string;
+  label: string;
+  label_en: string | null;
+  row_count: number;
+  published_at: string | null;
+  updated_at: string;
+}
+
+export interface ExternalRowError {
+  line: number;
+  participant_no: string;
+  reason: string;
+}
+
+export interface ExternalRoundPreview {
+  matched: number;
+  errors: ExternalRowError[];
+  round_exists: boolean;
+  round_published: boolean;
+}
+
+export interface ExternalResultRow {
+  registration_id: string;
+  student_name: string;
+  participant_no: string;
+  score: number;
+  rank: number | null;
+  award: string | null;
+  certificate_url: string | null;
 }
 
 export interface ExamPreviewSection {

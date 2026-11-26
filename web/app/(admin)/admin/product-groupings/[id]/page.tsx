@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { ExternalRoundsDialog } from "@/components/admin/ExternalRoundsDialog";
 import { EVENT_ILLUSTRATIONS, EVENT_TONES, EventMark } from "@/components/admin/EventMark";
 import { ProductLevelFields, gradeRangeInvalid, levelPayload } from "@/components/admin/ProductModal";
 import { Button } from "@/components/ui/button";
@@ -340,6 +341,7 @@ export default function ProductGroupingDetailPage() {
 
   const { data: grouping, isLoading, isError, error } = useAdminProductGrouping(id);
   const { data: allProducts } = useAdminProducts();
+  const [externalFor, setExternalFor] = useState<Product | null>(null);
   const setMembers = useSetGroupingProducts();
   const update = useUpdateProductGrouping();
   const remove = useDeleteProductGrouping();
@@ -705,6 +707,13 @@ export default function ProductGroupingDetailPage() {
                               product={p}
                               index={i}
                               total={editions.length}
+                              actions={
+                                p.type === "exam" && (
+                                  <Button type="button" size="sm" variant="outline" aria-label={`Hasil ronde luar ${p.name}`} onClick={() => setExternalFor(p)}>
+                                    Hasil ronde luar
+                                  </Button>
+                                )
+                              }
                               onMove={(index, delta) => move("edition", index, delta)}
                               onRemove={(pid) => setMemberIds(ids.filter((x) => x !== pid))}
                             />
@@ -733,6 +742,16 @@ export default function ProductGroupingDetailPage() {
                     </div>
                   )}
                 </DndContext>
+
+                {externalFor && (
+                  <ExternalRoundsDialog
+                    key={externalFor.id}
+                    open
+                    onOpenChange={(o) => !o && setExternalFor(null)}
+                    productName={externalFor.name}
+                    examIds={externalFor.exam_ids ?? allProducts?.find((x) => x.id === externalFor.id)?.exam_ids ?? []}
+                  />
+                )}
 
                 <div className="space-y-2">
                   <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("grouping_add_product")} aria-label={t("grouping_add_product")} />
