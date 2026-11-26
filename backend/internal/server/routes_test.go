@@ -330,3 +330,62 @@ func TestRegisterRoutes_ExamModuleGates(t *testing.T) {
 		}
 	}
 }
+
+func TestRegisterRoutes_ExternalRoundGate(t *testing.T) {
+	paths := []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/admin/exams/not-a-uuid/external-rounds"},
+		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/external-rounds/preview"},
+		{http.MethodPost, "/api/v1/admin/external-rounds/not-a-uuid/publish"},
+		{http.MethodDelete, "/api/v1/admin/external-rounds/not-a-uuid"},
+	}
+	allowed := []string{service.RoleAdminStore, service.RoleAdminExam, service.RoleSuperAdmin}
+	roles := []string{service.RoleStudent, service.RoleAdminSchool, service.RoleAdminStore, service.RoleAdminExam, service.RoleSuperAdmin}
+
+	for _, p := range paths {
+		for _, role := range roles {
+			want := http.StatusForbidden
+			if slices.Contains(allowed, role) {
+				want = http.StatusBadRequest
+			}
+			t.Run(p.method+" "+p.path+"/"+role, func(t *testing.T) {
+				signer, svc, mr := newTestDeps(t)
+				e := echo.New()
+				e.HideBanner = true
+				RegisterRoutesForTest(e, handler.New(svc), svc, signer)
+
+				token, jti, err := signer.SignAccess("user1", role, nil, nil)
+				if err != nil {
+					t.Fatalf("sign: %v", err)
+				}
+				mr.Set("session:access:"+jti, "user1")
+
+				req := httptest.NewRequest(p.method, p.path, strings.NewReader("{}"))
+				req.Header.Set("Authorization", "Bearer "+token)
+				req.Header.Set("Content-Type", "application/json")
+				rec := httptest.NewRecorder()
+				e.ServeHTTP(rec, req)
+
+				if rec.Code != want {
+					t.Errorf("%s %s as %s: got %d, want %d (body %s)", p.method, p.path, role, rec.Code, want, rec.Body.String())
+				}
+			})
+		}
+	}
+}
+
+func TestRegisterRoutes_EventSeriesIsPublic(t *testing.T) {
+	signer, svc, _ := newTestDeps(t)
+	e := echo.New()
+	e.HideBanner = true
+	RegisterRoutesForTest(e, handler.New(svc), svc, signer)
+
+	registered := map[string]bool{}
+	for _, r := range e.Routes() {
+		registered[r.Method+" "+r.Path] = true
+	}
+	for _, want := range []string{"GET /api/v1/event-series", "GET /api/v1/event-series/:slug"} {
+		if !registered[want] {
+			t.Errorf("route %s not registered", want)
+		}
+	}
+}

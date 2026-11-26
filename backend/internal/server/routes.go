@@ -216,6 +216,17 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminProductGroupings.DELETE("/:id", h.AdminDeleteProductGrouping)
 	adminProductGroupings.PUT("/:id/products", h.AdminSetGroupingProducts)
 
+	// Admin off-platform round results (event editions)
+	externalRounds := handler.RBACMiddleware("exam-results-external:write")
+	admin.GET("/exams/:id/external-rounds", h.AdminListExternalRounds, externalRounds)
+	admin.POST("/exams/:id/external-rounds/presign", h.AdminPresignExternalRound, externalRounds)
+	admin.POST("/exams/:id/external-rounds/preview", h.AdminPreviewExternalRound, externalRounds)
+	admin.POST("/exams/:id/external-rounds/apply", h.AdminApplyExternalRound, externalRounds)
+	admin.POST("/external-rounds/:round_id/publish", h.AdminPublishExternalRound, externalRounds)
+	admin.POST("/external-rounds/:round_id/unpublish", h.AdminUnpublishExternalRound, externalRounds)
+	admin.GET("/external-rounds/:round_id/results", h.AdminListExternalResults, externalRounds)
+	admin.DELETE("/external-rounds/:round_id", h.AdminDeleteExternalRound, externalRounds)
+
 	// Admin promo code routes
 	adminPromos := admin.Group("/promo-codes")
 	adminPromos.Use(handler.RBACMiddleware("promos:write"))
