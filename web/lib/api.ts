@@ -105,7 +105,8 @@ async function tryRefresh(): Promise<string | null> {
 async function doAuthFetch<T>(
   path: string,
   init: RequestInit | undefined,
-  baseHeaders: HeadersInit
+  baseHeaders: HeadersInit,
+  redirectOn401 = true
 ): Promise<T> {
   const { useAuthStore } = await import("@/stores/auth");
   const token = useAuthStore.getState().token;
@@ -133,7 +134,7 @@ async function doAuthFetch<T>(
       const { loginPathForRole } = await import("@/lib/auth-redirect");
       const loginPath = loginPathForRole(useAuthStore.getState().user?.role);
       useAuthStore.getState().clear();
-      if (typeof window !== "undefined") {
+      if (redirectOn401 && typeof window !== "undefined") {
         window.location.href = loginPath;
       }
     }
@@ -143,8 +144,12 @@ async function doAuthFetch<T>(
   return res.json() as Promise<T>;
 }
 
-export async function authFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  return doAuthFetch<T>(path, init, { "Content-Type": "application/json" });
+export async function authFetch<T>(
+  path: string,
+  init?: RequestInit,
+  opts?: { redirectOn401?: boolean }
+): Promise<T> {
+  return doAuthFetch<T>(path, init, { "Content-Type": "application/json" }, opts?.redirectOn401);
 }
 
 export async function authFetchMultipart<T>(path: string, init?: RequestInit): Promise<T> {

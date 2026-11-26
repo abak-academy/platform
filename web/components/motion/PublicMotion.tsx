@@ -37,7 +37,7 @@ export function PublicMotion() {
                 setTimeout(() => el.classList.add("pm-done"), 1400);
               }
             },
-            { threshold: 0.12, rootMargin: "0px 0px -8% 0px" },
+            { threshold: 0, rootMargin: "0px 0px -8% 0px" },
           )
         : null;
 
@@ -185,7 +185,8 @@ export function PublicMotion() {
       const t = e.target as Element | null;
       light = !!t?.closest?.("[data-swarm-light]");
       const card = t?.closest?.("[data-tilt]") ?? null;
-      setTilt(card?.closest("[data-reveal]")?.classList.contains("pm-done") ? card : null, e);
+      const sec = card?.closest("[data-reveal]");
+      setTilt(card && (!sec?.classList.contains("pm-reveal") || sec.classList.contains("pm-done")) ? card : null, e);
       kick();
     };
     const onScroll = () => {

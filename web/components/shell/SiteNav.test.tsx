@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SiteNav } from "./SiteNav";
 
 const nav = vi.hoisted(() => ({ pathname: "/" }));
 const auth = vi.hoisted(() => ({ token: null as string | null, user: null as { name: string } | null, role: undefined as string | undefined }));
-const orders = vi.hoisted(() => vi.fn());
-const regs = vi.hoisted(() => vi.fn());
+const orders = vi.hoisted(() => ({ data: [] as unknown[], fail: false }));
+const regs = vi.hoisted(() => ({ data: [] as unknown[], fail: false }));
 const setLang = vi.hoisted(() => vi.fn());
 
 vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
@@ -16,8 +17,8 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (sel: (s: unknown) => unknown) => sel({ token: auth.token, user: auth.user }),
 }));
 vi.mock("@/lib/hooks/use-capability", () => ({ useResolvedRole: () => ({ role: auth.role }) }));
-vi.mock("@/lib/hooks/orders", () => ({ useOrders: orders }));
-vi.mock("@/lib/hooks/exam", () => ({ useRegistrations: regs }));
+const authFetch = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api", () => ({ authFetch }));
 vi.mock("@/lib/student-home", async (orig) => ({
   ...(await orig<typeof import("@/lib/student-home")>()),
   kompetisiCount: (r: unknown[]) => r.length,
@@ -29,6 +30,14 @@ const setY = (y: number) => {
     window.dispatchEvent(new Event("scroll"));
   });
 };
+const renderNav = () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <SiteNav />
+    </QueryClientProvider>,
+  );
+};
 const header = () => screen.getByRole("banner");
 
 beforeEach(() => {
@@ -36,15 +45,20 @@ beforeEach(() => {
   auth.token = null;
   auth.user = null;
   auth.role = undefined;
-  orders.mockReset().mockReturnValue({ data: [] });
-  regs.mockReset().mockReturnValue({ data: [] });
+  Object.assign(orders, { data: [], fail: false });
+  Object.assign(regs, { data: [], fail: false });
+  authFetch.mockReset().mockImplementation(async (path: string) => {
+    const src = path === "/orders" ? orders : regs;
+    if (src.fail) throw new Error("401");
+    return { data: src.data };
+  });
   setLang.mockReset();
   Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
 });
 
 describe("SiteNav — guest", () => {
   it("shows links, language, split Masuk/Daftar and no Dashboard, theme or cart", () => {
-    render(<SiteNav />);
+    renderNav();
     expect(screen.getByRole("link", { name: "pub_nav_event" })).toHaveAttribute("href", "/event");
     expect(screen.getByRole("link", { name: "pub_nav_program" })).toHaveAttribute("href", "/program");
     expect(screen.getByRole("link", { name: "pub_nav_shop" })).toHaveAttribute("href", "/catalog");
@@ -57,20 +71,20 @@ describe("SiteNav — guest", () => {
   });
 
   it("switches language through the toggle", async () => {
-    render(<SiteNav />);
+    renderNav();
     await userEvent.click(screen.getByRole("button", { name: "EN" }));
     expect(setLang).toHaveBeenCalledWith("en");
   });
 
   it("marks the active link, treating /catalog/* as Toko", () => {
     nav.pathname = "/catalog/abc";
-    render(<SiteNav />);
+    renderNav();
     expect(screen.getByRole("link", { name: "pub_nav_shop" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "pub_nav_event" })).not.toHaveAttribute("aria-current");
   });
 
   it("opens the mobile panel with the same links", async () => {
-    render(<SiteNav />);
+    renderNav();
     const btn = screen.getByRole("button", { name: "pub_nav_menu_open" });
     expect(btn).toHaveAttribute("aria-expanded", "false");
     await userEvent.click(btn);
@@ -80,38 +94,58 @@ describe("SiteNav — guest", () => {
 });
 
 describe("SiteNav — signed in", () => {
-  it("student sees Dashboard with count of pending orders + actionable registrations", () => {
+  it("student sees Dashboard with count of pending orders + actionable registrations", async () => {
     auth.token = "t";
     auth.role = "student";
     auth.user = { name: "Siswa Uji" };
-    orders.mockReturnValue({ data: [{ status: "payment_pending" }, { status: "completed" }] });
-    regs.mockReturnValue({ data: [{}, {}] });
-    render(<SiteNav />);
+    orders.data = [{ status: "payment_pending" }, { status: "completed" }];
+    regs.data = [{}, {}];
+    renderNav();
     expect(screen.getByRole("link", { name: /pub_nav_dashboard/ })).toHaveAttribute("href", "/");
-    expect(screen.getByText("3")).toBeInTheDocument();
+    expect(await screen.findByText("3")).toBeInTheDocument();
+    expect(authFetch).toHaveBeenCalledWith("/orders", undefined, { redirectOn401: false });
     expect(screen.queryByRole("link", { name: "pub_nav_login" })).not.toBeInTheDocument();
   });
 
   it("student with nothing pending shows no count", () => {
     auth.token = "t";
     auth.role = "student";
-    render(<SiteNav />);
+    renderNav();
     expect(screen.getByRole("link", { name: /pub_nav_dashboard/ })).toHaveTextContent(/pub_nav_dashboard$/);
   });
 
   it("admin links to the admin home, with no count and no order fetch", () => {
     auth.token = "t";
     auth.role = "super_admin";
-    render(<SiteNav />);
+    renderNav();
     expect(screen.getByRole("link", { name: /pub_nav_dashboard/ })).toHaveAttribute("href", "/admin");
-    expect(orders).not.toHaveBeenCalled();
-    expect(regs).not.toHaveBeenCalled();
+    expect(authFetch).not.toHaveBeenCalled();
+  });
+
+  it("an expired session shows the Dashboard link with no count and never navigates", async () => {
+    auth.token = "stale";
+    auth.role = "student";
+    orders.fail = true;
+    regs.fail = true;
+    renderNav();
+    await waitFor(() => expect(authFetch).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("link", { name: /pub_nav_dashboard/ })).toHaveTextContent(/pub_nav_dashboard$/);
+    expect(authFetch.mock.calls.every((c) => c[2]?.redirectOn401 === false)).toBe(true);
+  });
+});
+
+describe("SiteNav — language toggle contrast", () => {
+  it("inactive language reads light over the transparent hero and dark in pill state", () => {
+    renderNav();
+    expect(screen.getByRole("button", { name: "EN" }).className).not.toContain("text-ink-600");
+    setY(50);
+    expect(screen.getByRole("button", { name: "EN" }).className).toContain("text-ink-600");
   });
 });
 
 describe("SiteNav — scroll states", () => {
   it("is transparent at the top of the landing and a pill after 8px", () => {
-    render(<SiteNav />);
+    renderNav();
     expect(header()).toHaveAttribute("data-state", "top");
     setY(8);
     expect(header()).toHaveAttribute("data-state", "top");
@@ -121,13 +155,13 @@ describe("SiteNav — scroll states", () => {
 
   it("starts as a pill on other pages", () => {
     nav.pathname = "/event";
-    render(<SiteNav />);
+    renderNav();
     expect(header()).toHaveAttribute("data-state", "pill");
   });
 
   it("hides past 120px on scroll down, returns after a 5px scroll up", () => {
     nav.pathname = "/event";
-    render(<SiteNav />);
+    renderNav();
     setY(100);
     expect(header()).toHaveAttribute("data-hidden", "false");
     setY(300);
@@ -140,7 +174,7 @@ describe("SiteNav — scroll states", () => {
 
   it("reappears when focus enters it", () => {
     nav.pathname = "/event";
-    render(<SiteNav />);
+    renderNav();
     setY(400);
     expect(header()).toHaveAttribute("data-hidden", "true");
     act(() => screen.getByRole("link", { name: "pub_nav_program" }).focus());
@@ -152,7 +186,7 @@ describe("SiteNav — scroll states", () => {
     hero.setAttribute("data-hero", "");
     Object.defineProperty(hero, "offsetHeight", { value: 800 });
     document.body.appendChild(hero);
-    render(<SiteNav />);
+    renderNav();
     setY(700);
     expect(header()).toHaveAttribute("data-hidden", "false");
     setY(900);

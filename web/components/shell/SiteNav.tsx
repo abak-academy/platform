@@ -9,8 +9,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
-import { useOrders } from "@/lib/hooks/orders";
-import { useRegistrations } from "@/lib/hooks/exam";
+import { useQuery } from "@tanstack/react-query";
+import { authFetch } from "@/lib/api";
+import type { Order, RegistrationListItem } from "@/lib/types";
 import { kompetisiCount, pendingCount } from "@/lib/student-home";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
@@ -27,8 +28,18 @@ const isActive = (pathname: string, match: string[]) =>
 
 function StudentCount() {
   const { t } = useTranslation();
-  const orders = useOrders();
-  const regs = useRegistrations();
+  const orders = useQuery({
+    queryKey: ["site-nav", "orders"],
+    queryFn: async () =>
+      (await authFetch<{ data: Order[] }>("/orders", undefined, { redirectOn401: false })).data ?? [],
+    retry: false,
+  });
+  const regs = useQuery({
+    queryKey: ["site-nav", "registrations"],
+    queryFn: async () =>
+      (await authFetch<{ data: RegistrationListItem[] }>("/exam/registrations", undefined, { redirectOn401: false })).data ?? [],
+    retry: false,
+  });
   const n = pendingCount(orders.data ?? []) + kompetisiCount(regs.data ?? [], Date.now());
   if (n === 0) return null;
   return (
@@ -159,7 +170,7 @@ export function SiteNav() {
         </ul>
 
         <div className="ml-auto hidden items-center gap-3 md:flex">
-          <LanguageToggle className={top ? "border-white/40 text-white" : undefined} />
+          <LanguageToggle onDark={top} className={top ? "border-white/40 text-white" : undefined} />
           <AccountControl light={top} />
         </div>
 

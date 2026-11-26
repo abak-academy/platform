@@ -34,7 +34,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   // Guests must never mount the signed-in layout: its profile/orders hooks 401, and a 401 sends the browser to /login.
   if (GUEST_PATHS.includes(pathname) && !token) {
-    if (hydrated || pathname === "/") return <PublicShell>{children}</PublicShell>;
+    if (hydrated || pathname === "/") return <PublicShell guestOnly>{children}</PublicShell>;
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
         Memuat…

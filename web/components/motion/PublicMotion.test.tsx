@@ -107,6 +107,47 @@ describe("motion allowed", () => {
     expect(observed.has(late)).toBe(true);
   });
 
+  it("observes with threshold 0 so a section taller than the viewport still reveals", () => {
+    const seen: IntersectionObserverInit[] = [];
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(cb: IOCb, o: IntersectionObserverInit) {
+          ioCb = cb;
+          seen.push(o);
+        }
+        observe = (el: Element) => observed.add(el);
+        unobserve = (el: Element) => observed.delete(el);
+        disconnect = () => observed.clear();
+      },
+    );
+    render(<PublicMotion />);
+    expect(seen[0].threshold).toBe(0);
+  });
+
+  const hover = (el: Element) => {
+    const card = el as HTMLElement;
+    card.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 100 }) as DOMRect;
+    act(() => {
+      card.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 90, clientY: 10 }));
+    });
+  };
+
+  it("tilts a card in a section that was in view on load", () => {
+    document.getElementById("live")!.innerHTML = "<h2>D</h2><div data-tilt id='liveCard'>x</div>";
+    render(<PublicMotion />);
+    hover(document.getElementById("liveCard")!);
+    expect(document.getElementById("liveCard")!.classList.contains("pm-tilting")).toBe(true);
+  });
+
+  it("does not tilt a card in a section that is revealed but not finished animating", () => {
+    render(<PublicMotion />);
+    const s1 = document.getElementById("s1")!;
+    act(() => ioCb([{ target: s1, isIntersecting: true }]));
+    hover(s1.querySelector("[data-tilt]")!);
+    expect(s1.querySelector("[data-tilt]")!.classList.contains("pm-tilting")).toBe(false);
+  });
+
   it("applies hero parallax", async () => {
     render(<PublicMotion />);
     await waitFor(() => expect(document.getElementById("photo")!.style.transform).toContain("translate3d"));

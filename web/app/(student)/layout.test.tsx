@@ -18,8 +18,8 @@ vi.mock("@/lib/guest-cart-merge", () => ({
 }));
 
 vi.mock("@/components/shell/PublicShell", () => ({
-  PublicShell: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="public-shell">{children}</div>
+  PublicShell: ({ children, guestOnly }: { children: React.ReactNode; guestOnly?: boolean }) => (
+    <div data-testid="public-shell" data-guest-only={guestOnly ? "" : undefined}>{children}</div>
   ),
 }));
 
@@ -370,7 +370,14 @@ describe("StudentLayout", () => {
       pathname = "/cart";
       const { getByTestId } = render(<StudentLayout>cart</StudentLayout>);
       expect(getByTestId("public-shell")).toBeInTheDocument();
+      expect(getByTestId("public-shell")).toHaveAttribute("data-guest-only");
       expect(replace).not.toHaveBeenCalled();
+    });
+
+    it("flags the guest landing shell as guest-only", () => {
+      pathname = "/";
+      const { getByTestId } = render(<StudentLayout>landing</StudentLayout>);
+      expect(getByTestId("public-shell")).toHaveAttribute("data-guest-only");
     });
 
     it("still redirects a guest on any other path", async () => {
