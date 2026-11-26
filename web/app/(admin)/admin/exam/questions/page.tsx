@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ChevronLeft, ChevronRight, Eye, Library, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Plus, Search, Trash2, Upload } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { QuestionEditor } from "@/components/admin/QuestionEditor";
 import { QuestionPreview } from "@/components/admin/QuestionPreview";
@@ -10,7 +10,8 @@ import { TopicsModal } from "@/components/admin/TopicsModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -25,10 +26,18 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
-import { FORMAT_TONE, DIFFICULTY_TONE } from "@/lib/question-tone";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const PAGE_SIZE = 25;
+
+const FILTER_SELECT =
+  "h-[var(--spacing-control-md)] rounded-full border-[1.5px] border-line bg-surface px-3.5 text-[13px] font-bold text-ink-900 outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-45";
+
+const DIFFICULTY_TEXT: Record<string, string> = {
+  easy: "text-teal-700",
+  medium: "text-gold-700",
+  hard: "text-danger-600",
+};
 
 // short/fill_blank are retired from authoring (2026-07-31 merge into
 // multi_blank) and are dropped from the filter too — legacy questions in
@@ -172,37 +181,25 @@ export default function QuestionBankPage() {
       key: "id",
       header: "ID",
       cell: (item) => (
-        <span className="font-mono text-xs text-ink-500">{item.question.question_number ?? "—"}</span>
+        <span className="font-mono text-xs text-ink-600">{item.question.question_number ?? "—"}</span>
       ),
     },
     {
       key: "question",
       header: t("question"),
-      cell: (item) => stripHtmlToPlainText(item.question.body),
-      className: "max-w-xs truncate",
-    },
-    {
-      key: "used_in",
-      header: t("used_in"),
-      cell: (item) => item.attached_count,
+      cell: (item) => <span className="line-clamp-2">{stripHtmlToPlainText(item.question.body)}</span>,
+      className: "max-w-[420px] !whitespace-normal",
     },
     {
       key: "topic",
       header: t("topic"),
-      cell: (item) =>
-        item.question.topic ? (
-          <Badge variant="outline" className="border-transparent bg-brand-50 text-brand-700">
-            {item.question.topic}
-          </Badge>
-        ) : (
-          "—"
-        ),
+      cell: (item) => item.question.topic || "—",
     },
     {
       key: "format",
       header: t("format"),
       cell: (item) => (
-        <Badge variant="outline" className={cn("border-transparent", FORMAT_TONE[item.question.format])}>
+        <Badge variant={item.question.format === "essay" ? "ember" : "mute"}>
           {t(FORMAT_LABELS[item.question.format] as Parameters<typeof t>[0])}
         </Badge>
       ),
@@ -215,19 +212,19 @@ export default function QuestionBankPage() {
           ? DIFFICULTY_LABELS[item.question.difficulty]
           : undefined;
         return difficultyKey ? (
-          <Badge
-            variant="outline"
-            className={cn(
-              "border-transparent",
-              item.question.difficulty && DIFFICULTY_TONE[item.question.difficulty]
-            )}
-          >
+          <span className={cn("text-xs font-bold", DIFFICULTY_TEXT[item.question.difficulty ?? ""])}>
             {t(difficultyKey)}
-          </Badge>
+          </span>
         ) : (
           "—"
         );
       },
+    },
+    {
+      key: "used_in",
+      header: t("used_in"),
+      align: "right",
+      cell: (item) => item.attached_count,
     },
     {
       key: "points",
@@ -235,106 +232,63 @@ export default function QuestionBankPage() {
       cell: (item) => (
         <>
           <span className="font-semibold text-info">+{item.question.point_correct}</span>
-          <span className="text-ink-500"> / {item.question.point_wrong}</span>
+          <span className="text-ink-600"> / {item.question.point_wrong}</span>
         </>
       ),
     },
     {
       key: "actions",
       header: t("th_actions"),
+      align: "right",
       cell: (item) => (
         <div className="flex items-center justify-end gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("action_view")}
-          onClick={() => handleRowClick(item)}
-        >
-          <Eye className="size-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label={t("action_delete")}
-          title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
-          disabled={item.in_live_exam}
-          onClick={(e) => {
-            e.stopPropagation();
-            handleDelete(item);
-          }}
-        >
-          <Trash2 className="size-4" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("action_view")}
+            onClick={() => handleRowClick(item)}
+          >
+            <Eye className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("action_delete")}
+            title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
+            disabled={item.in_live_exam}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleDelete(item);
+            }}
+          >
+            <Trash2 className="size-4" />
+          </Button>
         </div>
       ),
     },
   ];
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={Library}
         title={t("question_bank_title")}
         description={t("question_bank_subtitle")}
-        actionsAlign="end"
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          <>
             <Button variant="outline" onClick={() => setTopicsOpen(true)}>
               {t("manage_topics")}
             </Button>
             <Button variant="outline" onClick={handleCsvClick}>
-              <Upload className="mr-1 size-4" />
+              <Upload className="size-4" />
               CSV
             </Button>
-            <Button onClick={openCreate}>
-              <Plus className="mr-1 size-4" />
+            <Button variant="secondary" onClick={openCreate}>
+              <Plus className="size-4" />
               {t("create")}
             </Button>
-          </div>
+          </>
         }
       />
-
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <select
-          data-slot="select"
-          value={format}
-          onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-        >
-          {ALL_FORMATS.map((f) => (
-            <option key={f} value={f}>
-              {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-            </option>
-          ))}
-        </select>
-
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <select
-            data-slot="select"
-            value={topicId}
-            onChange={(e) => setTopicId(e.target.value)}
-            disabled={topics.isLoading}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-          >
-            <option value="">{t("all_topics")}</option>
-            {topicOptions.map((topic) => (
-              <option key={topic.id} value={topic.id}>
-                {topic.name}
-              </option>
-            ))}
-          </select>
-
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("search")}
-              className="pl-9"
-            />
-          </div>
-        </div>
-      </div>
 
       {bank.isLoading && !bank.data && (
         <div className="space-y-2">
@@ -351,61 +305,94 @@ export default function QuestionBankPage() {
       )}
 
       {!bank.isLoading && !bank.isError && (
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(item) => item.question.id}
-          empty={t("tests_picker_empty")}
-          data-testid="exam-questions-table"
-          footer={
-            total > PAGE_SIZE ? (
-              <div className="flex items-center justify-between border-t px-4 py-3 text-sm">
-                <span className="text-ink-500">
-                  {t("pagination_summary")
-                    .replace("{page}", String(page))
-                    .replace("{pages}", String(pageCount))
-                    .replace("{total}", String(total))}
-                </span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page <= 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  >
-                    <ChevronLeft className="size-4" />
-                    {t("pagination_prev")}
-                  </Button>
-                  {Array.from({ length: pageCount }, (_, i) => i + 1)
-                    .filter((n) => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
-                    .map((n, idx, arr) => (
-                      <span key={n} className="flex items-center">
-                        {idx > 0 && arr[idx - 1] !== n - 1 && (
-                          <span className="px-1 text-ink-500">…</span>
-                        )}
-                        <Button
-                          variant={n === page ? "default" : "ghost"}
-                          size="sm"
-                          onClick={() => setPage(n)}
-                        >
-                          {n}
-                        </Button>
-                      </span>
-                    ))}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page >= pageCount}
-                    onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-                  >
-                    {t("pagination_next")}
-                    <ChevronRight className="size-4" />
-                  </Button>
+        <div className="md-card-flush">
+          <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
+            <ToolbarSearch value={search} onChange={setSearch} placeholder={t("search")} clearLabel={t("list_toolbar_clear_search")} />
+            <select
+              data-slot="select"
+              value={format}
+              onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
+              className={FILTER_SELECT}
+            >
+              {ALL_FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
+                </option>
+              ))}
+            </select>
+            <select
+              data-slot="select"
+              value={topicId}
+              onChange={(e) => setTopicId(e.target.value)}
+              disabled={topics.isLoading}
+              className={FILTER_SELECT}
+            >
+              <option value="">{t("all_topics")}</option>
+              {topicOptions.map((topic) => (
+                <option key={topic.id} value={topic.id}>
+                  {topic.name}
+                </option>
+              ))}
+            </select>
+            <ToolbarCount>{total} {t("question")}</ToolbarCount>
+          </div>
+          <DataTable
+            surface="plain"
+            columns={columns}
+            rows={rows}
+            rowKey={(item) => item.question.id}
+            empty={<EmptyState icon={Search} title={t("tests_picker_empty")} />}
+            data-testid="exam-questions-table"
+            footer={
+              total > PAGE_SIZE ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-[13px]">
+                  <span className="text-ink-600">
+                    {t("pagination_summary")
+                      .replace("{page}", String(page))
+                      .replace("{pages}", String(pageCount))
+                      .replace("{total}", String(total))}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page <= 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      <ChevronLeft className="size-4" />
+                      {t("pagination_prev")}
+                    </Button>
+                    {Array.from({ length: pageCount }, (_, i) => i + 1)
+                      .filter((n) => n === 1 || n === pageCount || Math.abs(n - page) <= 2)
+                      .map((n, idx, arr) => (
+                        <span key={n} className="flex items-center">
+                          {idx > 0 && arr[idx - 1] !== n - 1 && (
+                            <span className="px-1 text-ink-600">…</span>
+                          )}
+                          <Button
+                            variant={n === page ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setPage(n)}
+                          >
+                            {n}
+                          </Button>
+                        </span>
+                      ))}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={page >= pageCount}
+                      onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+                    >
+                      {t("pagination_next")}
+                      <ChevronRight className="size-4" />
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : undefined
-          }
-        />
+              ) : undefined
+            }
+          />
+        </div>
       )}
 
       <QuestionPreview

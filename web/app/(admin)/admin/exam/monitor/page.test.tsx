@@ -277,11 +277,12 @@ describe("ExamMonitorPage", () => {
     await selectExamRow("UTBK 2026");
 
     await waitFor(() => {
-      expect(screen.getByText("Terdaftar")).toBeInTheDocument();
+      expect(screen.getAllByText("Terdaftar").length).toBeGreaterThan(0);
       expect(screen.getByText("Tercheck-in")).toBeInTheDocument();
-      expect(screen.getByText("Sedang berjalan")).toBeInTheDocument();
+      expect(screen.getAllByText("Sedang berjalan").length).toBeGreaterThan(0);
       expect(screen.getByText("Terlambat")).toBeInTheDocument();
-      expect(screen.getByText("Terkirim")).toBeInTheDocument();
+      expect(screen.getAllByText("Terkirim").length).toBeGreaterThan(0);
+      expect(screen.getByTestId("exam-monitor-kpis").children).toHaveLength(4);
     });
   });
 
@@ -599,6 +600,6 @@ describe("ExamMonitorPage", () => {
     const table = screen.getByTestId("exam-monitor-table");
     expect(table.innerHTML).not.toContain("md-sys-color");
     expect(screen.getByText("SMAN 1 Jakarta")).toHaveClass("text-ink-600");
-    expect(table.querySelector(".bg-brand-600")).not.toBeNull();
+    expect(table.querySelector("[data-slot=progress]")).not.toBeNull();
   });
 });

@@ -148,7 +148,7 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
     await screen.findByText("UTS Matematika");
 
-    const rows = screen.getAllByTestId("package-row");
+    const rows = screen.getAllByRole("row").slice(1);
     expect(rows).toHaveLength(sampleExams.length);
 
     const overall = rows[0];
@@ -178,7 +178,7 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
     await screen.findByText("Tryout Lama");
 
-    const legacy = screen.getAllByTestId("package-row")[2];
+    const legacy = screen.getAllByRole("row").slice(1)[2];
     expect(within(legacy).getAllByText("Format sebelumnya").length).toBe(2);
     expect(within(legacy).getByText("Pengaturan mengikuti mode")).toBeInTheDocument();
     expect(within(legacy).getByText("UTBK")).toBeInTheDocument();
@@ -198,7 +198,7 @@ describe("ExamPackagesPage", () => {
     };
 
     render(<ExamPackagesPage />);
-    const row = (await screen.findByText("Tanpa Section")).closest("[data-testid=package-row]") as HTMLElement;
+    const row = (await screen.findByText("Tanpa Section")).closest("tr") as HTMLElement;
 
     const cells = within(row).getAllByRole("cell");
     expect(cells[3]).toHaveTextContent(/^Per section$/);
@@ -211,10 +211,12 @@ describe("ExamPackagesPage", () => {
     await screen.findByText("UTS Matematika");
 
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
-    for (const row of screen.getAllByTestId("package-row")) {
+    for (const row of screen.getAllByRole("row").slice(1)) {
       expect(within(row).queryByText(/^(draft|published)$/)).not.toBeInTheDocument();
     }
     expect(screen.getByText(/dikelola melalui Produk/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Produk" })).toHaveAttribute("href", "/admin/products");
+    expect(document.querySelector(".md-card-flush")).not.toBeNull();
   });
 
   it("navigates to the exam detail page on Enter key press", async () => {
@@ -231,7 +233,7 @@ describe("ExamPackagesPage", () => {
       expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
     });
 
-    const row = screen.getByText("UTS Matematika").closest("[data-testid=package-row]") as HTMLElement;
+    const row = screen.getByText("UTS Matematika").closest("tr") as HTMLElement;
     fireEvent.keyDown(row, { key: "Enter" });
     expect(push).toHaveBeenCalledWith("/admin/exam/packages/e1");
   });
@@ -312,10 +314,10 @@ describe("ExamPackagesPage", () => {
       expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
     });
 
-    const row1 = screen.getByText("UTS Matematika").closest("[data-testid=package-row]") as HTMLElement;
+    const row1 = screen.getByText("UTS Matematika").closest("tr") as HTMLElement;
     expect(within(row1).getByText(/^0 peserta terdaftar/)).toBeInTheDocument();
 
-    const row2 = screen.getByText("UAS IPA").closest("[data-testid=package-row]") as HTMLElement;
+    const row2 = screen.getByText("UAS IPA").closest("tr") as HTMLElement;
     expect(within(row2).getByText(/^7 peserta terdaftar/)).toBeInTheDocument();
   });
 
@@ -385,7 +387,7 @@ describe("ExamPackagesPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Muat lebih" }));
 
     await waitFor(() => expect(screen.getByText("Tryout TKA")).toBeInTheDocument());
-    expect(screen.getAllByTestId("package-row")).toHaveLength(4);
+    expect(screen.getAllByRole("row").slice(1)).toHaveLength(4);
     expect(useExamsSpy).toHaveBeenLastCalledWith({
       cursor: "cursor-2",
       limit: 20,

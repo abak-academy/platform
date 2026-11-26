@@ -49,9 +49,9 @@ export function ExamAddTestDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="sm:max-w-[740px]">
         <DialogHeader>
-          <DialogTitle className="font-serif">{t("exam_admin_add_dialog_title")}</DialogTitle>
+          <DialogTitle>{t("exam_admin_add_dialog_title")}</DialogTitle>
           <DialogDescription>{t("exam_admin_add_dialog_desc")}</DialogDescription>
         </DialogHeader>
 
@@ -74,7 +74,7 @@ export function ExamAddTestDialog({
               ))}
             </div>
           ) : tests.length === 0 ? (
-            <div className="rounded-md border border-dashed p-6 text-center text-sm text-ink-500">
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-ink-600">
               {t("exam_admin_add_dialog_empty")}
             </div>
           ) : (
@@ -86,7 +86,7 @@ export function ExamAddTestDialog({
                 >
                   <div className="min-w-0">
                     <div className="truncate font-medium">{test.title}</div>
-                    <div className="text-xs text-ink-500">
+                    <div className="text-xs text-ink-600">
                       {test.subject} · {test.topic}
                       {test.question_count != null &&
                         ` · ${t("exam_admin_section_questions").replace("{n}", String(test.question_count))}`}{" "}
@@ -102,7 +102,7 @@ export function ExamAddTestDialog({
                       type="button"
                       size="sm"
                       variant="outline"
-                      className="shrink-0 rounded-full"
+                      className="shrink-0"
                       onClick={() => onAdd(test.id)}
                     >
                       <Plus className="size-3" />
@@ -115,7 +115,7 @@ export function ExamAddTestDialog({
           )}
         </div>
 
-        <div className="text-xs text-ink-500">
+        <div className="text-xs text-ink-600">
           {t("tests_shown_of_total")
             .replace("{shown}", String(tests.length))
             .replace("{total}", String(total ?? tests.length))}
@@ -126,7 +126,7 @@ export function ExamAddTestDialog({
               type="button"
               size="sm"
               variant="outline"
-              className="rounded-full"
+             
               onClick={onLoadMore}
               disabled={fetching}
             >
@@ -136,8 +136,8 @@ export function ExamAddTestDialog({
         )}
 
         <DialogFooter className="sm:items-center sm:justify-between">
-          <span className="text-xs text-ink-500">{t("exam_admin_add_dialog_hint")}</span>
-          <Button type="button" className="rounded-full" onClick={onClose}>
+          <span className="text-xs text-ink-600">{t("exam_admin_add_dialog_hint")}</span>
+          <Button type="button" onClick={onClose}>
             {t("exam_admin_add_dialog_done")}
           </Button>
         </DialogFooter>

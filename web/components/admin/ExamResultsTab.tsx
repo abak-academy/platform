@@ -176,9 +176,9 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
       </div>
 
       {query.isLoading && accumulated.length === 0 ? (
-        <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
+        <div className="py-12 text-center text-ink-600">{t("sys_loading_data")}</div>
       ) : query.isError && accumulated.length === 0 ? (
-        <div className="py-12 text-center text-ink-500">{t("sys_error_load")}</div>
+        <div className="py-12 text-center text-ink-600">{t("sys_error_load")}</div>
       ) : (
         <DataTable
           columns={resultColumns}
@@ -208,12 +208,12 @@ export function ExamResultsTab({ examId }: ExamResultsTabProps) {
           if (!open) setSelectedSessionId("");
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("school_reports_detail_title")}</DialogTitle>
+            <DialogTitle>{t("school_reports_detail_title")}</DialogTitle>
           </DialogHeader>
           {detailResult.isLoading ? (
-            <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
+            <div className="py-8 text-center text-ink-600">{t("sys_loading_data")}</div>
           ) : detailResult.data ? (
             <ResultDetailContent
               detail={detailResult.data}
@@ -249,25 +249,25 @@ function ResultDetailContent({
       </div>
 
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
-        <div className="rounded-lg bg-surface-2 p-2">
+        <div className="rounded-2xl bg-surface-sunken p-2">
           <div className="text-lg font-bold text-ink-900">{detail.score}</div>
-          <div className="text-ink-500">{t("school_reports_detail_score")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_score")}</div>
         </div>
-        <div className="rounded-lg bg-success-bg p-2">
+        <div className="rounded-2xl bg-teal-50 p-2">
           <div className="text-lg font-bold text-success">{detail.correct_count}</div>
-          <div className="text-ink-500">{t("school_reports_detail_correct")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_correct")}</div>
         </div>
-        <div className="rounded-lg bg-danger-bg p-2">
+        <div className="rounded-2xl bg-danger-50 p-2">
           <div className="text-lg font-bold text-danger">{detail.wrong_count}</div>
-          <div className="text-ink-500">{t("school_reports_detail_wrong")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_wrong")}</div>
         </div>
-        <div className="rounded-lg bg-surface-2 p-2">
+        <div className="rounded-2xl bg-surface-sunken p-2">
           <div className="text-lg font-bold text-ink-900">{detail.empty_count}</div>
-          <div className="text-ink-500">{t("school_reports_detail_empty")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_empty")}</div>
         </div>
       </div>
 
-      <div className="text-xs text-ink-500">
+      <div className="text-xs text-ink-600">
         {t("school_reports_col_submitted")}:{" "}
         {new Date(detail.submitted_at).toLocaleString(dateLocale, {
           day: "2-digit",
@@ -283,7 +283,7 @@ function ResultDetailContent({
             {detail.breakdown.map((b) => (
               <div
                 key={b.test_id}
-                className="flex items-center justify-between rounded-md bg-surface-2 px-3 py-2 text-xs"
+                className="flex items-center justify-between rounded-md bg-surface-sunken px-3 py-2 text-xs"
               >
                 <span className="text-ink-700">{b.title}</span>
                 <span className="font-semibold text-ink-900">

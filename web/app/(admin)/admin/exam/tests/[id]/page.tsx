@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  ArrowLeft,
   BookOpen,
   ChevronDown,
+  ChevronLeft,
   ChevronUp,
   ClipboardList,
   Clock,
@@ -35,6 +35,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -48,9 +49,7 @@ import {
 import { useTopics } from "@/lib/hooks/admin-topics";
 import { useUnsavedChangesGuard } from "@/lib/hooks/use-unsaved-changes-guard";
 import { useTranslation } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 import { materialHTMLOrNull, stripHtmlToPlainText } from "@/lib/rich-text";
-import { FORMAT_TONE } from "@/lib/question-tone";
 import type { AdminUpdateTestInput, QuestionWithOptions, QuestionFormat, Test } from "@/lib/types";
 
 const FORMAT_BADGE: Record<
@@ -80,7 +79,7 @@ const SECTION_TYPES: Array<{ value: string; labelKey: string }> = [
 ];
 
 const SELECT_CLASS =
-  "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50";
+  "h-[var(--spacing-input)] w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-45";
 
 function hasOwnMaterial(question: QuestionWithOptions): boolean {
   return Boolean(question.question.material_html?.trim());
@@ -140,11 +139,11 @@ function SectionCard({
   children: React.ReactNode;
 } & React.ComponentProps<"section">) {
   return (
-    <section className="min-w-0 rounded-xl border bg-card text-card-foreground shadow-sm" {...rest}>
-      <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+    <section className="md-card-flush min-w-0" {...rest}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
         <div className="min-w-0">
-          <h2 className="text-base font-semibold text-ink-900">{title}</h2>
-          {description && <p className="mt-1 text-sm text-ink-500">{description}</p>}
+          <h2 className="type-h2 text-ink-900">{title}</h2>
+          {description && <p className="mt-1 text-sm text-ink-600">{description}</p>}
         </div>
         {actions}
       </div>
@@ -176,13 +175,13 @@ function QuestionRow({
   const q = question.question;
 
   return (
-    <tr data-question-row className="border-t align-top">
+    <tr data-question-row className="border-t border-line align-top">
       <td className="w-24 px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="grid size-7 place-items-center rounded-md bg-brand-50 text-xs font-semibold text-brand-700">
+          <span className="grid size-[26px] place-items-center rounded-[9px] bg-surface-sunken text-xs font-extrabold text-ink-900">
             {index + 1}
           </span>
-          <div className="flex flex-col text-ink-500">
+          <div className="flex flex-col text-ink-600">
             <button
               type="button"
               onClick={() => onReorder(q.id, "up")}
@@ -208,13 +207,13 @@ function QuestionRow({
         <p className="line-clamp-2 text-sm text-ink-900 [overflow-wrap:anywhere]">{stripHtmlToPlainText(q.body)}</p>
       </td>
       <td className="px-4 py-3">
-        <Badge variant="outline" className={cn("border-transparent", FORMAT_TONE[q.format])}>
+        <Badge variant={q.format === "essay" ? "ember" : "mute"}>
           {t(FORMAT_BADGE[q.format])}
         </Badge>
       </td>
       <td className="px-4 py-3 text-sm">
         {hasOwnMaterial(question) ? (
-          <Badge variant="outline" className="border-transparent bg-warn-bg text-warn">
+          <Badge variant="gold">
             {t("tests_material_own_badge")}
           </Badge>
         ) : (
@@ -225,22 +224,23 @@ function QuestionRow({
         <div className="flex items-center gap-1">
           <Button
             type="button"
-            size="icon-xs"
-            variant="outline"
+            size="icon-sm"
+            variant="ghost"
             onClick={() => onPreview(index)}
+            className="rounded-full"
             aria-label={t("tests_preview_question")}
             title={t("tests_preview_question")}
           >
-            <Eye className="size-3.5" />
+            <Eye className="size-4" />
           </Button>
           <Button
             type="button"
-            size="icon-xs"
-            variant="outline"
+            size="icon-sm"
+            variant="ghost"
             onClick={() => onDetach(q.id)}
             aria-label={t("tests_detach_question")}
             title={t("tests_detach_question")}
-            className="text-danger hover:text-danger"
+            className="rounded-full text-danger-600 hover:text-danger-600"
           >
             <Unlink className="size-3.5" />
           </Button>
@@ -399,45 +399,37 @@ export default function TestDetailPage() {
   const examCount = detail?.test.exam_count ?? 0;
 
   return (
-    <div className="space-y-6 fade-in">
-      <div>
+    <div className="flex flex-col gap-5 fade-in">
+      <div className="flex flex-col gap-1">
         <button
           type="button"
           data-testid="tests-back-link"
           onClick={handleBack}
           aria-label={t("tests_page_title")}
-          className="inline-flex items-center gap-1 text-sm text-ink-500 hover:text-ink-900"
+          className="inline-flex w-fit items-center gap-1 type-label-sm text-ink-600 hover:text-ink-900"
         >
-          <ArrowLeft className="size-4" />
+          <ChevronLeft className="size-4" />
           {t("tests_page_title")}
         </button>
-      </div>
 
-      <AdminPageHeader
-        icon={ClipboardList}
-        title={detail ? detail.test.title : t("sys_loading")}
-        description={detail ? `${detail.test.subject} · ${detail.test.topic}` : undefined}
-        actionsAlign="end"
-        actions={
-          ready ? (
-            <>
-              <Button type="button" variant="outline" size="lg" onClick={() => openPreview(0)}>
-                <Eye className="mr-1 size-4" />
-                {t("tests_preview_test")}
-              </Button>
-              <Button
-                type="button"
-                size="lg"
-                onClick={handleSaveTest}
-                disabled={!canSaveTest}
-                className="shadow-md shadow-primary/30"
-              >
-                {update.isPending ? t("saving") : t("tests_save_settings")}
-              </Button>
-            </>
-          ) : undefined
-        }
-      />
+        <AdminPageHeader
+          title={detail ? detail.test.title : t("sys_loading")}
+          description={detail ? `${detail.test.subject} · ${detail.test.topic}` : undefined}
+          actions={
+            ready ? (
+              <>
+                <Button type="button" variant="outline" onClick={() => openPreview(0)}>
+                  <Eye className="size-4" />
+                  {t("tests_preview_test")}
+                </Button>
+                <Button type="button" variant="secondary" onClick={handleSaveTest} disabled={!canSaveTest}>
+                  {update.isPending ? t("saving") : t("tests_save_settings")}
+                </Button>
+              </>
+            ) : undefined
+          }
+        />
+      </div>
 
       {isLoading && (
         <div className="space-y-2">
@@ -455,7 +447,7 @@ export default function TestDetailPage() {
 
       {ready && draft && (
         <>
-          <div data-testid="test-meta-row" className="-mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-ink-500">
+          <div data-testid="test-meta-row" className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px] text-ink-600">
             <span className="inline-flex items-center gap-1.5">
               <ClipboardList className="size-4" />
               {t("tests_questions_n").replace("{n}", String(questions.length))}
@@ -473,26 +465,19 @@ export default function TestDetailPage() {
             <span role="status">{t(dirty ? "tests_save_status_dirty" : "tests_save_status_saved")}</span>
           </div>
 
-          <div className="flex items-start gap-3 rounded-xl border bg-surface-2 px-4 py-3 text-sm text-ink-500">
-            <BookOpen className="mt-0.5 size-4 shrink-0 text-brand-600" />
+          <div className="flex items-start gap-3 rounded-2xl bg-gold-50 px-4 py-3.5 text-sm text-ink-700">
+            <BookOpen className="mt-0.5 size-4 shrink-0 text-gold-700" />
             <p>{t("tests_shared_notice")}</p>
           </div>
 
           <Tabs value={tab} onValueChange={setTab} className="min-w-0 gap-0">
-            <TabsList
-              variant="line"
-              className="h-auto w-full justify-start gap-0 overflow-x-auto rounded-none border-b p-0"
-            >
+            <TabsList>
               {[
                 ["questions", `${t("tests_tab_questions")} (${questions.length})`],
                 ["material", t("tests_tab_material")],
                 ["info", t("tests_tab_info")],
               ].map(([value, label]) => (
-                <TabsTrigger
-                  key={value}
-                  value={value}
-                  className="h-auto flex-none rounded-none px-4 py-3 text-sm data-[state=active]:text-brand-700 group-data-[orientation=horizontal]/tabs:after:bottom-0 group-data-[orientation=horizontal]/tabs:after:bg-brand-600"
-                >
+                <TabsTrigger key={value} value={value}>
                   {label}
                 </TabsTrigger>
               ))}
@@ -526,20 +511,19 @@ export default function TestDetailPage() {
                     }
                   >
                     {questions.length === 0 ? (
-                      <div className="border-t px-4 py-10 text-center text-ink-500">
-                        <List className="mx-auto size-8" strokeWidth={1.4} />
-                        <p className="mt-3 text-sm">{t("tests_questions_empty")}</p>
+                      <div className="border-t border-line">
+                        <EmptyState icon={List} title={t("tests_questions_empty")} />
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
                         <table className="w-full min-w-[650px] text-sm">
-                          <thead className="bg-muted text-left">
+                          <thead className="bg-surface-sunken text-left font-mono text-[10.5px] font-semibold tracking-[.1em] text-ink-600 uppercase">
                             <tr>
-                              <th className="px-4 py-3 font-medium">{t("tests_q_col_order")}</th>
-                              <th className="px-4 py-3 font-medium">{t("tests_q_col_question")}</th>
-                              <th className="px-4 py-3 font-medium">{t("tests_q_col_format")}</th>
-                              <th className="px-4 py-3 font-medium">{t("tests_q_col_material")}</th>
-                              <th className="px-4 py-3 font-medium">{t("tests_q_col_actions")}</th>
+                              <th className="px-4 py-3 whitespace-nowrap">{t("tests_q_col_order")}</th>
+                              <th className="px-4 py-3 whitespace-nowrap">{t("tests_q_col_question")}</th>
+                              <th className="px-4 py-3 whitespace-nowrap">{t("tests_q_col_format")}</th>
+                              <th className="px-4 py-3 whitespace-nowrap">{t("tests_q_col_material")}</th>
+                              <th className="px-4 py-3 whitespace-nowrap">{t("tests_q_col_actions")}</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -565,18 +549,18 @@ export default function TestDetailPage() {
                 <aside className="min-w-0 space-y-6">
                   <section
                     data-testid="test-material-sidebar"
-                    className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-card-foreground shadow-sm"
+                    className="md-card-outlined min-w-0 space-y-3"
                   >
-                    <h2 className="text-base font-semibold text-ink-900">{t("tests_material_sidebar_title")}</h2>
+                    <h2 className="type-h2 text-ink-900">{t("tests_material_sidebar_title")}</h2>
                     {hasSavedMaterial ? (
                       <RichContent
                         html={savedMaterial ?? ""}
                         className="max-h-72 overflow-y-auto rounded-lg border p-4 text-sm [overflow-wrap:anywhere] [&_img]:h-auto [&_img]:max-w-full"
                       />
                     ) : (
-                      <p className="text-sm text-ink-500">{t("tests_material_empty")}</p>
+                      <p className="text-sm text-ink-600">{t("tests_material_empty")}</p>
                     )}
-                    <p className="text-sm text-ink-500">{t("tests_material_sidebar_desc")}</p>
+                    <p className="text-sm text-ink-600">{t("tests_material_sidebar_desc")}</p>
                     <div className="flex flex-wrap gap-2">
                       {hasSavedMaterial && (
                         <Button type="button" size="sm" variant="outline" onClick={() => setMaterialOpen(true)}>
@@ -592,23 +576,23 @@ export default function TestDetailPage() {
 
                   <section
                     data-testid="test-display-card"
-                    className="min-w-0 space-y-3 rounded-xl border bg-card p-5 text-card-foreground shadow-sm"
+                    className="md-card-outlined min-w-0 space-y-3"
                   >
-                    <h2 className="text-base font-semibold text-ink-900">{t("tests_display_title")}</h2>
-                    <p className="text-sm text-ink-500">{t("tests_display_desc")}</p>
+                    <h2 className="type-h2 text-ink-900">{t("tests_display_title")}</h2>
+                    <p className="text-sm text-ink-600">{t("tests_display_desc")}</p>
                     {ownMaterialCount > 0 ? (
-                      <div className="rounded-lg bg-warn-bg p-3 text-sm text-warn">
+                      <div className="rounded-2xl bg-gold-50 p-3.5 text-sm text-gold-700">
                         <p className="font-semibold">
                           {t("tests_display_own_material").replace("{n}", String(ownMaterialCount))}
                         </p>
                         <p>{t("tests_display_own_material_body")}</p>
                       </div>
                     ) : (
-                      <div className="rounded-lg bg-success-bg p-3 text-sm text-success">
+                      <div className="rounded-2xl bg-teal-50 p-3.5 text-sm text-teal-700">
                         {t("tests_display_ok")}
                       </div>
                     )}
-                    <p className="border-t pt-3 text-xs text-ink-500">{t("tests_display_duration_note")}</p>
+                    <p className="border-t pt-3 text-xs text-ink-600">{t("tests_display_duration_note")}</p>
                   </section>
                 </aside>
               </div>
@@ -617,7 +601,7 @@ export default function TestDetailPage() {
             <TabsContent value="material" className="pt-6">
               <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
                 <SectionCard title={t("format_shared_material")} description={t("tests_material_card_desc")}>
-                  <div className="space-y-2 border-t p-5">
+                  <div className="space-y-2 border-t p-6">
                     <RichTextEditor
                       id="test-shared-material"
                       aria-label={t("format_shared_material")}
@@ -625,13 +609,13 @@ export default function TestDetailPage() {
                       onChange={(html) => patchDraft({ material: html })}
                       disabled={update.isPending}
                     />
-                    <p className="text-xs text-ink-500">{t("tests_material_override_hint")}</p>
-                    <p className="text-xs text-ink-500">{t("format_reusable_material_hint")}</p>
+                    <p className="text-xs text-ink-600">{t("tests_material_override_hint")}</p>
+                    <p className="text-xs text-ink-600">{t("format_reusable_material_hint")}</p>
                   </div>
                 </SectionCard>
                 <div className="min-w-0 space-y-4">
                   <SectionCard title={t("tests_instructions_title")} description={t("tests_instructions_desc")}>
-                    <div className="border-t p-5">
+                    <div className="border-t p-6">
                       <RichTextEditor
                         id="test-instructions"
                         aria-label={t("format_instructions")}
@@ -641,7 +625,7 @@ export default function TestDetailPage() {
                       />
                     </div>
                   </SectionCard>
-                  <div className="flex items-start gap-3 rounded-xl bg-brand-50 p-4 text-sm text-brand-700">
+                  <div className="flex items-start gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-ink">
                     <Info className="mt-0.5 size-4 shrink-0" />
                     <div>
                       <p className="font-semibold">{t("tests_ownership_title")}</p>
@@ -655,7 +639,7 @@ export default function TestDetailPage() {
             <TabsContent value="info" className="pt-6">
               <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
                 <SectionCard title={t("tests_info_identity_title")}>
-                  <div className="space-y-5 border-t p-5">
+                  <div className="space-y-5 border-t p-6">
                     <div className="grid gap-2">
                       <Label htmlFor="test-title">{t("tests_field_title")}</Label>
                       <Input
@@ -713,7 +697,7 @@ export default function TestDetailPage() {
                         placeholder="60"
                         disabled={update.isPending}
                       />
-                      <p className="text-xs text-ink-500">{t("tests_info_duration_hint")}</p>
+                      <p className="text-xs text-ink-600">{t("tests_info_duration_hint")}</p>
                     </div>
 
                     <div className="grid gap-2">
@@ -722,7 +706,7 @@ export default function TestDetailPage() {
                         {SECTION_TYPES.map(({ value, labelKey }) => (
                           <label
                             key={value || "none"}
-                            className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm"
+                            className="flex items-center gap-2 rounded-md border-[1.5px] border-line px-3 py-2 text-sm"
                           >
                             <input
                               type="radio"
@@ -736,16 +720,16 @@ export default function TestDetailPage() {
                           </label>
                         ))}
                       </div>
-                      <p className="text-xs text-ink-500">{t("tests_info_section_type_hint")}</p>
+                      <p className="text-xs text-ink-600">{t("tests_info_section_type_hint")}</p>
                       {draft.sectionType === "listening" && (
-                        <p className="text-xs text-ink-500">{t("tests_info_listening_requires_audio")}</p>
+                        <p className="text-xs text-ink-600">{t("tests_info_listening_requires_audio")}</p>
                       )}
                     </div>
                   </div>
                 </SectionCard>
 
                 <SectionCard title={t("tests_info_audio_title")} description={t("tests_info_audio_desc")}>
-                  <div className="space-y-5 border-t p-5">
+                  <div className="space-y-5 border-t p-6">
                     <div className="grid gap-2">
                       <Label htmlFor="test-audio-url">{t("tests_field_audio_url")}</Label>
                       <AudioUploadInput
@@ -773,7 +757,7 @@ export default function TestDetailPage() {
                         <option value="2">2×</option>
                         <option value="3">3×</option>
                       </select>
-                      <p className="text-xs text-ink-500">{t("tests_info_audio_limit_hint")}</p>
+                      <p className="text-xs text-ink-600">{t("tests_info_audio_limit_hint")}</p>
                     </div>
                   </div>
                 </SectionCard>

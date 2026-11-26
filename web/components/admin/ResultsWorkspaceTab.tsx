@@ -125,7 +125,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
       cell: (row) => (
         <div>
           <div className="font-medium text-ink-900">{row.student_name}</div>
-          <div className="text-xs text-ink-500">{row.username ?? "-"}</div>
+          <div className="text-xs text-ink-600">{row.username ?? "-"}</div>
         </div>
       ),
     },
@@ -199,7 +199,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <p className="text-xs text-ink-500">{t("results_workspace_search_label")}</p>
+            <p className="text-xs text-ink-600">{t("results_workspace_search_label")}</p>
             <Input
               className="mt-1 h-9 w-[220px] text-xs"
               placeholder={t("results_workspace_search_placeholder")}
@@ -228,9 +228,9 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
       </div>
 
       {query.isLoading && accumulated.length === 0 ? (
-        <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
+        <div className="py-12 text-center text-ink-600">{t("sys_loading_data")}</div>
       ) : query.isError && accumulated.length === 0 ? (
-        <div className="py-12 text-center text-ink-500">{t("sys_error_load")}</div>
+        <div className="py-12 text-center text-ink-600">{t("sys_error_load")}</div>
       ) : (
         <DataTable
           columns={columns}
@@ -255,7 +255,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
       >
         <DialogContent className="max-h-[88vh] overflow-hidden sm:max-w-5xl">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("school_reports_detail_title")}</DialogTitle>
+            <DialogTitle>{t("school_reports_detail_title")}</DialogTitle>
           </DialogHeader>
           <div className="max-h-[72vh] overflow-y-auto pr-1">
             {selectedRow && (
@@ -264,7 +264,7 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
                   <p>
                     <span className="font-semibold text-ink-900">{selectedRow.student_name}</span> · Username: {selectedRow.username ?? "-"}
                   </p>
-                  <p className="text-xs text-ink-500">{selectedRow.school_name || "-"}</p>
+                  <p className="text-xs text-ink-600">{selectedRow.school_name || "-"}</p>
                 </div>
                 <AttemptSelector
                   attempts={attempts.data?.data ?? []}
@@ -275,11 +275,11 @@ export function ResultsWorkspaceTab({ examId }: ResultsWorkspaceTabProps) {
                   dateLocale={dateLocale}
                 />
                 {detail.isLoading ? (
-                  <div className="py-8 text-center text-ink-500">{t("sys_loading_data")}</div>
+                  <div className="py-8 text-center text-ink-600">{t("sys_loading_data")}</div>
                 ) : detail.data ? (
                   <ResultDetailPanel detail={detail.data} maxPossibleScore={maxPossibleScore} t={t} dateLocale={dateLocale} />
                 ) : selectedSessionId ? (
-                  <div className="py-8 text-center text-ink-500">{t("sys_error_load")}</div>
+                  <div className="py-8 text-center text-ink-600">{t("sys_error_load")}</div>
                 ) : null}
               </div>
             )}
@@ -310,7 +310,7 @@ function NormalizedScoreCell({ score, maxPossibleScore }: { score?: number | nul
 
 function SummaryCard({ label, value, caption }: { label: string; value: string | number; caption?: string }) {
   return (
-    <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
+    <div className="md-card-outlined !p-4">
       <div className="text-label text-sm text-ink-600">{label}</div>
       <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
       {caption && <div className="text-xs text-ink-600">{caption}</div>}
@@ -327,15 +327,15 @@ function ScoreDistributionCard({
 }) {
   const maxCount = Math.max(1, ...distribution.map((bucket) => bucket.count));
   return (
-    <div className="rounded-xl border border-line bg-card p-4 shadow-sm">
+    <div className="md-card-outlined !p-4">
       <div className="text-label text-sm text-ink-600">{label}</div>
       <div className="mt-3 space-y-1.5">
         {distribution.map((bucket) => (
           <div key={bucket.label} className="grid grid-cols-[54px_1fr_20px] items-center gap-2 text-xs text-ink-600">
             <span>{bucket.label}</span>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+            <div className="h-2 overflow-hidden rounded-full bg-surface-sunken">
               <div
-                className="h-full rounded-full bg-primary"
+                className="h-full rounded-full bg-teal-600"
                 style={{ width: `${Math.max(6, (bucket.count / maxCount) * 100)}%` }}
               />
             </div>
@@ -363,7 +363,7 @@ function AttemptSelector({
   dateLocale: string;
 }) {
   if (isLoading) {
-    return <div className="rounded-xl border border-line bg-surface-2 px-4 py-3 text-sm text-ink-500">{t("sys_loading_data")}</div>;
+    return <div className="rounded-2xl border border-line bg-surface-sunken px-4 py-3 text-sm text-ink-600">{t("sys_loading_data")}</div>;
   }
   if (attempts.length === 0) return null;
 
@@ -375,14 +375,14 @@ function AttemptSelector({
         return (
           <div
             key={attempt.session_id}
-            className={`flex items-center justify-between rounded-xl border px-4 py-3 text-sm ${selected ? "border-primary bg-primary/5" : "border-line bg-card"}`}
+            className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-sm ${selected ? "border-primary bg-primary/5" : "border-line bg-surface"}`}
           >
             <div>
               <div className="font-medium text-ink-900">
                 {t("results_workspace_attempt_number")} {attempt.attempt_number}
                 {attempt.is_latest && <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{t("results_workspace_latest_badge")}</span>}
               </div>
-              <div className="text-xs text-ink-500">
+              <div className="text-xs text-ink-600">
                 {t(statusLabelKey(attempt.status))} · {attempt.submitted_at ? new Date(attempt.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" }) : "-"} · {t("results_workspace_col_violations")}: {attempt.violations}
               </div>
             </div>
@@ -428,7 +428,7 @@ function ResultDetailPanel({
         <MetricCard value={detail.empty_count} label={t("school_reports_detail_empty")} />
       </div>
 
-      <div className="text-xs text-ink-500">
+      <div className="text-xs text-ink-600">
         {t("school_reports_col_submitted")}: {new Date(detail.submitted_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" })}
       </div>
 
@@ -440,10 +440,10 @@ function ResultDetailPanel({
               const isOpen = openTopics[topic.id] ?? false;
               const breakdown = detail.breakdown?.find((b) => b.test_id === topic.id || b.title === topic.title);
               return (
-                <div key={topic.id} className="overflow-hidden rounded-xl border border-line bg-card">
+                <div key={topic.id} className="overflow-hidden rounded-2xl border border-line bg-surface">
                   <button
                     type="button"
-                    className="flex w-full items-center justify-between gap-3 bg-surface-2 px-4 py-3 text-left text-sm"
+                    className="flex w-full items-center justify-between gap-3 bg-surface-sunken px-4 py-3 text-left text-sm"
                     onClick={() => setOpenTopics((prev) => ({ ...prev, [topic.id]: !isOpen }))}
                   >
                     <span className="font-semibold text-ink-900">{topic.title}</span>
@@ -492,18 +492,18 @@ function QuestionReviewCard({
 }) {
   const tone = item.is_correct === true ? "correct" : item.is_correct === false ? "wrong" : "empty";
   const toneClass = tone === "correct"
-    ? "border-success/30 bg-success-bg"
+    ? "border-success/30 bg-teal-50"
     : tone === "wrong"
-      ? "border-danger/30 bg-danger-bg"
-      : "border-line bg-surface-2";
+      ? "border-danger/30 bg-danger-50"
+      : "border-line bg-surface-sunken";
   const icon = tone === "correct"
     ? <CheckCircle2 className="size-4 text-success" />
     : tone === "wrong"
       ? <XCircle className="size-4 text-danger" />
-      : <Circle className="size-4 text-ink-500" />;
+      : <Circle className="size-4 text-ink-600" />;
 
   return (
-    <div className={`rounded-xl border ${toneClass} px-4 py-3 text-xs`}>
+    <div className={`rounded-2xl border ${toneClass} px-4 py-3 text-xs`}>
       <div className="mb-2 flex items-start gap-2 font-semibold text-ink-900">
         {icon}
         <span className="shrink-0">#{index + 1}</span>
@@ -515,18 +515,18 @@ function QuestionReviewCard({
           <p>{t("result_correct_answer")}: <span className="font-semibold text-ink-900">{formatChoiceAnswer(item.correct_answer, item.format) || "—"}</span></p>
         )}
       </div>
-      {item.explanation && <p className="mt-3 rounded-lg bg-card/70 px-3 py-2 text-ink-700">{item.explanation}</p>}
+      {item.explanation && <p className="mt-3 rounded-2xl bg-card/70 px-3 py-2 text-ink-700">{item.explanation}</p>}
     </div>
   );
 }
 function MetricCard({ value, label, tone, caption }: { value: number | string; label: string; tone?: "success" | "danger"; caption?: string }) {
-  const bg = tone === "success" ? "bg-success-bg" : tone === "danger" ? "bg-danger-bg" : "bg-surface-2";
+  const bg = tone === "success" ? "bg-teal-50" : tone === "danger" ? "bg-danger-50" : "bg-surface-sunken";
   const color = tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-ink-900";
   return (
     <div className={`rounded-lg ${bg} p-2`}>
       <div className={`text-lg font-bold ${color}`}>{value}</div>
       <div className="text-ink-600">{label}</div>
-      {caption && <div className="text-[11px] text-ink-500">{caption}</div>}
+      {caption && <div className="text-[11px] text-ink-600">{caption}</div>}
     </div>
   );
 }

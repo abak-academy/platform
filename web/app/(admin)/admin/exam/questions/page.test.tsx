@@ -162,6 +162,7 @@ describe("QuestionBankPage", () => {
 
     expect(screen.getByText("What is 2+2?")).toBeInTheDocument();
     expect(screen.getByText("Explain photosynthesis.")).toBeInTheDocument();
+    expect(document.querySelector(".md-card-flush")).not.toBeNull();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
   });

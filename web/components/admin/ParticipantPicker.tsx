@@ -186,7 +186,7 @@ export function ParticipantPicker({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_FILTER_VALUE}>
-              <span className="text-ink-500">{t("students_field_jenjang")}</span>
+              <span className="text-ink-600">{t("students_field_jenjang")}</span>
             </SelectItem>
             {facetedJenjang.map((j) => (
               <SelectItem key={j} value={j}>
@@ -207,7 +207,7 @@ export function ParticipantPicker({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={ALL_FILTER_VALUE}>
-              <span className="text-ink-500">{t("students_field_grade")}</span>
+              <span className="text-ink-600">{t("students_field_grade")}</span>
             </SelectItem>
             {facetedGrade.map((g) => (
               <SelectItem key={g} value={String(g)}>
@@ -224,7 +224,7 @@ export function ParticipantPicker({
       </div>
 
       {/* Selection count + bulk actions */}
-      <div className="flex items-center justify-between text-xs text-ink-500">
+      <div className="flex items-center justify-between text-xs text-ink-600">
         <span>
           {t("participant_picker_selected_count")
             .replace("{selected}", String(selected.length))}
@@ -239,7 +239,7 @@ export function ParticipantPicker({
           </button>
           <button
             onClick={deselectAll}
-            className="font-medium text-ink-500 hover:underline"
+            className="font-medium text-ink-600 hover:underline"
           >
             {t("participant_picker_deselect_all")}
           </button>
@@ -259,7 +259,7 @@ export function ParticipantPicker({
           </div>
         )}
         {!isLoading && !isError && students.length === 0 && (
-          <div className="py-8 text-center text-sm text-ink-500">
+          <div className="py-8 text-center text-sm text-ink-600">
             {t("students_empty")}
           </div>
         )}
@@ -297,7 +297,7 @@ export function ParticipantPicker({
                 <div className="truncate font-medium text-ink-900">
                   {s.name}
                 </div>
-                <div className="truncate text-[11px] text-ink-500">
+                <div className="truncate text-[11px] text-ink-600">
                   @{s.username}
                   {s.grade != null ? ` · ${t("students_field_grade")} ${formatGrade(s.grade)}` : ""}
                   {s.jenjang ? ` · ${s.jenjang}` : ""}

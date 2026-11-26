@@ -92,7 +92,7 @@ export function QuestionPreview({ item, open, onOpenChange, onEdit }: QuestionPr
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-[740px]">
         <DialogHeader>
           <DialogTitle>{t("question")}</DialogTitle>
         </DialogHeader>
