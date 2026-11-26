@@ -516,3 +516,37 @@ html[data-theme="dark"] {
   max-width: 100%;
   height: auto;
 }
+
+/* Invoice paper stays light in both themes: re-pin the light token values on the scope. */
+.invoice-paper {
+  --color-surface: #ffffff;
+  --color-surface-2: #fafafe;
+  --color-ink-900: #15183a;
+  --color-ink-700: #353a60;
+  --color-ink-600: #565c84;
+  --color-ink-500: #767da2;
+  --color-ink-400: #9da3c2;
+  --color-line: #e7e9f5;
+  --color-line-2: #f0f1fa;
+  --color-success: #147a4b;
+  --color-danger: #d33a2e;
+  background: #ffffff;
+  color: #15183a;
+}
+
+@media print {
+  @page { size: A4; margin: 0; }
+  body:has(.invoice-paper) { background: none; }
+  body:has(.invoice-paper) > :not(:has(.invoice-paper)) { display: none !important; }
+  body:has(.invoice-paper) [data-slot="dialog-content"] {
+    position: static !important; transform: none !important; max-width: none !important; max-height: none !important;
+    overflow: visible !important; padding: 0 !important; border: 0 !important; box-shadow: none !important; background: none !important;
+  }
+  body:has(.invoice-paper) [data-slot="dialog-content"] > :not(.invoice-stage) { display: none !important; }
+  .invoice-stage { padding: 0 !important; overflow: visible !important; background: none !important; }
+  .invoice-paper {
+    width: 210mm !important; height: 297mm !important; max-width: none !important; aspect-ratio: auto !important;
+    margin: 0 !important; border-radius: 0 !important; box-shadow: none !important; overflow: hidden;
+    break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact;
+  }
+}
