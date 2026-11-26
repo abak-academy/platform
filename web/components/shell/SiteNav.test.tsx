@@ -73,6 +73,16 @@ describe("SiteNav — guest", () => {
     expect(screen.queryByRole("link", { name: /cart|keranjang/i })).not.toBeInTheDocument();
   });
 
+  it("matches the prototype: centred links, wordmark, ember dot under the active link, arrow on Daftar", () => {
+    nav.pathname = "/event";
+    renderNav();
+    const event = screen.getByRole("link", { name: "pub_nav_event" });
+    expect(event.closest("ul")).toHaveClass("mx-auto");
+    expect(event.lastElementChild).toHaveClass("scale-100", "bg-ember-600", "absolute");
+    expect(screen.getByRole("link", { name: "pub_nav_home" })).toHaveTextContent("abak");
+    expect(screen.getByRole("link", { name: "pub_nav_signup" }).querySelector("svg")).not.toBeNull();
+  });
+
   it("switches language through the toggle", async () => {
     renderNav();
     await userEvent.click(screen.getByRole("button", { name: "EN" }));

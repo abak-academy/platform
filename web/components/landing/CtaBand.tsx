@@ -8,7 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 export function CtaBand() {
   const { t } = useTranslation();
   return (
-    <section data-reveal data-swarm-light className="relative isolate overflow-hidden bg-deep text-on-deep">
+    <section data-reveal data-swarm-light className="relative isolate mt-[60px] overflow-hidden bg-deep text-on-deep md:mt-[88px]">
       <MathFloaters light />
       <div className="mx-auto flex w-full max-w-public flex-col items-center gap-5 px-6 py-24 text-center">
         <span className="type-overline opacity-80">{t("land_cta_eyebrow")}</span>

@@ -20,27 +20,16 @@ export function QuickActionTiles({ title, actions }: QuickActionTilesProps) {
 
   return (
     <div className="md-card-outlined">
-      <h3 className="text-title-large mb-6">{title}</h3>
-      <div className="grid grid-cols-2 gap-3">
+      <h3 className="type-h2 mb-3.5">{title}</h3>
+      <div className="grid grid-cols-2 gap-2.5 border-t border-dashed border-line pt-3.5">
         {actions.map((action) => (
           <Link
             key={action.href}
             href={action.href}
-            className="flex flex-col items-center gap-2 rounded-[12px] p-4 text-center transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-lg"
-            style={{ backgroundColor: "var(--md-sys-color-surface-container-high)" }}
+            className="flex items-center gap-2.5 rounded-[14px] bg-surface-sunken p-3 text-[13px] font-bold text-ink-900 transition-transform duration-200 hover:-translate-y-0.5"
           >
-            <div
-              className="flex size-10 items-center justify-center rounded-[10px]"
-              style={{
-                backgroundColor: "var(--md-sys-color-primary-container)",
-                color: "var(--md-sys-color-primary)",
-              }}
-            >
-              <action.icon size={20} />
-            </div>
-            <span className="text-label" style={{ fontWeight: 500 }}>
-              {action.label}
-            </span>
+            <action.icon size={18} className="shrink-0 text-ember-700" aria-hidden />
+            <span>{action.label}</span>
           </Link>
         ))}
       </div>

@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { Store } from "lucide-react";
+import { CheckCircle2, ShoppingBag, Store } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { DashboardHero } from "@/components/admin/DashboardHero";
 import { UnitSalesBlock } from "@/components/admin/UnitSalesBlock";
+import { StatCard } from "@/components/admin/StatCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminOrderSummary } from "@/lib/hooks/admin-orders";
 import { useAdminPromoCodes } from "@/lib/hooks/admin-promos";
@@ -15,14 +16,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
 
 function BandLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-4 flex items-center gap-4">
-      <h2 className="text-label uppercase" style={{ letterSpacing: "0.08em" }}>
-        {children}
-      </h2>
-      <span className="h-px flex-1" style={{ backgroundColor: "var(--md-sys-color-outline-variant)" }} aria-hidden />
-    </div>
-  );
+  return <h2 className="mb-3 font-mono text-xs font-semibold tracking-[.14em] text-ink-600 uppercase">{children}</h2>;
 }
 
 // Each queue card opens its own queue. All three pointing at the unfiltered
@@ -45,8 +39,7 @@ function QueueCardLink({
   return (
     <Link
       href={`/admin/orders?${param}`}
-      className="block rounded-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-      style={{ outlineColor: "var(--md-sys-color-primary)" }}
+      className="block rounded-[20px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
     >
       {children}
     </Link>
@@ -54,9 +47,9 @@ function QueueCardLink({
 }
 
 function CompactQueue({ label, value, error = false }: { label: string; value: number; error?: boolean }) {
-  return <div className="md-card-elevated !p-4">
-    <div className="flex justify-between text-label color-on-surface-variant"><span>{label}</span><span aria-hidden>↗</span></div>
-    <strong className="mt-2 block text-title-large tabular-nums" style={error ? { color: "var(--md-sys-color-error)" } : undefined}>{value}</strong>
+  return <div className="flex items-center justify-between gap-3 rounded-[20px] border border-line bg-surface px-4 py-3.5 transition-transform duration-300 ease-spring hover:-translate-y-0.5">
+    <span className="type-label-sm text-ink-700">{label}</span>
+    <strong className={`font-[family-name:var(--font-display)] text-2xl font-extrabold tabular-nums ${error ? "text-danger-600" : "text-ink-900"}`}>{value}</strong>
   </div>;
 }
 
@@ -92,7 +85,7 @@ export default function StoreDashboardPage() {
   if (!canRead) return <NoAccess />;
 
   return (
-    <div className="space-y-8 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <DashboardHero icon={Store} badge={t("store_home_badge")} name={name} subtitle={t("store_subtitle")} className="" />
 
       {/* Work queue — the only band allowed to turn red, and only on real work. */}
@@ -115,30 +108,32 @@ export default function StoreDashboardPage() {
         </div>
       </section>
 
-      <section aria-label={t("store_volume_month")} style={{ color: "var(--md-sys-color-on-surface)" }} className="md-card-elevated flex flex-wrap items-center gap-x-6 gap-y-2 !py-3">
-        <h2 className="text-label uppercase" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("store_volume_month")}</h2>
-        {isLoading ? <Skeleton className="h-6 w-48" /> : <>
-          <p className="text-sm"><strong className="tabular-nums">{buckets?.created_this_month ?? 0}</strong> {t("store_stat_orders_this_month")}</p>
-          <p className="text-sm"><strong className="tabular-nums">{buckets?.completed_this_month ?? 0}</strong> {t("store_stat_completed_this_month")}</p>
+      <section aria-label={t("store_volume_month")} className="grid grid-cols-2 gap-3">
+        {isLoading ? <>
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-28 w-full" />
+        </> : <>
+          <StatCard tone="ember" icon={ShoppingBag} label={t("store_stat_orders_this_month")} value={String(buckets?.created_this_month ?? 0)} />
+          <StatCard tone="teal" icon={CheckCircle2} label={t("store_stat_completed_this_month")} value={String(buckets?.completed_this_month ?? 0)} />
         </>}
       </section>
 
       <UnitSalesBlock />
 
       <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-        <section aria-labelledby="store-promos-title" className="md-card-elevated space-y-3">
-          <h2 id="store-promos-title" className="text-title-medium">{t("store_promos")}</h2>
+        <section aria-labelledby="store-promos-title" className="md-card-outlined flex flex-col gap-3">
+          <h2 id="store-promos-title" className="type-h2">{t("store_promos")}</h2>
           <p className="flex justify-between border-t border-line pt-3"><span>{t("store_promos_active")}</span><strong data-testid="store-promos-active" className="tabular-nums">{activePromos.length}</strong></p>
           <p className="flex justify-between border-t border-line pt-3"><span>{t("store_promos_expiring")}</span><strong data-testid="store-promos-expiring" className="tabular-nums">{expiringPromos.length}</strong></p>
-          <Link href="/admin/promos" className="inline-block text-label color-primary hover:underline focus-visible:outline">{t("store_view_promos")}</Link>
+          <Link href="/admin/promos" className="inline-block type-label-sm text-brand-ink hover:underline focus-visible:outline">{t("store_view_promos")}</Link>
         </section>
-        <section aria-labelledby="store-top-title" className="md-card-elevated">
-          <h2 id="store-top-title" className="text-title-medium mb-4">{t("store_top_products")}</h2>
-          {isLoading ? <Skeleton className="h-40 w-full" /> : !summary?.top_products.length ? <p className="py-6 text-center text-sm" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("store_top_empty")}</p> :
+        <section aria-labelledby="store-top-title" className="md-card-outlined">
+          <h2 id="store-top-title" className="type-h2 mb-4">{t("store_top_products")}</h2>
+          {isLoading ? <Skeleton className="h-40 w-full" /> : !summary?.top_products.length ? <p className="py-6 text-center text-sm text-ink-600">{t("store_top_empty")}</p> :
             <ol>{summary.top_products.map((product, index) => <li key={product.product_id} className="grid grid-cols-[2rem_1fr_auto] items-center gap-3 border-t border-line py-3">
-              <span className="text-label" style={{ color: "var(--md-sys-color-on-surface)" }}>{index + 1}</span>
-              <div><p className="text-sm font-medium">{product.name}</p><p className="text-label" style={{ color: "var(--md-sys-color-on-surface)" }}>{typeLabels[product.product_type] ?? product.product_type}</p></div>
-              <div className="text-right"><strong className="text-title-medium tabular-nums">{product.qty_sold}</strong><p className="text-label" style={{ color: "var(--md-sys-color-on-surface)" }}>{t("admin_unit_net_units")}</p></div>
+              <span className="grid size-[26px] place-items-center rounded-[9px] bg-surface-sunken text-xs font-bold text-ink-700">{index + 1}</span>
+              <div><p className="text-sm font-bold text-ink-900">{product.name}</p><p className="type-label-sm text-ink-600">{typeLabels[product.product_type] ?? product.product_type}</p></div>
+              <div className="text-right"><strong className="font-[family-name:var(--font-display)] text-lg font-extrabold tabular-nums">{product.qty_sold}</strong><p className="type-label-sm text-ink-600">{t("admin_unit_net_units")}</p></div>
             </li>)}</ol>}
         </section>
       </div>

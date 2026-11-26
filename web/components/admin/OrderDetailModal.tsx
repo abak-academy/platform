@@ -78,8 +78,8 @@ export function OrderDetailModal({
 
   return (
     <Dialog open onOpenChange={onOpenChange}>
-      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl" onCloseAutoFocus={(event) => { if (handingOffPrint.current) { event.preventDefault(); handingOffPrint.current = false; } }}>
-        <DialogHeader className="shrink-0 border-b px-6 py-5">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[740px]" onCloseAutoFocus={(event) => { if (handingOffPrint.current) { event.preventDefault(); handingOffPrint.current = false; } }}>
+        <DialogHeader className="shrink-0 border-b border-line px-6 py-5">
           <DialogTitle className="flex items-center gap-3">
             <span className="font-mono">#{order.id.slice(-8)}</span>
             <OrderStatusBadge status={order.status} label={adminOrderStatusLabel(order, t)} />
@@ -93,7 +93,7 @@ export function OrderDetailModal({
           <Section title={t("order_items_section")}>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b text-left text-xs uppercase tracking-[0.06em] text-muted-foreground">
+                <tr className="border-b border-line text-left font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-600">
                   <th className="pb-2 font-medium">{t("th_product")}</th>
                   <th className="pb-2 text-right font-medium">{t("th_price")}</th>
                   <th className="pb-2 text-right font-medium">{t("th_total")}</th>
@@ -101,10 +101,10 @@ export function OrderDetailModal({
               </thead>
               <tbody>
                 {items.map((it) => (
-                  <tr key={it.id} className="border-b last:border-b-0">
+                  <tr key={it.id} className="border-b border-line last:border-b-0">
                     <td className="py-2 pr-3">
                       <span className="font-medium">{it.name}</span>
-                      <span className="ml-2 text-xs text-muted-foreground">×{it.qty}</span>
+                      <span className="ml-2 text-xs text-ink-600">×{it.qty}</span>
                     </td>
                     <td className="py-2 text-right tabular-nums">{formatRupiah(it.unit_price)}</td>
                     <td className="py-2 text-right font-medium tabular-nums">
@@ -114,7 +114,7 @@ export function OrderDetailModal({
                 ))}
                 {items.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="py-4 text-center text-muted-foreground">
+                    <td colSpan={3} className="py-4 text-center text-ink-600">
                       {t("empty_orders")}
                     </td>
                   </tr>
@@ -172,15 +172,15 @@ export function OrderDetailModal({
                   {addr.penerima || addr.alamat ? (
                     <span className="flex flex-col items-end gap-0.5 text-right">
                       {addr.penerima && <span className="font-medium">{addr.penerima}</span>}
-                      {addr.telepon && <span className="text-muted-foreground">{addr.telepon}</span>}
+                      {addr.telepon && <span className="text-ink-600">{addr.telepon}</span>}
                       {addr.alamat && <span>{addr.alamat}</span>}
                       {/* Empty on orders placed before checkout began storing the
                           region names — those rows only ever held the IDs. */}
                       {region && <span>{region}</span>}
-                      {addr.kode_pos && <span className="text-muted-foreground">{addr.kode_pos}</span>}
+                      {addr.kode_pos && <span className="text-ink-600">{addr.kode_pos}</span>}
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-ink-600">—</span>
                   )}
                 </Field>
                 {/* Written by the buyer at checkout. It is the reason the packer
@@ -195,7 +195,7 @@ export function OrderDetailModal({
                     <span className="text-right">
                       {courier}
                       {isEstimate && (
-                        <span className="ml-2 rounded bg-warn-bg px-1.5 py-0.5 text-xs text-warn">
+                        <span className="ml-2 rounded-full bg-gold-50 px-2 py-0.5 text-xs font-bold text-gold-700">
                           {t("order_shipping_estimate_note")}
                         </span>
                       )}
@@ -207,7 +207,7 @@ export function OrderDetailModal({
                     <span className="flex items-center justify-end gap-2">
                       <span className="font-mono">{order.tracking_number}</span>
                       {order.waybill_source && (
-                        <span className="text-xs text-muted-foreground">
+                        <span className="text-xs text-ink-600">
                           (
                           {order.waybill_source === "biteship"
                             ? t("order_shipment_waybill_source_biteship")
@@ -217,7 +217,7 @@ export function OrderDetailModal({
                       )}
                     </span>
                   ) : (
-                    <span className="text-muted-foreground">—</span>
+                    <span className="text-ink-600">—</span>
                   )}
                 </Field>
                 {order.tracking_number && (
@@ -248,13 +248,13 @@ export function OrderDetailModal({
               <Field label={t("th_buyer")}>
                 <span className="flex flex-col items-end gap-0.5 text-right">
                   <span className="font-medium">{order.student_name || order.student_id}</span>
-                  <span className="font-mono text-xs text-muted-foreground">{order.student_id}</span>
+                  <span className="font-mono text-xs text-ink-600">{order.student_id}</span>
                 </span>
               </Field>
               {order.payment_method === "manual" && (
                 <Field label="Konfirmasi">
                   <span className="flex items-center justify-end gap-2">
-                    <Badge className="bg-green-100 text-green-800 border-green-200">Dikonfirmasi manual</Badge>
+                    <Badge variant="teal">Dikonfirmasi manual</Badge>
                     {order.payment_proof_url && (
                       <button
                         type="button"
@@ -264,7 +264,7 @@ export function OrderDetailModal({
                           })
                         }
                         disabled={fetchProofURL.isPending}
-                        className="text-xs text-primary underline disabled:opacity-50"
+                        className="text-xs text-brand-ink underline disabled:opacity-50"
                       >
                         {fetchProofURL.isPending ? "Membuka…" : "Lihat bukti"}
                       </button>
@@ -285,7 +285,7 @@ export function OrderDetailModal({
               {hasPhysical && (
                 <Field label={t("order_shipping")}>{formatRupiah(order.shipping_cost ?? 0)}</Field>
               )}
-              <div className="flex items-center justify-between border-t pt-2 text-base font-semibold">
+              <div className="flex items-center justify-between border-t border-dashed border-line pt-2 text-base font-extrabold">
                 <span>{t("order_total")}</span>
                 <span className="tabular-nums">{formatRupiah(order.total)}</span>
               </div>
@@ -294,7 +294,7 @@ export function OrderDetailModal({
         </div>
 
         {(onShip || onRefund) && (
-          <DialogFooter className="shrink-0 flex-wrap border-t px-6 py-4">
+          <DialogFooter className="shrink-0 flex-wrap border-t border-line px-6 py-4">
             {onRefund && (
               <Button
                 variant="destructive"
@@ -324,8 +324,8 @@ function Section({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between border-b pb-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+      <div className="flex items-center justify-between border-b border-line pb-2">
+        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-600">
           {title}
         </h3>
         {action}
@@ -338,7 +338,7 @@ function Section({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-6">
-      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dt className="shrink-0 text-ink-600">{label}</dt>
       <dd className="min-w-0 text-right">{children}</dd>
     </div>
   );

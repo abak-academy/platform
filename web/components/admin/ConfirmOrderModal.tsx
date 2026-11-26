@@ -90,7 +90,7 @@ export function ConfirmOrderModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Konfirmasi Pembayaran Manual</DialogTitle>
           <DialogDescription>{`Pesanan ${orderNumber}`}</DialogDescription>

@@ -38,3 +38,33 @@ describe("OrdersPage empty state", () => {
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
+
+describe("OrdersPage list", () => {
+  it("renders each order as a card row with product name, extra count and a link", async () => {
+    const { useOrders } = await import("@/lib/hooks/orders");
+    (useOrders as unknown as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      data: [
+        {
+          id: "order-abcdefgh12345678",
+          status: "paid",
+          total: 150000,
+          created_at: "2026-10-28T03:00:00Z",
+          items: [
+            { id: "i1", product_type: "course", name: "Kursus UTBK" },
+            { id: "i2", product_type: "book", name: "Buku" },
+            { id: "i3", product_type: "book", name: "Buku 2" },
+          ],
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    render(<OrdersPage />);
+    const row = screen.getByRole("link", { name: /Kursus UTBK/ });
+    expect(row).toHaveAttribute("href", "/orders/order-abcdefgh12345678");
+    expect(row).toHaveTextContent("+2");
+    expect(row).toHaveTextContent("#12345678");
+  });
+});

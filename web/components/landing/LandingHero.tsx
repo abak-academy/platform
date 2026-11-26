@@ -25,7 +25,7 @@ export function LandingHero({ eventNames }: { eventNames: string[] }) {
       <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-black/65 via-black/45 to-black/60" />
       <MathFloaters light />
       <div data-hero-content className="mx-auto flex w-full max-w-public flex-col gap-6 px-6 pt-32 pb-[110px] md:pb-[170px]">
-        <h1 className="type-display-hero min-h-[3em] max-w-[16ch] text-white">
+        <h1 className="type-display-hero min-h-[3.3em] max-w-[16ch] leading-[1.1] text-white">
           {t("land_hero_prefix")}{" "}
           <span className="[&>span]:text-ember-500">
             <RotatingWord words={eventNames} fallback={t("land_hero_word_fallback")} />

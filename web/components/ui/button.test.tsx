@@ -39,6 +39,12 @@ describe("Button", () => {
     expect(cls("line")).toContain("border-white");
   });
 
+  it("dark is an ink fill", () => {
+    render(<Button variant="dark">dk</Button>);
+    expect(cls("dk")).toContain("bg-ink-900");
+    expect(cls("dk")).toContain("text-surface");
+  });
+
   it("sizes map to the control heights", () => {
     render(
       <>

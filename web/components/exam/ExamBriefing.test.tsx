@@ -253,6 +253,27 @@ describe("ExamBriefing how-to card", () => {
     expect(within(howto()).getByText("6 soal · 2 section")).toBeInTheDocument();
   });
 
+  it("puts the check-in form first, before Informasi ujian", () => {
+    render(
+      <ExamBriefing
+        exam={{ ...exam, requires_checkin: true }}
+        backHref="/exam"
+        backLabel="Kembali"
+        gate={gate}
+        checkIn={<div>Form check-in</div>}
+      />,
+    );
+    const info = screen.getByRole("heading", { name: "Informasi ujian" });
+    expect(screen.getByText("Form check-in").compareDocumentPosition(info) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders the exam title as the page heading with a back link, and numbers the sections", () => {
+    renderBriefing();
+    expect(screen.getByRole("heading", { level: 1, name: "Try Out Nasional" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Kembali" })).toHaveAttribute("href", "/exam");
+    expect(screen.getByRole("listitem")).toHaveTextContent(/^1Penalaran/);
+  });
+
   it("places the token and check-in cards after the how-to card", () => {
     renderBriefing({ requires_checkin: true }, { afterHowTo: <div>Kartu token</div> });
     const h = screen.getByRole("heading", { name: "Cara mengerjakan" });

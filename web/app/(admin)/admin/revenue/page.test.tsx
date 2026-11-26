@@ -123,6 +123,7 @@ describe("RevenuePage", () => {
   it("renders revenue-by-type bars", async () => {
     renderPage();
 
+    await waitFor(() => expect(document.querySelector("button.md-fchip.on")).not.toBeNull());
     await waitFor(() => {
       expect(screen.getByTestId("bar-book")).toBeInTheDocument();
     });

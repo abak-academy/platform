@@ -1,6 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { useTranslation } from "@/lib/i18n";
 
 interface UnderMaintenanceProps {
@@ -19,21 +20,17 @@ export function UnderMaintenance({
   const { t } = useTranslation();
   const desc = description ?? t("maint_default_desc");
   return (
-    <div className="flex flex-col items-center justify-center py-24 text-center">
-      <div className="flex size-20 items-center justify-center rounded-[20px] bg-[var(--md-sys-color-surface-container-high)] text-[var(--md-sys-color-on-surface-variant)]">
-        <Icon size={40} />
+    <Card className="gap-0 py-0">
+      <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
+        <div className="flex size-14 items-center justify-center rounded-[20px] bg-ember-50 text-ember-700">
+          <Icon size={28} />
+        </div>
+        <h2 className="type-h3 mt-4 text-ink-900">{title}</h2>
+        <p className="mt-2 max-w-sm text-sm text-muted-foreground">{desc}</p>
+        {estimatedTimeline ? (
+          <p className="type-label-sm mt-4 text-muted-foreground">{estimatedTimeline}</p>
+        ) : null}
       </div>
-      <h2 className="text-title-large mt-6 font-semibold text-[var(--md-sys-color-on-surface)]">
-        {title}
-      </h2>
-      <p className="text-body-medium mt-2 max-w-sm text-[var(--md-sys-color-on-surface-variant)]">
-        {desc}
-      </p>
-      {estimatedTimeline ? (
-        <p className="text-label mt-4 text-[var(--md-sys-color-on-surface-variant)]">
-          {estimatedTimeline}
-        </p>
-      ) : null}
-    </div>
+    </Card>
   );
 }

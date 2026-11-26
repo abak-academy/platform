@@ -276,13 +276,25 @@ describe("ExamMonitorPage", () => {
     render(<ExamMonitorPage />);
     await selectExamRow("UTBK 2026");
 
-    await waitFor(() => {
-      expect(screen.getByText("Terdaftar")).toBeInTheDocument();
-      expect(screen.getByText("Tercheck-in")).toBeInTheDocument();
-      expect(screen.getByText("Sedang berjalan")).toBeInTheDocument();
-      expect(screen.getByText("Terlambat")).toBeInTheDocument();
-      expect(screen.getByText("Terkirim")).toBeInTheDocument();
-    });
+    const table = await screen.findByTestId("exam-monitor-table");
+    expect(within(table).getByText("Terdaftar")).toBeInTheDocument();
+    expect(within(table).getByText("Tercheck-in")).toBeInTheDocument();
+    expect(within(table).getByText("Sedang berjalan")).toBeInTheDocument();
+    expect(within(table).getByText("Terlambat")).toBeInTheDocument();
+    expect(within(table).getByText("Terkirim")).toBeInTheDocument();
+    expect(screen.getByTestId("exam-monitor-kpis").children).toHaveLength(4);
+  });
+
+  it("counts overdue sessions under Sedang berjalan in the KPI tiles", async () => {
+    render(<ExamMonitorPage />);
+    await selectExamRow("UTBK 2026");
+
+    const kpis = await screen.findByTestId("exam-monitor-kpis");
+    const tile = within(kpis).getByText("Sedang berjalan").parentElement as HTMLElement;
+    const rows = await within(await screen.findByTestId("exam-monitor-table")).findAllByRole("row");
+    const running = rows.filter((r) => /Sedang berjalan|Terlambat/.test(r.textContent ?? "")).length;
+    expect(running).toBeGreaterThan(1);
+    expect(tile.textContent).toContain(String(running));
   });
 
   it("renders progress values for each row", async () => {
@@ -599,6 +611,6 @@ describe("ExamMonitorPage", () => {
     const table = screen.getByTestId("exam-monitor-table");
     expect(table.innerHTML).not.toContain("md-sys-color");
     expect(screen.getByText("SMAN 1 Jakarta")).toHaveClass("text-ink-600");
-    expect(table.querySelector(".bg-brand-600")).not.toBeNull();
+    expect(table.querySelector("[data-slot=progress]")).not.toBeNull();
   });
 });

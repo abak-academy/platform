@@ -1,8 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { ProductModal } from "./ProductModal";
 import { ApiError } from "@/lib/api";
 import type { Product } from "@/lib/types";
+
+// Radix Switch measures its form-bubble input with ResizeObserver, which jsdom lacks.
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+});
 
 const mockOnSubmit = vi.fn();
 const mockOnOpenChange = vi.fn();

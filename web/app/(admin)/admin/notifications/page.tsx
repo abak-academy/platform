@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AnnouncementTable } from "@/components/admin/AnnouncementTable";
 import { AnnouncementComposer } from "@/components/admin/AnnouncementComposer";
@@ -35,16 +35,14 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={Bell}
         title={t("notifications_page_title")}
         description={t("notifications_page_description")}
-        actionsAlign="end"
         actions={
           tab === "announcements" ? (
-            <Button size="sm" onClick={handleCreate}>
-              <Plus className="mr-1 size-4" />
+            <Button variant="dark" onClick={handleCreate}>
+              <Plus aria-hidden />
               {t("create")}
             </Button>
           ) : null
@@ -52,11 +50,11 @@ export default function NotificationsPage() {
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as NotificationsTab)}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="inbox" className="text-xs">
+        <TabsList className="mb-5">
+          <TabsTrigger value="inbox">
             {t("notification_tab_inbox")}
           </TabsTrigger>
-          <TabsTrigger value="announcements" className="text-xs">
+          <TabsTrigger value="announcements">
             {t("notification_tab_announcements")}
           </TabsTrigger>
         </TabsList>

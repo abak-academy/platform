@@ -111,9 +111,9 @@ export function BulkImportModal({ open, onOpenChange, allowExplicitPassword, par
         if (!o) handleClose();
       }}
     >
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-w-[740px]">
         <DialogHeader>
-          <DialogTitle className="font-serif">{t("bulk_register_title")}</DialogTitle>
+          <DialogTitle>{t("bulk_register_title")}</DialogTitle>
           <DialogDescription>{t("bulk_register_subtitle")}</DialogDescription>
         </DialogHeader>
 

@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
@@ -36,31 +37,14 @@ interface ToggleProps {
 
 function Toggle({ checked, onChange, label, description }: ToggleProps) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3">
+    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0">
       <div className="space-y-0.5">
-        <div className="text-sm font-medium text-ink-900">{label}</div>
+        <div className="text-sm font-bold text-ink-900">{label}</div>
         {description && (
-          <div className="text-xs text-ink-500">{description}</div>
+          <div className="text-xs text-ink-600">{description}</div>
         )}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={label}
-        onClick={() => onChange(!checked)}
-        className={cn(
-          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-          checked ? "bg-brand-600" : "bg-line"
-        )}
-      >
-        <span
-          className={cn(
-            "pointer-events-none block size-5 rounded-full bg-white shadow ring-0 transition-transform",
-            checked ? "translate-x-5" : "translate-x-0"
-          )}
-        />
-      </button>
+      <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
     </div>
   );
 }
@@ -235,10 +219,9 @@ export default function SystemConfigPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
+      <div className="space-y-6 fade-in">
         <AdminPageHeader
-          icon={Settings}
-          title={t("config_title")}
+            title={t("config_title")}
           description={t("sys_loading")}
         />
         <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
@@ -252,10 +235,9 @@ export default function SystemConfigPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
+      <div className="space-y-6 fade-in">
         <AdminPageHeader
-          icon={Settings}
-          title={t("config_title")}
+            title={t("config_title")}
           description={t("sys_error_title")}
         />
         <div className="py-12 text-center text-ink-500">{msg}</div>
@@ -264,28 +246,27 @@ export default function SystemConfigPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 md:px-6 md:py-10 fade-in">
+    <div className="space-y-6 fade-in">
       <AdminPageHeader
-        icon={Settings}
         title={t("config_title")}
         description={t("config_subtitle")}
       />
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6 h-auto flex-wrap">
-          <TabsTrigger value="general" className="text-xs">
+        <TabsList className="mb-6 h-auto">
+          <TabsTrigger value="general">
             <Settings className="mr-1 size-4" />
             {t("config_tab_general")}
           </TabsTrigger>
-          <TabsTrigger value="notifications" className="text-xs">
+          <TabsTrigger value="notifications">
             <Bell className="mr-1 size-4" />
             {t("config_tab_notifications")}
           </TabsTrigger>
-          <TabsTrigger value="integrations" className="text-xs">
+          <TabsTrigger value="integrations">
             <Plug className="mr-1 size-4" />
             {t("config_tab_integrations")}
           </TabsTrigger>
-          <TabsTrigger value="couriers" className="text-xs">
+          <TabsTrigger value="couriers">
             <Plug className="mr-1 size-4" />
             {t("config_tab_couriers")}
           </TabsTrigger>

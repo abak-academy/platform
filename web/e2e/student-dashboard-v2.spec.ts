@@ -249,11 +249,11 @@ test("3 mobile 390 drawer", async ({ page, context }) => {
   await shot(page, "home-390-light");
   const headerLabels = await page.locator("header").first().locator("button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
   note(`[3] header buttons at 390: ${JSON.stringify(headerLabels)}`);
-  expect(headerLabels).toEqual(["Toggle sidebar"]);
+  expect(headerLabels).toEqual(["Buka/tutup menu samping"]);
   const hscroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   note(`[3] horizontal overflow px at 390 home: ${hscroll}`);
   expect(hscroll).toBe(0);
-  await page.getByRole("button", { name: "Toggle sidebar" }).click();
+  await page.getByRole("button", { name: "Buka/tutup menu samping" }).click();
   await page.waitForTimeout(500);
   await shot(page, "drawer-390-light", false);
   await page.getByRole("link", { name: /^Tagihan/ }).first().click();

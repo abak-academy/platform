@@ -6,8 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { useMe } from "@/lib/hooks/auth";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { AbakMark } from "./AbakMark";
+import { AbakWordmark } from "./AbakWordmark";
 import { SidebarUserMenu } from "./SidebarUserMenu";
 import {
   NAV_CONFIG,
@@ -57,12 +56,28 @@ function CountPill({ n }: { n?: number }) {
   );
 }
 
-function IconTile({ active, children }: { active: boolean; children: React.ReactNode }) {
+function IconTile({
+  active,
+  nested,
+  group,
+  animate,
+  children,
+}: {
+  active: boolean;
+  animate?: boolean;
+  nested?: boolean;
+  group?: "idle" | "has-active";
+  children: React.ReactNode;
+}) {
   return (
     <span
       className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-sm",
-        active ? "bg-brand-600 text-on-brand" : "text-ink-600"
+        "flex shrink-0 items-center justify-center",
+        animate && "transition-transform duration-300 ease-spring",
+        nested ? "size-[26px] rounded-[9px] [&_svg]:size-[17px]" : "size-8 rounded-[11px]",
+        active && "-rotate-6 bg-brand-600 text-on-brand shadow-[0_6px_14px_-6px_var(--color-brand-600)]",
+        group === "idle" && "bg-surface-sunken text-ink-700",
+        group === "has-active" && "bg-brand-50 text-brand-ink"
       )}
     >
       {children}
@@ -70,7 +85,7 @@ function IconTile({ active, children }: { active: boolean; children: React.React
   );
 }
 
-function NavItemLink({ item, active, count, nested }: { item: NavItem; active: boolean; count?: number; nested?: boolean }) {
+function NavItemLink({ item, active, count, nested, animate }: { item: NavItem; active: boolean; count?: number; nested?: boolean; animate: boolean }) {
   const { t } = useTranslation();
   return (
     <Link
@@ -78,14 +93,15 @@ function NavItemLink({ item, active, count, nested }: { item: NavItem; active: b
       title={t(item.labelKey)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-md px-2.5 type-label",
-        nested ? "min-h-9.5" : "min-h-nav-row",
+        "flex items-center gap-[11px] rounded-md px-2.5 type-label",
+        animate && "transition-[background-color,transform] duration-300 ease-spring",
+        nested ? "h-[38px] text-[13.5px]" : "h-11",
         active
-          ? "bg-brand-50 text-brand-700"
-          : "text-ink-600 hover:bg-brand-50/60 hover:text-brand-700"
+          ? "bg-brand-50 text-brand-ink"
+          : "text-ink-700 hover:translate-x-0.5 hover:bg-surface-sunken"
       )}
     >
-      <IconTile active={active}>
+      <IconTile active={active} nested={nested} animate={animate}>
         <item.icon className="size-5" />
       </IconTile>
       <span className="truncate">{t(item.labelKey)}</span>
@@ -119,6 +135,7 @@ function GroupSection({
   const panelId = `${useId()}-nav-group-${key}`;
   const sum = group.items.reduce((acc, i) => acc + (i.countKey ? (counts?.[i.countKey] ?? 0) : 0), 0);
   const Icon = group.icon;
+  const hasActive = group.items.some((i) => isNavActive(pathname, i));
   return (
     <div>
       <button
@@ -126,10 +143,10 @@ function GroupSection({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={onToggle}
-        className="flex min-h-nav-row w-full items-center gap-3 rounded-md px-2.5 text-left type-label text-ink-600 hover:bg-brand-50/60"
+        className="flex h-11 w-full items-center gap-[11px] rounded-md px-2.5 text-left type-label text-[13.5px] font-extrabold text-ink-900 hover:bg-surface-sunken"
       >
         {Icon && (
-          <IconTile active={false}>
+          <IconTile active={false} animate={animate} group={hasActive ? "has-active" : "idle"}>
             <Icon className="size-5" />
           </IconTile>
         )}
@@ -153,7 +170,7 @@ function GroupSection({
         )}
       >
         <div className="overflow-hidden" inert={!open}>
-          <div className="flex flex-col gap-1 pt-1">
+          <div className="ml-[15px] flex flex-col gap-0.5 border-l-[1.5px] border-line pt-1 pb-1.5 pl-3.5">
             {group.items.map((item) => (
               <NavItemLink
                 key={item.href + item.labelKey}
@@ -161,6 +178,7 @@ function GroupSection({
                 active={isNavActive(pathname, item)}
                 count={item.countKey ? counts?.[item.countKey] : undefined}
                 nested
+                animate={animate}
               />
             ))}
           </div>
@@ -187,31 +205,17 @@ export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
   }, [pathname, groups]);
 
   return (
-    <>
-      <div className="flex h-[72px] shrink-0 items-center px-5">
-        <Link href="/" className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-[11px] bg-brand-50">
-            <AbakMark size={28} />
-          </div>
-          <div className="flex flex-col justify-center">
-            <div className="flex items-baseline gap-1.5 leading-none">
-              <span className="font-serif text-[18px] font-extrabold tracking-[-0.01em] text-ink-900">
-                abak
-              </span>
-              <span className="text-[9.5px] font-semibold uppercase tracking-[0.22em] text-[#C6881F]">
-                academy
-              </span>
-            </div>
-            <span className="mt-[3px] text-[11px] font-medium text-ink-400">
-              {ADMIN_ROLES.includes(role) ? t("admin_panel") : t("app_tag")}
-            </span>
-          </div>
+    <div className="flex min-h-0 flex-1 flex-col px-3.5 py-[18px]">
+      <div className="flex shrink-0 flex-col px-1.5 pb-4">
+        <Link href="/" aria-label="Abak Academy">
+          <AbakWordmark size={36} />
         </Link>
+        <span className="mt-1.5 text-[11px] font-medium text-ink-600">
+          {ADMIN_ROLES.includes(role) ? t("admin_panel") : t("app_tag")}
+        </span>
       </div>
 
-      <Separator className="shrink-0" />
-
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-3 py-3">
+      <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
         {groups.map((group, index) =>
           group.titleKey ? (
             <GroupSection
@@ -224,13 +228,14 @@ export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
               animate={animate}
             />
           ) : (
-            <div key={`group-${index}`} className="flex flex-col gap-1">
+            <div key={`group-${index}`} className="flex flex-col gap-0.5">
               {group.items.map((item) => (
                 <NavItemLink
                   key={item.href + item.labelKey}
                   item={item}
                   active={isNavActive(pathname, item)}
                   count={item.countKey ? counts?.[item.countKey] : undefined}
+                  animate={animate}
                 />
               ))}
             </div>
@@ -238,9 +243,9 @@ export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
         )}
       </nav>
 
-      <div className="mt-auto border-t border-line p-3">
+      <div className="mt-auto border-t border-line pt-4">
         <SidebarUserMenu role={role} counts={counts} dotCountKey={role === "student" ? "cart" : undefined} subtitle={subtitle} />
       </div>
-    </>
+    </div>
   );
 }

@@ -160,21 +160,21 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
   return (
     <tr
       onClick={onOpen}
-      className="cursor-pointer border-t align-top transition-colors hover:bg-brand-50/70"
+      className="cursor-pointer border-t border-line align-top text-[13.5px] text-ink-700 transition-colors hover:bg-brand-50"
     >
       {selection && (
-        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+        <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
           <input type="checkbox" className="size-4 accent-brand-700" aria-label={`${t("labels_select_order")} ${orderNumber(order)}`} checked={selection.checked} disabled={selection.disabled} onChange={selection.onChange} />
         </td>
       )}
-      <td className="px-4 py-4">
+      <td className="px-4 py-3">
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
             onOpen();
           }}
-          className="rounded-sm font-mono text-[15px] font-semibold hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
+          className="rounded-sm font-mono text-[13.5px] font-bold text-ink-900 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
         >
           <span className="sr-only">{t("orders_detail_open")} </span>
           {orderNumber(order)}
@@ -200,8 +200,8 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
           nothing to anyone reading the table; this is what actually tells two
           buyers of the same name apart. Either may be missing, so the line
           collapses rather than printing a stray separator. */}
-      <td className="hidden max-w-[16rem] px-4 py-4 md:table-cell">
-        <div className="truncate text-[15px] font-medium">{buyerLabel(order)}</div>
+      <td className="hidden max-w-[16rem] px-4 py-3 md:table-cell">
+        <div className="truncate text-[13.5px] font-bold text-ink-900">{buyerLabel(order)}</div>
         {buyerContext && (
           <div className="mt-1 truncate text-[13px] text-ink-600" title={buyerContext}>
             {buyerContext}
@@ -209,21 +209,21 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
         )}
       </td>
 
-      <td className="hidden max-w-xs px-4 py-4 md:table-cell">
-        <div className="truncate text-[15px]">{items[0]?.name ?? "—"}</div>
+      <td className="hidden max-w-xs px-4 py-3 md:table-cell">
+        <div className="truncate text-[13.5px]">{items[0]?.name ?? "—"}</div>
         {extraItems > 0 && (
           <div className="mt-1 text-[13px] text-ink-600">+{extraItems} lainnya</div>
         )}
       </td>
 
-      <td className="hidden px-4 py-4 text-right text-[15px] tabular-nums whitespace-nowrap md:table-cell">
+      <td className="hidden px-4 py-3 text-right text-[13.5px] font-bold text-ink-900 tabular-nums whitespace-nowrap md:table-cell">
         {formatRupiah(order.total)}
       </td>
 
       {/* A column, not inline flow. The badge and the courier line are both
           inline-level, so they ran together on one line; the mockup stacks the
           courier state beneath the order state. */}
-      <td className="px-4 py-4">
+      <td className="px-4 py-3">
         <div className="flex flex-col items-start gap-1.5">
           <OrderStatusBadge status={order.status} label={adminOrderStatusLabel(order, t)} />
           {courierSubLine()}
@@ -233,7 +233,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-end gap-2">
           {primaryAction && (
-            <Button size="sm" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
+            <Button size="sm" variant="secondary" onClick={primaryAction.onClick} disabled={primaryAction.disabled}>
               {primaryAction.label}
             </Button>
           )}

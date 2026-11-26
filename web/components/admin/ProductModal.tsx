@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useAdminCourses } from "@/lib/hooks/admin-courses";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -298,7 +299,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       {/* A book carries eight specification rows, which pushed the dialog past
           the viewport and took the title and the Save button off screen with
           it. The body scrolls; the header and footer stay put. */}
-      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+      <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[740px]">
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogHeader className="shrink-0 border-b px-6 py-5">
             <DialogTitle>{isEdit ? "Edit produk" : "Buat produk"}</DialogTitle>
@@ -515,20 +516,15 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
                       <div className="text-sm font-medium text-ink-900">Batasi kuota</div>
                       <div className="text-xs text-ink-500">Nonaktif: tanpa batas. Aktif: penjualan berhenti saat kuota 0.</div>
                     </div>
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={quotaLimited}
+                    <Switch
+                      checked={quotaLimited}
                       aria-label="Batasi kuota"
                       disabled={isPending}
-                      onClick={() => {
-                        setQuotaLimited(!quotaLimited);
+                      onCheckedChange={(checked) => {
+                        setQuotaLimited(checked);
                         setStock("");
                       }}
-                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${quotaLimited ? "bg-brand-600" : "bg-line"}`}
-                    >
-                      <span className={`pointer-events-none block size-5 rounded-full bg-white shadow ring-0 transition-transform ${quotaLimited ? "translate-x-5" : "translate-x-0"}`} />
-                    </button>
+                    />
                   </div>
                 )}
                 <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">

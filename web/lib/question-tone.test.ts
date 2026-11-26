@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { FORMAT_TONE } from "@/lib/question-tone";
+import { FORMAT_BADGE_VARIANT, FORMAT_TONE } from "@/lib/question-tone";
 import type { QuestionFormat } from "@/lib/types";
 
 describe("FORMAT_TONE", () => {
@@ -15,6 +15,7 @@ describe("FORMAT_TONE", () => {
     ];
     for (const format of formats) {
       expect(FORMAT_TONE[format]).toBeTruthy();
+      expect(FORMAT_BADGE_VARIANT[format]).toBeTruthy();
     }
   });
 });

@@ -8,6 +8,7 @@ import { useUpdateOwnPhoto } from "@/lib/hooks/profile";
 import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { roleLabelKey } from "@/lib/nav-config";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -92,15 +93,11 @@ export default function AdminProfilePage() {
   }
 
   return (
-    <div className="fade-in flex max-w-2xl flex-col gap-5">
-      <header>
-        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-          {t("profile_title")}
-        </h1>
-      </header>
+    <div className="fade-in flex flex-col gap-5">
+      <AdminPageHeader title={t("profile_title")} />
 
-      <Card className="rounded-2xl border-0 p-6 shadow-md">
-        <h2 className="mb-4 text-[15px] font-semibold text-ink-900">
+      <Card className="p-6">
+        <h2 className="mb-4 type-h2 text-ink-900">
           {t("admin_profile_identity_card")}
         </h2>
 
@@ -128,7 +125,7 @@ export default function AdminProfilePage() {
             {isLoading ? (
               <Skeleton className="h-5 w-40" />
             ) : (
-              <div className="font-serif text-xl font-semibold text-ink-900">
+              <div className="font-[family-name:var(--font-display)] text-xl font-bold text-ink-900">
                 {me?.name}
               </div>
             )}
@@ -166,10 +163,10 @@ export default function AdminProfilePage() {
         <p className="mt-4 text-xs text-ink-600">{t("admin_profile_edit_hint")}</p>
       </Card>
 
-      <Card className="rounded-2xl border-0 p-6 shadow-md">
+      <Card className="p-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-[15px] font-semibold text-ink-900">
+            <h2 className="type-h2 text-ink-900">
               {t("admin_profile_security_card")}
             </h2>
             <p className="mt-1 text-xs text-ink-600">

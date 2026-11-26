@@ -48,7 +48,7 @@ export function CancelShipmentModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{t("shipment_cancel_title")}</DialogTitle>
           <DialogDescription>

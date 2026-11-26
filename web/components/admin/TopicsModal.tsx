@@ -75,7 +75,7 @@ export function TopicsModal({ open, onOpenChange }: TopicsModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{t("manage_topics")}</DialogTitle>
         </DialogHeader>

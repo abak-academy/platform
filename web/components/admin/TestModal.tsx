@@ -116,7 +116,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[740px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? t("tests_edit") : t("tests_new")}</DialogTitle>
@@ -175,7 +175,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                       setTopic("");
                     }}
                     disabled={isPending}
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                    className="h-[var(--spacing-input)] w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
                   >
                     <option value="" />
                     {subjectOptions.map((name) => (
@@ -193,7 +193,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     disabled={isPending || subject === ""}
-                    className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                    className="h-[var(--spacing-input)] w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
                   >
                     <option value="" />
                     {topicOptions.map((tp) => (
@@ -224,7 +224,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                 <div className="grid gap-2">
                   <Label htmlFor="test-shared-material">{t("format_shared_material")}</Label>
                   <RichTextEditor id="test-shared-material" aria-label={t("format_shared_material")} value={sharedMaterial} onChange={setSharedMaterial} disabled={isPending} />
-                  <p className="text-xs text-ink-500">{t("format_reusable_material_hint")}</p>
+                  <p className="text-xs text-ink-600">{t("format_reusable_material_hint")}</p>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="test-instructions">{t("format_instructions")}</Label>
@@ -233,7 +233,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                 <div className="grid gap-2">
                   <Label>{t("tests_field_section_type")}</Label>
                   <div className="grid grid-cols-4 gap-2">
-                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                    <label className="flex items-center gap-2 rounded-md border-[1.5px] border-line px-3 py-2 text-sm">
                       <input
                         type="radio"
                         name="section_type"
@@ -244,7 +244,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                       />
                       <span>{t("tests_field_section_type_none")}</span>
                     </label>
-                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                    <label className="flex items-center gap-2 rounded-md border-[1.5px] border-line px-3 py-2 text-sm">
                       <input
                         type="radio"
                         name="section_type"
@@ -255,7 +255,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                       />
                       <span>{t("tests_field_section_type_listening")}</span>
                     </label>
-                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                    <label className="flex items-center gap-2 rounded-md border-[1.5px] border-line px-3 py-2 text-sm">
                       <input
                         type="radio"
                         name="section_type"
@@ -266,7 +266,7 @@ export function TestModal({ open, onOpenChange, test, onSubmit, isPending }: Tes
                       />
                       <span>{t("tests_field_section_type_reading")}</span>
                     </label>
-                    <label className="flex items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
+                    <label className="flex items-center gap-2 rounded-md border-[1.5px] border-line px-3 py-2 text-sm">
                       <input
                         type="radio"
                         name="section_type"

@@ -68,13 +68,13 @@ describe("CatalogPage", () => {
     expect(document.querySelector("[data-tilt] [data-tilt]")).toBeNull();
   });
 
-  it("reserves layout while loading: 10 cards with the same grid and 3:4 cover as the loaded grid", () => {
+  it("reserves layout while loading: 8 cards with the same grid and 3:4 cover as the loaded grid", () => {
     vi.mocked(useProducts).mockReturnValue({ data: undefined, isLoading: true, isError: false } as never);
     render(<CatalogPage />);
     const sk = screen.getByTestId("catalog-skeleton");
-    expect(sk.children).toHaveLength(10);
+    expect(sk.children).toHaveLength(8);
     expect(sk.className).toContain("grid-cols-2");
-    expect(sk.className).toContain("xl:grid-cols-5");
+    expect(sk.className).toContain("lg:grid-cols-4");
     expect(sk.querySelector(".aspect-\\[3\\/4\\]")).not.toBeNull();
   });
 
@@ -109,16 +109,16 @@ describe("CatalogPage", () => {
     });
   });
 
-  it("labels the grouping filter Event", () => {
+  it("has no event filter (events live on /event)", () => {
     render(<CatalogPage />);
-    expect(screen.getByRole("combobox", { name: "Event" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByText("Semua event")).not.toBeInTheDocument();
   });
 
   it("preselects courses from ?type=course", () => {
     query = "type=course";
     render(<CatalogPage />);
-    expect(useProducts).toHaveBeenCalledWith("course", undefined);
-    expect(screen.getByRole("button", { name: "Kursus" })).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("button", { name: /Kursus/ })).toHaveAttribute("aria-pressed", "true");
   });
 });
 

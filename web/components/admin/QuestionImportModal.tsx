@@ -82,7 +82,7 @@ export function QuestionImportModal({ open, onOpenChange, onSuccess }: QuestionI
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>{t("import_questions_title")}</DialogTitle>
         </DialogHeader>

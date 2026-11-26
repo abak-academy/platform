@@ -1,8 +1,9 @@
 "use client";
 
 import { Suspense, use } from "react";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { Banknote, HandCoins, Link2 } from "lucide-react";
+import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { StatCard } from "@/components/admin/StatCard";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { AdminCommissionsPanel } from "@/components/affiliate/AdminCommissionsPanel";
 import { AffiliateAdminActions } from "@/components/affiliate/AffiliateAdminActions";
@@ -28,15 +29,6 @@ export default function AdminAffiliateDetailPage({ params }: { params: Promise<{
   );
 }
 
-function Card({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="md-card-outlined p-4">
-      <div className="text-xs text-ink-500">{label}</div>
-      <div className="mt-1 font-serif text-xl font-bold text-ink-900">{value}</div>
-    </div>
-  );
-}
-
 function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { t } = useTranslation();
@@ -44,22 +36,14 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
   const query = useAdminAffiliate(id);
 
   if (!canManage) return <NoAccess />;
-  const back = (
-    <Button variant="outline" size="sm" asChild className="w-fit">
-      <Link href="/admin/affiliates">
-        <ArrowLeft className="size-4" aria-hidden />
-        {t("admin_aff_back")}
-      </Link>
-    </Button>
-  );
+  const back = { href: "/admin/affiliates", label: t("admin_aff_back") };
 
   if (query.isLoading) return <div className="text-sm text-ink-500">{t("aff_loading")}</div>;
   if (query.isError || !query.data) {
     if (query.error instanceof ApiError && query.error.status === 404) {
       return (
         <div className="space-y-3">
-          {back}
-          <p className="text-sm text-ink-600">{t("admin_aff_not_found")}</p>
+          <AdminPageHeader title={t("admin_aff_not_found")} back={back} />
         </div>
       );
     }
@@ -87,36 +71,38 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
 
   return (
     <div className="space-y-6">
-      {back}
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="font-serif text-2xl font-bold text-ink-900">{d.name}</h1>
-        <StatusBadge status={aff.status} />
-        <ProgramBadges programs={aff.programs} />
-        {inV1 && <LevelBadge level={aff.level} />}
-      </div>
-      <p className="text-sm text-ink-600">
-        {d.email ?? "—"} · {aff.code || "—"}
-      </p>
+      <AdminPageHeader
+        title={d.name}
+        description={`${d.email ?? "—"} · ${aff.code || "—"}`}
+        back={back}
+        actions={
+          <>
+            <StatusBadge status={aff.status} />
+            <ProgramBadges programs={aff.programs} />
+            {inV1 && <LevelBadge level={aff.level} />}
+          </>
+        }
+      />
 
       {inV1 && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <Card label={t("admin_aff_detail_balance")} value={formatRupiah(d.saldo)} />
-          <Card label={t("admin_aff_detail_bindings")} value={`${d.bindings.active} / ${d.bindings.ended}`} />
-          <Card label={t("admin_aff_detail_commissions")} value={formatRupiah(d.commissions.total_amount)} />
+          <StatCard label={t("admin_aff_detail_balance")} value={formatRupiah(d.saldo)} icon={Banknote} tone="brand" />
+          <StatCard label={t("admin_aff_detail_bindings")} value={`${d.bindings.active} / ${d.bindings.ended}`} icon={Link2} tone="sky" />
+          <StatCard label={t("admin_aff_detail_commissions")} value={formatRupiah(d.commissions.total_amount)} icon={HandCoins} tone="teal" />
         </div>
       )}
 
       <PartnerProgramPanel id={aff.id} programs={aff.programs} />
 
       <section className="space-y-2">
-        <h2 className="font-semibold text-ink-900">{t("admin_aff_actions")}</h2>
+        <h2 className="type-h3 text-ink-900">{t("admin_aff_actions")}</h2>
         <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} affiliate={inV1} programs={aff.programs} />
       </section>
 
       {inV1 && (
         <>
           <section className="space-y-2">
-            <h2 className="font-semibold text-ink-900">{t("admin_aff_sec_bindings")}</h2>
+            <h2 className="type-h3 text-ink-900">{t("admin_aff_sec_bindings")}</h2>
             <DataTable columns={bindingColumns} rows={d.bindings.data} rowKey={(r) => r.binding_id} empty={t("aff_students_empty")} />
           </section>
           <section>

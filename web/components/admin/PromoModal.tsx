@@ -156,7 +156,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[480px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>{isEdit ? "Edit kode promo" : "Buat kode promo"}</DialogTitle>

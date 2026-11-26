@@ -54,15 +54,18 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
     <div
       className={
         flat
-          ? "flex gap-4 px-4 py-4"
+          ? "flex items-center gap-3 border-b border-dashed border-line py-3 last:border-b-0"
           : "flex gap-4 rounded-lg border border-line bg-surface p-4 shadow-[var(--sh-sm)]"
       }
     >
       <div
-        className="flex size-16 shrink-0 items-center justify-center rounded-md bg-paper"
+        className={cn(
+          "flex shrink-0 items-center justify-center",
+          flat ? cn("size-[38px] rounded-xl", meta.bg, meta.tone) : "size-16 rounded-md bg-paper",
+        )}
         aria-hidden
       >
-        <Icon className="size-7 text-ink-400" strokeWidth={1.5} />
+        <Icon className={flat ? "size-[18px]" : "size-7 text-ink-400"} strokeWidth={flat ? 2 : 1.5} />
       </div>
 
       <div className="flex flex-1 flex-col gap-1">
@@ -77,10 +80,10 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
             type="button"
             variant="ghost"
             size="icon"
-            className="size-8 text-ink-400 hover:text-danger"
+            className="size-8 text-ink-600 hover:text-danger"
             onClick={onRemove}
             disabled={busy}
-            aria-label={`Hapus ${item.name} dari keranjang`}
+            aria-label={t("cart_remove_item").replace("{name}", item.name)}
           >
             <Trash2 className="size-4" />
           </Button>
@@ -88,32 +91,32 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
 
         <div className="mt-1 flex items-center justify-between gap-2 text-sm">
           {isDigital ? (
-            <span className="text-xs text-ink-500">{t("product_digital_single_qty" as any)}</span>
+            <span className="text-xs text-ink-600">{t("product_digital_single_qty" as any)}</span>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex h-[34px] items-center gap-0.5 rounded-full border-[1.5px] border-line pl-0.5">
               <button
                 type="button"
                 onClick={() => onQtyChange(item.qty - 1)}
                 disabled={busy || item.qty <= 1}
-                className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
-                aria-label="Kurangi jumlah"
+                className="flex size-[28px] items-center justify-center rounded-full text-ink-600 hover:bg-surface-sunken disabled:opacity-40"
+                aria-label={t("cart_qty_decrease")}
               >
                 <Minus className="size-3" />
               </button>
-              <span className="w-6 text-center font-semibold text-ink-900">{item.qty}</span>
+              <span className="w-6 text-center font-bold text-ink-900">{item.qty}</span>
               <button
                 type="button"
                 onClick={() => onQtyChange(item.qty + 1)}
                 disabled={busy || item.qty >= 10}
-                className="flex size-7 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
-                aria-label="Tambah jumlah"
+                className="flex size-[28px] items-center justify-center rounded-full text-ink-600 hover:bg-surface-sunken disabled:opacity-40"
+                aria-label={t("cart_qty_increase")}
               >
                 <Plus className="size-3" />
               </button>
-              <span className="text-xs text-ink-400">× {formatRupiah(item.unit_price)}</span>
+              <span className="ml-2 pr-2 text-xs text-ink-600">× {formatRupiah(item.unit_price)}</span>
             </div>
           )}
-          <span className="font-serif text-base font-bold text-ink-900">{formatRupiah(lineTotal)}</span>
+          <b className="font-extrabold tabular-nums text-ink-900">{formatRupiah(lineTotal)}</b>
         </div>
       </div>
     </div>

@@ -119,7 +119,7 @@ function ChoiceCard({
       />
       <span className="grid gap-0.5">
         <span id={`${id}-title`} className="font-medium">{title}</span>
-        <small id={`${id}-desc`} className="text-xs font-normal text-ink-500">{description}</small>
+        <small id={`${id}-desc`} className="text-xs font-normal text-ink-600">{description}</small>
       </span>
     </label>
   );
@@ -328,10 +328,10 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
 
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="gap-0 p-0 sm:max-w-[720px]">
+      <DialogContent className="gap-0 p-0 sm:max-w-[740px]">
         <form onSubmit={handleSubmit} onChange={() => setTouched(true)} className="grid min-w-0 grid-cols-1">
           <DialogHeader className="px-6 pt-6 pb-4">
-            <DialogTitle className="font-serif">
+            <DialogTitle>
               {isEdit
                 ? t("exam_admin_settings_title")
                 : t("exam_packages_modal_create_title")}
@@ -429,7 +429,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
               </TabsContent>
 
               <TabsContent value="rules" forceMount hidden={tab !== "rules"} className={PANEL_CLASS}>
-                {policyLocked && <p className="text-xs text-ink-500">{t("exam_admin_policy_locked")}</p>}
+                {policyLocked && <p className="text-xs text-ink-600">{t("exam_admin_policy_locked")}</p>}
                 {composable ? (
                   <div className="grid gap-2">
                     <Label id="exam-format_navigation">{t("format_navigation")}</Label>
@@ -595,7 +595,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                     <span>{t("exam_admin_attempts_multiple")}</span>
                   </label>
                   {!allowMultipleAttempts && (
-                    <p className="text-xs text-ink-500">{t("exam_admin_attempts_single_hint")}</p>
+                    <p className="text-xs text-ink-600">{t("exam_admin_attempts_single_hint")}</p>
                   )}
                   {allowMultipleAttempts && (
                     <div className="grid gap-2 sm:grid-cols-2">
@@ -669,7 +669,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                       {t("exam_packages_modal_card_notes_hint")}
                     </p>
                     {cardNotes.length === 0 ? (
-                      <p className="text-xs text-ink-500">
+                      <p className="text-xs text-ink-600">
                         {t("exam_packages_modal_card_notes_empty")}
                       </p>
                     ) : null}
@@ -689,7 +689,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                         <Button
                           type="button"
                           variant="outline"
-                          className="rounded-full px-3"
+                          className="px-3"
                           aria-label={t("exam_packages_modal_card_note_remove")}
                           onClick={() => setCardNotes((prev) => prev.filter((_, j) => j !== i))}
                           disabled={isPending}
@@ -702,7 +702,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                       <Button
                         type="button"
                         variant="outline"
-                        className="rounded-full"
+                       
                         onClick={() => setCardNotes((prev) => [...prev, ""])}
                         disabled={isPending || cardNotes.length >= MAX_CARD_NOTES}
                       >
@@ -739,7 +739,7 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
                         onChange={(e) => setEndScreenPromoText(e.target.value)}
                         rows={3}
                         disabled={isPending}
-                        className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                        className="flex w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 py-3 text-sm outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
                       />
                     </div>
                   </div>
@@ -752,13 +752,13 @@ export function ExamModal({ open, onClose, exam, onSaved, policyLocked = false, 
             <Button
               type="button"
               variant="outline"
-              className="rounded-full"
+             
               onClick={onClose}
               disabled={isPending}
             >
               {t("exam_packages_modal_cancel")}
             </Button>
-            <Button type="submit" className="rounded-full" disabled={!canSubmit || isPending}>
+            <Button type="submit" disabled={!canSubmit || isPending}>
               {isPending ? t("saving") : isEdit ? t("exam_admin_settings_save") : t("exam_packages_modal_save")}
             </Button>
           </DialogFooter>

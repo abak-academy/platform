@@ -221,17 +221,17 @@ describe("admin_store dashboard", () => {
     const volume = screen.getByRole("region", { name: "Volume bulan ini" });
     expect(volume).toHaveTextContent("148");
     expect(volume).toHaveTextContent("96");
-    expect(volume).toHaveClass("flex", "!py-3");
+    expect(volume).toHaveClass("grid", "grid-cols-2");
     expect(summaryRequest).toHaveBeenCalledWith({ status: "all" });
   });
 
   it("keeps the shipment failure accent only for nonzero failures", () => {
     const view = render(<StoreDashboardPage />);
     const failed = screen.getByRole("link", { name: /pengiriman gagal/i });
-    expect(within(failed).getByText("2")).toHaveStyle({ color: "var(--md-sys-color-error)" });
+    expect(within(failed).getByText("2")).toHaveClass("text-danger-600");
     summaryState = { data: { ...sampleSummary, buckets: { ...sampleSummary.buckets, shipment_failed: 0 } }, isLoading: false };
     view.rerender(<StoreDashboardPage />);
-    expect(within(screen.getByRole("link", { name: /pengiriman gagal/i })).getByText("0").style.color).toBe("");
+    expect(within(screen.getByRole("link", { name: /pengiriman gagal/i })).getByText("0").className).not.toContain("text-danger-600");
   });
 
   it("keeps the top products empty state", () => {

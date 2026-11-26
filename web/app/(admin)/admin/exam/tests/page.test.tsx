@@ -113,6 +113,7 @@ describe("TestsPage", () => {
       expect(screen.getByText("Tryout Bahasa Inggris")).toBeInTheDocument();
     });
 
+    expect(screen.getAllByTestId("test-row")[0].tagName).toBe("ARTICLE");
     expect(screen.getByText("Matematika")).toBeInTheDocument();
     expect(screen.getByText("Aljabar")).toBeInTheDocument();
     expect(screen.getByText(/90\s*menit/)).toBeInTheDocument();
@@ -285,7 +286,7 @@ describe("TestsPage", () => {
     render(<TestsPage />);
     mockUseAdminTests.mockClear();
 
-    fireEvent.change(screen.getByTestId("tests-search-input"), {
+    fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "  aljabar  " },
     });
     expect(mockUseAdminTests).not.toHaveBeenCalledWith(

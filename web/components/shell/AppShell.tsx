@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { X } from "lucide-react";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { ShellChromeContext, type ShellChrome } from "./PageHead";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
@@ -52,6 +53,8 @@ export function AppShell({ role, counts, subtitle, children }: AppShellProps) {
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const wasOpen = useRef(false);
+  const [heads, setHeads] = useState(0);
+  const [ready, setReady] = useState(false);
   const isAdmin = ADMIN_ROLES.includes(role);
   // The affiliate portal shares the admin dashboard's look (cards, tables, filters).
   const adminLook = isAdmin || role === "affiliator";
@@ -59,6 +62,18 @@ export function AppShell({ role, counts, subtitle, children }: AppShellProps) {
   useEffect(() => {
     setOpen(false);
   }, [pathname, isLg]);
+
+  useEffect(() => setReady(true), []);
+
+  const registerHead = useCallback(() => {
+    setHeads((n) => n + 1);
+    return () => setHeads((n) => n - 1);
+  }, []);
+
+  const chrome = useMemo<ShellChrome>(
+    () => ({ role, showActions: adminLook, openMenu: () => setOpen(true), menuButtonRef, registerHead }),
+    [role, adminLook, registerHead],
+  );
 
   useEffect(() => {
     if (open) drawerRef.current?.focus();
@@ -112,14 +127,18 @@ export function AppShell({ role, counts, subtitle, children }: AppShellProps) {
 
       <div inert={open} className="flex min-w-0 flex-1 flex-col lg:pl-sidebar">
         {!isAdmin && role !== "affiliator" && <CartCountSync />}
-        <AppHeader role={role} onMenuClick={() => setOpen(true)} menuButtonRef={menuButtonRef} />
         <main className="flex-1">
-          <div
-            key={pathname}
-            className="fade-in mx-auto w-full max-w-page px-4 py-7 narrow:px-8 lg:py-8"
-          >
-            {children}
-          </div>
+          <ShellChromeContext.Provider value={chrome}>
+            <div
+              key={pathname}
+              className="fade-in mx-auto flex w-full max-w-page flex-col gap-5 px-4 pt-4 pb-[90px] narrow:px-8 lg:pt-6 lg:pb-[100px] [&>.mx-auto]:w-full"
+            >
+              {ready && heads === 0 && (
+                <AppHeader role={role} onMenuClick={() => setOpen(true)} menuButtonRef={menuButtonRef} />
+              )}
+              {children}
+            </div>
+          </ShellChromeContext.Provider>
         </main>
       </div>
     </div>

@@ -259,6 +259,7 @@ describe("OrdersPage", () => {
   });
 
   it("renders the orders table with order number, buyer, product, amount, payment and shipping", async () => {
+
     render(<OrdersPage />);
 
     await waitFor(() => {
@@ -273,6 +274,7 @@ describe("OrdersPage", () => {
     // until opened — so this asserts the badge of a status the fixture has.
     expect(screen.getAllByText("Menunggu pembayaran").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Selesai").length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector("thead th.font-mono.uppercase")).not.toBeNull();
   });
 
   // FR-33: buyer name is the primary label; no truncated-UUID label
@@ -1008,6 +1010,16 @@ describe("OrdersPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
     });
+  });
+
+  it("keeps the search input mounted while loading and the toolbar visible on error", () => {
+    ordersState = { ...ordersState, data: undefined, isLoading: true, isError: false };
+    const { rerender } = render(<OrdersPage />);
+    const search = screen.getByRole("searchbox");
+    ordersState = { ...ordersState, isLoading: false, isError: true, error: new Error("gagal") };
+    rerender(<OrdersPage />);
+    expect(screen.getByRole("searchbox")).toBe(search);
+    expect(screen.getByText(/gagal/i)).toBeInTheDocument();
   });
 });
 

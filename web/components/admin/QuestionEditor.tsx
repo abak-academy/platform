@@ -83,7 +83,7 @@ function ItemPointsInput({
       title={t("tests_field_item_points_hint")}
       aria-label={t("tests_field_item_points")}
       disabled={disabled}
-      className="h-8 w-20 rounded-md border border-input bg-transparent px-2 text-sm shadow-xs focus-visible:border-ring"
+      className="h-8 w-20 rounded-md border-[1.5px] border-line bg-transparent px-2 text-sm shadow-xs focus-visible:border-ring"
     />
   );
 }
@@ -903,7 +903,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                   value={format}
                   onChange={(e) => setFormat(e.target.value as QuestionFormat)}
                   disabled={savePending || formatLocked}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                  className="h-[var(--spacing-input)] flex w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
                 >
                   {formatOptions.map((f) => (
                     <option key={f} value={f}>
@@ -923,7 +923,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                   value={topicId}
                   onChange={(e) => setTopicId(e.target.value)}
                   disabled={savePending || topics.isLoading}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                  className="h-[var(--spacing-input)] flex w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
                 >
                   <option value="">{t("select_topic")}</option>
                   {topicOptions.map((topic) => (
@@ -1015,7 +1015,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                 value={difficulty || "none"}
                 onChange={(e) => handleDifficultyChange(e.target.value)}
                 disabled={savePending}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                className="h-[var(--spacing-input)] flex w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
               >
                 <option value="none">—</option>
                 <option value="easy">{t("tests_field_difficulty_easy")}</option>
@@ -1083,7 +1083,7 @@ export function QuestionEditor({ testId, question, onCancel, onSaved }: Question
                 onChange={(e) => setExplanation(e.target.value)}
                 rows={4}
                 disabled={savePending}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                className="flex w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 py-3 text-sm outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
               />
             </div>
           </div>

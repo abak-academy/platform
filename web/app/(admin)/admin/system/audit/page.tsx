@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck, ClipboardList, Filter, Clock } from "lucide-react";
+import { ClipboardList, Pencil, Plus, ShieldCheck, Trash2, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
 import { useAdminAuditLog } from "@/lib/hooks/admin-audit";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { AuditLogEntry } from "@/lib/types";
@@ -17,23 +16,17 @@ function actionLabel(action: string): string {
   return verb.replace(/_/g, " ");
 }
 
-function actionTone(action: string): string {
-  if (action.includes("create") || action.includes("add"))
-    return "bg-success-bg text-success border-success";
-  if (action.includes("delete") || action.includes("remove"))
-    return "bg-danger-bg text-danger border-danger";
-  if (action.includes("change") || action.includes("update"))
-    return "bg-info-bg text-info border-info";
-  return "bg-ink-100 text-ink-600 border-line";
+function actionIcon(action: string): LucideIcon {
+  if (action.includes("create") || action.includes("add")) return Plus;
+  if (action.includes("delete") || action.includes("remove")) return Trash2;
+  if (action.includes("change") || action.includes("update")) return Pencil;
+  return ShieldCheck;
 }
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
+function actionNode(action: string): string {
+  if (action.includes("create") || action.includes("add")) return "bg-teal-600 text-white";
+  if (action.includes("delete") || action.includes("remove")) return "bg-danger-50 text-danger-600";
+  return "bg-surface-sunken text-ink-700";
 }
 
 export default function SystemAuditPage() {
@@ -50,8 +43,8 @@ export default function SystemAuditPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={ClipboardList} title={t("audit_title")} description={t("sys_loading")} />
+      <div className="space-y-6 fade-in">
+        <AdminPageHeader title={t("audit_title")} description={t("sys_loading")} />
         <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       </div>
     );
@@ -63,9 +56,8 @@ export default function SystemAuditPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
+      <div className="space-y-6 fade-in">
         <AdminPageHeader
-          icon={ClipboardList}
           title={t("audit_title")}
           description={t("sys_error_title")}
         />
@@ -75,94 +67,57 @@ export default function SystemAuditPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 md:px-6 md:py-10 fade-in">
-      <AdminPageHeader
-        icon={ClipboardList}
-        title={t("audit_title")}
-        description={t("audit_subtitle")}
-        actions={
-          <div className="flex items-center gap-2">
-            <Filter className="size-4 text-ink-400" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("audit_search_placeholder")}
-              className="h-9 w-[240px] text-xs"
-            />
-          </div>
-        }
-      />
+    <div className="space-y-6 fade-in">
+      <AdminPageHeader title={t("audit_title")} description={t("audit_subtitle")} />
 
-      <div className="md-card-outlined">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-              <tr>
-                <th className="px-4 py-3">{t("audit_th_time")}</th>
-                <th className="px-4 py-3">{t("audit_th_actor")}</th>
-                <th className="px-4 py-3">{t("audit_th_action")}</th>
-                <th className="px-4 py-3">{t("audit_th_target")}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {entries.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-ink-500">
-                    {t("audit_empty")}
-                  </td>
-                </tr>
-              )}
-              {entries.map((a) => (
-                <tr key={a.id} className="hover:bg-surface-2">
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="size-3" />
-                      {new Date(a.created_at).toLocaleString(dateLocale, {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarFallback className="bg-brand-50 text-brand-700 text-xs">
-                          {initials(a.actor_name ?? "System")}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium text-ink-900">
-                          {a.actor_name ?? "System"}
-                        </div>
-                        {a.actor_email && (
-                          <div className="text-[11px] text-ink-500">{a.actor_email}</div>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[11px] font-semibold capitalize",
-                        actionTone(a.action)
-                      )}
-                    >
-                      {actionLabel(a.action)}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-ink-900">{a.target_id}</div>
-                    <div className="text-[11px] text-ink-500">{a.target_type}</div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <div className="md-card-outlined md-card-flush">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
+          <ToolbarSearch
+            value={search}
+            onChange={setSearch}
+            placeholder={t("audit_search_placeholder")}
+            clearLabel={t("list_toolbar_clear_search")}
+          />
+          <ToolbarCount>{t("adm_logs_count").replace("{n}", String(entries.length))}</ToolbarCount>
         </div>
+        {entries.length === 0 ? (
+          <EmptyState icon={ClipboardList} title={t("audit_empty")} />
+        ) : (
+          <ol className="p-6">
+            {entries.map((a, i) => {
+              const Icon = actionIcon(a.action);
+              return (
+                <li key={a.id} className="relative grid grid-cols-[34px_1fr_auto] gap-3 pb-[18px] last:pb-0">
+                  {i < entries.length - 1 && (
+                    <span aria-hidden className="absolute top-[34px] bottom-0 left-[16px] w-0.5 bg-line" />
+                  )}
+                  <span className={cn("z-10 grid size-[34px] place-items-center rounded-xl", actionNode(a.action))}>
+                    <Icon className="size-4" aria-hidden />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-ink-900">
+                      {a.actor_name ?? "System"}{" "}
+                      <span className="font-semibold text-ink-700 capitalize">{actionLabel(a.action)}</span>
+                    </p>
+                    <p className="text-[12.5px] text-ink-600">
+                      {a.target_type} · {a.target_id}
+                      {a.actor_email && ` · ${a.actor_email}`}
+                    </p>
+                  </div>
+                  <time dateTime={a.created_at} className="text-xs whitespace-nowrap text-ink-600">
+                    {new Date(a.created_at).toLocaleString(dateLocale, {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </time>
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </div>
     </div>
   );

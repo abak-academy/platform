@@ -162,6 +162,7 @@ describe("QuestionBankPage", () => {
 
     expect(screen.getByText("What is 2+2?")).toBeInTheDocument();
     expect(screen.getByText("Explain photosynthesis.")).toBeInTheDocument();
+    expect(document.querySelector(".md-card-flush")).not.toBeNull();
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("0")).toBeInTheDocument();
   });
@@ -196,6 +197,23 @@ describe("QuestionBankPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/gagal memuat bank soal/i)).toBeInTheDocument();
     });
+  });
+
+  it("keeps the search input and filters mounted across loading and error", () => {
+    bankState = { data: null, isLoading: true, isError: false, error: null, isFetching: false, refetch: vi.fn() };
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ui = () => (
+      <QueryClientProvider client={qc}>
+        <QuestionBankPage />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(ui());
+    const search = screen.getByRole("searchbox");
+    bankState = { data: null, isLoading: false, isError: true, error: new Error("gagal"), isFetching: false, refetch: vi.fn() };
+    rerender(ui());
+    expect(screen.getByRole("searchbox")).toBe(search);
+    expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("gagal")).toBeInTheDocument();
   });
 
   it("shows empty state when no questions", async () => {

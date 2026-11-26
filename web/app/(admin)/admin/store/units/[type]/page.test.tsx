@@ -48,7 +48,7 @@ describe("unit sales detail", () => {
     expect(orders).toHaveTextContent(/not summed from product rows/);
     expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual(["Product", "Paid units", "Refunded units", "Net units"]);
     const rows = screen.getAllByRole("row").slice(1);
-    expect(rows.map((row) => row.textContent)).toEqual(["Produk APaid units16Refunded units18Net units-2", "Produk BPaid units5Refunded units6Net units-1"]);
+    expect(rows.map((row) => row.textContent)).toEqual(["Produk A1618-2", "Produk B56-1"]);
     expect(screen.getByRole("link", { name: /back to summary/i })).toHaveAttribute("href", `/admin/store?${search}`);
     expect(screen.getByText("Custom · 2026-01-01 – 2026-01-31 · WIB")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/Rp\b|IDR|rupiah|currency|buyer|order.?id|harga/i);

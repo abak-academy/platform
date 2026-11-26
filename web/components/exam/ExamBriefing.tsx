@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import Link from "next/link";
-import { ArrowLeft, ArrowRight, BookOpen, CalendarDays, ClipboardList, Clock, Eye, Lock, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, BookOpen, CalendarDays, ClipboardList, Clock, Eye, Lock, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { PageHead } from "@/components/shell/PageHead";
 import { isHttpUrl, isWhatsAppGroupUrl } from "@/lib/exam-event-info";
 import { accessWindow, workingMinutes } from "@/lib/exam-schedule";
 import { useTranslation } from "@/lib/i18n";
@@ -19,6 +19,8 @@ export interface BriefingGate {
   pending: boolean;
   onStart: () => void;
 }
+
+type BadgeVariant = NonNullable<React.ComponentProps<typeof Badge>["variant"]>;
 
 interface ExamBriefingProps {
   exam: RegistrationExam;
@@ -46,68 +48,73 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
 
   const minutesUnit = t(perTest ? "examdetail_minutes_total" : "examdetail_minutes").replace("{n}", "").trim();
   const resume = gate?.kind === "resume";
-  const [statusLabel, statusClass] = resume
-    ? [t("st_inprogress"), "bg-brand-50 text-brand-700"]
+  const [statusLabel, statusVariant]: [string, BadgeVariant] = resume
+    ? [t("st_inprogress"), "live"]
     : status === "upcoming"
-      ? [t("examcard_upcoming_badge"), "border-line bg-surface-2 text-ink-700"]
+      ? [t("examcard_upcoming_badge"), "mute"]
       : status === "checkin"
-        ? [t("st_checkin"), "bg-brand-50 text-brand-700"]
+        ? [t("st_checkin"), "gold"]
         : status === "expired"
-          ? [t("st_expired"), "bg-warn-bg text-warn"]
+          ? [t("st_expired"), "danger"]
           : status === "done"
-            ? [t("examcard_status_done"), "bg-success-bg text-success"]
-            : [t("examcard_status_ready"), "bg-success-bg text-success"];
+            ? [t("examcard_status_done"), "sky"]
+            : [t("examcard_status_ready"), "teal"];
   const startDisabled = preview || !gate || gate.disabled || gate.pending || (!resume && !understood);
 
+  const DISPLAY = "[font-family:var(--font-display)]";
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 md:px-6 md:py-8">
-      <Link
-        href={backHref}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-600 hover:text-ink-900"
-      >
-        <ArrowLeft className="size-4" />
-        {backLabel}
-      </Link>
+    <>
+      <PageHead
+        back={{ href: backHref, label: backLabel }}
+        title={<span className="[overflow-wrap:anywhere]">{exam.title}</span>}
+        sub={t("examdetail_subtitle")}
+      />
 
       {preview && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-4 py-3 text-sm text-ink-700">
+        <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/10 px-4 py-3 text-sm text-ink-700">
           <Eye className="mt-0.5 size-4 shrink-0 text-info" />
           {t("examdetail_preview_banner")}
         </div>
       )}
 
-      <header className="mb-6">
-        <h1 className="font-serif text-2xl font-bold [overflow-wrap:anywhere] text-ink-900 md:text-3xl">{exam.title}</h1>
-        <p className="mt-2 text-sm text-ink-500">{t("examdetail_subtitle")}</p>
-      </header>
+      {preview && exam.requires_checkin ? (
+        <Card className="gap-0 p-6">
+          <h3 className="type-h3 text-ink-900">{t("exam_checkin_title")}</h3>
+          <Button type="button" className="mt-3 w-fit" disabled>
+            {t("examdetail_preview_checkin")}
+          </Button>
+        </Card>
+      ) : (
+        checkIn
+      )}
 
-      <Card className="space-y-4 p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="font-serif text-xl font-semibold text-ink-900">{t("competition_detail_exam_info")}</h2>
-          {!preview && <Badge className={`rounded-full border-transparent ${statusClass}`}>{statusLabel}</Badge>}
+      <Card className="gap-4 p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="type-h2 text-ink-900">{t("competition_detail_exam_info")}</h2>
+          {!preview && <Badge variant={statusVariant}>{statusLabel}</Badge>}
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <section className="flex min-w-0 flex-col rounded-xl border border-line p-4">
-            <h3 className="flex items-center gap-3 text-sm font-semibold text-ink-900">
-              <IconChip>
-                <CalendarDays className="size-5" />
-              </IconChip>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+          <section className="flex min-w-0 flex-col gap-1 rounded-[20px] bg-surface-sunken p-[18px]">
+            <IconTile tone="sky">
+              <CalendarDays className="size-5" />
+            </IconTile>
+            <h3 className="mt-2 font-mono text-[10px] font-semibold tracking-[0.1em] text-ink-600 uppercase">
               {t("examdetail_access_title")}
             </h3>
-            <div className="mt-4 flex-1 text-ink-900">
+            <div className="text-ink-900">
               {access ? (
                 access.to && access.sameDay ? (
                   <>
-                    <div className="text-base font-semibold">{access.from.date}</div>
-                    <div data-testid="access-hours" className="mt-1 flex items-baseline gap-2 text-2xl font-bold">
+                    <div className={`${DISPLAY} text-xl font-extrabold`}>{access.from.date}</div>
+                    <div data-testid="access-hours" className="flex items-baseline gap-2 text-sm font-semibold text-ink-600">
                       <span>{access.from.time}</span>
-                      <span className="font-normal text-ink-500" aria-hidden="true">–</span>
+                      <span aria-hidden="true">–</span>
                       <span>{access.to.time}</span>
-                      <span className="text-xs font-medium text-ink-500">WIB</span>
+                      <span className="text-xs font-medium">WIB</span>
                     </div>
                   </>
                 ) : (
-                  <div className="text-base font-semibold">
+                  <div className={`${DISPLAY} text-base font-extrabold`}>
                     <div>
                       {access.from.date}, {access.from.time} WIB
                     </div>
@@ -122,49 +129,49 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
                 "—"
               )}
             </div>
-            <p className="mt-4 text-xs text-ink-500">{t("examdetail_access_caption")}</p>
+            <p className="mt-1.5 text-xs text-ink-600">{t("examdetail_access_caption")}</p>
           </section>
 
-          <section data-testid="duration-panel" className="flex min-w-0 flex-col rounded-xl border border-line p-4">
-            <h3 className="flex items-center gap-3 text-sm font-semibold text-ink-900">
-              <IconChip>
-                <Clock className="size-5" />
-              </IconChip>
+          <section data-testid="duration-panel" className="flex min-w-0 flex-col gap-1 rounded-[20px] bg-surface-sunken p-[18px]">
+            <IconTile tone="ember">
+              <Clock className="size-5" />
+            </IconTile>
+            <h3 className="mt-2 font-mono text-[10px] font-semibold tracking-[0.1em] text-ink-600 uppercase">
               {t("examdetail_time_title")}
             </h3>
-            <div className="mt-4 flex-1">
+            <div>
               {minutes != null ? (
-                <div className="flex items-baseline gap-2 text-ink-900">
-                  <span className="text-3xl leading-none font-bold">{minutes}</span>
-                  <span className="text-sm font-medium">{minutesUnit}</span>
+                <div className={`${DISPLAY} flex items-baseline gap-2 text-ink-900`}>
+                  <span className="text-xl font-extrabold">{minutes}</span>
+                  <span className="text-sm font-bold">{minutesUnit}</span>
                 </div>
               ) : (
                 "—"
               )}
-              <div className="mt-1 text-sm font-medium text-brand-600">
+              <div className="text-sm font-semibold text-ink-600">
                 {perTest ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
               </div>
             </div>
-            <p className="mt-4 text-xs text-ink-500">
+            <p className="mt-1.5 text-xs text-ink-600">
               {perTest ? t("examdetail_time_caption_per_test") : t("examdetail_time_caption_overall")}
             </p>
           </section>
         </div>
-        <p className="flex items-start gap-2 border-t border-line pt-4 text-xs text-ink-500">
+        <p className="flex items-start gap-2 text-xs text-ink-600">
           <Lock className="mt-0.5 size-3.5 shrink-0" />
           {t("examdetail_access_note")}
         </p>
       </Card>
 
       {exam.whatsapp_group_url && isWhatsAppGroupUrl(exam.whatsapp_group_url) && (
-        <Card className="mt-4 space-y-3 p-5">
-          <div className="flex items-start gap-3">
-            <Users className="mt-0.5 size-5 shrink-0 text-ink-500" />
-            <div className="min-w-0">
-              <h2 className="font-serif text-lg font-semibold text-ink-900">{t("exam_event_student_wa_title")}</h2>
-              <p className="mt-1 text-sm text-ink-500">{t("exam_event_student_wa_body")}</p>
-              <p className="mt-1 text-xs text-ink-500">{t("exam_event_student_wa_optional")}</p>
-            </div>
+        <Card className="flex-row flex-wrap items-center gap-4 p-6">
+          <IconTile tone="teal">
+            <Users className="size-5" />
+          </IconTile>
+          <div className="min-w-0 flex-1 basis-60">
+            <h2 className="type-h3 text-ink-900">{t("exam_event_student_wa_title")}</h2>
+            <p className="mt-1 text-sm text-ink-600">{t("exam_event_student_wa_body")}</p>
+            <p className="mt-1 text-xs text-ink-600">{t("exam_event_student_wa_optional")}</p>
           </div>
           <Button asChild variant="outline">
             <a
@@ -174,59 +181,62 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
               aria-label={t("exam_event_student_wa_aria")}
             >
               {t("exam_event_student_wa_cta")}
+              <ArrowUpRight />
             </a>
           </Button>
         </Card>
       )}
 
-      <Card className="mt-4 space-y-4 p-5">
-        <h2 className="font-serif text-lg font-semibold text-ink-900">{t("examdetail_howto_title")}</h2>
-        <div className="flex items-start gap-3 text-sm">
-          {sequential ? (
-            <Lock className="mt-0.5 size-4 shrink-0 text-ink-500" />
-          ) : (
-            <ArrowRight className="mt-0.5 size-4 shrink-0 text-ink-500" />
-          )}
+      <Card className="gap-4 p-6">
+        <h2 className="type-h2 text-ink-900">{t("examdetail_howto_title")}</h2>
+        <div className="flex items-start gap-4 text-sm">
+          <IconTile tone="sky">{sequential ? <Lock className="size-5" /> : <ArrowRight className="size-5" />}</IconTile>
           <div className="min-w-0">
-            <div className="font-semibold text-ink-900">
+            <div className="font-bold text-ink-900">
               {sequential ? t("examcard_nav_sequential") : t("examcard_nav_free")}
             </div>
-            <div className="text-ink-500">
+            <div className="text-ink-600">
               {sequential ? t("examcard_nav_sequential_hint") : t("examcard_nav_free_hint")}
             </div>
           </div>
         </div>
-        <div className="flex items-start gap-3 text-sm">
-          <Clock className="mt-0.5 size-4 shrink-0 text-ink-500" />
+        <div className="flex items-start gap-4 text-sm">
+          <IconTile tone="ember">
+            <Clock className="size-5" />
+          </IconTile>
           <div className="min-w-0">
-            <div className="font-semibold text-ink-900">
+            <div className="font-bold text-ink-900">
               {perTest ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
             </div>
-            <div className="text-ink-500">
+            <div className="text-ink-600">
               {t(perTest ? "examdetail_timer_rule_per_test" : "examdetail_timer_rule_overall")
                 .replace("{n}", String(minutes ?? "—"))
                 .replace("{s}", String(exam.section_count))}
             </div>
           </div>
         </div>
-        <div className="flex items-start gap-3 text-sm">
-          <ClipboardList className="mt-0.5 size-4 shrink-0 text-ink-500" />
+        <div className="flex items-start gap-4 text-sm">
+          <IconTile tone="teal">
+            <ClipboardList className="size-5" />
+          </IconTile>
           <div className="min-w-0">
-            <div className="font-semibold text-ink-900">
+            <div className="font-bold text-ink-900">
               {t("examdetail_questions_item")
                 .replace("{q}", String(exam.question_count))
                 .replace("{s}", String(exam.section_count))}
             </div>
-            <div className="text-ink-500">{t("examdetail_questions_hint")}</div>
+            <div className="text-ink-600">{t("examdetail_questions_hint")}</div>
           </div>
         </div>
         {(exam.additional_rules_note || (exam.additional_rules_url && isHttpUrl(exam.additional_rules_url))) && (
-          <div className="flex items-start gap-3 text-sm">
-            <BookOpen className="mt-0.5 size-4 shrink-0 text-ink-500" />
+          <div className="flex items-start gap-4 text-sm">
+            <IconTile tone="berry">
+              <BookOpen className="size-5" />
+            </IconTile>
             <div className="min-w-0">
-              <h3 className="font-semibold text-ink-900">{t("exam_event_student_rules_title")}</h3>
+              <h3 className="font-bold text-ink-900">{t("exam_event_student_rules_title")}</h3>
               {exam.additional_rules_note && (
-                <p className="whitespace-pre-line [overflow-wrap:anywhere] text-ink-500">{exam.additional_rules_note}</p>
+                <p className="whitespace-pre-line [overflow-wrap:anywhere] text-ink-600">{exam.additional_rules_note}</p>
               )}
               {exam.additional_rules_url && isHttpUrl(exam.additional_rules_url) && (
                 <a
@@ -242,20 +252,20 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
           </div>
         )}
         <div className="border-t border-line pt-4">
-          <h3 className="text-sm font-semibold text-ink-900">{t("examdetail_sections_title")}</h3>
+          <h3 className="type-h3 text-ink-900">{t("examdetail_sections_title")}</h3>
           {exam.sections.length === 0 ? (
-            <p className="mt-2 text-sm text-ink-500">{t("examdetail_sections_empty")}</p>
+            <p className="mt-2 text-sm text-ink-600">{t("examdetail_sections_empty")}</p>
           ) : (
             <ol className="mt-2 divide-y divide-line">
               {exam.sections.map((section, i) => (
                 <li key={section.test_id} className="flex items-center justify-between gap-3 py-3">
                   <div className="flex min-w-0 items-center gap-3">
-                    <Badge variant="secondary" className="size-6 shrink-0 justify-center rounded-full p-0">
+                    <span className="grid size-[26px] shrink-0 place-items-center rounded-lg bg-deep text-xs font-extrabold text-on-deep">
                       {i + 1}
-                    </Badge>
+                    </span>
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold [overflow-wrap:anywhere] text-ink-900">{section.title}</div>
-                      <div className="text-xs text-ink-500">
+                      <div className="text-sm font-bold [overflow-wrap:anywhere] text-ink-900">{section.title}</div>
+                      <div className="text-xs text-ink-600">
                         {t("examdetail_section_meta")
                           .replace("{n}", String(section.question_count))
                           .replace(
@@ -282,38 +292,23 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
       {afterHowTo}
 
       {exam.requires_checkin && (
-        <Card className="mt-4 border-warning/30 bg-warning-bg p-5">
-          <h3 className="font-serif text-base font-semibold text-ink-900">
-            {t("competition_detail_checkin_heading")}
-          </h3>
+        <Card className="gap-0 border-warning/30 bg-warning-bg p-6">
+          <h3 className="type-h3 text-ink-900">{t("competition_detail_checkin_heading")}</h3>
           <p className="mt-2 text-sm text-ink-700">
             {t("competition_detail_checkin_body").replace("{N}", String(exam.check_in_window_minutes ?? 15))}
           </p>
         </Card>
       )}
 
-      {preview && exam.requires_checkin ? (
-        <Card className="mt-4 p-5">
-          <h3 className="font-serif text-base font-semibold text-ink-900">{t("exam_checkin_title")}</h3>
-          <Button type="button" className="mt-3" disabled>
-            {t("examdetail_preview_checkin")}
-          </Button>
-        </Card>
-      ) : (
-        checkIn
-      )}
-
       {(preview || gate) && (
-        <Card className="mt-4 p-5">
-          <h2 className="font-serif text-lg font-semibold text-ink-900">
-            {resume ? t("continue_exam") : t("examdetail_ready_title")}
-          </h2>
-          {!resume && <p className="mt-1 text-sm text-ink-500">{t("examdetail_ready_body")}</p>}
+        <Card className="gap-0 p-6">
+          <h2 className="type-h2 text-ink-900">{resume ? t("continue_exam") : t("examdetail_ready_title")}</h2>
+          {!resume && <p className="mt-1 text-sm text-ink-600">{t("examdetail_ready_body")}</p>}
           {!resume && (
-            <label className="mt-4 flex items-start gap-2 text-sm text-ink-900">
+            <label className="mt-4 flex items-center gap-3 rounded-2xl bg-surface-sunken px-4 py-3.5 text-sm font-semibold text-ink-900">
               <input
                 type="checkbox"
-                className="mt-0.5 size-4 shrink-0"
+                className="size-[19px] shrink-0 accent-brand-600"
                 checked={understood}
                 disabled={preview}
                 onChange={(e) => setUnderstood(e.target.checked)}
@@ -322,7 +317,7 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
             </label>
           )}
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span className="text-sm text-ink-500">{attempts}</span>
+            <span className="text-sm text-ink-600">{attempts}</span>
             <Button type="button" size="lg" className="shrink-0" disabled={startDisabled} onClick={gate?.onStart}>
               {preview
                 ? t("examdetail_preview_start")
@@ -333,16 +328,23 @@ export function ExamBriefing({ exam, backHref, backLabel, preview = false, statu
                     : t("exam_start_button")}
             </Button>
           </div>
-          {gate?.hint && <p className="mt-2 text-sm text-ink-500">{gate.hint}</p>}
+          {gate?.hint && <p className="mt-2 text-sm text-ink-600">{gate.hint}</p>}
           {!resume && !preview && !understood && (
-            <p className="mt-2 text-xs text-ink-500">{t("examdetail_ready_hint")}</p>
+            <p className="mt-2 text-xs text-ink-600">{t("examdetail_ready_hint")}</p>
           )}
         </Card>
       )}
-    </div>
+    </>
   );
 }
 
-function IconChip({ children }: { children: ReactNode }) {
-  return <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">{children}</span>;
+const TILE_TONE = {
+  sky: "bg-sky-50 text-sky-700",
+  ember: "bg-ember-50 text-ember-700",
+  teal: "bg-teal-50 text-teal-700",
+  berry: "bg-berry-50 text-berry-700",
+} as const;
+
+function IconTile({ tone, children }: { tone: keyof typeof TILE_TONE; children: ReactNode }) {
+  return <span className={`grid size-10 shrink-0 place-items-center rounded-[13px] ${TILE_TONE[tone]}`}>{children}</span>;
 }

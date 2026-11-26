@@ -7,10 +7,10 @@ import {
   AlertCircle,
   ArrowRight,
   CalendarDays,
-  ClipboardList,
   Download,
   Lock,
   Play,
+  Plus,
   Trophy,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -22,6 +22,8 @@ import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHead } from "@/components/shell/PageHead";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { CardState } from "@/lib/exam-card-state";
 import type { RegistrationListItem } from "@/lib/types";
@@ -34,16 +36,22 @@ export default function ExamPage() {
   const mine = data?.filter((r) => !r.is_free) ?? [];
 
   return (
-    <div>
-      <header className="mb-8">
-        <h1 className="font-serif text-3xl font-bold text-ink-900 md:text-4xl">
-          {t("comp_title")}
-        </h1>
-        <p className="mt-2 text-sm text-ink-500">{t("comp_sub")}</p>
-      </header>
+    <>
+      <PageHead
+        title={t("comp_title")}
+        sub={t("comp_sub")}
+        actions={
+          <Button asChild variant="dark">
+            <Link href="/event">
+              <Plus />
+              {t("stu_home_events_browse")}
+            </Link>
+          </Button>
+        }
+      />
 
       {isError && (
-        <Card className="mb-8 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -62,31 +70,24 @@ export default function ExamPage() {
       ) : data && data.length > 0 ? (
         <>
           <PkgSection title={t("free_packages")} items={free} />
-          <PkgSection title={t("my_packages")} items={mine} className="mt-9" />
+          <PkgSection title={t("my_packages")} items={mine} />
         </>
       ) : (
         !isError && <EmptyExam />
       )}
-    </div>
+    </>
   );
 }
 
-function PkgSection({
-  title,
-  items,
-  className,
-}: {
-  title: string;
-  items: RegistrationListItem[];
-  className?: string;
-}) {
+function PkgSection({ title, items }: { title: string; items: RegistrationListItem[] }) {
   if (items.length === 0) return null;
   return (
-    <section className={className}>
-      <h2 className="mb-3 text-[13px] font-bold tracking-wide text-ink-500 uppercase">
-        {title}
-      </h2>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <section>
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-mono text-xs font-semibold tracking-[0.14em] text-ink-600 uppercase">{title}</h2>
+        <Badge variant="mute">{items.length}</Badge>
+      </div>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(310px,1fr))] gap-4 max-[360px]:grid-cols-1">
         {items.map((reg) => (
           <PkgCard key={reg.id} reg={reg} />
         ))}
@@ -168,114 +169,114 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
     );
 
   return (
-    <Card className="min-w-0 gap-0 p-5">
-      <div className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.12em] whitespace-nowrap text-ink-500 uppercase">
-          <ClipboardList className="size-4 text-brand-600" />
+    <Card className="min-w-0 gap-0 overflow-hidden py-0 transition-transform duration-200 hover:-translate-y-1 motion-reduce:hover:translate-y-0">
+      <div className="flex min-h-[58px] items-center justify-between gap-3 bg-[linear-gradient(110deg,var(--color-brand-600),var(--color-brand-400))] px-4 py-3.5 text-white">
+        <span className="font-mono text-[11px] font-semibold tracking-[0.12em] whitespace-nowrap uppercase opacity-90">
           {t("examcard_kicker")}
         </span>
         <StateBadge state={state} />
       </div>
 
-      <h3 className="mt-3 text-lg leading-snug font-semibold [overflow-wrap:anywhere] text-ink-900">
-        {reg.exam_title}
-      </h3>
+      <div className="flex flex-col gap-3 p-4">
+        <h3 className="text-[17px] leading-snug font-bold [overflow-wrap:anywhere] text-ink-900">
+          {reg.exam_title}
+        </h3>
 
-      <dl className="mt-4 grid grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)] border-y border-line py-3 text-xs">
-        <div className="min-w-0 pr-3">
-          <dt className="text-ink-500">
-            {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
-          </dt>
-          <dd className="mt-1 text-ink-900">
-            {minutes != null ? (
-              <>
-                <span className="text-3xl leading-none font-bold">{minutes}</span>{" "}
-                <span className="text-sm">{t("minutes")}</span>
-              </>
-            ) : (
-              "—"
-            )}
-          </dd>
-          <dd className="mt-1.5 text-ink-500">
-            {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
-          </dd>
-        </div>
-        <div className="min-w-0 border-l border-line px-3">
-          <dt className="text-ink-500">{t("examcard_sections")}</dt>
-          <dd className="mt-1 text-3xl leading-none font-bold text-ink-900">{reg.section_count}</dd>
-        </div>
-        <div className="min-w-0 border-l border-line pl-3">
-          <dt className="text-ink-500">{t("examcard_questions")}</dt>
-          <dd className="mt-1 text-3xl leading-none font-bold text-ink-900">{reg.question_count}</dd>
-        </div>
-      </dl>
+        <dl className="grid grid-cols-3 gap-2">
+          <div className="min-w-0 rounded-[14px] bg-surface-sunken p-2.5">
+            <dd className="[font-family:var(--font-display)] text-lg leading-tight font-extrabold text-ink-900">
+              {minutes != null ? (
+                <>
+                  <span>{minutes}</span> <span className="text-xs font-bold">{t("minutes")}</span>
+                </>
+              ) : (
+                "—"
+              )}
+            </dd>
+            <dt className="text-[11px] text-ink-600">
+              {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
+            </dt>
+            <dd className="text-[11px] text-ink-600">
+              {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+            </dd>
+          </div>
+          <div className="min-w-0 rounded-[14px] bg-surface-sunken p-2.5">
+            <dd className="[font-family:var(--font-display)] text-lg leading-tight font-extrabold text-ink-900">{reg.section_count}</dd>
+            <dt className="text-[11px] text-ink-600">{t("examcard_sections")}</dt>
+          </div>
+          <div className="min-w-0 rounded-[14px] bg-surface-sunken p-2.5">
+            <dd className="[font-family:var(--font-display)] text-lg leading-tight font-extrabold text-ink-900">{reg.question_count}</dd>
+            <dt className="text-[11px] text-ink-600">{t("examcard_questions")}</dt>
+          </div>
+        </dl>
 
-      {access && (
-        <div className="mt-3 flex items-center gap-3 rounded-lg border border-line bg-surface-2 px-3 py-2.5 text-xs">
-          <CalendarDays className="size-8 shrink-0 text-brand-600" strokeWidth={1.5} />
-          <div className="min-w-0 flex-1">
-            <div className="text-ink-500">{t("examcard_access")}</div>
-            {access.to && access.sameDay ? (
-              <div className="mt-0.5 flex flex-wrap justify-between gap-x-3 text-sm font-semibold text-ink-900">
-                <span>{access.from.date}</span>
-                <span className="font-medium">
-                  {access.from.time}–{access.to.time} WIB
+        {access && (
+          <div className="flex items-start gap-2 text-[13px] font-semibold text-ink-900">
+            <CalendarDays className="mt-0.5 size-4 shrink-0 text-ink-600" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <span className="mr-1.5 font-mono text-[10px] font-semibold tracking-[0.1em] text-ink-600 uppercase">
+                {t("examcard_access")}
+              </span>
+              {access.to && access.sameDay ? (
+                <span className="flex flex-wrap justify-between gap-x-3">
+                  <span>{access.from.date}</span>
+                  <span className="font-medium text-ink-600">
+                    {access.from.time}–{access.to.time} WIB
+                  </span>
                 </span>
-              </div>
-            ) : (
-              <div className="mt-0.5 text-sm font-semibold text-ink-900">
-                <div>
-                  {access.from.date}, {access.from.time} WIB
-                </div>
-                {access.to && (
-                  <div>
-                    {access.to.date}, {access.to.time} WIB
-                  </div>
-                )}
-              </div>
-            )}
+              ) : (
+                <span className="block">
+                  <span className="block">
+                    {access.from.date}, {access.from.time} WIB
+                  </span>
+                  {access.to && (
+                    <span className="block">
+                      {access.to.date}, {access.to.time} WIB
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-
-      <div className="mt-3 flex items-start gap-3 text-xs">
-        {sequential ? (
-          <Lock className="mt-0.5 size-4 shrink-0 text-ink-500" />
-        ) : (
-          <ArrowRight className="mt-0.5 size-4 shrink-0 text-ink-500" />
         )}
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-ink-900">
-            {sequential ? t("examcard_nav_sequential") : t("examcard_nav_free")}
-          </div>
-          <div className="text-ink-500">
+
+        <div className="flex items-start gap-2 text-[13px] text-ink-600">
+          {sequential ? (
+            <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
+          ) : (
+            <ArrowRight className="mt-0.5 size-4 shrink-0" aria-hidden />
+          )}
+          <div className="min-w-0">
+            <span className="font-semibold text-ink-900">
+              {sequential ? t("examcard_nav_sequential") : t("examcard_nav_free")}
+            </span>{" "}
             {sequential ? t("examcard_nav_sequential_hint") : t("examcard_nav_free_hint")}
           </div>
         </div>
       </div>
 
-      <div className="mt-4 border-t border-line pt-4">
+      <div className="border-t border-dashed border-line px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3">
-          <div className="min-w-0 flex-1 basis-32 text-xs">
-            <div className="text-sm font-semibold text-ink-900">{footerTitle}</div>
-            {footerHint && <div className="mt-0.5 text-ink-500">{footerHint}</div>}
+          <div className="min-w-0 flex-1 basis-32">
+            <div className="text-[13px] font-bold text-ink-900">{footerTitle}</div>
+            {footerHint && <div className="text-xs text-ink-600">{footerHint}</div>}
           </div>
           {resuming ? (
-            <Button
-              size="sm"
-              className="shrink-0 rounded-full"
-              onClick={handleStart}
-              disabled={startSessionMutation.isPending}
-            >
+            <Button data-cta="main" className="shrink-0" onClick={handleStart} disabled={startSessionMutation.isPending}>
               <Play className="size-3.5" />
               {startSessionMutation.isPending ? t("sys_loading") : t("continue_exam")}
             </Button>
           ) : state.kind === "submitted" && state.sessionId ? (
-            <Button asChild size="sm" className="shrink-0 rounded-full">
+            <Button asChild data-cta="main" variant="secondary" className="shrink-0">
               <Link href={`/exam/sessions/${state.sessionId}/result`}>{t("view_exam_result")}</Link>
             </Button>
           ) : (
-            <Button asChild size="sm" className="shrink-0 rounded-full">
+            <Button
+              asChild
+              data-cta="main"
+              variant={state.kind === "start" || state.kind === "checkin" ? "default" : "outline"}
+              className="shrink-0"
+            >
               <Link href={detailHref}>{detailLabel}</Link>
             </Button>
           )}
@@ -286,7 +287,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
         {(!detailIsPrimary || state.kind === "locked") && (
           <div className="mt-2.5 flex flex-wrap justify-end gap-2">
             {state.kind === "locked" && (
-              <Button size="sm" variant="outline" className="rounded-full" onClick={handleDownload}>
+              <Button size="sm" variant="outline" onClick={handleDownload}>
                 <Download className="size-3.5" />
                 {t("download_card")}
               </Button>
@@ -295,7 +296,6 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
               <Button
                 size="sm"
                 variant="outline"
-                className="rounded-full"
                 onClick={handleStart}
                 disabled={startSessionMutation.isPending}
               >
@@ -303,7 +303,7 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
               </Button>
             )}
             {!detailIsPrimary && (
-              <Button asChild size="sm" variant="outline" className="rounded-full">
+              <Button asChild size="sm" variant="outline">
                 <Link href={detailHref}>{t("competition_view_detail")}</Link>
               </Button>
             )}
@@ -323,54 +323,41 @@ function formatOpensIn(ms: number, t: (key: I18nKey) => string): string {
   return t("examcard_opens_in").replace("{time}", time);
 }
 
-const BADGE_TONE = {
-  success: "border-transparent bg-success-bg text-success",
-  brand: "border-transparent bg-brand-50 text-brand-700",
-  neutral: "border-line bg-surface-2 text-ink-700",
-  warn: "border-transparent bg-warn-bg text-warn",
-} as const;
+const CHIP_ON_BAND = "bg-white/90 text-ink-900";
 
 function StateBadge({ state }: { state: CardState }) {
   const { t } = useTranslation();
-  const [labelKey, tone]: [I18nKey, keyof typeof BADGE_TONE] =
+  const labelKey: I18nKey =
     state.kind === "locked"
-      ? ["examcard_upcoming_badge", "neutral"]
+      ? "examcard_upcoming_badge"
       : state.kind === "checkin"
-        ? ["st_checkin", "brand"]
+        ? "st_checkin"
         : state.kind === "in_progress"
-          ? ["st_inprogress", "brand"]
+          ? "st_inprogress"
           : state.kind === "expired"
-            ? ["st_expired", "warn"]
+            ? "st_expired"
             : state.kind === "submitted"
-              ? ["examcard_status_done", "success"]
-              : ["examcard_status_ready", "success"];
-  return <Badge className={`rounded-full ${BADGE_TONE[tone]}`}>{t(labelKey)}</Badge>;
+              ? "examcard_status_done"
+              : "examcard_status_ready";
+  const live = state.kind === "in_progress";
+  return (
+    <Badge variant={live ? "live" : "default"} className={live ? undefined : CHIP_ON_BAND}>
+      {t(labelKey)}
+    </Badge>
+  );
 }
 
 function EmptyExam() {
   const { t } = useTranslation();
-  return (
-    <Card className="flex flex-col items-center justify-center gap-3 border-dashed border-line bg-surface-2 px-6 py-10 text-center">
-      <div className="flex size-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-        <Trophy className="size-6" />
-      </div>
-      <p className="font-semibold text-ink-900">{t("competition_empty")}</p>
-    </Card>
-  );
+  return <EmptyState framed icon={Trophy} title={t("competition_empty")} />;
 }
 
 function ExamSkeleton() {
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Skeleton className="h-9 w-48" />
-        <Skeleton className="h-4 w-72" />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-44 w-full rounded-lg" />
-        ))}
-      </div>
+    <div className="grid grid-cols-[repeat(auto-fill,minmax(310px,1fr))] gap-4">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <Skeleton key={i} className="h-72 w-full rounded-[22px]" />
+      ))}
     </div>
   );
 }

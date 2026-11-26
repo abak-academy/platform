@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, CalendarDays, GripVertical, Layers } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarDays, GripVertical, Layers, Pencil } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -23,10 +23,13 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { EventMark } from "@/components/admin/EventMark";
+import { EVENT_TONE_CLASS, EventMark } from "@/components/admin/EventMark";
 import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolbar";
 import { ProductGroupingModal } from "@/components/admin/ProductGroupingModal";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   groupingErrorParts,
@@ -106,17 +109,23 @@ function EventCard({
       ref={setNodeRef}
       style={style}
       aria-label={grouping.name}
-      className={`md-card-outlined flex flex-col gap-3 p-4 ${isDragging ? "opacity-70" : ""}`}
+      className={`md-card-outlined md-card-flush flex flex-col ${isDragging ? "shadow-lg ring-2 ring-brand-600" : ""}`}
     >
-      <div className="flex items-start gap-3">
-        <EventMark logoKey={grouping.logo_key} logoUrl={grouping.logo_url} tone={grouping.tone} illustration={grouping.illustration} />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-ink-600">{levels || "—"}</p>
-          <h3 className="type-h3 truncate">{grouping.name}</h3>
-          <p className="line-clamp-2 text-sm text-ink-700">{content?.tagline}</p>
-        </div>
+      <div
+        className={`relative flex h-[120px] items-center justify-center bg-[radial-gradient(120%_110%_at_100%_0%,rgba(255,255,255,.7),transparent)] ${EVENT_TONE_CLASS[grouping.tone] ?? EVENT_TONE_CLASS.brand}`}
+      >
+        <Badge variant={grouping.is_visible ? "teal" : "mute"} className="absolute top-3 left-3 bg-white/70 backdrop-blur">
+          {t(grouping.is_visible ? "adm_on_landing" : "adm_hidden")}
+        </Badge>
+        <EventMark
+          logoKey={grouping.logo_key}
+          logoUrl={grouping.logo_url}
+          tone={grouping.tone}
+          illustration={grouping.illustration}
+          className="size-[90px] bg-transparent"
+        />
         {reorder && (
-          <div className="flex shrink-0 items-center">
+          <div className="absolute top-2 right-2 flex items-center rounded-full bg-white/70 backdrop-blur">
             <button
               type="button"
               className="cursor-grab touch-none p-1 text-ink-600 active:cursor-grabbing"
@@ -136,48 +145,50 @@ function EventCard({
         )}
       </div>
 
-      <div className="flex items-center gap-2 rounded-lg bg-surface-sunken px-3 py-2 text-sm">
-        <CalendarDays className="size-4 shrink-0 text-ink-600" aria-hidden />
-        {next ? (
-          <>
-            <span className="min-w-0 flex-1 truncate">
-              <b>{next.label}</b> · {formatRange(next.starts_on, next.ends_on)}
-            </span>
-            {next.state === "ongoing" && <span className="md-chip md-chip-primary">Berlangsung</span>}
-          </>
-        ) : (
-          <span className="text-ink-600">Jadwal belum diisi</span>
-        )}
-      </div>
+      <div className="flex flex-1 flex-col gap-2 px-[18px] pt-4 pb-[18px]">
+        <p className="font-mono text-[11px] font-semibold tracking-[.1em] text-ink-600 uppercase">{levels || "—"}</p>
+        <h3 className="truncate text-[19px] font-extrabold tracking-tight text-ink-900">{grouping.name}</h3>
+        <p className="line-clamp-2 text-sm text-ink-700">{content?.tagline}</p>
 
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-ink-700 tabular-nums">
-        <span>
-          <b>{grouping.edition_count ?? 0}</b> edisi
-        </span>
-        <span>
-          <b>{grouping.open_edition_count ?? 0}</b> dibuka
-        </span>
-        <span className="text-ink-600">{t(grouping.status === "published" ? "grouping_status_published" : "grouping_status_draft")}</span>
-      </div>
+        <div className="flex items-center gap-2 text-sm">
+          <CalendarDays className="size-4 shrink-0 text-ink-600" aria-hidden />
+          {next ? (
+            <>
+              <span className="min-w-0 flex-1 truncate">
+                <b>{next.label}</b> · {formatRange(next.starts_on, next.ends_on)}
+              </span>
+              {next.state === "ongoing" && <Badge variant="live">{t("adm_ongoing")}</Badge>}
+            </>
+          ) : (
+            <span className="text-ink-600">Jadwal belum diisi</span>
+          )}
+        </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <Button size="sm" variant="outline" asChild>
-          <Link href={`/admin/product-groupings/${grouping.id}`}>{t("grouping_manage_products")}</Link>
-        </Button>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-ink-600">{grouping.is_visible ? "Tampil di landing" : "Disembunyikan"}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={grouping.is_visible}
-            aria-label={`Tampilkan ${grouping.name} di landing`}
+        <div className="mt-auto flex flex-wrap gap-x-3.5 gap-y-1 border-t border-dashed border-line py-2 text-[12.5px] text-ink-700 tabular-nums">
+          <span>
+            <b>{grouping.edition_count ?? 0}</b> edisi
+          </span>
+          <span>
+            <b>{grouping.open_edition_count ?? 0}</b> dibuka
+          </span>
+          <span className="text-ink-600">{t(grouping.status === "published" ? "grouping_status_published" : "grouping_status_draft")}</span>
+        </div>
+
+        <div className="flex items-center justify-between gap-3">
+          <Button size="sm" variant="outline" asChild>
+            <Link href={`/admin/product-groupings/${grouping.id}`}>
+              <Pencil className="size-3.5" aria-hidden />
+              {t("grouping_manage_products")}
+            </Link>
+          </Button>
+          <Switch
+            size="sm"
+            checked={grouping.is_visible}
             disabled={togglePending}
-            onClick={() => onToggleVisible(grouping)}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${grouping.is_visible ? "bg-brand-600" : "bg-line-strong"}`}
-          >
-            <span className={`pointer-events-none block size-5 rounded-full bg-white shadow ring-0 transition-transform ${grouping.is_visible ? "translate-x-5" : "translate-x-0"}`} />
-          </button>
-        </label>
+            aria-label={t("adm_show_on_landing_aria").replace("{name}", grouping.name)}
+            onCheckedChange={() => onToggleVisible(grouping)}
+          />
+        </div>
       </div>
     </article>
   );
@@ -254,14 +265,13 @@ export default function ProductGroupingsPage() {
   return (
     <div className="space-y-6 fade-in">
       <AdminPageHeader
-        icon={Layers}
         title={t("grouping_page_title")}
         description={t("grouping_page_description")}
-        actions={<Button onClick={() => setModalOpen(true)}>{t("grouping_create")}</Button>}
+        actions={<Button variant="dark" onClick={() => setModalOpen(true)}>{t("grouping_create")}</Button>}
       />
 
       {isLoading && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
             <Skeleton key={i} className="h-56 w-full" />
           ))}
@@ -288,11 +298,11 @@ export default function ProductGroupingsPage() {
           />
 
           {rows.length === 0 ? (
-            <div className="md-card-outlined p-8 text-center text-ink-600">{t("empty_groupings")}</div>
+            <EmptyState framed icon={Layers} title={t("empty_groupings")} text={filtering ? t("adm_filter_hint") : undefined} />
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={rows.map((g) => g.id)} strategy={rectSortingStrategy}>
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(min(260px,100%),1fr))] gap-4">
                   {rows.map((g, i) => (
                     <EventCard
                       key={g.id}

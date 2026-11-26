@@ -165,7 +165,7 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
       key: "username",
       header: t("exam_roster_th_username"),
       cell: (r) => (
-        <span className="text-ink-500">
+        <span className="text-ink-600">
           {r.student_username ? `@${r.student_username}` : "—"}
         </span>
       ),
@@ -231,7 +231,7 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
           <Button
             variant="outline"
             size="sm"
-            className="rounded-full"
+           
             disabled={accumulated.length === 0 || exporting}
             onClick={handleExport}
           >
@@ -242,7 +242,7 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
 
       {query.isError && <p className="text-sm text-danger">{t("exam_roster_load_failed")}</p>}
 
-      {!query.isError && query.isLoading && accumulated.length === 0 && <p className="text-sm text-ink-500">…</p>}
+      {!query.isError && query.isLoading && accumulated.length === 0 && <p className="text-sm text-ink-600">…</p>}
 
       {!query.isError && (!query.isLoading || accumulated.length > 0) && (
         <DataTable
@@ -274,7 +274,7 @@ function ExamRosterSection({ examId, action }: { examId: string; action?: ReactN
 // SummaryCard markup) so both tabs read the same.
 function RosterSummaryCard({ testId, label, value }: { testId: string; label: string; value: number }) {
   return (
-    <div data-testid={testId} className="rounded-xl border border-line bg-card p-4 shadow-sm">
+    <div data-testid={testId} className="md-card-outlined !p-4">
       <div className="text-sm text-ink-600">{label}</div>
       <div className="mt-1 text-2xl font-bold text-ink-950">{value}</div>
     </div>
@@ -562,7 +562,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
               <Button
                 variant="outline"
                 size="sm"
-                className="rounded-full"
+               
                 data-testid={canGrant ? "open-grant-modal" : "open-order-modal"}
                 onClick={() => setModalOpen(true)}
               >
@@ -572,7 +572,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                 <Button
                   variant="outline"
                   size="sm"
-                  className="rounded-full"
+                 
                   data-testid="open-revoke-modal"
                   onClick={() => setRevokeOpen(true)}
                 >
@@ -586,7 +586,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
       {canRegister && (
         <Dialog open={modalOpen} onOpenChange={handleModalOpenChange}>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-[740px]">
             <DialogHeader>
               <DialogTitle>{modalTitle}</DialogTitle>
             </DialogHeader>
@@ -594,11 +594,11 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
             {createdOrderId ? (
               <div className="text-center">
                 <CheckCircle className="mx-auto mb-4 size-12 text-success" />
-                <h2 className="font-serif text-xl font-bold text-ink-900">
+                <h2 className="type-h2 text-ink-900">
                   {t("bulk_exam_order_created")}
                 </h2>
-                <p className="mt-2 text-sm text-ink-500">{t("bulk_exam_order_created_desc")}</p>
-                <p className="mt-1 text-sm text-ink-500">
+                <p className="mt-2 text-sm text-ink-600">{t("bulk_exam_order_created_desc")}</p>
+                <p className="mt-1 text-sm text-ink-600">
                   {examName} &middot;{" "}
                   {t("bulk_exam_order_students_count").replace(
                     "{n}",
@@ -608,7 +608,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                 <div className="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
                   <SnapCheckout orderId={createdOrderId} basePath="/admin/bulk-exam-orders" />
-                  <Button variant="outline" className="rounded-full" onClick={handleReset}>
+                  <Button variant="outline" onClick={handleReset}>
                     {t("bulk_exam_order_reset")}
                   </Button>
                 </div>
@@ -616,10 +616,10 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
             ) : grantResult ? (
               <div className="text-center">
                 <CheckCircle className="mx-auto mb-4 size-12 text-success" />
-                <h2 className="font-serif text-xl font-bold text-ink-900">
+                <h2 className="type-h2 text-ink-900">
                   {t("exam_grant_success_title")}
                 </h2>
-                <p className="mt-2 text-sm text-ink-500">
+                <p className="mt-2 text-sm text-ink-600">
                   {t("exam_grant_success_desc_count").replace(
                     "{n}",
                     String(grantResult.granted_count),
@@ -632,14 +632,14 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                     {grantResult.granted_students.map((s) => (
                       <div key={s.id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
                         <span className="font-medium text-ink-900">{s.name}</span>
-                        <span className="text-ink-500">@{s.username}</span>
+                        <span className="text-ink-600">@{s.username}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
                 <div className="mt-8 flex justify-center">
-                  <Button variant="outline" className="rounded-full" onClick={handleReset}>
+                  <Button variant="outline" onClick={handleReset}>
                     {t("exam_grant_grant_again")}
                   </Button>
                 </div>
@@ -652,7 +652,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                       type="button"
                       variant={grantMode === "manual" ? "default" : "outline"}
                       size="sm"
-                      className="rounded-full"
+                     
                       data-testid="grant-mode-manual"
                       onClick={() => setGrantMode("manual")}
                     >
@@ -662,7 +662,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                       type="button"
                       variant={grantMode === "csv" ? "default" : "outline"}
                       size="sm"
-                      className="rounded-full"
+                     
                       data-testid="grant-mode-csv"
                       onClick={() => setGrantMode("csv")}
                     >
@@ -682,7 +682,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="rounded-full"
+                         
                           data-testid="csv-download-template"
                           onClick={() => downloadExamBulkTemplate("exam_grant_bulk_template.csv")}
                         >
@@ -716,7 +716,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                         <Button
                           type="button"
-                          className="rounded-full"
+                         
                           data-testid="csv-upload-submit"
                           onClick={handleCsvSubmit}
                           disabled={
@@ -750,9 +750,9 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                                 String(Math.round(csvJobData.progress ?? 0)),
                               )}
                             </p>
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
                               <div
-                                className="h-full bg-primary transition-all"
+                                className="h-full bg-teal-600 transition-all"
                                 style={{
                                   width: `${Math.max(0, Math.min(100, csvJobData.progress ?? 0))}%`,
                                 }}
@@ -798,7 +798,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                 {selectedStudentIds.length > 0 && canGrant && grantMode === "manual" && (
                   <div className="space-y-4">
-                    <Button size="lg" className="rounded-full" onClick={handleGrant} disabled={grantMutation.isPending}>
+                    <Button size="lg" onClick={handleGrant} disabled={grantMutation.isPending}>
                       {grantMutation.isPending ? (
                         <Loader2 className="mr-2 size-4 animate-spin" />
                       ) : null}
@@ -813,7 +813,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                 {selectedStudentIds.length > 0 && !canGrant && (
                   <div className="space-y-4">
-                    <Button size="lg" className="rounded-full" onClick={handlePreview} disabled={previewMutation.isPending}>
+                    <Button size="lg" onClick={handlePreview} disabled={previewMutation.isPending}>
                       {previewMutation.isPending ? (
                         <Loader2 className="mr-2 size-4 animate-spin" />
                       ) : null}
@@ -822,7 +822,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                     {previewResult && (
                       <div className="md-card-outlined space-y-4 p-5">
-                        <h4 className="font-serif text-base font-semibold text-ink-900">
+                        <h4 className="type-h3 text-ink-900">
                           {t("bulk_exam_order_preview_title")}
                         </h4>
                         <div className="flex items-center gap-2">
@@ -843,7 +843,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                                 className="flex items-center gap-2 px-2 py-1.5 text-sm"
                               >
                                 <span className="font-medium text-ink-900">{s.name}</span>
-                                <span className="text-ink-500">({s.reason})</span>
+                                <span className="text-ink-600">({s.reason})</span>
                               </div>
                             ))}
                           </div>
@@ -854,7 +854,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                             <span className="font-semibold text-ink-900">
                               {t("bulk_exam_order_total")}
                             </span>
-                            <span className="font-serif text-lg font-bold text-success">
+                            <span className="text-lg font-extrabold text-teal-700">
                               {formatRupiah(previewResult.total)}
                             </span>
                           </div>
@@ -862,7 +862,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                         <Button
                           size="lg"
-                          className="w-full rounded-full"
+                          className="w-full"
                           onClick={handleCreateOrder}
                           disabled={createMutation.isPending}
                         >
@@ -889,7 +889,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
       {canGrant && (
         <Dialog open={revokeOpen} onOpenChange={handleRevokeModalOpenChange}>
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="sm:max-w-[740px]">
             <DialogHeader>
               <DialogTitle>{t("exam_revoke_modal_title")}</DialogTitle>
             </DialogHeader>
@@ -905,7 +905,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                   </h4>
                 </div>
                 {revokeResult.revoked_count > 0 && (
-                  <p className="text-sm text-ink-500">
+                  <p className="text-sm text-ink-600">
                     {t("exam_roster_revoke_success").replace("{n}", String(revokeResult.revoked_count))}
                   </p>
                 )}
@@ -913,8 +913,8 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                   {revokeResult.results.map((r) => (
                     <div key={r.student_id} className="flex items-center gap-2 px-2 py-1.5 text-sm">
                       <span className="font-medium text-ink-900">{r.name || r.student_id}</span>
-                      <span className="text-ink-500">{r.username ? `@${r.username}` : ""}</span>
-                      <span className="ml-auto text-xs text-ink-500">
+                      <span className="text-ink-600">{r.username ? `@${r.username}` : ""}</span>
+                      <span className="ml-auto text-xs text-ink-600">
                         {r.status}
                         {r.message ? ` — ${r.message}` : ""}
                       </span>
@@ -922,7 +922,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                   ))}
                 </div>
                 <div className="flex justify-end">
-                  <Button variant="outline" className="rounded-full" onClick={resetRevokeState}>
+                  <Button variant="outline" onClick={resetRevokeState}>
                     {t("exam_revoke_again")}
                   </Button>
                 </div>
@@ -935,7 +935,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                       type="button"
                       variant={revokeMode === "manual" ? "default" : "outline"}
                       size="sm"
-                      className="rounded-full"
+                     
                       data-testid="revoke-mode-manual"
                       onClick={() => setRevokeMode("manual")}
                     >
@@ -945,7 +945,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                       type="button"
                       variant={revokeMode === "csv" ? "default" : "outline"}
                       size="sm"
-                      className="rounded-full"
+                     
                       data-testid="revoke-mode-csv"
                       onClick={() => setRevokeMode("csv")}
                     >
@@ -965,7 +965,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="rounded-full"
+                         
                           data-testid="revoke-csv-download-template"
                           onClick={() => downloadExamBulkTemplate("exam_revoke_bulk_template.csv")}
                         >
@@ -999,7 +999,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
                         <Button
                           type="button"
-                          className="rounded-full"
+                         
                           data-testid="revoke-csv-upload-submit"
                           onClick={handleRevokeCsvSubmit}
                           disabled={
@@ -1033,9 +1033,9 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                                 String(Math.round(revokeJobData.progress ?? 0)),
                               )}
                             </p>
-                            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-sunken">
                               <div
-                                className="h-full bg-primary transition-all"
+                                className="h-full bg-teal-600 transition-all"
                                 style={{
                                   width: `${Math.max(0, Math.min(100, revokeJobData.progress ?? 0))}%`,
                                 }}
@@ -1082,7 +1082,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                 {revokeMode === "manual" && revokeSelectedIds.length > 0 && (
                   <Button
                     size="lg"
-                    className="rounded-full"
+                   
                     data-testid="revoke-submit"
                     onClick={() => setRevokeConfirmOpen(true)}
                     disabled={revokeMutation.isPending}
@@ -1098,7 +1098,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
 
       {canGrant && (
         <Dialog open={revokeConfirmOpen} onOpenChange={setRevokeConfirmOpen}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-[480px]">
             <DialogHeader>
               <DialogTitle>{t("exam_roster_revoke_confirm_title")}</DialogTitle>
             </DialogHeader>
@@ -1108,7 +1108,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
             <div className="mt-4 flex justify-end gap-2">
               <Button
                 variant="outline"
-                className="rounded-full"
+               
                 data-testid="revoke-confirm-cancel"
                 disabled={revokeMutation.isPending}
                 onClick={() => setRevokeConfirmOpen(false)}
@@ -1116,7 +1116,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                 {t("exam_roster_revoke_cancel")}
               </Button>
               <Button
-                className="rounded-full"
+               
                 data-testid="revoke-confirm"
                 disabled={revokeMutation.isPending}
                 onClick={handleRevokeConfirm}

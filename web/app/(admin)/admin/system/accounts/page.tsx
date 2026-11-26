@@ -3,16 +3,15 @@
 import { useMemo, useState } from "react";
 import {
   Plus,
-  ShieldCheck,
   MoreHorizontal,
   Lock,
   Mail,
-  Search,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants, statusTone } from "@/components/ui/badge";
+import type { VariantProps } from "class-variance-authority";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
@@ -38,9 +37,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { StatCard } from "@/components/admin/StatCard";
+import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
+import { DataTable, TableItem } from "@/components/ui/data-table";
 import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
 import {
   useAdminAccounts,
@@ -51,16 +50,13 @@ import {
 } from "@/lib/hooks/admin-accounts";
 import type { AdminAccount, AdminAccountRole, AdminAccountStatus } from "@/lib/types";
 
-const ROLE_TONE: Record<AdminAccountRole, string> = {
-  super_admin: "bg-danger-bg text-danger border-danger",
-  admin_exam: "bg-info-bg text-info border-info",
-  admin_school: "bg-violet-bg text-violet border-violet",
-  admin_store: "bg-success-bg text-success border-success",
-};
+type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
-const STATUS_TONE: Record<AdminAccountStatus, string> = {
-  active: "bg-success-bg text-success border-success",
-  deactivated: "bg-danger-bg text-danger border-danger",
+const ROLE_TONE: Record<AdminAccountRole, BadgeVariant> = {
+  super_admin: "danger",
+  admin_exam: "sky",
+  admin_school: "berry",
+  admin_store: "teal",
 };
 
 const ROLES: AdminAccountRole[] = ["super_admin", "admin_exam", "admin_school", "admin_store"];
@@ -115,15 +111,6 @@ export default function SystemAccountsPage() {
       (a) => a.name.toLowerCase().includes(q) || (a.email ?? "").toLowerCase().includes(q)
     );
   }, [search, accounts]);
-
-  const stats = useMemo(
-    () => ({
-      total: accounts.length,
-      active: accounts.filter((a) => a.status === "active").length,
-      deactivated: accounts.filter((a) => a.status === "deactivated").length,
-    }),
-    [accounts]
-  );
 
   const handleCreate = async () => {
     if (!createForm.name || !createForm.email || !createForm.password) {
@@ -197,8 +184,8 @@ export default function SystemAccountsPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={ShieldCheck} title={t("accounts_title")} description={t("sys_loading")} />
+      <div className="space-y-6 fade-in">
+        <AdminPageHeader title={t("accounts_title")} description={t("sys_loading")} />
         <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       </div>
     );
@@ -210,54 +197,50 @@ export default function SystemAccountsPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
-        <AdminPageHeader icon={ShieldCheck} title={t("accounts_title")} description={t("sys_error_title")} />
+      <div className="space-y-6 fade-in">
+        <AdminPageHeader title={t("accounts_title")} description={t("sys_error_title")} />
         <div className="py-12 text-center text-ink-500">{msg}</div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 fade-in">
+    <div className="space-y-6 fade-in">
       <AdminPageHeader
-        icon={ShieldCheck}
         title={t("accounts_title")}
         description={t("accounts_subtitle")}
         actions={
-          <Button size="sm" onClick={() => setCreateOpen(true)}>
-            <Plus className="mr-1 size-4" />
+          <Button variant="dark" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
             {t("create")}
           </Button>
         }
       />
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label={t("accounts_stat_total")} value={String(stats.total)} />
-        <StatCard label={t("status_label_active")} value={String(stats.active)} />
-        <StatCard label={t("status_label_inactive")} value={String(stats.deactivated)} />
-      </div>
-
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="flex flex-wrap gap-2">
-          <FilterChip active={roleFilter === "all"} onClick={() => setRoleFilter("all")}>
-            {t("tab_all")}
-          </FilterChip>
-          {ROLES.map((r) => (
-            <FilterChip
-              key={r}
-              active={roleFilter === r}
-              onClick={() => setRoleFilter(r)}
-            >
-              {ROLE_LABEL[r]}
-            </FilterChip>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 lg:ml-auto">
+      <div className="md-card-outlined md-card-flush">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
+          <ToolbarSearch
+            value={search}
+            onChange={setSearch}
+            placeholder={t("accounts_search_placeholder")}
+            clearLabel={t("list_toolbar_clear_search")}
+          />
+          <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as AdminAccountRole | "all")}>
+            <SelectTrigger size="pill" aria-label={t("accounts_th_role")}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t("tab_all")}</SelectItem>
+              {ROLES.map((r) => (
+                <SelectItem key={r} value={r}>{ROLE_LABEL[r]}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Select
             value={statusFilter}
             onValueChange={(v) => setStatusFilter(v as AdminAccountStatus | "all")}
           >
-            <SelectTrigger className="h-9 w-[140px] text-xs">
+            <SelectTrigger size="pill" aria-label={t("accounts_th_status")}>
               <SelectValue placeholder={t("accounts_status_placeholder")} />
             </SelectTrigger>
             <SelectContent>
@@ -266,123 +249,91 @@ export default function SystemAccountsPage() {
               <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
             </SelectContent>
           </Select>
-          <Search className="size-4 text-ink-400" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("accounts_search_placeholder")}
-            className="h-9 w-[200px] text-xs"
-          />
+          <ToolbarCount>{rows.length} {t("accounts_th_account").toLowerCase()}</ToolbarCount>
         </div>
-      </div>
-
-      <div className="md-card-outlined">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-surface-2 text-left text-xs font-semibold text-ink-600">
-              <tr>
-                <th className="px-4 py-3">{t("accounts_th_account")}</th>
-                <th className="px-4 py-3">{t("accounts_th_role")}</th>
-                <th className="px-4 py-3">{t("accounts_th_status")}</th>
-                <th className="px-4 py-3">{t("accounts_th_created")}</th>
-                <th className="px-4 py-3 text-right"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-ink-500">
-                    {t("accounts_empty")}
-                  </td>
-                </tr>
-              )}
-              {rows.map((a) => (
-                <tr key={a.id} className="group hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <Avatar size="sm">
-                        <AvatarFallback className="bg-brand-50 text-brand-700 text-xs">
-                          {initials(a.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="font-medium text-ink-900">{a.name}</div>
-                        <div className="flex items-center gap-1 text-[11px] text-ink-500">
-                          <Mail className="size-3" />
-                          {a.email ?? "—"}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn("text-[11px] font-semibold", ROLE_TONE[a.role])}
-                    >
-                      {ROLE_LABEL[a.role]}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "text-[11px] font-semibold capitalize",
-                        STATUS_TONE[a.status]
-                      )}
-                    >
-                      {a.status === "active" ? t("status_label_active") : t("status_label_inactive")}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-ink-600">
-                    {a.created_at
-                      ? new Date(a.created_at).toLocaleString(dateLocale, {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })
-                      : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon-xs">
-                          <MoreHorizontal className="size-4 text-ink-500" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => {
-                            setRoleChangeTarget(a);
-                            setRoleChangeRole(a.role);
-                            setRoleChangeSchoolId(a.school_id ?? "");
-                          }}
-                        >
-                          <Mail className="mr-2 size-4" />
-                          {t("accounts_action_change_role")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleStatusToggle(a)}>
-                          <Lock className="mr-2 size-4" />
-                          {a.status === "active" ? t("accounts_action_deactivate") : t("accounts_action_activate")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleResetPassword(a)}>
-                          <Lock className="mr-2 size-4" />
-                          {t("accounts_action_reset_password")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          surface="plain"
+          rows={rows}
+          rowKey={(a) => a.id}
+          empty={t("accounts_empty")}
+          columns={[
+            {
+              key: "account",
+              header: t("accounts_th_account"),
+              cell: (a) => (
+                <TableItem
+                  thumb={
+                    <Avatar size="sm">
+                      <AvatarFallback className="bg-brand-50 text-xs text-brand-700">{initials(a.name)}</AvatarFallback>
+                    </Avatar>
+                  }
+                  title={a.name}
+                  sub={a.email ?? "—"}
+                />
+              ),
+            },
+            {
+              key: "role",
+              header: t("accounts_th_role"),
+              cell: (a) => (
+                <Badge variant={ROLE_TONE[a.role]} className="font-mono">{ROLE_LABEL[a.role]}</Badge>
+              ),
+            },
+            {
+              key: "status",
+              header: t("accounts_th_status"),
+              cell: (a) => (
+                <Badge variant={statusTone(a.status)}>
+                  {a.status === "active" ? t("status_label_active") : t("status_label_inactive")}
+                </Badge>
+              ),
+            },
+            {
+              key: "created",
+              header: t("accounts_th_created"),
+              cell: (a) =>
+                a.created_at
+                  ? new Date(a.created_at).toLocaleString(dateLocale, { day: "2-digit", month: "short", year: "numeric" })
+                  : "—",
+            },
+          ]}
+          rowActions={(a) => (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon-xs">
+                  <MoreHorizontal className="size-4 text-ink-500" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setRoleChangeTarget(a);
+                    setRoleChangeRole(a.role);
+                    setRoleChangeSchoolId(a.school_id ?? "");
+                  }}
+                >
+                  <Mail className="mr-2 size-4" />
+                  {t("accounts_action_change_role")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleStatusToggle(a)}>
+                  <Lock className="mr-2 size-4" />
+                  {a.status === "active" ? t("accounts_action_deactivate") : t("accounts_action_activate")}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleResetPassword(a)}>
+                  <Lock className="mr-2 size-4" />
+                  {t("accounts_action_reset_password")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        />
       </div>
 
       {/* Create account dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("accounts_dialog_create_title")}</DialogTitle>
+            <DialogTitle >{t("accounts_dialog_create_title")}</DialogTitle>
             <DialogDescription>{t("accounts_dialog_create_desc")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -465,9 +416,9 @@ export default function SystemAccountsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-sm">
+        <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">{t("accounts_dialog_role_title")}</DialogTitle>
+            <DialogTitle >{t("accounts_dialog_role_title")}</DialogTitle>
             <DialogDescription>
               {roleChangeTarget ? `${t("accounts_dialog_role_desc_prefix")}${roleChangeTarget.name}` : ""}
             </DialogDescription>
@@ -514,29 +465,5 @@ export default function SystemAccountsPage() {
         </DialogContent>
       </Dialog>
     </div>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        "rounded-lg border px-3 py-[7px] text-xs font-semibold transition-colors",
-        active
-          ? "border-brand-600 bg-brand-600 text-white"
-          : "border-line bg-surface text-ink-600 hover:text-ink-900"
-      )}
-    >
-      {children}
-    </button>
   );
 }

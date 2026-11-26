@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { BarChart3 } from "lucide-react";
+import { Receipt, ShoppingBag, Wallet } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { StatCard } from "@/components/admin/StatCard";
 import { TopProductsTable } from "@/components/admin/TopProductsTable";
+import { FilterChip } from "@/components/admin/ListToolbar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminRevenue, type RevenueRange } from "@/lib/hooks/admin-revenue";
@@ -76,7 +77,7 @@ function maxTypeTotal(revenue?: AdminRevenue): number {
 
 function StatsSkeleton() {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 3 }).map((_, i) => (
         <Skeleton key={i} className="h-28 w-full" />
       ))}
@@ -127,10 +128,9 @@ export default function RevenuePage() {
 
   if (!hydrated) {
     return (
-      <div className="space-y-6 fade-in">
+      <div className="flex flex-col gap-5 fade-in">
         <AdminPageHeader
-          icon={BarChart3}
-          title={t("revenue_page_title")}
+            title={t("revenue_page_title")}
           description={t("revenue_page_description")}
         />
         <StatsSkeleton />
@@ -141,9 +141,8 @@ export default function RevenuePage() {
   if (!canReadRevenue) return <NoAccess />;
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={BarChart3}
         title={t("revenue_page_title")}
         description={t("revenue_page_description")}
       />
@@ -154,17 +153,9 @@ export default function RevenuePage() {
             {PRESETS.map((p) => {
               const active = preset === p.id;
               return (
-                <button
-                  key={p.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => pickPreset(p.id)}
-                  className={`md-chip cursor-pointer transition-colors ${
-                    active ? "md-chip-primary ring-1 ring-[var(--md-sys-color-primary)]" : ""
-                  }`}
-                >
+                <FilterChip key={p.id} on={active} onClick={() => pickPreset(p.id)}>
                   {t(p.labelKey)}
-                </button>
+                </FilterChip>
               );
             })}
           </div>
@@ -202,7 +193,7 @@ export default function RevenuePage() {
 
         {revenue && (
           <p
-            className="text-label mt-4 tabular-nums"
+            className="type-label-sm mt-4 text-ink-600 tabular-nums"
             data-testid="revenue-period-label"
           >
             {formatDate(revenue.from)} – {formatDate(revenue.to)}
@@ -220,31 +211,31 @@ export default function RevenuePage() {
 
       {!isLoading && !isError && revenue && (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="revenue-stats">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="revenue-stats">
             <StatCard
               label={t("revenue_total")}
               value={formatRupiah(revenue.total)}
-              accent="primary"
+              tone="ember" icon={Wallet}
             />
             <div data-testid="stat-order-count">
               <StatCard
                 label={t("orders")}
                 value={String(revenue.order_count)}
-                accent="secondary"
+                tone="teal" icon={ShoppingBag}
               />
             </div>
             <StatCard
               label={t("revenue_avg_order")}
               value={formatRupiah(averageOrderValue(revenue))}
-              accent="tertiary"
+              tone="sky" icon={Receipt}
             />
           </div>
 
           <div className="md-card-outlined">
-            <h3 className="text-title-medium mb-4">{t("revenue_by_type")}</h3>
+            <h3 className="type-h2 mb-4">{t("revenue_by_type")}</h3>
             <div>
               {entries.length === 0 ? (
-                <div className="text-sm text-muted-foreground">{t("revenue_no_data")}</div>
+                <div className="text-sm text-ink-600">{t("revenue_no_data")}</div>
               ) : (
                 <div className="space-y-4">
                   {entries.map(([type, item]) => {
@@ -253,13 +244,13 @@ export default function RevenuePage() {
                       <div key={type} className="space-y-1">
                         <div className="flex items-center justify-between text-sm">
                           <span className="capitalize font-medium">{type}</span>
-                          <span className="text-muted-foreground">
+                          <span className="text-ink-600">
                             {formatRupiah(item.total)} · {item.count} {t("revenue_order_label")}
                           </span>
                         </div>
-                        <div className="h-3 w-full overflow-hidden rounded-full bg-muted">
+                        <div className="h-3 w-full overflow-hidden rounded-full bg-surface-sunken">
                           <div
-                            className="h-full rounded-full bg-primary"
+                            className="h-full rounded-full bg-ember-600"
                             style={{ width: `${pct}%` }}
                             data-testid={`bar-${type}`}
                           />
@@ -273,7 +264,7 @@ export default function RevenuePage() {
           </div>
 
           <div className="md-card-outlined">
-            <h3 className="text-title-medium mb-4">{t("revenue_top_products")}</h3>
+            <h3 className="type-h2 mb-4">{t("revenue_top_products")}</h3>
             <TopProductsTable
               products={revenue.top_products}
               showRevenue
@@ -282,7 +273,7 @@ export default function RevenuePage() {
           </div>
 
           <div className="md-card-outlined" data-testid="revenue-reconciliation">
-            <h3 className="text-title-medium mb-4">{t("revenue_reconciliation_title")}</h3>
+            <h3 className="type-h2 mb-4">{t("revenue_reconciliation_title")}</h3>
             {/* Full width, values flush right — it reads as a receipt against
                 the Top products table above it, whose revenue column lands on
                 the same edge. */}
@@ -299,7 +290,7 @@ export default function RevenuePage() {
                 <dt>{t("revenue_discount_total")}</dt>
                 <dd className="tabular-nums">− {formatRupiah(revenue.discount_total)}</dd>
               </div>
-              <div className="flex items-baseline justify-between gap-6 border-t border-[var(--md-sys-color-outline-variant)] pt-3 text-base font-semibold">
+              <div className="flex items-baseline justify-between gap-6 border-t border-line pt-3 text-base font-semibold">
                 <dt>{t("revenue_total")}</dt>
                 <dd className="tabular-nums">{formatRupiah(revenue.total)}</dd>
               </div>

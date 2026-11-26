@@ -11,6 +11,7 @@ import { NoAccess } from "@/components/admin/NoAccess";
 import { MonitorCard } from "@/components/admin/MonitorCard";
 import { DashboardHero } from "@/components/admin/DashboardHero";
 import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
@@ -40,7 +41,7 @@ export default function ExamDashboardPage() {
     }).format(new Date(iso));
 
   return (
-    <div className="fade-in">
+    <div className="fade-in flex flex-col gap-5">
       <DashboardHero
         icon={ShieldAlert}
         badge={t("exam_home_badge")}
@@ -49,28 +50,28 @@ export default function ExamDashboardPage() {
       />
 
       {isError ? (
-        <div className="md-card-outlined mb-8">
-          <div className="py-12 text-center text-ink-500">
+        <div className="md-card-outlined">
+          <div className="py-12 text-center text-ink-600">
             <p className="mb-4">{t("dash_load_failed")}</p>
-            <button type="button" className="md-btn-tonal" onClick={() => refetch()}>
+            <Button variant="outline" onClick={() => refetch()}>
               {t("admin_home_reload")}
-            </button>
+            </Button>
           </div>
         </div>
       ) : isLoading ? (
-        <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 min-[1200px]:grid-cols-5">
           {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
         </div>
       ) : (
         <>
-          <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 min-[1200px]:grid-cols-5">
             <MonitorCard
               testId="exam-active-sessions"
               href="/admin/exam/monitor"
               label={t("exam_home_active_sessions")}
               value={data?.active_sessions ?? 0}
               icon={Activity}
-              accent={(data?.active_sessions ?? 0) > 0 ? "tertiary" : "secondary"}
+              tone={(data?.active_sessions ?? 0) > 0 ? "ember" : "teal"}
             />
             <MonitorCard
               testId="exam-questions"
@@ -78,6 +79,7 @@ export default function ExamDashboardPage() {
               label={t("exam_home_questions")}
               value={data?.counts.questions ?? 0}
               icon={Library}
+              tone="brand"
             />
             <MonitorCard
               testId="exam-tests"
@@ -85,6 +87,7 @@ export default function ExamDashboardPage() {
               label={t("exam_home_tests")}
               value={data?.counts.tests ?? 0}
               icon={ClipboardList}
+              tone="sky"
             />
             <MonitorCard
               testId="exam-exams"
@@ -92,6 +95,7 @@ export default function ExamDashboardPage() {
               label={t("exam_home_exams")}
               value={data?.counts.exams ?? 0}
               icon={Calendar}
+              tone="gold"
             />
             {/* admin_exam also holds products(course):* and sections:* in rbac.go */}
             <MonitorCard
@@ -100,65 +104,58 @@ export default function ExamDashboardPage() {
               label={t("exam_home_courses")}
               value={data?.counts.courses ?? 0}
               icon={BookOpen}
+              tone="berry"
             />
           </div>
 
-          <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div className="md-card-outlined">
-              <h3 className="text-title-large mb-4">{t("admin_home_upcoming_exams")}</h3>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <section className="md-card-outlined">
+              <div className="mb-3.5 flex items-center justify-between gap-3">
+                <h2 className="type-h2">{t("admin_home_upcoming_exams")}</h2>
+              </div>
               {!data?.upcoming_exams.length ? (
-                <div className="py-12 text-center text-ink-500">{t("admin_home_upcoming_empty")}</div>
+                <div className="py-10 text-center text-ink-600">{t("admin_home_upcoming_empty")}</div>
               ) : (
-                <div className="space-y-3">
+                <div className="flex flex-col">
                   {data.upcoming_exams.map((exam) => (
-                    <div
-                      key={exam.id}
-                      className="flex items-center justify-between gap-3 rounded-[12px] p-3"
-                      style={{ backgroundColor: "var(--md-sys-color-surface-container-high)" }}
-                    >
-                      <div>
-                        <div className="text-body" style={{ fontWeight: 500 }}>{exam.title}</div>
-                        <div className="text-label color-on-surface-variant">
-                          {formatDateTime(exam.scheduled_at)}
-                        </div>
+                    <div key={exam.id} className="flex items-center justify-between gap-3 rounded-2xl p-2.5 hover:bg-brand-50">
+                      <div className="min-w-0">
+                        <b className="block font-[family-name:var(--font-display)] text-sm font-bold text-ink-900">{exam.title}</b>
+                        <small className="text-xs text-ink-600">{formatDateTime(exam.scheduled_at)}</small>
                       </div>
-                      <div className="text-label" style={{ color: "var(--md-sys-color-primary)" }}>
+                      <div className="text-right text-xs font-bold text-ink-700">
                         {t("admin_home_registrants").replace("{count}", String(exam.registrant_count))}
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </section>
 
-            <div className="md-card-outlined">
-              <h3 className="text-title-large mb-4">{t("exam_home_violations")}</h3>
+            <section className="md-card-outlined">
+              <div className="mb-3.5 flex items-center justify-between gap-3">
+                <h2 className="type-h2">{t("exam_home_violations")}</h2>
+              </div>
               {!data?.recent_violations.length ? (
-                <div className="py-12 text-center text-ink-500">{t("exam_home_violations_empty")}</div>
+                <div className="py-10 text-center text-ink-600">{t("exam_home_violations_empty")}</div>
               ) : (
-                <div className="space-y-3">
+                <div className="flex flex-col">
                   {data.recent_violations.map((v) => (
-                    <div key={v.session_id + v.occurred_at} className="flex items-center gap-3">
-                      <div
-                        className="flex size-8 shrink-0 items-center justify-center rounded-full"
-                        style={{
-                          backgroundColor: "var(--md-sys-color-error-container)",
-                          color: "var(--md-sys-color-on-error-container)",
-                        }}
-                      >
+                    <div key={v.session_id + v.occurred_at} className="flex items-center gap-3 rounded-2xl p-2.5 hover:bg-brand-50">
+                      <div className="grid size-[38px] shrink-0 place-items-center rounded-xl bg-danger-50 text-danger-600">
                         <AlertTriangle size={16} />
                       </div>
-                      <div>
-                        <div className="text-body" style={{ fontWeight: 500 }}>{v.student_name}</div>
-                        <div className="text-label color-on-surface-variant">
+                      <div className="min-w-0">
+                        <b className="block font-[family-name:var(--font-display)] text-sm font-bold text-ink-900">{v.student_name}</b>
+                        <small className="text-xs text-ink-600">
                           {v.exam_title} · {v.violation_type} · {formatDateTime(v.occurred_at)}
-                        </div>
+                        </small>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </section>
           </div>
         </>
       )}

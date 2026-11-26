@@ -110,11 +110,11 @@ export function CourierRateList({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-500">
+      <p className="type-h2 text-ink-900">
         {t("cart_shipping_options") || "Shipping Options"}
       </p>
 
-      <div className="overflow-hidden rounded-lg border border-line">
+      <div className="overflow-hidden rounded-2xl border-[1.5px] border-line">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

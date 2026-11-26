@@ -1,19 +1,22 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
+import { Crown } from "lucide-react";
+import { Badge, statusTone } from "@/components/ui/badge";
 import { affLabel } from "@/lib/affiliate-labels";
 import { useTranslation } from "@/lib/i18n";
 
+// Option-chip classes (OptionSelect); the badge itself uses the shared Badge variants.
 export const LEVEL_TONE: Record<string, string> = {
-  bronze: "bg-[#CD7F32]/20 text-[#8A5320]",
-  silver: "bg-slate-400/20 text-slate-600",
-  gold: "bg-amber-400/25 text-amber-700",
+  bronze: "bg-ember-50 text-ember-700",
+  silver: "bg-mute-50 text-mute-700",
+  gold: "bg-gold-50 text-gold-700",
 };
 
 export function LevelBadge({ level }: { level: string }) {
   const { t } = useTranslation();
   return (
-    <Badge variant="secondary" className={LEVEL_TONE[level] ?? "bg-surface-2 text-ink-600"}>
+    <Badge variant={statusTone(level)}>
+      <Crown aria-hidden />
       {affLabel(t, level)}
     </Badge>
   );

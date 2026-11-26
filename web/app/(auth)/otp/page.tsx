@@ -128,7 +128,7 @@ function OtpForm() {
   const loading = verify.isPending;
 
   return (
-    <div className="w-full max-w-[372px]">
+    <div className="flex flex-col gap-4">
       <button
         type="button"
         onClick={() => router.push(next ? `/login?next=${encodeURIComponent(next)}` : "/login")}
@@ -142,9 +142,9 @@ function OtpForm() {
         <ShieldCheck size={26} className="text-brand-600" />
       </div>
 
-      <h2 className="font-serif text-[26px] font-bold leading-tight tracking-[-0.01em] text-ink-900">
+      <h1 className="font-[family-name:var(--font-display)] text-[36px] font-extrabold leading-[1.05] tracking-[-0.04em] text-ink-900">
         {t("otp_title")}
-      </h2>
+      </h1>
       <p className="mt-2.5 mb-7 text-[13.5px] leading-[1.6] text-ink-500">
         {t("otp_subtitle_prefix")}
         <strong className="text-ink-700">{maskContact(identifier)}</strong>
@@ -217,7 +217,7 @@ function OtpForm() {
 
 export default function OtpPage() {
   return (
-    <React.Suspense fallback={<div className="w-full max-w-[372px]" />}>
+    <React.Suspense fallback={<div />}>
       <OtpForm />
     </React.Suspense>
   );

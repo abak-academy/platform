@@ -21,7 +21,7 @@ const TONE: Record<EventTone, string> = {
 export function ProgramGrid() {
   const { t } = useTranslation();
   return (
-    <section data-reveal className="mx-auto w-full max-w-public px-6 py-20">
+    <section data-reveal className="mx-auto w-full max-w-public px-6 pt-[60px] md:pt-[88px]">
       <div className="mb-10 flex flex-wrap items-end justify-between gap-6">
         <div className="max-w-[60ch]">
           <span className="type-overline text-brand-ink">{t("land_prog_eyebrow")}</span>

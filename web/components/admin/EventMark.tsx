@@ -20,7 +20,7 @@ export const EVENT_ILLUSTRATIONS: { value: EventIllustration; label: string; ico
   { value: "trophy", label: "Piala", icon: Trophy },
 ];
 
-const TONE_CLASS: Record<EventTone, string> = {
+export const EVENT_TONE_CLASS: Record<EventTone, string> = {
   brand: "bg-brand-50 text-brand-800",
   ember: "bg-ember-50 text-ember-700",
   teal: "bg-teal-50 text-teal-700",
@@ -46,7 +46,7 @@ export function EventMark({
   const src = logoUrl || fileUrl(logoKey);
   const Icon = EVENT_ILLUSTRATIONS.find((i) => i.value === illustration)?.icon ?? Trophy;
   return (
-    <span className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl ${TONE_CLASS[tone] ?? TONE_CLASS.brand} ${className}`}>
+    <span className={`inline-flex shrink-0 items-center justify-center overflow-hidden rounded-xl ${EVENT_TONE_CLASS[tone] ?? EVENT_TONE_CLASS.brand} ${className}`}>
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={src} alt="" className="size-full object-contain p-1" />

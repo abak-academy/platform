@@ -52,5 +52,7 @@ describe("AffiliateList", () => {
     expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
     expect(onPageChange).toHaveBeenCalledWith(2);
+    fireEvent.click(screen.getByRole("button", { name: "3" }));
+    expect(onPageChange).toHaveBeenCalledWith(3);
   });
 });

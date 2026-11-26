@@ -59,7 +59,7 @@ function SelectionBox({ selected }: { selected: boolean }) {
       className={`flex size-5 flex-shrink-0 items-center justify-center rounded-md border ${
         selected
           ? "border-primary bg-primary text-primary-foreground"
-          : "border-input bg-surface"
+          : "border-line bg-surface"
       }`}
     >
       {selected && <Check className="size-3" />}
@@ -209,7 +209,7 @@ export function QuestionPickerModal({
         <div className="min-w-0 space-y-3 py-1">
           <div className="grid gap-2">
             <Label htmlFor="picker-search">{t("tests_picker_search_label")}</Label>
-            <div className="flex h-9 items-center gap-2 rounded-lg border border-input bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-ring/40">
+            <div className="flex h-9 items-center gap-2 rounded-lg border-[1.5px] border-line bg-surface-2 px-3 focus-within:ring-2 focus-within:ring-ring/40">
               <Search className="size-4 text-muted-foreground" />
               <Input
                 id="picker-search"
@@ -230,7 +230,7 @@ export function QuestionPickerModal({
                 value={topicId}
                 onChange={(e) => setTopicId(e.target.value)}
                 disabled={topics.isLoading}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                className="h-[var(--spacing-input)] w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
               >
                 <option value="all">{t("tests_picker_topic_all")}</option>
                 {topicOptions.map((topic) => (
@@ -247,7 +247,7 @@ export function QuestionPickerModal({
                 data-slot="select"
                 value={format}
                 onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm"
+                className="h-[var(--spacing-input)] w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 text-sm text-ink-900 outline-none hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
               >
                 <option value="all">{t("tab_all")}</option>
                 {ALL_FORMATS.map((f) => (
@@ -268,7 +268,7 @@ export function QuestionPickerModal({
             )}
           </div>
 
-          <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-md border border-input">
+          <div className="max-h-[320px] overflow-y-auto overflow-x-hidden rounded-md border-[1.5px] border-line">
             {bank.isLoading && (
               <div className="p-4 text-center text-muted-foreground">{t("sys_loading")}</div>
             )}
@@ -296,7 +296,7 @@ export function QuestionPickerModal({
                       ? "opacity-50"
                       : isSelected
                         ? "bg-brand-50"
-                        : "hover:bg-muted/30"
+                        : "hover:bg-surface-sunken"
                   }`}
                 >
                   <button

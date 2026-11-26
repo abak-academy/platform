@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Receipt, UserPlus, Store, Clock, PackageCheck, AlertTriangle, PenLine, Coins,
-  ArrowRight, ArrowUp, ArrowDown, Plus, Calendar, Megaphone, Tag, type LucideIcon,
+  ArrowRight, Plus, Calendar, Megaphone, Tag, type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
@@ -13,6 +13,8 @@ import { useAdminDashboard } from "@/lib/hooks/admin-dashboard";
 import { useAdminNotifications } from "@/lib/hooks/admin-notifications";
 import { useHasCapability } from "@/lib/hooks/use-capability";
 import { adminHomeForRole } from "@/lib/auth-redirect";
+import { StatCard, type StatTone } from "@/components/admin/StatCard";
+import { PageHead } from "@/components/shell/PageHead";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { RevenueMixCard } from "@/components/admin/RevenueMixCard";
 import { PeriodBar, type PeriodPreset, type PeriodRange } from "@/components/admin/PeriodBar";
@@ -102,17 +104,10 @@ function jakartaHour(d: Date): number {
   return Number(new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: "Asia/Jakarta" }).format(d));
 }
 
-const KPI_TONE = {
-  brand: { card: "bg-brand-50", chip: "text-brand-700" },
-  ember: { card: "bg-ember-50", chip: "text-ember-700" },
-  teal: { card: "bg-teal-50", chip: "text-teal-700" },
-  sky: { card: "bg-sky-50", chip: "text-sky-700" },
-};
-
 function KpiCard({
-  tone, icon: Icon, label, value, delta, sub,
+  tone, icon, label, value, delta, sub,
 }: {
-  tone: keyof typeof KPI_TONE;
+  tone: StatTone;
   icon: LucideIcon;
   label: string;
   value: string;
@@ -120,27 +115,8 @@ function KpiCard({
   sub?: string;
 }) {
   const { t } = useTranslation();
-  const tn = KPI_TONE[tone];
-  const DeltaIcon = delta !== null && delta > 0 ? ArrowUp : ArrowDown;
-  const deltaColor = delta === null ? "" : delta > 0 ? "text-teal-700" : delta < 0 ? "text-danger-600" : "text-ink-600";
-  return (
-    <div className={`flex items-start justify-between gap-3 rounded-[var(--radius-card)] p-5 ${tn.card}`}>
-      <div className="flex min-w-0 flex-col gap-1">
-        <div className="type-label text-ink-600">{label}</div>
-        <div className="type-h1 text-ink-900">{value}</div>
-        {delta !== null && (
-          <div className={`flex items-center gap-1 type-caption ${deltaColor}`}>
-            {delta !== 0 && <DeltaIcon aria-hidden className="size-3" />}
-            <span>{delta > 0 ? "+" : ""}{delta}% {t("admin_home_vs_prev")}</span>
-          </div>
-        )}
-        {sub ? <div className="type-caption text-ink-600">{sub}</div> : null}
-      </div>
-      <span className={`flex size-10 shrink-0 items-center justify-center rounded-[var(--radius-md)] bg-surface ${tn.chip}`}>
-        <Icon aria-hidden className="size-5" />
-      </span>
-    </div>
-  );
+  const trend = [delta !== null ? `${delta > 0 ? "+" : ""}${delta}% ${t("admin_home_vs_prev")}` : null, sub].filter(Boolean).join(" · ");
+  return <StatCard tone={tone} icon={icon} label={label} value={value} trend={trend || undefined} />;
 }
 
 const ATTENTION_TONE = {
@@ -321,19 +297,19 @@ export default function AdminIndexPage() {
   );
 
   return (
-    <div className="fade-in flex flex-col gap-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="type-h1 text-ink-900">{`${greeting}, ${name.split(" ")[0]}`}</h1>
-          <p className="type-body-sm text-ink-600">{`${today} · ${t("admin_home_overview_suffix")}`}</p>
-        </div>
-        <Button asChild>
-          <Link href="/admin/exam/packages">
-            <Plus aria-hidden />
-            {t("admin_home_create_exam")}
-          </Link>
-        </Button>
-      </header>
+    <div className="fade-in flex flex-col gap-5">
+      <PageHead
+        title={`${greeting}, ${name.split(" ")[0]}`}
+        sub={`${today} · ${t("admin_home_overview_suffix")}`}
+        actions={
+          <Button asChild variant="dark">
+            <Link href="/admin/exam/packages">
+              <Plus aria-hidden />
+              {t("admin_home_create_exam")}
+            </Link>
+          </Button>
+        }
+      />
 
       {!dashboardError && (
         dashboardLoading ? (
@@ -401,29 +377,29 @@ export default function AdminIndexPage() {
               </Button>
             </CardContent>
           </Card>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <div className="lg:col-span-2">{purchaseFeed}</div>
             {quickActionsCard}
           </div>
         </>
       ) : dashboardLoading ? (
         <>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
           </div>
           <Skeleton className="h-64 w-full" />
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-64 w-full" />
           </div>
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Skeleton className="h-48 w-full lg:col-span-2" />
             <Skeleton className="h-48 w-full" />
           </div>
         </>
       ) : (
         <>
-          <div data-testid="kpi-row" className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div data-testid="kpi-row" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
             <KpiCard
               tone="brand"
               icon={Coins}
@@ -470,7 +446,7 @@ export default function AdminIndexPage() {
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>{t("admin_home_chart_students_title")}</CardTitle>
@@ -491,7 +467,7 @@ export default function AdminIndexPage() {
             <RevenueMixCard digital={d.kpi.revenue_digital} physical={d.kpi.revenue_physical} />
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
@@ -532,7 +508,7 @@ export default function AdminIndexPage() {
             {purchaseFeed}
           </div>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             <Card className="lg:col-span-2">
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">

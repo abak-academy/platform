@@ -14,7 +14,7 @@ export function ShopPicks({ products, enrolledCourseIds }: { products: Product[]
   return (
     <section>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="font-serif text-xl font-semibold text-ink-900">{t("stu_home_shop_title")}</h2>
+        <h2 className="type-h2 text-ink-900">{t("stu_home_shop_title")}</h2>
         <Link href="/catalog" className="text-sm font-medium text-brand-700 hover:text-brand-800">
           {t("stu_home_shop_link")} →
         </Link>

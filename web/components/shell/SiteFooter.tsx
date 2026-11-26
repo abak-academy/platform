@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AbakLogo } from "@/components/brand/AbakLogo";
+import { AbakWordmark } from "./AbakWordmark";
 import { useTranslation } from "@/lib/i18n";
 import { SITE_CONFIG, waHref } from "@/lib/site-config";
 import type { I18nKey } from "@/lib/i18n";
@@ -33,9 +33,10 @@ export function SiteFooter() {
 
   return (
     <footer data-swarm-light className="bg-brand-900 text-white">
+      <div data-footer-divider className="mx-4 border-t border-white/15 md:mx-8" />
       <div className="mx-auto grid max-w-[var(--container-public)] gap-10 px-4 py-14 md:grid-cols-[1.6fr_1fr_1fr_1fr] md:px-6">
         <div className="space-y-4">
-          <AbakLogo size={40} />
+          <AbakWordmark light size={40} />
           <p className="max-w-sm text-white/75">{t("pub_foot_blurb")}</p>
           <p className="text-sm text-white/75">
             <span className="block font-semibold text-white">{t("pub_foot_address_label")}</span>

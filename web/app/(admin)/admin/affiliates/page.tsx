@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { Download, HandCoins } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -16,7 +16,7 @@ import { inAffiliate, ProgramBadges } from "@/components/affiliate/ProgramBadges
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { DataTableColumn } from "@/components/ui/data-table";
+import { TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import { downloadAffiliateCsv, useAdminAffiliates, useDecideAffiliateApproval } from "@/lib/hooks/admin-affiliates";
@@ -99,14 +99,11 @@ function AffiliatesContent() {
       key: "who",
       header: whoHeader,
       cell: (r) => (
-        <div>
-          <div className="font-medium text-ink-900">{r.name}</div>
-          <div className="text-xs text-ink-500">{r.email ?? "—"}</div>
-        </div>
+        <TableItem title={r.name} sub={r.email ?? "—"} />
       ),
     },
     { key: "programs", header: t("admin_aff_col_programs"), cell: (r) => <ProgramBadges programs={r.programs} /> },
-    { key: "code", header: t("admin_aff_col_code"), cell: (r) => r.code || "—" },
+    { key: "code", header: t("admin_aff_col_code"), cell: (r) => (r.code ? <code className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-[11.5px] text-ink-900">{r.code}</code> : "—") },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
     { key: "level", header: t("admin_aff_col_level"), cell: (r) => (inAffiliate(r.programs) ? <LevelBadge level={r.level} /> : <span className="text-ink-400">—</span>) },
     { key: "joined", header: t("admin_aff_col_joined"), cell: (r) => formatAffDate(r.created_at) },
@@ -140,23 +137,26 @@ function AffiliatesContent() {
 
   return (
     <div className="space-y-4">
-      <AdminPageHeader icon={HandCoins} title={t("admin_aff_title")} description={t("admin_aff_desc")} />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Tabs value={program || "all"} onValueChange={(value) => setProgram(value === "all" ? "" : (value as "affiliate" | "partner"))}>
-          <TabsList aria-label={t("admin_aff_col_programs")}>
-            <TabsTrigger value="all">{t("admin_aff_filter_all_programs")}</TabsTrigger>
-            <TabsTrigger value="affiliate">{t("admin_aff_program_affiliate")}</TabsTrigger>
-            <TabsTrigger value="partner">{t("admin_aff_program_partner")}</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={exportCsv}>
-            <Download className="size-4" aria-hidden />
-            {t("admin_aff_export_csv")}
-          </Button>
-          <Button onClick={() => setAdding(true)}>{addLabel}</Button>
-        </div>
-      </div>
+      <AdminPageHeader
+        title={t("admin_aff_title")}
+        description={t("admin_aff_desc")}
+        actions={
+          <>
+            <Button variant="outline" onClick={exportCsv}>
+              <Download className="size-4" aria-hidden />
+              {t("admin_aff_export_csv")}
+            </Button>
+            <Button variant="dark" onClick={() => setAdding(true)}>{addLabel}</Button>
+          </>
+        }
+      />
+      <Tabs value={program || "all"} onValueChange={(value) => setProgram(value === "all" ? "" : (value as "affiliate" | "partner"))}>
+        <TabsList aria-label={t("admin_aff_col_programs")}>
+          <TabsTrigger value="all">{t("admin_aff_filter_all_programs")}</TabsTrigger>
+          <TabsTrigger value="affiliate">{t("admin_aff_program_affiliate")}</TabsTrigger>
+          <TabsTrigger value="partner">{t("admin_aff_program_partner")}</TabsTrigger>
+        </TabsList>
+      </Tabs>
       <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />
       <ListToolbar
         params={params}

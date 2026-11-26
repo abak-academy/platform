@@ -1,6 +1,6 @@
 "use client";
 
-import { Building, Users, UserPlus, Calendar, Upload, FileText } from "lucide-react";
+import { Users, UserPlus, Calendar, Upload, FileText, ReceiptText, Trophy, RefreshCw } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
 import { useSchoolDashboard } from "@/lib/hooks/admin-dashboard";
@@ -10,6 +10,9 @@ import { MonitorCard } from "@/components/admin/MonitorCard";
 import { DashboardHero } from "@/components/admin/DashboardHero";
 import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge, statusTone } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { UserRole } from "@/lib/nav-config";
@@ -39,30 +42,27 @@ export default function SchoolDashboardPage() {
     }).format(new Date(iso));
 
   return (
-    <div className="fade-in">
+    <div className="fade-in flex flex-col gap-5">
       <DashboardHero
-        icon={Building}
         badge={t("school_home_badge")}
         name={name}
         subtitle={t("school_home_subtitle")}
       />
 
       {isError ? (
-        <div className="md-card-outlined mb-8">
-          <div className="py-12 text-center text-ink-500">
-            <p className="mb-4">{t("dash_load_failed")}</p>
-            <button type="button" className="md-btn-tonal" onClick={() => refetch()}>
-              {t("admin_home_reload")}
-            </button>
-          </div>
-        </div>
+        <EmptyState
+          framed
+          icon={RefreshCw}
+          title={t("dash_load_failed")}
+          action={<Button variant="outline" onClick={() => refetch()}>{t("admin_home_reload")}</Button>}
+        />
       ) : isLoading ? (
-        <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
-          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 w-full" />)}
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
+          {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-28 w-full rounded-[var(--radius-card)]" />)}
         </div>
       ) : (
         <>
-          <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
             <MonitorCard
               testId="school-students"
               href="/admin/school/students"
@@ -86,46 +86,44 @@ export default function SchoolDashboardPage() {
             />
           </div>
 
-          <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
             <div className="md-card-outlined" data-testid="school-latest-bulk-order">
-              <h3 className="text-title-large mb-4">{t("school_home_bulk_title")}</h3>
+              <h2 className="type-h2 mb-3.5">{t("school_home_bulk_title")}</h2>
               {!data?.latest_bulk_order ? (
-                <div className="py-12 text-center text-ink-500">{t("school_home_bulk_empty")}</div>
+                <EmptyState icon={ReceiptText} title={t("school_home_bulk_empty")} />
               ) : (
                 <div className="space-y-2">
-                  <div className="text-body" style={{ fontWeight: 500 }}>{data.latest_bulk_order.status}</div>
-                  <div className="text-label color-on-surface-variant">
+                  <Badge variant={statusTone(data.latest_bulk_order.status)}>{data.latest_bulk_order.status}</Badge>
+                  <div className="text-sm text-ink-600">
                     {t("school_home_bulk_participants").replace("{count}", String(data.latest_bulk_order.participant_count))}
                   </div>
-                  <div className="text-label color-on-surface-variant">{formatRupiah(data.latest_bulk_order.total)}</div>
-                  <div className="text-label color-on-surface-variant">{formatDateTime(data.latest_bulk_order.placed_at)}</div>
+                  <div className="text-sm text-ink-600">{formatRupiah(data.latest_bulk_order.total)}</div>
+                  <div className="text-sm text-ink-600">{formatDateTime(data.latest_bulk_order.placed_at)}</div>
                 </div>
               )}
             </div>
 
             <div className="md-card-outlined">
-              <h3 className="text-title-large mb-4">{t("school_home_results")}</h3>
+              <h2 className="type-h2 mb-3.5">{t("school_home_results")}</h2>
               {!data?.recent_results.length ? (
-                <div className="py-12 text-center text-ink-500">{t("school_home_results_empty")}</div>
+                <EmptyState icon={Trophy} title={t("school_home_results_empty")} />
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {data.recent_results.map((r) => (
                     <div
                       key={r.session_id}
                       data-testid={`school-result-${r.session_id}`}
-                      className="flex items-center justify-between gap-3 rounded-[12px] p-3"
-                      style={{ backgroundColor: "var(--md-sys-color-surface-container-high)" }}
+                      className="flex items-center justify-between gap-3 rounded-[20px] border border-line px-4 py-3.5"
                     >
                       <div>
-                        <div className="text-body" style={{ fontWeight: 500 }}>{r.student_name}</div>
-                        <div className="text-label color-on-surface-variant">
+                        <div className="font-bold text-ink-900">{r.student_name}</div>
+                        <div className="text-xs text-ink-600">
                           {r.exam_title} · {formatDateTime(r.submitted_at)}
                         </div>
                       </div>
                       <div
                         data-testid={`school-result-${r.session_id}-score`}
-                        className="text-label"
-                        style={{ color: r.score === null ? "var(--md-sys-color-outline)" : "var(--md-sys-color-primary)" }}
+                        className={r.score === null ? "text-sm text-ink-600" : "font-[family-name:var(--font-display)] text-xl font-extrabold text-ink-900"}
                       >
                         {r.score === null ? t("school_home_ungraded") : String(r.score)}
                       </div>

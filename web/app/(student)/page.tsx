@@ -12,6 +12,7 @@ import { useAuthStore } from "@/stores/auth";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { PageHead } from "@/components/shell/PageHead";
 import { PendingBanner } from "@/components/dashboard/PendingBanner";
 import { ShippingStrip } from "@/components/dashboard/ShippingStrip";
 import { EventCarousel } from "@/components/dashboard/EventCarousel";
@@ -57,9 +58,9 @@ function Dashboard() {
   }).format(now);
 
   return (
-    <div>
+    <>
       {isError && (
-        <Card className="mb-8 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -76,14 +77,12 @@ function Dashboard() {
       {isLoading ? (
         <DashboardSkeleton />
       ) : data ? (
-        <div className="space-y-6">
-          <header>
-            <p className="font-mono text-xs uppercase tracking-wide text-ink-500">{today}</p>
-            <h1 className="mt-1 font-serif text-2xl font-bold text-ink-900 md:text-3xl">
-              {t("stu_home_greeting").replace("{greeting}", greeting).replace("{name}", name)}
-            </h1>
-            <p className="mt-1 text-sm text-ink-500">{t("stu_home_intro")}</p>
-          </header>
+        <div className="flex flex-col gap-5">
+          <PageHead
+            eyebrow={today}
+            title={t("stu_home_greeting").replace("{greeting}", greeting).replace("{name}", name)}
+            sub={t("stu_home_intro")}
+          />
 
           {data.pending_order && (
             <PendingBanner
@@ -114,13 +113,13 @@ function Dashboard() {
           )}
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-6" data-testid="dashboard-skeleton">
+    <div className="flex flex-col gap-5" data-testid="dashboard-skeleton">
       <Skeleton className="h-16 w-72" />
       <div className={ROW_A}>
         <Skeleton className="h-64 rounded-xl" />

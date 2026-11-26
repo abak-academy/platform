@@ -19,20 +19,30 @@ export function StorySlider({ items }: { items: PublicTestimonial[] }) {
   const photo = fileUrl(current.photo_url);
 
   return (
-    <section data-reveal className="mx-auto w-full max-w-public px-6 py-20">
-      <div className="grid gap-8 overflow-hidden rounded-[var(--radius-panel)] border border-line bg-surface p-4 shadow-card md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:p-6">
-        <div className="aspect-[4/5] overflow-hidden rounded-[var(--radius-card)] bg-surface-sunken">
+    <section data-reveal className="mx-auto w-full max-w-public px-6 pt-[60px] md:pt-[88px]">
+      <div className="grid overflow-hidden rounded-[var(--radius-panel)] border border-line bg-surface shadow-card md:grid-cols-2">
+        <div data-story-photo className="relative min-h-[260px] overflow-hidden bg-surface-sunken md:min-h-[380px]">
           {photo && (
-            <img
-              key={current.id}
-              src={photo}
-              alt={t("land_stories_photo_alt").replace("{name}", current.name)}
-              loading="lazy"
-              className="h-full w-full object-cover"
-            />
+            <>
+              <img
+                key={`${current.id}-bg`}
+                src={photo}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
+              />
+              <img
+                key={current.id}
+                src={photo}
+                alt={t("land_stories_photo_alt").replace("{name}", current.name)}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-contain"
+              />
+            </>
           )}
         </div>
-        <div className="flex flex-col justify-center gap-5 py-2 md:pr-6">
+        <div className="flex flex-col justify-center gap-5 p-6 md:p-10">
           <div className="flex items-baseline justify-between gap-4">
             <h2 className="type-overline text-brand-ink">{t("land_stories_eyebrow")}</h2>
             <span className="type-overline text-ink-600">{`${pad(index + 1)}/${pad(items.length)}`}</span>

@@ -1,57 +1,64 @@
 "use client";
 
+import { BookOpen, LayoutGrid, Medal, PlayCircle, Shirt, type LucideIcon } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export type CatalogCategory = "all" | "book" | "course" | "merchandise" | "medal";
 
-export const CATALOG_CATEGORIES: { value: CatalogCategory; labelKey: string }[] = [
-  { value: "all", labelKey: "catalog_tab_all" },
-  { value: "book", labelKey: "catalog_tab_book" },
-  { value: "course", labelKey: "catalog_tab_course" },
-  { value: "merchandise", labelKey: "catalog_tab_merchandise" },
-  { value: "medal", labelKey: "catalog_tab_medal" },
+export const CATALOG_CATEGORIES: { value: CatalogCategory; labelKey: string; icon: LucideIcon }[] = [
+  { value: "all", labelKey: "catalog_tab_all", icon: LayoutGrid },
+  { value: "book", labelKey: "catalog_tab_book", icon: BookOpen },
+  { value: "course", labelKey: "catalog_tab_course", icon: PlayCircle },
+  { value: "merchandise", labelKey: "catalog_tab_merchandise", icon: Shirt },
+  { value: "medal", labelKey: "catalog_tab_medal", icon: Medal },
 ];
 
 export interface CategoryRailProps {
   value: CatalogCategory;
   onChange: (value: CatalogCategory) => void;
+  counts?: Partial<Record<CatalogCategory, number>>;
 }
 
-export function CategoryRail({ value, onChange }: CategoryRailProps) {
+export function CategoryRail({ value, onChange, counts }: CategoryRailProps) {
   const { t } = useTranslation();
 
   return (
-    <nav
+    <div
       data-testid="category-rail"
+      role="group"
       aria-label={t("catalog_category_heading" as any)}
-      className="md:sticky md:top-6 md:h-fit md:w-[200px] md:shrink-0 md:self-start"
+      className="-mx-0.5 flex gap-2 overflow-x-auto p-0.5 [scrollbar-width:none]"
     >
-      <h2 className="mb-3 hidden text-xs font-semibold uppercase tracking-wide text-ink-600 md:block">
-        {t("catalog_category_heading" as any)}
-      </h2>
-      <ul className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 md:mx-0 md:flex-col md:gap-0.5 md:overflow-visible md:px-0 md:pb-0">
-        {CATALOG_CATEGORIES.map((c) => {
-          const active = c.value === value;
-          return (
-            <li key={c.value} className="shrink-0 md:shrink">
-              <button
-                type="button"
-                onClick={() => onChange(c.value)}
-                aria-current={active ? "true" : undefined}
+      {CATALOG_CATEGORIES.map((c) => {
+        const active = c.value === value;
+        const Icon = c.icon;
+        return (
+          <button
+            key={c.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(c.value)}
+            className={cn(
+              "type-label inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-pill)] border-[1.5px] px-4 transition-transform duration-300 hover:-translate-y-0.5",
+              active ? "border-brand-600 bg-brand-600 text-white" : "border-line bg-paper text-ink-900",
+            )}
+          >
+            <Icon className="size-4" aria-hidden="true" />
+            {t(c.labelKey as any)}
+            {counts?.[c.value] !== undefined && (
+              <span
                 className={cn(
-                  "whitespace-nowrap rounded-full border px-3.5 py-1.5 text-sm transition-colors md:w-full md:rounded-md md:border-0 md:px-2.5 md:text-left",
-                  active
-                    ? "border-brand-400 bg-brand-50 font-semibold text-brand-600 md:bg-brand-50"
-                    : "border-line bg-surface text-ink-600 hover:bg-paper md:bg-transparent",
+                  "rounded-[var(--radius-pill)] px-[7px] py-0.5 text-[11px]",
+                  active ? "bg-white/20 text-white" : "bg-surface-sunken text-ink-600",
                 )}
               >
-                {t(c.labelKey as any)}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+                {counts[c.value]}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }

@@ -26,20 +26,20 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
   const isEstimate = order.is_estimate ?? false;
 
   return (
-    <section className="rounded-lg border border-line bg-surface p-5">
-      <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">
+    <section>
+      <h2 className="mb-2 type-h3 text-ink-900">
         {t("order_shipping_heading" as any)}
       </h2>
       <dl className="flex flex-col gap-2 text-sm">
         {addressLine && (
           <div className="flex items-start justify-between gap-3">
-            <dt className="text-ink-500">{t("order_shipping_address" as any)}</dt>
+            <dt className="text-ink-600">{t("order_shipping_address" as any)}</dt>
             <dd className="text-right text-ink-900">{addressLine}</dd>
           </div>
         )}
         {courier && (
           <div className="flex items-start justify-between gap-3">
-            <dt className="text-ink-500">{t("order_shipping_courier" as any)}</dt>
+            <dt className="text-ink-600">{t("order_shipping_courier" as any)}</dt>
             <dd className="text-right text-ink-900">
               {courier}
               {isEstimate && (
@@ -51,18 +51,18 @@ export function ShippingInfo({ order }: ShippingInfoProps) {
           </div>
         )}
         <div className="flex items-start justify-between gap-3">
-          <dt className="text-ink-500">{t("order_shipping")}</dt>
+          <dt className="text-ink-600">{t("order_shipping")}</dt>
           <dd className="text-right text-ink-900">{formatRupiah(order.shipping_cost ?? 0)}</dd>
         </div>
         {order.tracking_number && (
           <div className="flex items-start justify-between gap-3">
-            <dt className="text-ink-500">{t("order_tracking")}</dt>
+            <dt className="text-ink-600">{t("order_tracking")}</dt>
             <dd className="text-right text-ink-900">{order.tracking_number}</dd>
           </div>
         )}
         {order.tracking_number && (
           <div className="flex items-start justify-between gap-3">
-            <dt className="text-ink-500">{t("order_shipment_status")}</dt>
+            <dt className="text-ink-600">{t("order_shipment_status")}</dt>
             <dd className="text-right text-ink-900">
               {order.shipment_status
                 ? shipmentStatusLabel(order.shipment_status, lang)

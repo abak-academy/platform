@@ -4,12 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ClipboardList, Pencil, Search, SlidersHorizontal, Trash2 } from "lucide-react";
+import { Pencil, Search, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TestModal } from "@/components/admin/TestModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ToolbarCount, ToolbarFilterButton, ToolbarSearch } from "@/components/admin/ListToolbar";
+import { cn } from "@/lib/utils";
 import {
   useAdminTests,
   useCreateTest,
@@ -20,6 +23,11 @@ import { useTopics } from "@/lib/hooks/admin-topics";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
+
+const FILTER_SELECT =
+  "h-10 rounded-full border-[1.5px] border-line bg-surface px-3.5 text-[13px] font-bold text-ink-900 outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-45";
+const ICON_BTN =
+  "grid size-8 place-items-center rounded-full text-ink-700 transition-colors hover:bg-brand-50 hover:text-brand-ink disabled:opacity-45";
 
 export default function TestsPage() {
   const { t } = useTranslation();
@@ -145,93 +153,87 @@ export default function TestsPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={ClipboardList}
         title={t("tests_page_title")}
         description={t("tests_page_description")}
-        actions={<Button onClick={openCreate}>{t("tests_new")}</Button>}
+        actions={<Button variant="dark" onClick={openCreate}>{t("tests_new")}</Button>}
       />
 
-      <div data-testid="exam-tests-toolbar" className="flex flex-wrap items-center gap-3">
-        <div className="relative min-w-0 flex-1 basis-full sm:basis-0">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-          <Input
-            data-testid="tests-search-input"
+      <div
+        data-testid="exam-tests-toolbar"
+        className="flex flex-col gap-2.5 rounded-[var(--radius-card)] border border-line bg-surface px-3.5 py-3 shadow-card"
+      >
+        <div className="flex flex-wrap items-center gap-2.5">
+          <ToolbarSearch
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={setSearch}
             placeholder={t("tests_search_placeholder")}
-            aria-label={t("tests_search_placeholder")}
-            className="h-10 pl-9"
+            clearLabel={t("exam_packages_search_clear")}
           />
+          <ToolbarFilterButton
+            type="button"
+            label={t("tests_filter")}
+            count={activeFilters}
+            aria-expanded={filtersOpen}
+            aria-controls={filtersOpen ? "tests-filter-panel" : undefined}
+            onClick={() => setFiltersOpen((open) => !open)}
+          />
+          <ToolbarCount>
+            <span data-testid="tests-count">
+              {t("tests_count").replace("{n}", String(testsResp?.total ?? tests.length))}
+            </span>
+          </ToolbarCount>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          aria-expanded={filtersOpen}
-          aria-controls={filtersOpen ? "tests-filter-panel" : undefined}
-          onClick={() => setFiltersOpen((open) => !open)}
-        >
-          <SlidersHorizontal className="mr-1 size-4" />
-          {t("tests_filter")}
-          {activeFilters > 0 && ` (${activeFilters})`}
-        </Button>
-        <span data-testid="tests-count" className="text-sm text-ink-500" aria-live="polite">
-          {t("tests_count").replace("{n}", String(testsResp?.total ?? tests.length))}
-        </span>
-      </div>
-
-      {filtersOpen && (
-        <div
-          id="tests-filter-panel"
-          className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center"
-        >
-          <select
-            data-slot="select"
-            data-testid="tests-subject-filter"
-            aria-label={t("tests_field_subject")}
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-          >
-            <option value="">{t("tab_all")}</option>
-            {subjectOptions.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select
-            data-slot="select"
-            data-testid="tests-topic-filter"
-            aria-label={t("tests_field_topic")}
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            disabled={topicsForSubject.isLoading}
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-          >
-            <option value="">{t("all_topics")}</option>
-            {topicOptions.map((opt) => (
-              <option key={opt.id} value={opt.name}>
-                {opt.name}
-              </option>
-            ))}
-          </select>
-          {activeFilters > 0 && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                setSubject("");
-                setTopic("");
-              }}
+        {filtersOpen && (
+          <div id="tests-filter-panel" className="flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-center">
+            <select
+              data-slot="select"
+              data-testid="tests-subject-filter"
+              aria-label={t("tests_field_subject")}
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              className={FILTER_SELECT}
             >
-              {t("tests_filter_reset")}
-            </Button>
-          )}
-        </div>
-      )}
+              <option value="">{t("tab_all")}</option>
+              {subjectOptions.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <select
+              data-slot="select"
+              data-testid="tests-topic-filter"
+              aria-label={t("tests_field_topic")}
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              disabled={topicsForSubject.isLoading}
+              className={FILTER_SELECT}
+            >
+              <option value="">{t("all_topics")}</option>
+              {topicOptions.map((opt) => (
+                <option key={opt.id} value={opt.name}>
+                  {opt.name}
+                </option>
+              ))}
+            </select>
+            {activeFilters > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSubject("");
+                  setTopic("");
+                }}
+              >
+                {t("tests_filter_reset")}
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
 
       {isLoading && tests.length === 0 && (
         <div className="space-y-2">
@@ -251,110 +253,79 @@ export default function TestsPage() {
       )}
 
       {!isError && tests.length > 0 && (
-        <div className="overflow-x-auto md-card-outlined">
-          <table className="w-full min-w-[44rem] text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_col_test")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_col_subject_topic")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_col_questions")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_col_duration")}</th>
-                <th className="px-4 py-3 text-left font-medium">{t("tests_col_content")}</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {tests.map((test) => (
-                <tr
-                  key={test.id}
-                  data-testid="test-row"
-                  tabIndex={0}
-                  onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
-                  onKeyDown={(e) => {
-                    if (e.target !== e.currentTarget) return;
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      router.push(`/admin/exam/tests/${test.id}`);
-                    }
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+          {tests.map((test) => (
+            <article
+              key={test.id}
+              data-testid="test-row"
+              onClick={() => router.push(`/admin/exam/tests/${test.id}`)}
+              className="md-card-outlined flex cursor-pointer flex-col gap-2.5 transition-transform duration-300 ease-spring hover:-translate-y-1"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge variant="mute">{t("tests_questions_n").replace("{n}", String(test.question_count ?? 0))}</Badge>
+                  <Badge variant="sky">{t("tests_minutes_n").replace("{n}", String(test.duration_minutes))}</Badge>
+                </div>
+                <div className="-mt-1 -mr-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(test)}
+                    aria-label={t("action_edit")}
+                    className={ICON_BTN}
+                  >
+                    <Pencil className="size-3.5" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDelete(test.id)}
+                    disabled={remove.isPending && deletingId === test.id}
+                    aria-label={t("action_delete")}
+                    className={cn(ICON_BTN, "text-danger-600 hover:text-danger-600")}
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
+                </div>
+              </div>
+              <h3 className="type-h3 [overflow-wrap:anywhere]">
+                <Link
+                  href={`/admin/exam/tests/${test.id}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+                    e.preventDefault();
+                    router.push(`/admin/exam/tests/${test.id}`);
                   }}
-                  className="cursor-pointer border-t align-top transition-colors hover:bg-muted/40"
+                  className="hover:underline"
                 >
-                  <td className="max-w-[18rem] px-4 py-3 font-medium [overflow-wrap:anywhere]">
-                    <Link
-                      href={`/admin/exam/tests/${test.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-                        e.preventDefault();
-                        router.push(`/admin/exam/tests/${test.id}`);
-                      }}
-                      className="hover:underline"
-                    >
-                      {test.title}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>{test.subject}</div>
-                    <div className="text-xs text-ink-500">{test.topic}</div>
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
-                    {t("tests_questions_n").replace("{n}", String(test.question_count ?? 0))}
-                  </td>
-                  <td className="whitespace-nowrap px-4 py-3">
-                    {t("tests_minutes_n").replace("{n}", String(test.duration_minutes))}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div>
-                      {test.shared_material_html?.trim()
-                        ? t("tests_content_material")
-                        : t("tests_content_no_material")}
-                    </div>
-                    {test.audio_url && <div className="text-xs text-ink-500">{t("tests_content_audio")}</div>}
-                  </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-end gap-1">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => openEdit(test)}
-                        aria-label={t("action_edit")}
-                      >
-                        <Pencil className="mr-1 size-3.5" />
-                        {t("action_edit")}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleDelete(test.id)}
-                        disabled={remove.isPending && deletingId === test.id}
-                        aria-label={t("action_delete")}
-                        className="text-danger hover:text-danger"
-                      >
-                        <Trash2 className="mr-1 size-3.5" />
-                        {t("action_delete")}
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  {test.title}
+                </Link>
+              </h3>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Badge variant="sky">{test.subject}</Badge>
+                <span className="text-xs text-ink-600">{test.topic}</span>
+              </div>
+              <div className="mt-auto text-xs text-ink-600">
+                <div>
+                  {test.shared_material_html?.trim()
+                    ? t("tests_content_material")
+                    : t("tests_content_no_material")}
+                </div>
+                {test.audio_url && <div>{t("tests_content_audio")}</div>}
+              </div>
+            </article>
+          ))}
         </div>
       )}
 
       {!isLoading && !isError && tests.length === 0 && (
-        <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
-          {t("tests_empty")}
-        </div>
+        <EmptyState framed icon={Search} title={t("tests_empty")} />
       )}
 
-      <p className="text-xs text-ink-500">{t("tests_list_footnote")}</p>
+      <p className="text-xs text-ink-600">{t("tests_list_footnote")}</p>
 
       {!isLoading && !isError && tests.length > 0 && (
         <div className="flex items-center justify-between gap-3">
-          <p className="text-label text-sm text-ink-500">
+          <p className="text-sm text-ink-600">
             {t("tests_shown_of_total")
               .replace("{shown}", String(tests.length))
               .replace("{total}", String(testsResp?.total ?? tests.length))}
@@ -363,7 +334,6 @@ export default function TestsPage() {
             <Button
               type="button"
               variant="outline"
-              className="rounded-full"
               onClick={handleLoadMore}
               disabled={isFetching}
             >

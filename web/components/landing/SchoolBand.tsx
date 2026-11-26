@@ -16,7 +16,7 @@ const TILES = [
 export function SchoolBand() {
   const { t } = useTranslation();
   return (
-    <section id="sekolah" data-reveal className="mx-auto w-full max-w-public px-6 py-20">
+    <section id="sekolah" data-reveal className="mx-auto w-full max-w-public px-6 pt-[60px] md:pt-[88px]">
       <div className="grid gap-8 rounded-[var(--radius-panel)] bg-brand-50 p-8 md:grid-cols-2 md:p-12">
         <div className="flex flex-col gap-4">
           <span className="type-overline text-brand-ink">{t("land_school_eyebrow")}</span>

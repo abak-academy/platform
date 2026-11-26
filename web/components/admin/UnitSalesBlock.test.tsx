@@ -7,7 +7,7 @@ import { explicitUnitRange, unitPeriodSearch } from "@/lib/unit-sales-period";
 import type { PeriodPreset } from "@/components/admin/PeriodBar";
 import type { UnitSalesResponse } from "@/lib/types";
 
-const { useSales, download, retry, replace } = vi.hoisted(() => ({ useSales: vi.fn(), download: vi.fn(), retry: vi.fn(), replace: vi.fn() }));
+const { useSales, download, retry, replace, push } = vi.hoisted(() => ({ useSales: vi.fn(), download: vi.fn(), retry: vi.fn(), replace: vi.fn(), push: vi.fn() }));
 vi.mock("@/lib/hooks/admin-unit-sales", () => ({ useAdminUnitSales: useSales, downloadUnitSalesCsv: download }));
 const typeFigures = { paid_orders: 2, refund_orders: 1, paid_units: 7, refund_units: 3, net_units: 4 };
 const productFigures = [
@@ -21,7 +21,7 @@ const data: UnitSalesResponse = { from: null, to: null, types: ["book", "merchan
 })) };
 
 let search = "";
-vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(search), useRouter: () => ({ replace }) }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(search), useRouter: () => ({ replace, push }) }));
 
 beforeEach(() => {
   search = "";
@@ -41,18 +41,23 @@ describe("UnitSalesBlock", () => {
     expect(rows.map((row) => within(row).getByRole("link").getAttribute("aria-label"))).toEqual([
       "Lihat produk: Buku", "Lihat produk: Merchandise", "Lihat produk: Medali", "Lihat produk: Kursus", "Lihat produk: Ujian",
     ]);
-    expect(within(rows[0]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Buku", "Unit dibayar7", "Unit refund3", "Unit neto4"]);
-    expect(within(rows[0]).getByRole("cell", { name: "4" })).toHaveClass("font-bold", "text-title-large", "text-right", "tabular-nums");
-    expect(rows[1]).toHaveTextContent("MerchandiseUnit dibayar0Unit refund0Unit neto0");
+    expect(within(rows[0]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Buku", "7", "3", "4"]);
+    expect(within(rows[0]).getByRole("cell", { name: "4" })).toHaveClass("font-bold", "text-right", "tabular-nums");
+    expect(rows[1]).toHaveTextContent("Merchandise000");
     expect(container.textContent).not.toMatch(/Order dibayar|Order refund|rupiah|Rp\b|IDR|revenue|harga/i);
   });
 
-  it("stretches a native link across the row and keeps Enter activation", async () => {
+  it("keeps a native link in each row and makes the whole row open it", async () => {
     render(<UnitSalesBlock />);
     const link = screen.getByRole("link", { name: "Lihat produk: Buku" });
-    expect(link).toHaveClass("after:absolute", "after:inset-0");
-    expect(link.closest("tr")).toHaveClass("relative", "focus-within:outline");
     expect(link).toHaveAttribute("href", expect.stringMatching(/^\/admin\/store\/units\/book\?preset=30d&from=.*&to=.*/));
+    await userEvent.click(within(link.closest("tr")!).getAllByRole("cell")[1]);
+    expect(push).toHaveBeenCalledWith(link.getAttribute("href"));
+  });
+
+  it("opens the row link with Enter on the focused native link", async () => {
+    render(<UnitSalesBlock />);
+    const link = screen.getByRole("link", { name: "Lihat produk: Buku" });
     const activate = vi.fn((event: Event) => event.preventDefault());
     link.addEventListener("click", activate);
     link.focus();

@@ -86,10 +86,10 @@ function PreviewQuestion({ item, number }: { item: QuestionWithOptions; number: 
         </ul>
       )}
       {question.format === "essay" && (
-        <textarea disabled rows={4} aria-label={t("tests_format_essay")} className="w-full rounded-md border border-input bg-muted/30 p-2 text-sm" />
+        <textarea disabled rows={4} aria-label={t("tests_format_essay")} className="w-full rounded-md border-[1.5px] border-line bg-surface-sunken p-2 text-sm" />
       )}
       {(question.format === "short" || question.format === "fill_blank") && (
-        <input disabled aria-label={t("tests_format_short")} className="h-9 w-full rounded-md border border-input bg-muted/30 px-2 text-sm" />
+        <input disabled aria-label={t("tests_format_short")} className="h-9 w-full rounded-md border-[1.5px] border-line bg-surface-sunken px-2 text-sm" />
       )}
     </section>
   );
@@ -133,7 +133,7 @@ export function TestPreview({ open, onOpenChange, test, questions, initialIndex 
                 {t(value === "one" ? "tests_preview_mode_one" : "tests_preview_mode_all")}
               </Button>
             ))}
-            {allBlocked && <span className="text-xs text-ink-500">{t("tests_preview_all_blocked")}</span>}
+            {allBlocked && <span className="text-xs text-ink-600">{t("tests_preview_all_blocked")}</span>}
           </div>
 
           {hasContent(test.instructions_html) && (
@@ -147,7 +147,7 @@ export function TestPreview({ open, onOpenChange, test, questions, initialIndex 
           )}
 
           {questions.length === 0 ? (
-            <p className="py-6 text-center text-sm text-ink-500">{t("tests_preview_no_questions")}</p>
+            <p className="py-6 text-center text-sm text-ink-600">{t("tests_preview_no_questions")}</p>
           ) : (
             <div className="space-y-6">
               {visible.map((item) => (
@@ -165,7 +165,7 @@ export function TestPreview({ open, onOpenChange, test, questions, initialIndex 
               <Button type="button" variant="outline" size="sm" disabled={index === 0} onClick={() => setIndex(index - 1)}>
                 {t("tests_preview_prev")}
               </Button>
-              <span className="text-sm text-ink-500">
+              <span className="text-sm text-ink-600">
                 {t("tests_preview_question_of")
                   .replace("{n}", String(index + 1))
                   .replace("{total}", String(questions.length))}

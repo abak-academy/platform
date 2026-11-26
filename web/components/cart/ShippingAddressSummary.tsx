@@ -36,9 +36,9 @@ export function ShippingAddressSummary({ address, isPrimary = false, onEdit }: S
   const complete = isAddressComplete(address);
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-line bg-surface px-4 py-3.5 shadow-[var(--sh-sm)]">
+    <div className="flex items-start justify-between gap-4 rounded-[var(--radius-card)] border border-line bg-card p-6 shadow-card">
       <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+        <h2 className="flex items-center gap-2 type-h2 text-ink-900">
           {t("cart_address_heading" as any)}
           {isPrimary && (
             <span className="rounded bg-success-bg px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-success">
@@ -55,7 +55,7 @@ export function ShippingAddressSummary({ address, isPrimary = false, onEdit }: S
             {address.alamat} · {address.kode_pos}
           </p>
         ) : (
-          <p className="text-sm text-ink-500">{t("cart_address_incomplete_profile" as any)}</p>
+          <p className="text-sm text-ink-600">{t("cart_address_incomplete_profile" as any)}</p>
         )}
       </div>
       <Button type="button" variant="ghost" size="sm" onClick={onEdit} className="shrink-0">

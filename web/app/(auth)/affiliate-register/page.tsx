@@ -111,8 +111,8 @@ export default function AffiliateRegisterPage() {
 
   if (programStatus.data && available.length === 0) {
     return (
-      <div className="w-full max-w-[372px]" role="status">
-        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">{t("aff_reg_title")}</h2>
+      <div className="flex flex-col gap-4" role="status">
+        <h1 className="font-[family-name:var(--font-display)] text-[36px] font-extrabold leading-[1.05] tracking-[-0.04em] text-ink-900">{t("aff_reg_title")}</h1>
         <p className="mt-3 text-[13.5px] leading-[1.55] text-ink-600">{t("aff_register_closed")}</p>
         <Link href="/login" className="mt-5 inline-block text-sm font-bold text-success hover:text-success/80">
           {t("aff_register_closed_back")}
@@ -122,11 +122,11 @@ export default function AffiliateRegisterPage() {
   }
 
   return (
-    <div className="w-full max-w-[372px]">
-      <div className="mb-7">
-        <div className="mb-2 text-[11.5px] font-bold uppercase tracking-[0.06em] text-success">{t("aff_reg_eyebrow")}</div>
-        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900">{t("aff_reg_title")}</h2>
-        <p className="mt-2 text-[13.5px] leading-[1.55] text-ink-500">{t("aff_reg_subtitle")}</p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <div className="self-start text-[11.5px] font-bold uppercase tracking-[0.06em] text-ember-600">{t("aff_reg_eyebrow")}</div>
+        <h1 className="font-[family-name:var(--font-display)] text-[36px] font-extrabold leading-[1.05] tracking-[-0.04em] text-ink-900">{t("aff_reg_title")}</h1>
+        <p className="text-ink-600">{t("aff_reg_subtitle")}</p>
       </div>
 
       <form onSubmit={onSubmit} noValidate>

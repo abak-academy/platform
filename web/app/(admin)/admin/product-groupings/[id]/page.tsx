@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowDown, ArrowUp, GripVertical, ImageIcon, Layers, Plus, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, ArrowDown, ArrowUp, GripVertical, ImageIcon, Plus, Trash2, Upload, X } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -22,6 +22,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Switch } from "@/components/ui/switch";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExternalRoundsDialog } from "@/components/admin/ExternalRoundsDialog";
 import { EVENT_ILLUSTRATIONS, EVENT_TONES, EventMark } from "@/components/admin/EventMark";
@@ -529,10 +530,12 @@ export default function ProductGroupingDetailPage() {
 
   return (
     <div className="space-y-6 fade-in">
-      <Link href="/admin/product-groupings" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-        <ArrowLeft className="size-4" aria-hidden />
-        {t("grouping_back_to_list")}
-      </Link>
+      {!grouping && (
+        <Link href="/admin/product-groupings" className="inline-flex w-fit items-center gap-1 type-label-sm text-ink-600 hover:text-ink-900">
+          <ArrowLeft className="size-4" aria-hidden />
+          {t("grouping_back_to_list")}
+        </Link>
+      )}
 
       {isLoading && <Skeleton className="h-16 w-full" />}
 
@@ -545,15 +548,15 @@ export default function ProductGroupingDetailPage() {
       {grouping && form && narrative && (
         <>
           <AdminPageHeader
-            icon={Layers}
+            back={{ href: "/admin/product-groupings", label: t("grouping_back_to_list") }}
             title={grouping.name}
             description={`${grouping.products.filter((p) => p.type === "exam").length} edisi · ${grouping.is_visible ? "tampil di landing" : "disembunyikan dari landing"}`}
           />
 
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-4">
-              <section className="md-card-outlined space-y-4 p-4" aria-label="Identitas">
-                <h2 className="type-h3">Identitas</h2>
+              <section className="md-card-outlined space-y-4 p-6" aria-label="Identitas">
+                <h2 className="type-h2">Identitas</h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="event-name" label="Nama event">
                     <Input id="event-name" value={form.name} onChange={(e) => set({ name: e.target.value })} />
@@ -599,9 +602,9 @@ export default function ProductGroupingDetailPage() {
                 </div>
               </section>
 
-              <section className="md-card-outlined space-y-4 p-4" aria-label="Narasi di landing page">
+              <section className="md-card-outlined space-y-4 p-6" aria-label={t("adm_event_narrative")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="type-h3">Narasi di landing page</h2>
+                  <h2 className="type-h2">{t("adm_event_narrative")}</h2>
                   <div role="tablist" aria-label="Bahasa narasi" className="inline-flex gap-1 rounded-full bg-surface-sunken p-1">
                     {(["id", "en"] as const).map((loc) => (
                       <button
@@ -654,9 +657,9 @@ export default function ProductGroupingDetailPage() {
                 </div>
               </section>
 
-              <section className="md-card-outlined space-y-3 p-4" aria-label="Jadwal event">
+              <section className="md-card-outlined space-y-3 p-6" aria-label={t("adm_event_schedule")}>
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="type-h3">Jadwal event</h2>
+                  <h2 className="type-h2">{t("adm_event_schedule")}</h2>
                   <Button
                     type="button"
                     size="sm"
@@ -689,8 +692,8 @@ export default function ProductGroupingDetailPage() {
                 </ul>
               </section>
 
-              <section className="md-card-outlined space-y-4 p-4" aria-label={t("grouping_members_title")}>
-                <h2 className="type-h3">{t("grouping_members_title")}</h2>
+              <section className="md-card-outlined space-y-4 p-6" aria-label={t("grouping_members_title")}>
+                <h2 className="type-h2">{t("grouping_members_title")}</h2>
 
                 {members.length === 0 && <p className="text-sm text-muted-foreground">{t("grouping_members_empty")}</p>}
 
@@ -786,8 +789,8 @@ export default function ProductGroupingDetailPage() {
             </div>
 
             <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
-              <section className="md-card-outlined space-y-4 p-4" aria-label="Tampilan">
-                <h2 className="type-h3">Tampilan</h2>
+              <section className="md-card-outlined space-y-4 p-6" aria-label="Tampilan">
+                <h2 className="type-h2">Tampilan</h2>
                 <div className="flex items-center gap-3 rounded-xl bg-surface-sunken p-3">
                   <EventMark logoKey={form.logoKey} tone={form.tone} illustration={form.illustration} className="size-12" />
                   <b className="min-w-0 truncate" data-testid="event-preview">{form.shortName.trim() || form.name}</b>
@@ -796,7 +799,7 @@ export default function ProductGroupingDetailPage() {
                 <div className="grid gap-2">
                   <span className="text-sm font-medium">Logo event</span>
                   <div className="flex items-center gap-3">
-                    <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-surface">
+                    <span className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-[18px] border-2 border-dashed border-line bg-surface">
                       {form.logoKey ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={fileUrl(form.logoKey)} alt="Logo event" className="size-full object-contain p-1" />
@@ -845,17 +848,8 @@ export default function ProductGroupingDetailPage() {
                 </Field>
 
                 <label className="flex items-center justify-between gap-3 text-sm font-medium">
-                  Tampil di landing page
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={form.visible}
-                    aria-label="Tampil di landing page"
-                    onClick={toggleVisible}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${form.visible ? "bg-brand-600" : "bg-line-strong"}`}
-                  >
-                    <span className={`pointer-events-none block size-5 rounded-full bg-white shadow ring-0 transition-transform ${form.visible ? "translate-x-5" : "translate-x-0"}`} />
-                  </button>
+                  {t("adm_show_on_landing_page")}
+                  <Switch checked={form.visible} onCheckedChange={toggleVisible} aria-label={t("adm_show_on_landing_page")} />
                 </label>
 
                 {missing.length > 0 && (

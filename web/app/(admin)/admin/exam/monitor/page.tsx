@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { BarChart, Eye, RefreshCw, AlertTriangle, RotateCcw, XCircle } from "lucide-react";
+import { Activity, BarChart, CheckCircle2, Clock, Eye, RefreshCw, AlertTriangle, RotateCcw, Users, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
@@ -12,7 +12,12 @@ import {
 } from "@/lib/hooks/admin-sessions";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, type badgeVariants } from "@/components/ui/badge";
+import type { VariantProps } from "class-variance-authority";
+import { Progress } from "@/components/ui/progress";
+import { StatCard } from "@/components/admin/StatCard";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
@@ -23,6 +28,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { ExamMonitorAvailable, SessionMonitorRow, SessionMonitorStatus } from "@/lib/types";
+
+type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
 // ── Status label key map (i18n keys for each derived status) ──
 // Explicit mapping because status "checked_in" has no underscore in its key "st_checkedin"
@@ -37,15 +44,12 @@ const STATUS_LABEL_KEY: Record<SessionMonitorStatus, string> = {
 
 // ── Status badge map ──
 
-const STATUS_BADGE: Record<
-  SessionMonitorStatus,
-  { variant: "default" | "secondary" | "destructive" | "outline"; className: string }
-> = {
-  registered: { variant: "secondary", className: "bg-line-2 text-ink-700 border-line" },
-  checked_in: { variant: "default", className: "" },
-  in_progress: { variant: "outline", className: "bg-amber-100 text-amber-800 border-amber-200" },
-  overdue: { variant: "destructive", className: "" },
-  submitted: { variant: "outline", className: "bg-green-100 text-green-800 border-green-200" },
+const STATUS_BADGE: Record<SessionMonitorStatus, BadgeVariant> = {
+  registered: "mute",
+  checked_in: "brand",
+  in_progress: "teal",
+  overdue: "danger",
+  submitted: "sky",
 };
 
 // ── Date formatting helpers ──
@@ -78,12 +82,9 @@ function formatWindow(scheduledAt: string | null, scheduledEndAt: string | null)
 
 // ── Available-exams state badge map ──
 
-const AVAILABLE_STATE_BADGE: Record<
-  ExamMonitorAvailable["state"],
-  { className: string; labelKey: string }
-> = {
-  live: { className: "bg-amber-100 text-amber-800 border-amber-200", labelKey: "monitor_state_live" },
-  ended: { className: "bg-line-2 text-ink-700 border-line", labelKey: "monitor_state_ended" },
+const AVAILABLE_STATE_BADGE: Record<ExamMonitorAvailable["state"], { variant: BadgeVariant; labelKey: string }> = {
+  live: { variant: "live", labelKey: "monitor_state_live" },
+  ended: { variant: "mute", labelKey: "monitor_state_ended" },
 };
 
 // ── Page component ──
@@ -168,7 +169,7 @@ export default function ExamMonitorPage() {
       cell: (row) => {
         const badge = AVAILABLE_STATE_BADGE[row.state];
         return (
-          <Badge variant="outline" className={badge.className}>
+          <Badge variant={badge.variant}>
             {t(badge.labelKey as any)}
           </Badge>
         );
@@ -206,8 +207,8 @@ export default function ExamMonitorPage() {
   ];
 
   const availableSection = (
-    <div className="space-y-3">
-      <h2 className="text-base font-semibold">{t("monitor_pick_exam")}</h2>
+    <div className="flex flex-col gap-3">
+      <h2 className="type-h2">{t("monitor_pick_exam")}</h2>
       {availableLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
@@ -231,10 +232,7 @@ export default function ExamMonitorPage() {
           rowKey={(row) => row.id}
           data-testid="exam-monitor-available-table"
           empty={
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <BarChart className="mb-4 size-12 text-ink-600" />
-              <p className="text-body-medium text-ink-600">{t("monitor_available_empty")}</p>
-            </div>
+            <EmptyState icon={BarChart} title={t("monitor_available_empty")} />
           }
         />
       )}
@@ -256,9 +254,8 @@ export default function ExamMonitorPage() {
       key: "status",
       header: t("th_status"),
       cell: (row) => {
-        const badge = STATUS_BADGE[row.status];
         return (
-          <Badge variant={badge.variant} className={badge.className}>
+          <Badge variant={STATUS_BADGE[row.status]}>
             {t(STATUS_LABEL_KEY[row.status] as any)}
           </Badge>
         );
@@ -287,13 +284,12 @@ export default function ExamMonitorPage() {
         const progressPct =
           row.total_questions > 0 ? Math.round((row.answers_saved / row.total_questions) * 100) : 0;
         return (
-          <div className="flex items-center gap-2">
-            <div className="h-2 w-20 overflow-hidden rounded-full bg-line">
-              <div
-                className="h-full rounded-full bg-brand-600 transition-all"
-                style={{ width: `${progressPct}%` }}
-              />
-            </div>
+          <div className="flex min-w-[140px] items-center gap-2">
+            <Progress
+              value={progressPct}
+              variant={row.status === "submitted" ? "teal" : "ember"}
+              className="flex-1"
+            />
             <span className="text-xs text-ink-600">
               {row.answers_saved}/{row.total_questions}
             </span>
@@ -376,26 +372,42 @@ export default function ExamMonitorPage() {
   } else if (selectedExamId) {
     detailSection = (
       <div className="flex flex-col gap-6 lg:flex-row">
-        <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="grid grid-cols-2 gap-3 min-[1200px]:grid-cols-4" data-testid="exam-monitor-kpis">
+            <StatCard tone="sky" icon={Users} label={t("st_registered")} value={String(rows.length)} />
+            <StatCard
+              tone="ember"
+              icon={Activity}
+              label={t("st_inprogress")}
+              value={String(rows.filter((r) => r.status === "in_progress" || r.status === "overdue").length)}
+            />
+            <StatCard
+              tone="teal"
+              icon={CheckCircle2}
+              label={t("st_submitted")}
+              value={String(rows.filter((r) => r.status === "submitted").length)}
+            />
+            <StatCard
+              tone="gold"
+              icon={Clock}
+              label={t("monitor_th_not_started")}
+              value={String(rows.filter((r) => r.status === "registered" || r.status === "checked_in").length)}
+            />
+          </div>
           <DataTable
             columns={columns}
             rows={rows}
             rowKey={(row) => row.registration_id}
             data-testid="exam-monitor-table"
             empty={
-              <div className="flex flex-col items-center justify-center py-16 text-center">
-                <BarChart className="mb-4 size-12 text-ink-600" />
-                <p className="text-body-medium text-ink-600">
-                  {t("monitor_empty")}
-                </p>
-              </div>
+              <EmptyState icon={BarChart} title={t("monitor_empty")} />
             }
           />
         </div>
 
         <div className="w-full lg:w-72 lg:shrink-0">
-          <div className="rounded-lg border border-line p-4">
-            <h3 className="mb-3 text-sm font-semibold">{t("monitor_sidebar_title")}</h3>
+          <div className="md-card-outlined !p-4">
+            <h3 className="mb-3 type-h3">{t("monitor_sidebar_title")}</h3>
             {violations.length === 0 ? (
               <p className="text-sm text-ink-600">
                 {t("monitor_no_violations")}
@@ -435,8 +447,27 @@ export default function ExamMonitorPage() {
   // ── Main content ──
 
   return (
-    <div className="space-y-6 fade-in">
-      <AdminPageHeader icon={BarChart} title={t("exam_monitor_title")} description={t("exam_monitor_subtitle")} />
+    <div className="flex flex-col gap-5 fade-in">
+      <AdminPageHeader
+        title={t("exam_monitor_title")}
+        description={t("exam_monitor_subtitle")}
+        actions={
+          availableExams.length > 0 ? (
+            <Select value={selectedExamId} onValueChange={setSelectedExamId}>
+              <SelectTrigger size="pill" aria-label={t("monitor_pick_exam")}>
+                <SelectValue placeholder={t("monitor_pick_exam")} />
+              </SelectTrigger>
+              <SelectContent>
+                {availableExams.map((e) => (
+                  <SelectItem key={e.id} value={e.id}>
+                    {e.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : undefined
+        }
+      />
       {availableSection}
       <Dialog open={Boolean(selectedExamId)} onOpenChange={(open) => !open && setSelectedExamId("")}>
         <DialogContent className="sm:max-w-6xl">
@@ -444,10 +475,7 @@ export default function ExamMonitorPage() {
             <div className="flex flex-wrap items-center gap-3 pr-8">
               <DialogTitle>{examTitle || t("exam_monitor_title")}</DialogTitle>
               {selectedCandidate && (
-                <Badge
-                  variant="outline"
-                  className={AVAILABLE_STATE_BADGE[selectedCandidate.state].className}
-                >
+                <Badge variant={AVAILABLE_STATE_BADGE[selectedCandidate.state].variant}>
                   {t(AVAILABLE_STATE_BADGE[selectedCandidate.state].labelKey as any)}
                 </Badge>
               )}

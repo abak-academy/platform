@@ -11,11 +11,10 @@ describe("CategoryRail", () => {
     expect(screen.getByRole("button", { name: "Medali" })).toBeTruthy();
   });
 
-  it("marks only the selected category as current", () => {
+  it("marks only the selected category as selected", () => {
     render(<CategoryRail value="book" onChange={() => {}} />);
-    const selected = screen.getByRole("button", { name: "Buku" });
-    expect(selected.getAttribute("aria-current")).toBe("true");
-    expect(screen.getByRole("button", { name: "Kursus" }).getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("button", { name: "Buku" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Kursus" })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("reports the clicked category", () => {
@@ -25,8 +24,13 @@ describe("CategoryRail", () => {
     expect(onChange).toHaveBeenCalledWith("medal");
   });
 
-  it("stays reachable while the grid scrolls", () => {
-    render(<CategoryRail value="all" onChange={() => {}} />);
-    expect(screen.getByTestId("category-rail").className).toContain("md:sticky");
+  it("is a horizontal pill rail with an icon and a count per tab, like the prototype", () => {
+    render(<CategoryRail value="all" onChange={() => {}} counts={{ all: 5, book: 2, course: 1, merchandise: 2, medal: 0 }} />);
+    const rail = screen.getByTestId("category-rail");
+    expect(rail).toHaveAttribute("role", "group");
+    expect(rail.className).toContain("overflow-x-auto");
+    const book = screen.getByRole("button", { name: /Buku/ });
+    expect(book.querySelector("svg")).not.toBeNull();
+    expect(book).toHaveTextContent("2");
   });
 });

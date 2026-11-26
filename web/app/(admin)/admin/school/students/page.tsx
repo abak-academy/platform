@@ -5,7 +5,6 @@ import {
   Plus,
   MoreHorizontal,
   Lock,
-  Search,
   Copy,
   Check,
   Eye,
@@ -25,6 +24,10 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PageHead } from "@/components/shell/PageHead";
+import { StatCard } from "@/components/admin/StatCard";
+import { ToolbarSearch, ToolbarFilterButton, ToolbarCount, FilterChip, ActiveChip } from "@/components/admin/ListToolbar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -105,11 +108,6 @@ function compactStudentRegistration(
   if (unlistedSchoolName) payload.unlisted_school_name = unlistedSchoolName;
   return payload;
 }
-
-const STATUS_TONE: Record<string, string> = {
-  active: "bg-success-bg text-success border-success",
-  deactivated: "bg-danger-bg text-danger border-danger",
-};
 
 function initials(name: string) {
   return name
@@ -452,13 +450,7 @@ export default function SchoolStudentsPage() {
       key: "status",
       header: t("th_status"),
       cell: (s) => (
-        <Badge
-          variant="outline"
-          className={cn(
-            "text-[11px] font-semibold capitalize",
-            STATUS_TONE[s.status] ?? "bg-surface-2 text-ink-500 border-line"
-          )}
-        >
+        <Badge variant={s.status === "active" ? "teal" : "danger"}>
           {s.status === "active" ? t("status_label_active") : t("status_label_inactive")}
         </Badge>
       ),
@@ -508,48 +500,33 @@ export default function SchoolStudentsPage() {
         ? t("sys_loading_data")
         : t("students_empty");
 
-  const rosterSchool = canManageAllStudents ? selectedSchoolFilter : adminOwnSchool;
-  const activeSchoolLabel = lang === "en" ? "Active school" : "Sekolah aktif";
   const filterPanelLabel = lang === "en" ? "Student filters" : "Filter siswa";
   const rosterLabel = lang === "en" ? "School roster" : "Daftar siswa";
-  const rosterDescription = rosterSchool
-    ? lang === "en"
-      ? `Students registered to ${rosterSchool.name}`
-      : `Siswa yang terdaftar di ${rosterSchool.name}`
-    : lang === "en"
-      ? "Students across all partner schools"
-      : "Siswa dari seluruh sekolah mitra";
-  const rosterSchoolLocation = canManageAllStudents
-    ? [selectedSchoolFilter?.kota_name, selectedSchoolFilter?.provinsi_name]
-        .filter(Boolean)
-        .join(", ")
-    : "";
-  const rosterSchoolTypes = rosterSchool?.school_types?.join(" / ") ?? "";
+  const filterCount = (statusFilter !== "all" ? 1 : 0) + (selectedSchoolId ? 1 : 0);
+  const statusOptions = [
+    { value: "all", label: t("accounts_status_all") },
+    { value: "active", label: t("status_label_active") },
+    { value: "deactivated", label: t("status_label_inactive") },
+  ];
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setSelectedSchoolFilter(null);
+    setSelectedSchoolId("");
+  };
 
   return (
-    <div className="space-y-6 fade-in">
-      <header className="mb-7 flex flex-col gap-6 border-b border-line pb-7 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="text-4xl font-bold tracking-[-0.045em] text-ink-900 md:text-5xl">
-            {t("school_students_title")}
-          </h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-ink-600">
-            {lang === "en"
-              ? "Choose a partner school, then manage its students. The roster follows the active school."
-              : "Pilih sekolah mitra, lalu kelola siswanya. Daftar siswa mengikuti sekolah yang aktif."}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              className="rounded-md"
-              onClick={() => setBulkImportOpen(true)}
-            >
-              <FileUp className="mr-1 size-4" />
+    <div className="flex flex-col gap-5 fade-in">
+      <PageHead
+        title={t("school_students_title")}
+        sub={[!canManageAllStudents && adminOwnSchool?.name, t("adm_accounts_count").replace("{n}", String(stats.total))].filter(Boolean).join(" · ")}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
+              <FileUp className="size-4" />
               {t("bulk_register_title")}
             </Button>
             <Button
-              className="rounded-md"
+              variant="dark"
               onClick={() => {
                 setRegisterSelectedSchool(selectedSchoolFilter);
                 setRegisterSchoolId(selectedSchoolId);
@@ -557,172 +534,122 @@ export default function SchoolStudentsPage() {
                 setRegisterOpen(true);
               }}
             >
-              <Plus className="mr-1 size-4" />
+              <Plus className="size-4" />
               {t("students_register_title")}
             </Button>
-        </div>
-      </header>
+          </>
+        }
+      />
 
-      <div className="overflow-hidden rounded-[20px] border border-line bg-surface shadow-[var(--md-sys-elevation-1)] lg:grid lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <aside
-          role="region"
-          aria-label={filterPanelLabel}
-          className="border-b border-line bg-surface px-5 py-6 lg:min-h-[680px] lg:border-b-0 lg:border-r"
-        >
-          <div className="border-b border-line pb-4">
-            <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
-              {filterPanelLabel}
-            </h2>
-            <p className="mt-1 text-xs leading-5 text-ink-500">
-              {lang === "en"
-                ? "Narrow the roster by school, status, or student name."
-                : "Saring daftar berdasarkan sekolah, status, atau nama siswa."}
-            </p>
+      <div className="grid grid-cols-3 gap-3 max-narrow:grid-cols-1">
+        <StatCard tone="brand" label={t("accounts_stat_total")} value={String(stats.total)} />
+        <StatCard tone="teal" label={t("status_label_active")} value={String(stats.active)} />
+        <StatCard tone="ember" label={t("status_label_inactive")} value={String(stats.deactivated)} />
+      </div>
+
+      <section aria-label={rosterLabel} className="md-card-flush">
+        <div className="flex flex-col gap-2.5 border-b border-line px-4 py-3.5">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <ToolbarSearch
+              value={searchInput}
+              onChange={setSearchInput}
+              placeholder={t("students_search_placeholder")}
+              clearLabel={t("list_toolbar_clear_search")}
+            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <ToolbarFilterButton label={filterPanelLabel} count={filterCount} />
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                role="region"
+                aria-label={filterPanelLabel}
+                className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(460px,92vw)] overflow-y-auto"
+              >
+                <div className="flex flex-col gap-3.5">
+                  <div>
+                    <span className="mb-2 block type-overline text-ink-600">{t("select_school")}</span>
+                    {canManageAllStudents ? (
+                      <SchoolPicker
+                        id="student-school-filter"
+                        value={selectedSchoolId}
+                        selectedSchool={selectedSchoolFilter}
+                        onChange={(school) => {
+                          setSelectedSchoolFilter(school);
+                          setSelectedSchoolId(school?.id ?? "");
+                        }}
+                      />
+                    ) : (
+                      <p className="text-xs leading-5 text-ink-600">
+                        {lang === "en"
+                          ? "This roster is bound to your administrator account's school."
+                          : "Daftar siswa ini terikat ke sekolah pada akun admin Anda."}
+                      </p>
+                    )}
+                  </div>
+                  <div role="group" aria-label={t("accounts_th_status")}>
+                    <span className="mb-2 block type-overline text-ink-600">{t("accounts_th_status")}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {statusOptions.map((o) => (
+                        <FilterChip key={o.value} on={statusFilter === o.value} onClick={() => setStatusFilter(o.value)}>
+                          {o.label}
+                        </FilterChip>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
+                    <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_reset")}</Button>
+                    <PopoverClose asChild>
+                      <Button variant="secondary" size="sm">{t("list_toolbar_show_n").replace("{n}", String(stats.total))}</Button>
+                    </PopoverClose>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+            <ToolbarCount>{t("adm_accounts_count").replace("{n}", String(stats.total))}</ToolbarCount>
           </div>
-
-          <div className="mt-6 space-y-6">
-            <div>
-              <p className="mb-2 text-xs font-semibold text-ink-700">{t("select_school")}</p>
-              {canManageAllStudents ? (
-                <SchoolPicker
-                  id="student-school-filter"
-                  value={selectedSchoolId}
-                  selectedSchool={selectedSchoolFilter}
-                  onChange={(school) => {
-                    setSelectedSchoolFilter(school);
-                    setSelectedSchoolId(school?.id ?? "");
-                  }}
-                />
-              ) : (
-                <p className="text-xs leading-5 text-ink-500">
-                  {lang === "en"
-                    ? "This roster is bound to your administrator account's school."
-                    : "Daftar siswa ini terikat ke sekolah pada akun admin Anda."}
-                </p>
-              )}
-
-              <div className="mt-4 rounded-[12px] border border-line bg-surface p-4">
-                <p className="text-[11px] font-semibold text-ink-500">{activeSchoolLabel}</p>
-                <h3 className="mt-2 text-lg font-bold leading-tight text-ink-900">
-                  {rosterSchool?.name ?? t("students_all_schools")}
-                </h3>
-                {(rosterSchoolLocation || rosterSchoolTypes) && (
-                  <p className="mt-2 text-xs leading-5 text-ink-500">
-                    {[rosterSchoolLocation, rosterSchoolTypes].filter(Boolean).join(" · ")}
-                  </p>
-                )}
-                {rosterSchool?.npsn && (
-                  <p className="mt-3 text-xs text-ink-500">
-                    NPSN <strong className="ml-1 tracking-[0.06em] text-ink-900">{rosterSchool.npsn}</strong>
-                  </p>
-                )}
-              </div>
-              {selectedSchoolId ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="mt-3 w-full rounded-sm"
-                  onClick={() => {
+          {filterCount > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("list_toolbar_active")}>
+              {selectedSchoolId && (
+                <ActiveChip
+                  label={selectedSchoolFilter?.name ?? t("select_school")}
+                  removeLabel={t("students_all_schools")}
+                  onRemove={() => {
                     setSelectedSchoolFilter(null);
                     setSelectedSchoolId("");
                   }}
-                >
-                  {t("students_all_schools")}
-                </Button>
-              ) : null}
-            </div>
-
-            <div className="border-t border-line pt-5">
-              <p className="mb-2 text-xs font-semibold text-ink-700">{t("accounts_th_status")}</p>
-              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)}>
-                <SelectTrigger
-                  aria-label={t("accounts_status_placeholder")}
-                  className="h-10 w-full rounded-sm bg-surface text-xs"
-                >
-                  <SelectValue placeholder={t("accounts_status_placeholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("accounts_status_all")}</SelectItem>
-                  <SelectItem value="active">{t("status_label_active")}</SelectItem>
-                  <SelectItem value="deactivated">{t("status_label_inactive")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <p className="mb-2 text-xs font-semibold text-ink-700">
-                {lang === "en" ? "Search student" : "Cari siswa"}
-              </p>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-                <Input
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder={t("students_search_placeholder")}
-                  className="h-10 w-full rounded-sm bg-surface pl-9 text-xs"
                 />
-              </div>
+              )}
+              {statusFilter !== "all" && (
+                <ActiveChip
+                  label={`${t("accounts_th_status")}: ${statusOptions.find((o) => o.value === statusFilter)?.label}`}
+                  removeLabel={`${t("list_toolbar_remove")}: ${t("accounts_th_status")}`}
+                  onRemove={() => setStatusFilter("all")}
+                />
+              )}
+              <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
             </div>
-          </div>
-        </aside>
+          )}
+        </div>
 
-        <section aria-label={rosterLabel} className="min-w-0 px-5 py-6 md:px-7">
-          <div className="border-b border-line pb-4">
-            <h2 className="text-xl font-bold tracking-[-0.025em] text-ink-900">
-              {rosterLabel}
-            </h2>
-            <p className="mt-1 text-xs leading-5 text-ink-500">{rosterDescription}</p>
-          </div>
-
-          <div className="mb-7 mt-6 grid overflow-hidden rounded-[16px] border border-line bg-surface sm:grid-cols-3">
-            {[
-              [stats.total, t("accounts_stat_total")],
-              [stats.active, t("status_label_active")],
-              [stats.deactivated, t("status_label_inactive")],
-            ].map(([value, label], index) => (
-              <div
-                key={String(label)}
-                className={cn(
-                  "flex min-h-24 items-center gap-3 px-5 py-4",
-                  index > 0 && "border-t border-line sm:border-l sm:border-t-0",
-                )}
-              >
-                <strong className="text-3xl font-bold tracking-[-0.04em] text-ink-900">
-                  {value}
-                </strong>
-                <span className="text-xs leading-4 text-ink-500">{label}</span>
+        <DataTable
+          columns={columns}
+          rows={accumulated}
+          rowKey={(s) => s.id}
+          empty={tableEmpty}
+          surface="plain"
+          data-testid="school-students-table"
+          footer={
+            nextCursor ? (
+              <div className="border-t border-line px-4 py-3 text-center">
+                <Button variant="outline" size="sm" onClick={handleLoadMore} disabled={query.isFetching}>
+                  {query.isFetching ? t("sys_loading") : t("load_more")}
+                </Button>
               </div>
-            ))}
-          </div>
-
-          <div className="border-y border-line">
-            <DataTable
-              columns={columns}
-              rows={accumulated}
-              rowKey={(s) => s.id}
-              empty={tableEmpty}
-              surface="plain"
-              data-testid="school-students-table"
-              footer={
-                nextCursor ? (
-                  <div className="border-t border-line px-4 py-3 text-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="rounded-sm"
-                      onClick={handleLoadMore}
-                      disabled={query.isFetching}
-                    >
-                      {query.isFetching ? t("sys_loading") : t("load_more")}
-                    </Button>
-                  </div>
-                ) : undefined
-              }
-            />
-          </div>
-        </section>
-      </div>
+            ) : undefined
+          }
+        />
+      </section>
 
       <BulkImportModal open={bulkImportOpen} onOpenChange={setBulkImportOpen} allowExplicitPassword={canManageAllStudents} />
 
@@ -730,12 +657,12 @@ export default function SchoolStudentsPage() {
       <Dialog open={registerOpen} onOpenChange={(open) => {
         if (!open) handleCloseRegister();
       }}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-w-[740px]">
           {registerResult ? (
             /* Credential panel — one-time display */
             <>
               <DialogHeader>
-                <DialogTitle className="font-serif">
+                <DialogTitle>
                   {t("students_credential_display")}
                 </DialogTitle>
                 <DialogDescription>
@@ -810,7 +737,7 @@ export default function SchoolStudentsPage() {
             /* Registration form */
             <>
               <DialogHeader>
-                <DialogTitle className="font-serif text-xl">
+                <DialogTitle>
                   {t("students_register_title")}
                 </DialogTitle>
                 <DialogDescription>
@@ -1152,12 +1079,12 @@ export default function SchoolStudentsPage() {
           if (!open) handleCloseReissue();
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[480px]">
           {reissueResult ? (
             /* Credential panel — one-time display */
             <>
               <DialogHeader>
-                <DialogTitle className="font-serif">
+                <DialogTitle>
                   {t("students_credential_display")}
                 </DialogTitle>
                 <DialogDescription>
@@ -1230,7 +1157,7 @@ export default function SchoolStudentsPage() {
             /* Confirmation step */
             <>
               <DialogHeader>
-                <DialogTitle className="font-serif">
+                <DialogTitle>
                   {t("students_credential_reissue")}
                 </DialogTitle>
                 <DialogDescription>
@@ -1263,9 +1190,9 @@ export default function SchoolStudentsPage() {
           if (!open) handleCloseSetPassword();
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[480px]">
           <DialogHeader>
-            <DialogTitle className="font-serif">
+            <DialogTitle>
               {t("students_set_password")}
             </DialogTitle>
           </DialogHeader>

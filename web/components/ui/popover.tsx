@@ -19,7 +19,7 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        "z-[var(--z-popover)] w-[min(var(--container-popover),90vw)] rounded-lg border bg-popover p-4 text-popover-foreground shadow-pop outline-none duration-300 ease-spring data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+        "z-[var(--z-popover)] w-[min(var(--container-popover),90vw)] rounded-[20px] border border-line bg-popover p-4 text-popover-foreground shadow-pop outline-none duration-300 ease-spring data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
         className
       )}
       {...props}

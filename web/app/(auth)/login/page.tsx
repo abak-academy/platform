@@ -55,23 +55,10 @@ function LoginForm() {
   const loading = login.isPending;
 
   return (
-    <div className="w-full max-w-[372px]">
-      <div className="mb-7">
-        <h2 className="font-serif text-[27px] font-bold leading-tight tracking-[-0.01em] text-ink-900 [text-wrap:balance]">
-          {t("login_title")}
-        </h2>
-        {/* Body copy sits at ink-600: ink-500/400 render below the 4.5:1 AA floor
-            on this surface, so each pair is separated by size, not by contrast. */}
-        <p className="mt-3 text-[14.5px] font-semibold leading-[1.4] text-ink-900">
-          {t("login_lede")}
-        </p>
-        <p className="mt-1 text-[13.5px] leading-[1.55] text-ink-600">
-          {t("login_subtitle")}
-        </p>
-        <p className="mt-3 text-[12.5px] leading-[1.55] text-ink-600">
-          <span className="font-semibold">{t("login_lede_local")}</span>{" "}
-          {t("login_subtitle_local")}
-        </p>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2">
+        <h1 className="font-[family-name:var(--font-display)] text-[36px] font-extrabold leading-[1.05] tracking-[-0.04em] text-ink-900">{t("login_heading")}</h1>
+        <p className="text-ink-600">{t("login_intro")}</p>
       </div>
 
       <form onSubmit={onSubmit} noValidate>
@@ -150,7 +137,7 @@ function LoginForm() {
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-[13px] text-ink-500">
+      <p className="mt-6 text-center text-[13px] text-ink-600">
         {t("login_no_account")}{" "}
         <button
           type="button"
@@ -167,7 +154,7 @@ function LoginForm() {
         const promptKey = affiliateOpen ? "login_affiliate_prompt" : "login_partner_prompt";
         const linkKey = affiliateOpen ? "login_affiliate_link" : "login_partner_link";
         return (
-          <p className="mt-2 text-center text-[13px] text-ink-500">
+          <p className="mt-2 text-center text-[13px] text-ink-600">
             {t(promptKey)}{" "}
             <button
               type="button"
@@ -182,9 +169,9 @@ function LoginForm() {
 
       {googleSignInAvailable && (
         <>
-          <div className="mt-6 mb-5 flex items-center gap-3">
+          <div className="flex items-center gap-3 text-xs text-ink-600">
             <div className="h-px flex-1 bg-line" />
-            <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
+            <span>{t("auth_or_divider")}</span>
             <div className="h-px flex-1 bg-line" />
           </div>
           <GoogleSignInButton text="signin_with" next={next} />
@@ -196,7 +183,7 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <React.Suspense fallback={<div className="w-full max-w-[372px]" />}>
+    <React.Suspense fallback={<div />}>
       <LoginForm />
     </React.Suspense>
   );

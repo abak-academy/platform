@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 
 import SessionResultPage from "./page";
 import type { SessionResult } from "@/lib/types";
@@ -539,5 +539,68 @@ describe("SessionResultPage", () => {
     expect(
       screen.getByText('["true","false","true",""]')
     ).toBeInTheDocument();
+  });
+
+  it("shows the score hero with rank and counts, and the actions in the page head", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_only",
+        score: 80,
+        correct_count: 8,
+        wrong_count: 1,
+        empty_count: 1,
+        rank: 3,
+        certificate_url: "https://cdn/cert.pdf",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    const hero = screen.getByTestId("score-hero");
+    expect(hero).toHaveTextContent("#3");
+    expect(hero).toHaveTextContent("8");
+    expect(hero.querySelector("[role='img']")).toHaveAttribute("aria-label", "Skor Anda 80");
+    const head = screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+    expect(head).toContainElement(screen.getByRole("link", { name: "Peringkat" }));
+    expect(head).toContainElement(screen.getByRole("link", { name: "Sertifikat" }));
+  });
+
+  it("shows a neutral Kosong badge, not Salah, for an unanswered question", () => {
+    resultState = {
+      data: {
+        state: "result", result_config: "score_pembahasan", score: 0, correct_count: 0, wrong_count: 0, empty_count: 1, rank: 1,
+        breakdown: [],
+        pembahasan: [{ question_id: "q-e", body: "Kosong?", format: "mcq", your_answer: null, correct_answer: "a", is_correct: false }],
+      },
+      isLoading: false, isError: false, error: null, refetch: vi.fn(),
+    };
+    const { container } = render(<SessionResultPage />);
+    const summary = container.querySelector("details summary") as HTMLElement;
+    expect(within(summary).getByText("Kosong")).toHaveAttribute("data-variant", "mute");
+    expect(within(summary).queryByText("Salah")).not.toBeInTheDocument();
+  });
+
+  it("draws the score ring only when a section max is known", () => {
+    const base = { state: "result", result_config: "score_pembahasan", score: 650, correct_count: 1, wrong_count: 0, empty_count: 0, rank: 1, pembahasan: [] };
+    resultState = { ...resultState, isLoading: false, data: { ...base, breakdown: [] } as unknown as SessionResult };
+    const { unmount } = render(<SessionResultPage />);
+    expect(screen.getByTestId("score-ring")).toHaveAttribute("data-ring", "false");
+    expect(screen.getByText("650")).toBeInTheDocument();
+    unmount();
+    resultState = { ...resultState, data: { ...base, score: 15, breakdown: [{ test_id: "t", title: "Listening", score: 15, max: 20 }] } as unknown as SessionResult };
+    render(<SessionResultPage />);
+    expect(screen.getByTestId("score-ring")).toHaveAttribute("data-ring", "true");
+  });
+
+  it("titles the page with the student-facing key, not the admin tab label", () => {
+    resultState = {
+      ...resultState, isLoading: false,
+      data: { state: "result", result_config: "score_only", score: 80, correct_count: 8, wrong_count: 1, empty_count: 1, rank: 3 },
+    };
+    render(<SessionResultPage />);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Hasil Ujian");
   });
 });

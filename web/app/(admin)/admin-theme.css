@@ -51,114 +51,142 @@
   margin: 0;
 }
 
-/* Component classes */
-.admin-shell .md-card-elevated {
-  background-color: var(--md-sys-color-surface);
-  border-radius: var(--r-lg);
-  box-shadow: var(--md-sys-elevation-1);
-  padding: 24px;
-  color: var(--md-sys-color-on-surface);
-  transition: box-shadow 0.3s ease, background-color 0.3s ease;
-}
-.admin-shell .md-card-elevated:hover { box-shadow: var(--md-sys-elevation-2); }
-
-.admin-shell .md-card-filled {
-  background-color: var(--md-sys-color-surface);
-  border-radius: var(--r-lg);
-  padding: 24px;
-  color: var(--md-sys-color-on-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
-}
-
+/* Component classes. Values mirror the redesign prototype: .card, .ab-btn, .chip, .fchip, .lchip */
+.admin-shell .md-card-elevated,
+.admin-shell .md-card-filled,
 .admin-shell .md-card-outlined {
   background-color: var(--md-sys-color-surface);
-  border: 1px solid var(--md-sys-color-outline-variant);
-  border-radius: var(--r-lg);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   padding: 24px;
   color: var(--md-sys-color-on-surface);
-  transition: background-color 0.3s ease, border-color 0.3s ease;
+  min-width: 0;
 }
+.admin-shell .md-card-flush {
+  background-color: var(--md-sys-color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  padding: 0;
+  overflow: hidden;
+  min-width: 0;
+  color: var(--md-sys-color-on-surface);
+}
+
+.admin-shell .md-btn-filled,
+.admin-shell .md-btn-tonal,
+.admin-shell .md-btn-outlined {
+  height: var(--spacing-control-md);
+  padding: 0 18px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid transparent;
+  font-family: var(--md-sys-typescale-display);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform .25s var(--ease-spring), background-color .15s, box-shadow .2s, border-color .15s, color .15s;
+}
+.admin-shell .md-btn-filled:active,
+.admin-shell .md-btn-tonal:active,
+.admin-shell .md-btn-outlined:active { transform: scale(.97); }
+.admin-shell .md-btn-filled:disabled,
+.admin-shell .md-btn-tonal:disabled,
+.admin-shell .md-btn-outlined:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
 
 .admin-shell .md-btn-filled {
-  height: 48px;
-  padding: 0 28px;
-  border-radius: var(--r-md);
-  background-color: var(--md-sys-color-primary);
-  color: var(--md-sys-color-on-primary);
-  font-size: 14px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s ease;
-  box-shadow: var(--shadow-brand);
+  background-color: var(--color-ember-600);
+  color: var(--color-on-ember);
+  box-shadow: var(--shadow-cta);
 }
-.admin-shell .md-btn-filled:not(:disabled):hover { transform: translateY(-2px); box-shadow: var(--shadow-brand); }
+.admin-shell .md-btn-filled:not(:disabled):hover { transform: translateY(-2px); box-shadow: var(--shadow-cta-hover); }
 
-.admin-shell .md-btn-tonal {
-  height: 48px;
-  padding: 0 28px;
-  border-radius: var(--r-md);
-  background-color: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-primary);
-  font-size: 14px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s ease;
-}
-.admin-shell .md-btn-tonal:not(:disabled):hover { background-color: var(--md-sys-color-outline-variant); }
-
+.admin-shell .md-btn-tonal,
 .admin-shell .md-btn-outlined {
-  height: 48px;
-  padding: 0 28px;
-  border-radius: var(--r-md);
   background-color: var(--md-sys-color-surface);
-  color: var(--md-sys-color-primary);
-  border: 1px solid var(--md-sys-color-outline);
-  font-size: 14px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: all 0.2s ease;
+  color: var(--color-ink-900);
+  border-color: var(--color-line);
 }
-.admin-shell .md-btn-outlined:not(:disabled):hover { border-color: var(--md-sys-color-primary); }
+.admin-shell .md-btn-tonal:not(:disabled):hover,
+.admin-shell .md-btn-outlined:not(:disabled):hover { border-color: var(--color-ink-900); }
 
 .admin-shell .md-icon-btn {
-  width: 48px;
-  height: 48px;
+  width: var(--spacing-control-md);
+  height: var(--spacing-control-md);
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--md-sys-color-on-surface-variant);
-  background-color: var(--md-sys-color-surface);
-  transition: all 0.2s ease;
-}
-.admin-shell .md-icon-btn:not(:disabled):hover { color: var(--md-sys-color-primary); box-shadow: var(--md-sys-elevation-1); }
-
-.admin-shell .md-chip {
-  height: 32px;
-  padding: 0 16px;
-  border-radius: var(--r-md);
-  background-color: var(--md-sys-color-surface-variant);
-  color: var(--md-sys-color-on-surface-variant);
+  border: 1.5px solid var(--color-line);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  justify-content: center;
+  color: var(--color-ink-700);
+  background-color: var(--md-sys-color-surface);
+  transition: transform .25s var(--ease-spring), border-color .15s;
+}
+.admin-shell .md-icon-btn:not(:disabled):hover { border-color: var(--color-ink-900); transform: translateY(-1px); }
+
+/* Status chip (.chip): neutral by default, tone via md-chip-primary or Badge */
+.admin-shell .md-chip {
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-mute-50);
+  color: var(--color-mute-700);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--md-sys-typescale-display);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .admin-shell .md-chip-primary {
-  background-color: var(--md-sys-color-primary-container);
-  color: var(--md-sys-color-primary);
+  background-color: var(--color-brand-50);
+  color: var(--color-brand-ink);
+}
+
+/* Toggle filter chip (.fchip) */
+.admin-shell .md-fchip {
+  height: var(--spacing-control-sm);
+  padding: 0 14px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--color-line);
+  background-color: var(--md-sys-color-surface);
+  color: var(--color-ink-700);
+  font-family: var(--md-sys-typescale-display);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform .25s var(--ease-spring), background-color .15s, border-color .15s;
+}
+.admin-shell .md-fchip:hover { transform: translateY(-2px); }
+.admin-shell .md-fchip.on,
+.admin-shell .md-fchip[aria-pressed="true"] {
+  background-color: var(--color-brand-600);
+  border-color: var(--color-brand-600);
+  color: var(--color-on-brand);
+}
+
+/* Active filter chip (.lchip) */
+.admin-shell .md-lchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 4px 0 12px;
+  border-radius: var(--radius-pill);
+  background-color: var(--color-brand-50);
+  color: var(--color-brand-ink);
+  font-size: 12.5px;
 }
 
 .admin-shell .md-avatar {
@@ -176,11 +204,13 @@
 }
 
 /* Typography utility classes */
-.admin-shell .text-headline { font-size: 34px; line-height: 42px; font-weight: 700; color: var(--md-sys-color-on-surface); }
-.admin-shell .text-title-large { font-size: 24px; line-height: 32px; font-weight: 700; color: var(--md-sys-color-on-surface); }
-.admin-shell .text-title-medium { font-size: 18px; line-height: 26px; font-weight: 700; color: var(--md-sys-color-on-surface); }
+/* Mapped onto the prototype type scale (type-h1 / type-h2 / type-h3 / type-label-sm) */
+.admin-shell .text-headline { font-family: var(--md-sys-typescale-display); font-size: 30px; line-height: 1.15; font-weight: 800; letter-spacing: -0.035em; color: var(--md-sys-color-on-surface); }
+.admin-shell .text-title-large { font-family: var(--md-sys-typescale-display); font-size: 20px; line-height: 1.3; font-weight: 800; letter-spacing: -0.02em; color: var(--md-sys-color-on-surface); }
+.admin-shell .text-title-medium { font-family: var(--md-sys-typescale-display); font-size: 16px; line-height: 1.35; font-weight: 800; letter-spacing: -0.01em; color: var(--md-sys-color-on-surface); }
 .admin-shell .text-body { font-size: 15px; line-height: 24px; color: var(--md-sys-color-on-surface-variant); }
-.admin-shell .text-label { font-size: 13px; line-height: 20px; font-weight: 600; color: var(--md-sys-color-on-surface-variant); }
+.admin-shell .text-label { font-family: var(--md-sys-typescale-display); font-size: 13px; line-height: 18px; font-weight: 700; color: var(--md-sys-color-on-surface-variant); }
+@media (width < 680px) { .admin-shell .text-headline { font-size: 24px; } }
 .admin-shell .color-primary { color: var(--md-sys-color-primary); }
 .admin-shell .color-on-surface-variant { color: var(--md-sys-color-on-surface-variant); }
 .admin-shell .color-error { color: var(--md-sys-color-error); }

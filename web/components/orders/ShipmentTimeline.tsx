@@ -28,8 +28,8 @@ export function ShipmentTimeline({ events }: ShipmentTimelineProps) {
   );
 
   return (
-    <div className="mt-4 flex flex-col gap-2">
-      <h4 className="text-xs font-semibold uppercase tracking-[0.06em] text-ink-500">
+    <div className="mt-3 flex flex-col gap-2 rounded-2xl bg-surface-sunken p-3.5">
+      <h4 className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-600">
         {t("order_shipment_timeline_heading")}
       </h4>
       {/* Same rail as the order's status history directly above it: two lists
@@ -60,7 +60,7 @@ export function ShipmentTimeline({ events }: ShipmentTimelineProps) {
                 <span data-testid="shipment-event-status" className="text-ink-900">
                   {shipmentStatusLabel(ev.status, lang)}
                 </span>
-                <span className="shrink-0 text-ink-500">
+                <span className="shrink-0 text-ink-600">
                   {formatOccurredAt(ev.occurred_at, lang)}
                 </span>
               </div>

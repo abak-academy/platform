@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Package } from "lucide-react";
+import { Package, Plus, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminProducts,
@@ -16,42 +16,19 @@ import { ProductsToolbar, DEFAULT_PRODUCTS_QUERY, applyProductsQuery, productSto
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProductModal } from "@/components/admin/ProductModal";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, statusTone } from "@/components/ui/badge";
+import { DataTable, TableItem } from "@/components/ui/data-table";
+import { Switch } from "@/components/ui/switch";
+import { TableFooter } from "@/components/ui/table-footer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRupiah } from "@/lib/format";
 import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { writableProductTypes } from "@/lib/product-types";
 
-function typeBadgeClass(type: ProductType): string {
-  switch (type) {
-    case "book":
-      return "bg-amber-100 text-amber-800 border-amber-200";
-    case "merchandise":
-      return "bg-orange-100 text-orange-800 border-orange-200";
-    case "medal":
-      return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    case "course":
-      return "bg-green-100 text-green-800 border-green-200";
-    case "exam":
-      return "bg-blue-100 text-blue-800 border-blue-200";
-  }
-}
-
-function statusBadgeClass(status?: string): string {
-  switch (status) {
-    case "published":
-      return "bg-green-100 text-green-800 border-green-200";
-    case "draft":
-      return "bg-line-2 text-ink-700 border-line";
-    case "hidden":
-      return "bg-amber-100 text-amber-800 border-amber-200";
-    case "archived":
-      return "bg-red-100 text-red-800 border-red-200";
-    default:
-      return "bg-line-2 text-ink-700 border-line";
-  }
-}
+const TYPE_TONE: Record<ProductType, "ember" | "gold" | "teal" | "sky" | "mute"> = {
+  book: "gold", merchandise: "ember", medal: "gold", course: "teal", exam: "sky",
+};
 
 function formatStock(product: Product): string | number {
   return productStock(product) ?? "-";
@@ -172,15 +149,12 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
-        icon={Package}
         title={t("products_page_title")}
         description={t("products_page_description")}
-        actions={<Button onClick={openCreate}>{t("products_create")}</Button>}
+        actions={<Button variant="dark" onClick={openCreate}><Plus aria-hidden />{t("products_create")}</Button>}
       />
-
-      <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} />
 
       {isLoading && (
         <div className="space-y-2">
@@ -197,98 +171,81 @@ export default function ProductsPage() {
       )}
 
       {!isLoading && !isError && (
-        <div className="space-y-4">
-          <div className="overflow-x-auto md-card-outlined">
-            <table className="w-full text-sm">
-              <thead className="bg-muted">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium">{t("th_name")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("th_type")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("th_price")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("th_stock")}</th>
-                  <th className="px-4 py-3 text-left font-medium">{t("th_status")}</th>
-                  <th className="px-4 py-3 text-right font-medium">{t("th_actions")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((product) => (
-                  <tr
-                    key={product.id}
-                    className="border-t transition-colors hover:bg-muted/40"
-                  >
-                    <td className="px-4 py-3 font-medium">{product.name}</td>
-                    <td className="px-4 py-3">
-                      <Badge className={typeBadgeClass(product.type)}>{filterLabel(product.type)}</Badge>
-                    </td>
-                    <td className="px-4 py-3">{formatRupiah(product.price)}</td>
-                    <td className="px-4 py-3">{formatStock(product)}</td>
-                    <td className="px-4 py-3">
-                      <Badge className={statusBadgeClass(product.status)}>{product.status ?? "draft"}</Badge>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {product.status !== "published" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handlePublish(product.id)}
-                            disabled={publish.isPending}
-                          >
-                            {t("action_publish")}
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
-                          {t("action_edit")}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDelete(product.id)}
-                          disabled={remove.isPending}
-                        >
-                          {t("action_delete")}
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
-                      {t("empty_products")}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-4 px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-ink-600">{t("products_page_size")}</span>
-              <Select value={String(query.limit)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
-                <SelectTrigger className="w-24" aria-label={t("products_page_size")}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-wrap items-center gap-4">
-              <p className="text-xs tabular-nums text-ink-600">
-                {t("products_showing")} {firstRow}-{lastRow} {t("products_of_total")} {filtered.length}
-              </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" disabled={currentPage === 1}
-                  onClick={() => setPageIndex(currentPage - 1)}>
-                  {t("pagination_prev")}
+        <div className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
+          <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} />
+          <DataTable
+            surface="plain"
+            rows={rows}
+            rowKey={(product) => product.id}
+            empty={t("empty_products")}
+            columns={[
+              {
+                key: "name",
+                header: t("th_name"),
+                strong: true,
+                cell: (product) => (
+                  <TableItem
+                    thumb={<span className="grid size-[38px] place-items-center rounded-xl bg-ember-50 text-ember-700"><Package className="size-[18px]" aria-hidden /></span>}
+                    title={product.name}
+                  />
+                ),
+              },
+              { key: "type", header: t("th_type"), cell: (product) => <Badge variant={TYPE_TONE[product.type]}>{filterLabel(product.type)}</Badge> },
+              { key: "price", header: t("th_price"), align: "right", className: "tabular-nums", cell: (product) => formatRupiah(product.price) },
+              { key: "stock", header: t("th_stock"), cell: (product) => formatStock(product) },
+              {
+                key: "status",
+                header: t("th_status"),
+                cell: (product) => {
+                  const status = product.status ?? "draft";
+                  return (
+                    <span className="inline-flex items-center gap-2">
+                      <Switch
+                        size="sm"
+                        checked={status === "published"}
+                        disabled={status === "published" || publish.isPending}
+                        aria-label={`${t("action_publish")} ${product.name}`}
+                        onCheckedChange={() => handlePublish(product.id)}
+                      />
+                      {status !== "published" && status !== "draft" && <Badge variant={statusTone(status)}>{t(`products_status_${status}`)}</Badge>}
+                    </span>
+                  );
+                },
+              },
+            ]}
+            rowActions={(product) => (
+              <div className="flex items-center justify-end gap-1.5">
+                <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
+                  {t("action_edit")}
                 </Button>
-                <Button variant="outline" size="sm" disabled={currentPage === lastPage}
-                  onClick={() => setPageIndex(currentPage + 1)}>
-                  {t("pagination_next")}
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={t("action_delete")}
+                  onClick={() => handleDelete(product.id)}
+                  disabled={remove.isPending}
+                >
+                  <Trash2 aria-hidden />
                 </Button>
               </div>
-            </div>
-          </div>
+            )}
+            footer={
+              <TableFooter
+                summary={`${t("products_showing")} ${firstRow}-${lastRow} ${t("products_of_total")} ${filtered.length}`}
+                onPrev={() => setPageIndex(currentPage - 1)}
+                onNext={() => setPageIndex(currentPage + 1)}
+                hasPrev={currentPage > 1}
+                hasNext={currentPage < lastPage}
+              >
+                <Select value={String(query.limit)} onValueChange={(v) => changeQuery({ ...query, limit: Number(v) as 20 | 50 | 100 })}>
+                  <SelectTrigger size="sm" className="w-24" aria-label={t("products_page_size")}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {[20, 50, 100].map((limit) => <SelectItem key={limit} value={String(limit)}>{limit}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </TableFooter>
+            }
+          />
         </div>
       )}
 

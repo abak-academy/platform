@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { API_BASE, authFetch, ApiError } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
 import { examKeys } from "@/lib/hooks/exam";
@@ -77,6 +77,7 @@ export function useExams(filter?: AdminExamsFilters) {
     queryKey: adminExamsKeys.list(filter),
     queryFn: () =>
       authFetch<{ data: ExamListItem[]; next_cursor?: string }>(buildListPath(filter)),
+    placeholderData: keepPreviousData,
   });
 }
 

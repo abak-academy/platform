@@ -149,12 +149,13 @@ describe("SystemAccountsPage", () => {
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows stat cards with total, active, deactivated counts", async () => {
+  it("shows the row count in the toolbar", async () => {
     render(<SystemAccountsPage />);
 
     await waitFor(() => {
-      const threes = screen.getAllByText("3");
-      expect(threes.length).toBeGreaterThanOrEqual(1);
+      const count = screen.getByText(/^3 /);
+      expect(count).toHaveAttribute("aria-live", "polite");
+      expect(count.className).toContain("uppercase");
     });
   });
 

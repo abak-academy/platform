@@ -218,6 +218,25 @@ describe("ProfilePage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("renders the notification toggles as labelled switches that flip on click", async () => {
+    renderPage();
+    const email = await screen.findByRole("switch", { name: /notifikasi email|email notif/i });
+    const before = email.getAttribute("aria-checked");
+    fireEvent.click(email);
+    expect(email.getAttribute("aria-checked")).not.toBe(before);
+    expect(screen.getAllByRole("switch")).toHaveLength(3);
+  });
+
+  it("puts the identity card (edit + change password) before the form, and the password dialog opens without edit mode", async () => {
+    renderPage();
+    const nameInput = await screen.findByLabelText(/nama/i, { selector: "input" });
+    const edit = screen.getByRole("button", { name: /ubah profil|edit profile/i });
+    expect(edit.compareDocumentPosition(nameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /ubah kata sandi|change password/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
   it("entering edit mode unlocks fields and does not save on its own", async () => {
     renderPage();
 

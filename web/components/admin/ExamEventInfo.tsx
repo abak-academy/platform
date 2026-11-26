@@ -18,19 +18,19 @@ export function ExamWhatsAppCard({ url, canManage = true }: { url?: string | nul
   const { t } = useTranslation();
   const validUrl = url && isWhatsAppGroupUrl(url) ? url : null;
   return (
-    <section className="md-card-outlined min-w-0 space-y-3 p-6" aria-labelledby="exam-wa-card-title">
+    <section className="md-card-outlined min-w-0 space-y-3" aria-labelledby="exam-wa-card-title">
       <div className="flex items-start gap-3">
-        <Users className="mt-0.5 size-5 shrink-0 text-ink-500" />
+        <Users className="mt-0.5 size-5 shrink-0 text-ink-600" />
         <div>
-          <h2 id="exam-wa-card-title" className="text-title-medium font-semibold">
+          <h2 id="exam-wa-card-title" className="type-h2">
             {t("exam_event_wa_card_title")}
           </h2>
-          <p className="text-sm text-ink-500">{t("exam_event_wa_card_subtitle")}</p>
+          <p className="text-sm text-ink-600">{t("exam_event_wa_card_subtitle")}</p>
         </div>
       </div>
       {validUrl ? (
         <div className="space-y-1 text-sm">
-          <span className="inline-block rounded-full bg-success-bg px-2 py-0.5 text-xs font-medium text-success">
+          <span className="inline-block rounded-full bg-teal-50 px-2 py-0.5 text-xs font-bold text-teal-700">
             {t("exam_event_wa_available")}
           </span>
           <a
@@ -41,15 +41,15 @@ export function ExamWhatsAppCard({ url, canManage = true }: { url?: string | nul
           >
             {validUrl} ↗
           </a>
-          <p className="text-ink-500">{t("exam_event_wa_available_hint")}</p>
+          <p className="text-ink-600">{t("exam_event_wa_available_hint")}</p>
         </div>
       ) : (
         <div className="space-y-1 text-sm">
           <p className="font-semibold">{t("exam_event_wa_missing")}</p>
-          <p className="text-ink-500">{t("exam_event_wa_missing_hint")}</p>
+          <p className="text-ink-600">{t("exam_event_wa_missing_hint")}</p>
         </div>
       )}
-      {canManage && <p className="border-t border-line pt-3 text-xs text-ink-500">{t("exam_event_wa_manage")}</p>}
+      {canManage && <p className="border-t border-line pt-3 text-xs text-ink-600">{t("exam_event_wa_manage")}</p>}
     </section>
   );
 }
@@ -125,8 +125,8 @@ export function ExamAdditionalRulesCard({
   const formOpen = enabled && showForm;
 
   return (
-    <section className="md-card-outlined min-w-0 space-y-3 p-4" aria-labelledby="exam-rules-card-title">
-      <h3 id="exam-rules-card-title" className="text-title-medium font-semibold">
+    <section className="md-card-outlined min-w-0 space-y-3" aria-labelledby="exam-rules-card-title">
+      <h3 id="exam-rules-card-title" className="type-h2">
         {t("exam_event_rules_title")}
       </h3>
 
@@ -134,7 +134,7 @@ export function ExamAdditionalRulesCard({
 
       {!showForm ? (
         <div className="flex items-start gap-3 text-sm">
-          <BookOpen className="mt-0.5 size-4 shrink-0 text-ink-500" />
+          <BookOpen className="mt-0.5 size-4 shrink-0 text-ink-600" />
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex items-center justify-between gap-2">
               <strong>{t("exam_event_rules_saved_title")}</strong>
@@ -186,7 +186,7 @@ export function ExamAdditionalRulesCard({
           </label>
           {formOpen && (
             <div className="space-y-3">
-              <p className="text-xs text-ink-500">{t("exam_event_rules_fields_hint")}</p>
+              <p className="text-xs text-ink-600">{t("exam_event_rules_fields_hint")}</p>
               <div className="grid gap-2">
                 <Label htmlFor="exam-rules-note">{t("exam_event_rules_note_label")}</Label>
                 <textarea
@@ -198,7 +198,7 @@ export function ExamAdditionalRulesCard({
                   rows={3}
                   placeholder={t("exam_event_rules_note_placeholder")}
                   disabled={update.isPending}
-                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-brand-300/50 disabled:pointer-events-none disabled:opacity-50"
+                  className="flex w-full rounded-md border-[1.5px] border-line bg-surface px-3.5 py-3 text-sm outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:pointer-events-none disabled:opacity-45"
                 />
               </div>
               <div className="grid gap-2">
@@ -221,19 +221,19 @@ export function ExamAdditionalRulesCard({
           )}
           {(enabled || hasStored) && (
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" size="sm" className="rounded-full" disabled={update.isPending}>
+              <Button type="submit" size="sm" disabled={update.isPending}>
                 {update.isPending ? t("saving") : t("exam_event_rules_save")}
               </Button>
-              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={handleCancel} disabled={update.isPending}>
+              <Button type="button" variant="outline" size="sm" onClick={handleCancel} disabled={update.isPending}>
                 {t("cancel")}
               </Button>
             </div>
           )}
-          <p className="text-xs text-ink-500">{t("exam_event_rules_separate_save")}</p>
+          <p className="text-xs text-ink-600">{t("exam_event_rules_separate_save")}</p>
         </form>
       )}
 
-      {footnote && <p className="border-t border-line pt-3 text-xs text-ink-500">{footnote}</p>}
+      {footnote && <p className="border-t border-line pt-3 text-xs text-ink-600">{footnote}</p>}
     </section>
   );
 }

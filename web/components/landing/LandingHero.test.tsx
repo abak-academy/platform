@@ -42,7 +42,7 @@ describe("LandingHero", () => {
     const link = document.querySelector('link[rel="preload"][as="image"]') as HTMLLinkElement;
     expect(link.getAttribute("href")).toBe("/landing/hero-award.webp");
     expect(link.getAttribute("fetchpriority")).toBe("high");
-    expect(container.querySelector("[data-hero-content] h1")!.className).toContain("min-h-[3em]");
+    expect(container.querySelector("[data-hero-content] h1")!.className).toContain("min-h-[3.3em]");
   });
 });
 

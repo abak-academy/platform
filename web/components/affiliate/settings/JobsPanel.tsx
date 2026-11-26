@@ -31,7 +31,7 @@ export function JobsPanel() {
   };
 
   return (
-    <section className="md-card-outlined space-y-3 p-5">
+    <section className="md-card-outlined space-y-3 p-6">
       <div>
         <h2 className="font-semibold text-ink-900">{t("admin_aff_job_title")}</h2>
         <p className="text-sm text-ink-500">{t("admin_aff_job_hint")}</p>
