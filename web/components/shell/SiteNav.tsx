@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { ArrowUpRight, Menu, X } from "lucide-react";
 import { AbakLogo } from "@/components/brand/AbakLogo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
@@ -77,15 +77,30 @@ function AccountControl({ light }: { light: boolean }) {
   return (
     <div
       className={cn(
-        "inline-flex h-10 items-center overflow-hidden rounded-[var(--radius-pill)] border text-sm font-semibold",
-        light ? "border-white/40 text-white" : "border-line text-ink-900",
+        "inline-flex h-11 items-center rounded-[var(--radius-pill)] border p-1",
+        light ? "border-white/30 bg-white/10" : "border-line bg-paper/70",
       )}
     >
-      <Link href="/login" className="px-4 py-2.5 hover:underline">
+      <Link
+        href="/login"
+        className={cn(
+          "type-label inline-flex h-full items-center rounded-[var(--radius-pill)] px-3.5 transition-colors",
+          light ? "text-white hover:bg-white/15" : "text-ink-700 hover:bg-surface-sunken hover:text-ink-900",
+        )}
+      >
         {t("pub_nav_login")}
       </Link>
-      <Link href="/register" className="bg-ember-600 px-4 py-2.5 text-on-ember hover:bg-ember-700">
+      <Link
+        href="/register"
+        className="type-label group inline-flex h-full items-center gap-2 rounded-[var(--radius-pill)] bg-ember-600 pl-3.5 pr-1 text-on-ember shadow-[var(--shadow-cta)] transition-colors hover:bg-ember-500"
+      >
         {t("pub_nav_signup")}
+        <span
+          aria-hidden
+          className="grid size-7 place-items-center rounded-full bg-white/20 transition-transform duration-300 group-hover:rotate-45"
+        >
+          <ArrowUpRight className="size-4" />
+        </span>
       </Link>
     </div>
   );
@@ -141,15 +156,25 @@ export function SiteNav() {
       <nav
         aria-label={t("pub_nav_label")}
         className={cn(
-          "flex w-full max-w-[var(--container-public)] items-center gap-3 rounded-[var(--radius-pill)] px-4 py-2 transition-colors",
-          top ? "bg-transparent text-white" : "border border-line bg-surface/80 text-ink-900 backdrop-blur-md",
+          "flex w-full items-center gap-5 rounded-[var(--radius-pill)] border transition-[max-width,padding,background-color,box-shadow] duration-500",
+          top
+            ? "max-w-[var(--container-public)] border-transparent bg-transparent px-0 py-3 text-white"
+            : "max-w-[1040px] border-line bg-paper/80 py-1.5 pl-[18px] pr-1.5 text-ink-900 shadow-[var(--shadow-pop)] backdrop-blur-xl backdrop-saturate-150",
         )}
       >
-        <Link href="/" aria-label={t("pub_nav_home")} className="flex items-center gap-2 font-semibold">
-          <AbakLogo size={32} />
+        <Link href="/" aria-label={t("pub_nav_home")} className="flex shrink-0 items-center gap-2.5">
+          <AbakLogo size={34} />
+          <span aria-hidden className="hidden leading-none min-[421px]:block">
+            <b className={cn("block font-serif text-[20px] font-extrabold tracking-[-0.03em]", top ? "text-white" : "text-ink-900")}>
+              abak
+            </b>
+            <small className={cn("mt-1 block font-mono text-[8.5px] font-semibold uppercase tracking-[0.42em]", top ? "text-white/70" : "text-ink-600")}>
+              academy
+            </small>
+          </span>
         </Link>
 
-        <ul className="ml-4 hidden items-center gap-1 md:flex">
+        <ul className="mx-auto hidden items-center gap-0.5 md:flex">
           {LINKS.map((l) => {
             const active = isActive(pathname, l.match);
             return (
@@ -158,19 +183,25 @@ export function SiteNav() {
                   href={l.href}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] px-3 py-2 text-sm font-semibold",
-                    active ? (top ? "text-white" : "text-brand-ink") : top ? "text-white/80 hover:text-white" : "text-ink-600 hover:text-ink-900",
+                    "type-label group relative inline-flex items-center rounded-[var(--radius-pill)] px-3.5 py-2",
+                    active ? (top ? "text-white" : "text-brand-ink") : top ? "text-white/85 hover:text-white" : "text-ink-700 hover:text-ink-900",
                   )}
                 >
-                  {active && <span aria-hidden className="size-1.5 rounded-full bg-ember-600" />}
                   {t(l.key)}
+                  <span
+                    aria-hidden
+                    className={cn(
+                      "absolute bottom-0.5 left-1/2 size-[5px] -translate-x-1/2 rounded-full transition-transform duration-300",
+                      active ? "scale-100 bg-ember-600" : "scale-0 bg-line-strong group-hover:scale-100",
+                    )}
+                  />
                 </Link>
               </li>
             );
           })}
         </ul>
 
-        <div className="ml-auto hidden items-center gap-3 md:flex">
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
           <LanguageToggle onDark={top} className={top ? "border-white/40 text-white" : undefined} />
           <AccountControl light={top} />
         </div>
