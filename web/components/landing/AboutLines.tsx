@@ -11,7 +11,7 @@ export function AboutLines() {
         <span className="block">{t("land_about_2")}</span>
         <span className="block">{t("land_about_3")}</span>
       </p>
-      <p className="type-overline mt-8 text-ink-500">{t("land_about_sig")}</p>
+      <p className="type-overline mt-8 text-ink-600">{t("land_about_sig")}</p>
     </section>
   );
 }

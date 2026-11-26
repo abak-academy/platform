@@ -50,7 +50,7 @@ export function EventSeriesPicker({
           >
             <EventMark logoKey={ev.logo_url} tone={ev.tone as EventTone} illustration={ev.illustration as EventIllustration} className="size-12" />
             <b className="type-label text-ink-900">{ev.short_name ?? ev.name}</b>
-            <small className="type-caption text-ink-500">{ev.levels_label}</small>
+            <small className="type-caption text-ink-600">{ev.levels_label}</small>
           </button>
         );
       })}
