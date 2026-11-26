@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { Download, Wallet } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
@@ -11,7 +11,7 @@ import { PayoutProofDialog } from "@/components/affiliate/PayoutProofDialog";
 import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
-import type { DataTableColumn } from "@/components/ui/data-table";
+import { TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
 import {
@@ -69,10 +69,7 @@ function PayoutsContent() {
       key: "who",
       header: t("admin_aff_col_affiliator"),
       cell: (r) => (
-        <div>
-          <div className="font-medium text-ink-900">{r.affiliator_name}</div>
-          <div className="text-xs text-ink-500">{r.affiliator_code}</div>
-        </div>
+        <TableItem title={r.affiliator_name} sub={r.affiliator_code} />
       ),
     },
     { key: "requested", header: t("aff_col_requested"), cell: (r) => formatAffDate(r.requested_at) },
@@ -123,16 +120,15 @@ function PayoutsContent() {
   return (
     <div className="space-y-4">
       <AdminPageHeader
-        icon={Wallet}
         title={t("admin_aff_pay_title")}
         description={t("admin_aff_pay_desc")}
+        actions={
+          <Button variant="outline" onClick={exportCsv}>
+            <Download className="size-4" aria-hidden />
+            {t("admin_aff_export_csv")}
+          </Button>
+        }
       />
-      <div className="flex justify-end">
-        <Button variant="outline" onClick={exportCsv}>
-          <Download className="size-4" aria-hidden />
-          {t("admin_aff_export_csv")}
-        </Button>
-      </div>
       <ListToolbar
         params={params}
         onChange={update}

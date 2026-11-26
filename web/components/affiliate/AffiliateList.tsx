@@ -3,7 +3,7 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { Pagination } from "@/components/affiliate/Pagination";
+import { TableFooter } from "@/components/ui/table-footer";
 import { useTranslation } from "@/lib/i18n";
 
 interface PageShape<T> {
@@ -40,7 +40,7 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
     );
   }
   if (query.isLoading || !query.data) {
-    return <div className="p-6 text-sm text-ink-500">{t("aff_loading")}</div>;
+    return <div className="p-6 text-sm text-ink-600">{t("aff_loading")}</div>;
   }
 
   // The API answers [] for an empty list, but a null must never take the page down.
@@ -58,15 +58,16 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
       empty={filtered ? t("aff_no_match") : (empty ?? t("aff_empty"))}
       footer={
         total > 0 && data.length > 0 ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-xs text-ink-500">
-            <span>
-              {t("aff_range_summary")
-                .replace("{from}", String(first))
-                .replace("{to}", String(last))
-                .replace("{total}", String(total))}
-            </span>
-            {onPageChange && <Pagination page={page} pages={pages} onPageChange={onPageChange} />}
-          </div>
+          <TableFooter
+            summary={t("aff_range_summary")
+              .replace("{from}", String(first))
+              .replace("{to}", String(last))
+              .replace("{total}", String(total))}
+            onPrev={onPageChange && pages > 1 ? () => onPageChange(page - 1) : undefined}
+            onNext={onPageChange && pages > 1 ? () => onPageChange(page + 1) : undefined}
+            hasPrev={page > 1}
+            hasNext={page < pages}
+          />
         ) : null
       }
     />

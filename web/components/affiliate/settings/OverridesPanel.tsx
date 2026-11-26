@@ -86,7 +86,7 @@ export function OverridesPanel() {
 
   return (
     <div className="space-y-6">
-      <section className="md-card-outlined space-y-4 p-5">
+      <section className="md-card-outlined space-y-4 p-6">
         <div>
           <h2 className="font-semibold text-ink-900">{t("admin_aff_ovr_title")}</h2>
           <p className="text-sm text-ink-600">{t("admin_aff_ovr_desc")}</p>

@@ -94,7 +94,7 @@ describe("AdminAffiliateSettingsPage", () => {
     render(<SettingsPage />);
 
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Aktifkan program" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Aktifkan program" }));
     expect(h.program).not.toHaveBeenCalled();
 
     fireEvent.click(await screen.findByRole("button", { name: "Konfirmasi" }));
@@ -106,7 +106,7 @@ describe("AdminAffiliateSettingsPage", () => {
     render(<SettingsPage />);
 
     expect(screen.getByText("Aktif")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Nonaktifkan program" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Nonaktifkan program" })).toBeInTheDocument();
   });
 
   it("names both programs in its title", () => {

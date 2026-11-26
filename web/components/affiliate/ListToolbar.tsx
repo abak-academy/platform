@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ActiveChip, FilterChip, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
 import { PAGE_SIZES, type ListParams } from "@/lib/hooks/use-list-params";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { formatAffDate } from "@/lib/affiliate-labels";
@@ -26,8 +25,6 @@ interface ListToolbarProps {
   // Label of the date the range applies to (e.g. "Tanggal bayar"); omit for no date filter.
   dateLabel?: string;
 }
-
-const ALL = "__all__";
 
 // One toolbar for every affiliator list: search, a filter popover (like the admin
 // products page), a date range, and the page size. The state itself lives in the
@@ -77,74 +74,38 @@ export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filt
   const hasPopover = filters.length > 0 || Boolean(dateLabel);
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col gap-2.5 rounded-[var(--radius-card)] border border-line bg-surface px-3.5 py-3 shadow-card">
+      <div className="flex flex-wrap items-center gap-2.5">
         {searchPlaceholder && (
-          <div className="relative w-full min-w-0 sm:w-auto sm:min-w-64 sm:flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-ink-600" aria-hidden />
-            <Input
-              type="search"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={searchPlaceholder}
-              aria-label={searchPlaceholder}
-              className="pr-10 pl-9"
-            />
-            {text && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="absolute top-0 right-0 size-9"
-                aria-label={t("aff_search_clear")}
-                onClick={() => setText("")}
-              >
-                <X className="size-4" aria-hidden />
-              </Button>
-            )}
-          </div>
+          <ToolbarSearch value={text} onChange={setText} placeholder={searchPlaceholder} clearLabel={t("aff_search_clear")} />
         )}
 
         {hasPopover && (
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" className="h-9" aria-label={`${t("aff_filter_button")}${chips.length ? ` (${chips.length})` : ""}`}>
-                <SlidersHorizontal className="size-4" aria-hidden />
-                {t("aff_filter_button")}
-                {chips.length > 0 && <span className="tabular-nums">{chips.length}</span>}
-              </Button>
+              <ToolbarFilterButton label={t("aff_filter_button")} count={chips.length} />
             </PopoverTrigger>
             <PopoverContent
               align="end"
               className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto"
               aria-label={t("aff_filter_title")}
             >
-              <div className="space-y-3">
-                <h2 className="font-semibold">{t("aff_filter_title")}</h2>
+              <div className="flex flex-col gap-3.5">
                 {filters.map((filter) => (
-                  <div key={filter.key} className="space-y-1.5">
-                    <span className="block text-sm font-medium">{filter.label}</span>
-                    <Select
-                      value={params[filter.key] || ALL}
-                      onValueChange={(v) => onChange({ [filter.key]: v === ALL ? "" : v })}
-                    >
-                      <SelectTrigger className="w-full" aria-label={filter.label}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={ALL}>{t("aff_filter_all")}</SelectItem>
-                        {filter.options.map((o) => (
-                          <SelectItem key={o.value} value={o.value}>
-                            {o.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div key={filter.key} role="group" aria-label={filter.label}>
+                    <span className="mb-2 block type-overline text-ink-600">{filter.label}</span>
+                    <div className="flex flex-wrap gap-2">
+                      {[{ value: "", label: t("aff_filter_all") }, ...filter.options].map((o) => (
+                        <FilterChip key={o.value} on={(params[filter.key] ?? "") === o.value} onClick={() => onChange({ [filter.key]: o.value })}>
+                          {o.label}
+                        </FilterChip>
+                      ))}
+                    </div>
                   </div>
                 ))}
                 {dateLabel && (
                   <div className="space-y-1.5">
-                    <span className="block text-sm font-medium">{dateLabel}</span>
+                    <span className="block type-overline text-ink-600">{dateLabel}</span>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="space-y-1 text-xs text-ink-600">
                         {t("aff_filter_date_from")}
@@ -157,12 +118,12 @@ export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filt
                     </div>
                   </div>
                 )}
-                <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                  <Button variant="ghost" onClick={onReset}>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
+                  <Button variant="ghost" size="sm" onClick={onReset}>
                     {t("aff_filter_reset")}
                   </Button>
                   <PopoverClose asChild>
-                    <Button>{t("aff_filter_show")}</Button>
+                    <Button variant="secondary" size="sm">{t("aff_filter_show")}</Button>
                   </PopoverClose>
                 </div>
               </div>
@@ -170,29 +131,20 @@ export function ListToolbar({ params, onChange, onReset, searchPlaceholder, filt
           </Popover>
         )}
 
-        <Select value={String(params.per_page)} onValueChange={(v) => onChange({ per_page: Number(v) })}>
-          <SelectTrigger className="ml-auto w-40 min-w-0" aria-label={t("aff_per_page")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PAGE_SIZES.map((n) => (
-              <SelectItem key={n} value={String(n)}>
-                {t("aff_per_page_option").replace("{n}", String(n))}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="ml-auto">
+          <ToolbarSort
+            value={String(params.per_page)}
+            onChange={(v) => onChange({ per_page: Number(v) })}
+            options={PAGE_SIZES.map((n) => ({ value: String(n), label: t("aff_per_page_option").replace("{n}", String(n)) }))}
+            label={t("aff_per_page")}
+          />
+        </div>
       </div>
 
       {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("aff_filter_active")}>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("aff_filter_active")}>
           {chips.map((chip) => (
-            <span key={chip.key} className="md-chip md-chip-primary gap-1">
-              {chip.label}
-              <Button variant="ghost" size="icon" className="size-8" aria-label={`${t("aff_filter_remove")}: ${chip.label}`} onClick={chip.clear}>
-                <X className="size-4" aria-hidden />
-              </Button>
-            </span>
+            <ActiveChip key={chip.key} label={chip.label} removeLabel={`${t("aff_filter_remove")}: ${chip.label}`} onRemove={chip.clear} />
           ))}
         </div>
       )}

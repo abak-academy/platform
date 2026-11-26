@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Settings } from "lucide-react";
 import { toast } from "sonner";
 import { PartnerSwitchCard } from "@/components/affiliate/PartnerSwitchCard";
 import { ProgramSwitchCard } from "@/components/affiliate/ProgramSwitchCard";
@@ -177,7 +176,7 @@ function SettingsContent() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader icon={Settings} title={t("admin_aff_set_title")} description={t("admin_aff_set_desc")} />
+      <AdminPageHeader title={t("admin_aff_set_title")} description={t("admin_aff_set_desc")} />
 
       <ProgramSwitchCard
         enabled={loaded?.program_enabled ?? false}
@@ -199,7 +198,7 @@ function SettingsContent() {
         <form onSubmit={save} className="space-y-6">
           <BulkFormatGuide fields={guideFields} pitfallKeys={[]} />
           {GROUPS.map((group) => (
-            <section key={group.title} className="md-card-outlined space-y-4 p-5">
+            <section key={group.title} className="md-card-outlined space-y-4 p-6">
               <div>
                 <h2 className="font-semibold text-ink-900">{t(group.title)}</h2>
                 <p className="text-sm text-ink-600">{t(group.desc)}</p>
@@ -218,8 +217,8 @@ function SettingsContent() {
           <BulkFormatGuide fields={levelGuideFields} pitfallKeys={["admin_aff_set_level_hint"]} />
           <div className="grid gap-4 lg:grid-cols-3">
             {AFFILIATE_LEVELS.map((level) => (
-              <section key={level} className="md-card-outlined space-y-5 p-5">
-                <h2 className="font-serif text-lg font-bold text-ink-900">{affLabel(t, level)}</h2>
+              <section key={level} className="md-card-outlined space-y-5 p-6">
+                <h2 className="type-h3 text-ink-900">{affLabel(t, level)}</h2>
                 <div className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_lvl_pct")}</h3>

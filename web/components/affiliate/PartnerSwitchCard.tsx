@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api";
 import { useAffiliateProgramStatus } from "@/lib/hooks/affiliate";
@@ -29,19 +30,17 @@ export function PartnerSwitchCard() {
     });
 
   return (
-    <section className="md-card-outlined flex flex-wrap items-center justify-between gap-4 p-5">
+    <section className="md-card-outlined flex flex-wrap items-center justify-between gap-4 p-6">
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <h2 className="font-semibold text-ink-900">{t("admin_partner_prog_title")}</h2>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${enabled ? "bg-success/15 text-success" : "bg-danger/15 text-danger"}`}>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${enabled ? "bg-teal-50 text-teal-700" : "bg-danger-50 text-danger-600"}`}>
             {t(enabled ? "admin_aff_prog_on" : "admin_aff_prog_off")}
           </span>
         </div>
         <p className="text-sm text-ink-600">{t(enabled ? "admin_partner_prog_desc_on" : "admin_partner_prog_desc_off")}</p>
       </div>
-      <Button variant={enabled ? "outline" : "default"} onClick={() => setConfirming(true)} disabled={status.isLoading}>
-        {t(enabled ? "admin_aff_prog_turn_off" : "admin_aff_prog_turn_on")}
-      </Button>
+      <Switch checked={enabled} disabled={status.isLoading} onCheckedChange={() => setConfirming(true)} aria-label={t(enabled ? "admin_aff_prog_turn_off" : "admin_aff_prog_turn_on")} />
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
