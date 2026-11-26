@@ -26,4 +26,13 @@ describe("LandingHero", () => {
     expect(img.className).toContain("object-cover");
     expect(img.className).toContain("object-bottom");
   });
+
+  it("sits under the transparent navbar: white text, dark scrim ending in the surface colour, ember word", () => {
+    const { container } = render(<LandingHero eventNames={["IKMC"]} />);
+    expect(container.querySelector("h1")?.className).toContain("text-white");
+    expect(container.querySelector("[data-hero]")?.className).toContain("min-h-[min(980px,100svh)]");
+    expect(container.querySelector("[data-hero] [aria-hidden].bg-linear-to-b")?.className).toContain("to-surface");
+    expect(container.querySelector("h1 > span")?.className).toContain("text-ember-500");
+    expect(screen.getByRole("link", { name: "Konsultasi gratis" }).className).toContain("border-white");
+  });
 });
