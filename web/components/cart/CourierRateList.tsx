@@ -1,7 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { CourierRate } from "@/lib/types";
@@ -56,38 +55,33 @@ export function CourierRateList({
   isError,
 }: CourierRateListProps) {
   const { t, lang } = useTranslation();
-  const [open, setOpen] = useState(false);
 
   if (isLoading) {
     return (
       <div className="flex flex-col gap-2">
-        <div className="h-3 w-28 animate-pulse rounded bg-line" />
-        <div className="h-12 animate-pulse rounded-lg bg-line" />
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-[69px] animate-pulse rounded-[16px] bg-line" />
+        ))}
       </div>
     );
   }
 
   if (isError || !rates || rates.length === 0) {
     return (
-      <div className="rounded-lg border border-line px-3 py-4 text-center">
-        <p className="text-sm text-ink-500">
-          {t("cart_shipping_error") || "Unable to calculate shipping cost"}
-        </p>
-      </div>
+      <p className="text-ink-600">
+        {t("cart_shipping_error") || "Unable to calculate shipping cost"}
+      </p>
     );
   }
-
-  const selected = rates.find((r) => courierRateKey(r) === selectedKey) ?? null;
 
   // Sorted by arrival first, then price. "Takes a few days" spans anything from
   // two days to a week, so ordering it purely by price puts a later delivery
   // above an earlier one over a thousand rupiah — which reads as a mistake.
-  const grouped = TIER_ORDER.map((tier) => ({
-    tier,
-    rates: rates
+  const sorted = TIER_ORDER.flatMap((tier) =>
+    rates
       .filter((r) => speedTier(r) === tier)
       .sort((a, b) => a.estimated_days - b.estimated_days || a.price - b.price),
-  })).filter((g) => g.rates.length > 0);
+  );
 
   const tierLabel: Record<SpeedTier, string> = {
     same_day: t("cart_speed_same_day" as any) || "Arrives today",
@@ -95,137 +89,53 @@ export function CourierRateList({
     regular: t("cart_speed_regular" as any) || "Takes a few days",
   };
 
-  // The group heading already states when it arrives, so a row only adds the
-  // exact date where that is extra information. Under "Arrives today" it would
-  // be repeating itself, and under "Arrives tomorrow" the weekday is implied.
+  // Same-day and next-day already say when; only "a few days" gains the date.
   function rowDate(rate: CourierRate): string | null {
-    if (isSameDay(rate) || rate.estimated_days < 1) return null;
+    if (speedTier(rate) !== "regular" || rate.estimated_days < 1) return null;
     return formatArrivalDate(rate.estimated_days, lang);
   }
 
-  function choose(rate: CourierRate) {
-    onSelect(rate);
-    setOpen(false);
-  }
-
+  // Prototype `.choices` / `.choice`: one flat list of radio cards.
   return (
-    <div className="flex flex-col gap-2">
-      <p className="type-h2 text-ink-900">
-        {t("cart_shipping_options") || "Shipping Options"}
-      </p>
-
-      <div className="overflow-hidden rounded-lg border-[1.5px] border-line">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          className="flex w-full items-center gap-3 bg-surface px-3 py-2.5 text-left transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500"
-        >
-          {selected ? (
-            <>
-              <CarrierTile courier={selected.courier} selected={false} />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-sm font-semibold text-ink-900">
-                  {selected.courier} · {selected.service}
-                </span>
-                <span className="truncate text-xs text-ink-500">
-                  {tierLabel[speedTier(selected)]}
-                  {rowDate(selected) ? ` · ${rowDate(selected)}` : ""}
-                </span>
-              </span>
-              <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-900">
-                {formatRupiah(selected.price)}
-              </span>
-            </>
-          ) : (
-            <span className="flex-1 text-sm text-ink-500">
-              {t("cart_shipping_placeholder" as any) || "Choose a shipping service"}
-            </span>
-          )}
-          <ChevronDown
-            className={`size-4 shrink-0 text-ink-400 transition-transform ${open ? "rotate-180" : ""}`}
-            aria-hidden="true"
-          />
-        </button>
-
-        {open && (
-          <div
-            role="radiogroup"
-            aria-label={t("cart_shipping_options") || "Shipping Options"}
-            className="border-t border-line"
+    <div role="radiogroup" aria-label={t("cart_shipping_options") || "Shipping Options"} className="flex flex-col gap-2">
+      {sorted.map((rate) => {
+        const key = courierRateKey(rate);
+        const isSelected = selectedKey === key;
+        const date = rowDate(rate);
+        return (
+          <button
+            key={key}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            onClick={() => onSelect(rate)}
+            className={cn(
+              "flex w-full items-center gap-3 rounded-[16px] border-[1.5px] px-4 py-[13px] text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",
+              isSelected ? "border-brand-600 bg-brand-50" : "border-line bg-surface hover:border-line-strong",
+            )}
           >
-            {grouped.map((group) => (
-              <Fragment key={group.tier}>
-                {/* A filled band, not a hairline: the previous eyebrow-and-rule
-                    treatment read as a divider and the eye skipped it. */}
-                <p className="flex items-center justify-between border-b border-line bg-surface-2 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-ink-600">
-                  {tierLabel[group.tier]}
-                  <span className="tabular-nums font-normal text-ink-400">{group.rates.length}</span>
-                </p>
-                {group.rates.map((rate) => {
-                  const key = courierRateKey(rate);
-                  const isSelected = selectedKey === key;
-                  const date = rowDate(rate);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      role="radio"
-                      aria-checked={isSelected}
-                      onClick={() => choose(rate)}
-                      className={`flex w-full items-center gap-3 border-b border-line px-3 py-2.5 text-left transition-colors last:border-b-0 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500 ${
-                        isSelected ? "bg-brand-50" : "bg-surface hover:bg-surface-2"
-                      }`}
-                    >
-                      <CarrierTile courier={rate.courier} selected={isSelected} />
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-sm font-semibold text-ink-900">
-                          {rate.courier} · {rate.service}
-                        </span>
-                        {date && (
-                          <span className="truncate text-xs text-ink-500">
-                            {t("cart_eta_prefix" as any) || "Estimated arrival"} {date}
-                          </span>
-                        )}
-                      </span>
-                      <span className="shrink-0 text-sm font-semibold tabular-nums text-ink-900">
-                        {formatRupiah(rate.price)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </Fragment>
-            ))}
-          </div>
-        )}
-      </div>
+            <span
+              aria-hidden="true"
+              className={cn(
+                "grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px] bg-surface",
+                isSelected ? "border-brand-600" : "border-line-strong",
+              )}
+            >
+              {isSelected && <span className="size-2.5 rounded-full bg-brand-600" />}
+            </span>
+            <span className="min-w-0 flex-1">
+              <b className="block font-bold text-ink-900">
+                {rate.courier} · {rate.service}
+              </b>
+              <small className="block text-[12.5px] text-ink-600">
+                {tierLabel[speedTier(rate)]}
+                {date ? ` · ${date}` : ""}
+              </small>
+            </span>
+            <b className="shrink-0 font-bold tabular-nums text-ink-900">{formatRupiah(rate.price)}</b>
+          </button>
+        );
+      })}
     </div>
-  );
-}
-
-// Carriers brand themselves two ways: as acronyms (JNE, TIKI) and as compounds
-// (SiCepat, AnterAja). Truncating the first kind reads as a mistake — "JN" looks
-// like a typo — so short all-caps names are kept whole and compounds collapse to
-// their capitals. Real carrier logos can replace this without touching layout.
-function monogram(courier: string): string {
-  const cleaned = courier.replace(/[^A-Za-z]/g, "");
-  if (!cleaned) return "?";
-  if (cleaned.length <= 4 && cleaned === cleaned.toUpperCase()) return cleaned;
-  const capitals = cleaned.replace(/[^A-Z]/g, "");
-  if (capitals.length >= 2) return capitals.slice(0, 3);
-  return cleaned.slice(0, 4).toUpperCase();
-}
-
-function CarrierTile({ courier, selected }: { courier: string; selected: boolean }) {
-  const label = monogram(courier);
-  return (
-    <span
-      aria-hidden="true"
-      className={`flex h-7 w-8 shrink-0 items-center justify-center rounded-md font-bold tracking-tight ${
-        label.length > 3 ? "text-[8px]" : "text-[10px]"
-      } ${selected ? "bg-brand-500 text-white" : "bg-line-2 text-ink-600"}`}
-    >
-      {label}
-    </span>
   );
 }

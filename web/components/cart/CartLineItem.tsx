@@ -1,10 +1,18 @@
 "use client";
 
-import { Award, Book, ClipboardList, Minus, Package, PlayCircle, Plus, Trash2 } from "lucide-react";
+import {
+  Award,
+  Book,
+  ClipboardList,
+  Minus,
+  Package,
+  PlayCircle,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import type { OrderItem, ProductType } from "@/lib/types";
 import { formatRupiah } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "@/lib/i18n";
 import { isDigitalType } from "@/lib/shipping";
@@ -18,17 +26,47 @@ const TYPE_META: Record<
   ProductType,
   { labelKey: string; tone: string; bg: string; Icon: typeof Book }
 > = {
-  book: { labelKey: "product_type_book", tone: "text-warn", bg: "bg-warn-bg", Icon: Book },
-  course: { labelKey: "product_type_course", tone: "text-success", bg: "bg-success-bg", Icon: PlayCircle },
-  exam: { labelKey: "product_type_exam", tone: "text-info", bg: "bg-info-bg", Icon: ClipboardList },
-  merchandise: { labelKey: "product_type_merchandise", tone: "text-warn", bg: "bg-warn-bg", Icon: Package },
-  medal: { labelKey: "product_type_medal", tone: "text-warn", bg: "bg-warn-bg", Icon: Award },
+  book: {
+    labelKey: "product_type_book",
+    tone: "text-warn",
+    bg: "bg-warn-bg",
+    Icon: Book,
+  },
+  course: {
+    labelKey: "product_type_course",
+    tone: "text-success",
+    bg: "bg-success-bg",
+    Icon: PlayCircle,
+  },
+  exam: {
+    labelKey: "product_type_exam",
+    tone: "text-info",
+    bg: "bg-info-bg",
+    Icon: ClipboardList,
+  },
+  merchandise: {
+    labelKey: "product_type_merchandise",
+    tone: "text-warn",
+    bg: "bg-warn-bg",
+    Icon: Package,
+  },
+  medal: {
+    labelKey: "product_type_medal",
+    tone: "text-warn",
+    bg: "bg-warn-bg",
+    Icon: Award,
+  },
 };
 
 // OrderItem carries product_type as a plain string, so an unrecognised one has
 // to land somewhere. It shows its own name in neutral chrome — a lookup miss
 // must never again resolve to a confident wrong type.
-const UNKNOWN_META = { labelKey: "", tone: "text-ink-600", bg: "bg-line-2", Icon: Package };
+const UNKNOWN_META = {
+  labelKey: "",
+  tone: "text-ink-600",
+  bg: "bg-line-2",
+  Icon: Package,
+};
 
 export interface CartLineItemProps {
   item: OrderItem;
@@ -36,12 +74,18 @@ export interface CartLineItemProps {
   onQtyChange: (qty: number) => void;
   removing?: boolean;
   updatingQty?: boolean;
-  /** Drops the item's own card chrome so it can sit inside a shared container —
-   *  the cart groups items and the courier picker into one block. */
+  /** Kept for callers; every line now renders as the prototype's flat `.line` row. */
   flat?: boolean;
 }
 
-export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQty, flat }: CartLineItemProps) {
+// Prototype `.line`: thumb · name/sub · stepper or Digital chip · price · remove.
+export function CartLineItem({
+  item,
+  onRemove,
+  onQtyChange,
+  removing,
+  updatingQty,
+}: CartLineItemProps) {
   const { t } = useTranslation();
   const meta = TYPE_META[item.product_type as ProductType] ?? UNKNOWN_META;
   const { Icon } = meta;
@@ -51,73 +95,74 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
   const isDigital = isDigitalType(item.product_type as ProductType);
 
   return (
-    <div
-      className={
-        flat
-          ? "flex items-center gap-3 border-b border-dashed border-line py-3 last:border-b-0"
-          : "flex gap-4 rounded-[var(--radius-card)] border border-line bg-card p-4 shadow-card"
-      }
-    >
-      <div
+    <div className="flex flex-wrap items-center gap-3 border-b border-dashed border-line py-3">
+      <span
         className={cn(
-          "flex shrink-0 items-center justify-center",
-          flat ? cn("size-[38px] rounded-xl", meta.bg, meta.tone) : "size-16 rounded-md bg-paper",
+          "grid size-[38px] shrink-0 place-items-center rounded-[12px]",
+          meta.bg,
+          meta.tone,
         )}
         aria-hidden
       >
-        <Icon className={flat ? "size-[18px]" : "size-7 text-ink-400"} strokeWidth={flat ? 2 : 1.5} />
+        <Icon className="size-[18px]" />
+      </span>
+
+      <div className="min-w-0 flex-1 max-narrow:basis-[calc(100%-50px)]">
+        <b className="block font-bold text-ink-900">{item.name}</b>
+        <small className="block text-[12.5px] text-ink-600">
+          <span>{label}</span>
+          {isDigital && (
+            <>
+              {" · "}
+              <span>{t("product_digital_single_qty" as any)}</span>
+            </>
+          )}
+        </small>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-[15px] font-semibold leading-snug text-ink-900">{item.name}</span>
-            <Badge variant="outline" className={cn("w-fit border-transparent", meta.bg, meta.tone)}>
-              {label}
-            </Badge>
+      {/* On a phone the controls drop under the name instead of crushing it. */}
+      <div className="ml-auto flex shrink-0 items-center gap-3">
+        {isDigital ? (
+          <Badge variant="teal">{t("cart_digital_chip" as any)}</Badge>
+        ) : (
+          <div className="inline-flex h-[34px] shrink-0 items-center rounded-full border-[1.5px] border-line bg-surface">
+            <button
+              type="button"
+              onClick={() => onQtyChange(item.qty - 1)}
+              disabled={busy || item.qty <= 1}
+              className="grid h-full w-[30px] place-items-center rounded-full text-ink-900 disabled:opacity-40"
+              aria-label={t("cart_qty_decrease")}
+            >
+              <Minus className="size-4" />
+            </button>
+            <output className="min-w-[26px] text-center font-[family-name:var(--font-display)] text-[15px] font-extrabold text-ink-900">
+              {item.qty}
+            </output>
+            <button
+              type="button"
+              onClick={() => onQtyChange(item.qty + 1)}
+              disabled={busy || item.qty >= 10}
+              className="grid h-full w-[30px] place-items-center rounded-full text-ink-900 disabled:opacity-40"
+              aria-label={t("cart_qty_increase")}
+            >
+              <Plus className="size-4" />
+            </button>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="size-8 text-ink-600 hover:text-danger"
-            onClick={onRemove}
-            disabled={busy}
-            aria-label={t("cart_remove_item").replace("{name}", item.name)}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
+        )}
 
-        <div className="mt-1 flex items-center justify-between gap-2 text-sm">
-          {isDigital ? (
-            <span className="text-xs text-ink-600">{t("product_digital_single_qty" as any)}</span>
-          ) : (
-            <div className="flex h-[34px] items-center gap-0.5 rounded-full border-[1.5px] border-line pl-0.5">
-              <button
-                type="button"
-                onClick={() => onQtyChange(item.qty - 1)}
-                disabled={busy || item.qty <= 1}
-                className="flex size-[28px] items-center justify-center rounded-full text-ink-600 hover:bg-surface-sunken disabled:opacity-40"
-                aria-label={t("cart_qty_decrease")}
-              >
-                <Minus className="size-3" />
-              </button>
-              <span className="w-6 text-center font-bold text-ink-900">{item.qty}</span>
-              <button
-                type="button"
-                onClick={() => onQtyChange(item.qty + 1)}
-                disabled={busy || item.qty >= 10}
-                className="flex size-[28px] items-center justify-center rounded-full text-ink-600 hover:bg-surface-sunken disabled:opacity-40"
-                aria-label={t("cart_qty_increase")}
-              >
-                <Plus className="size-3" />
-              </button>
-              <span className="ml-2 pr-2 text-xs text-ink-600">× {formatRupiah(item.unit_price)}</span>
-            </div>
-          )}
-          <b className="font-extrabold tabular-nums text-ink-900">{formatRupiah(lineTotal)}</b>
-        </div>
+        <b className="shrink-0 font-bold tabular-nums text-ink-900">
+          {formatRupiah(lineTotal)}
+        </b>
+
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={busy}
+          aria-label={t("cart_remove_item").replace("{name}", item.name)}
+          className="grid size-8 shrink-0 place-items-center rounded-full border border-line bg-surface text-ink-700 transition-colors hover:text-danger disabled:opacity-40"
+        >
+          <Trash2 className="size-4" />
+        </button>
       </div>
     </div>
   );

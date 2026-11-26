@@ -9,6 +9,7 @@ import {
 } from "@/lib/hooks/regions";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -37,7 +38,7 @@ export interface ShippingAddressFormState {
 }
 
 const FIELD_CLASS =
-  "h-[var(--spacing-input)] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-[15px] text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-600 hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-600";
+  "h-[var(--spacing-input)] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-[15px] py-0 text-[15px] text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-600 hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-600";
 
 interface ShippingAddressFormProps {
   profile: User | undefined;
@@ -178,34 +179,26 @@ export function ShippingAddressForm({
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-card p-6 shadow-card">
+    <div className="flex flex-col gap-3.5 rounded-[var(--radius-card)] border border-line bg-card p-6 shadow-card">
       <h2 className="type-h2 text-ink-900">{t("cart_shipping_title") || "Shipping Address"}</h2>
 
-      <div className="grid gap-3">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="penerima" className="type-label-sm text-ink-900">
+      <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-[7px]">
+          <Label htmlFor="penerima" className="type-label-sm font-bold text-ink-900">
             {t("cart_address_recipient" as any)}
           </Label>
           <input id="penerima" className={FIELD_CLASS} value={penerima}
             onChange={(e) => setPenerima(e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="telepon" className="type-label-sm text-ink-900">
+        <div className="flex min-w-0 flex-col gap-[7px]">
+          <Label htmlFor="telepon" className="type-label-sm font-bold text-ink-900">
             {t("cart_address_phone" as any)}
           </Label>
           <input id="telepon" className={FIELD_CLASS} value={telepon}
             onChange={(e) => setTelepon(e.target.value)} />
         </div>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="alamat" className="type-label-sm text-ink-900">
-            {t("cart_address_street" as any)}
-          </Label>
-          <input id="alamat" className={FIELD_CLASS} value={alamat}
-            onChange={(e) => setAlamat(e.target.value)} />
-        </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="provinsi" className="type-label-sm text-ink-900">
+        <div className="flex min-w-0 flex-col gap-[7px]">
+          <Label htmlFor="provinsi" className="type-label-sm font-bold text-ink-900">
             {t("students_field_provinsi") || "Province"}
           </Label>
           <Select
@@ -230,8 +223,8 @@ export function ShippingAddressForm({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="kota" className="type-label-sm text-ink-900">
+        <div className="flex min-w-0 flex-col gap-[7px]">
+          <Label htmlFor="kota" className="type-label-sm font-bold text-ink-900">
             {t("students_field_kota") || "City"}
           </Label>
           <Select
@@ -257,8 +250,8 @@ export function ShippingAddressForm({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="kecamatan" className="type-label-sm text-ink-900">
+        <div className="flex min-w-0 flex-col gap-[7px]">
+          <Label htmlFor="kecamatan" className="type-label-sm font-bold text-ink-900">
             {t("students_field_kecamatan") || "District"}
           </Label>
           <Select
@@ -284,8 +277,8 @@ export function ShippingAddressForm({
           </Select>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="kode-pos" className="type-label-sm text-ink-900">
+        <div className="flex min-w-0 flex-col gap-[7px]">
+          <Label htmlFor="kode-pos" className="type-label-sm font-bold text-ink-900">
             {t("students_field_kode_pos") || "Postal Code"}
           </Label>
           <Input
@@ -297,9 +290,17 @@ export function ShippingAddressForm({
             className={FIELD_CLASS}
           />
         </div>
+        <div className="flex min-w-0 flex-col gap-[7px] sm:col-span-2">
+          <Label htmlFor="alamat" className="type-label-sm font-bold text-ink-900">
+            {t("cart_address_street" as any)}
+          </Label>
+          <textarea id="alamat" className={cn(FIELD_CLASS, "h-auto min-h-24 resize-y py-3")} value={alamat}
+            onChange={(e) => setAlamat(e.target.value)} />
+        </div>
+
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-ink-600">
+      <label className="flex items-center gap-2 text-sm text-ink-900 [&_input]:size-[18px] [&_input]:accent-brand-600">
         <input
           type="checkbox"
           checked={saveAsPrimary}

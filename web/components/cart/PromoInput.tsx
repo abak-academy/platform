@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Loader2, Tag } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -15,32 +15,35 @@ export interface PromoInputProps {
   discount?: number;
   error?: string;
   label?: string;
+  placeholder?: string;
+  applyLabel?: string;
 }
 
-export function PromoInput({ onValidate, onClear, isValidating, applied, discount, error, label }: PromoInputProps) {
+export function PromoInput({ onValidate, onClear, isValidating, applied, discount, error, label, placeholder, applyLabel }: PromoInputProps) {
   const [code, setCode] = useState("");
 
   return (
-    <div className="mt-4">
-      <label htmlFor="promo-code" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink-600">
-        {label ?? "Kode Promo"}
-      </label>
+    <div>
+      {label && (
+        <label htmlFor="promo-code" className="mb-2 block text-xs font-semibold uppercase tracking-wide text-ink-600">
+          {label}
+        </label>
+      )}
+      {/* Prototype `.promo`: an uppercase code field and an outline Pakai. */}
       <div className="flex gap-2">
-        <div className="relative flex-1">
-          <Tag className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-400" />
-          <Input
-            id="promo-code"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="Masukkan kode promo"
-            className="pl-9"
-            disabled={isValidating}
-          />
-        </div>
+        <Input
+          id="promo-code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder={placeholder ?? "Masukkan kode promo"}
+          aria-label={label ? undefined : placeholder ?? "Kode promo"}
+          className="h-[var(--spacing-input)] flex-1 rounded-[14px] px-[15px] py-0 uppercase"
+          disabled={isValidating}
+        />
         <Button
           type="button"
-          variant="secondary"
-          size="sm"
+          variant="outline"
+          className="h-[var(--spacing-control-md)] self-center border"
           onClick={() => {
             const c = code.trim();
             if (!c) return;
@@ -48,7 +51,7 @@ export function PromoInput({ onValidate, onClear, isValidating, applied, discoun
           }}
           disabled={isValidating || !code.trim()}
         >
-          {isValidating ? <Loader2 className="size-4 animate-spin" /> : "Pakai"}
+          {isValidating ? <Loader2 className="size-4 animate-spin" /> : applyLabel ?? "Pakai"}
         </Button>
       </div>
 

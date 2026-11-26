@@ -1040,7 +1040,7 @@ export const DICT = {
     cart_address_phone: "Nomor telepon",
     cart_address_street: "Alamat lengkap",
     cart_address_incomplete_profile: "Lengkapi alamat pengiriman untuk melanjutkan.",
-    cart_address_save: "Simpan Alamat",
+    cart_address_save: "Simpan alamat",
     cart_address_set_primary: "Jadikan alamat utama saya",
     cart_address_primary_badge: "Alamat utama",
     cart_shipping_options: "Pilihan pengiriman",
@@ -1365,9 +1365,9 @@ export const DICT = {
     course_instructor_placeholder: "Nama pengajar",
 
     // Admin — promos
-    promos_page_title: "Promo & Diskon",
-    promos_page_description: "Kelola kode promo dan diskon aktif.",
-    promo_create: "Buat kode promo",
+    promos_page_title: "Promo",
+    promos_page_description: "Kode diskon untuk kursus, produk, dan pendaftaran",
+    promo_create: "Buat promo",
     promo_created: "Kode promo dibuat.",
     promo_deleted: "Kode promo dihapus.",
     promo_confirm_delete: "Hapus kode promo ini? Tindakan ini tidak dapat dibatalkan.",
@@ -3363,6 +3363,10 @@ export const DICT = {
     order_tl_done_physical: "Pesanan diterima",
     order_tl_done_digital: "Akses digital aktif",
     orders_count_n: "{n} pesanan",
+    promos_pct_off: "% diskon",
+    promos_until: "s.d.",
+    promos_no_expiry: "Tanpa batas waktu",
+    invoice_modal_title: "Invoice",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -6718,6 +6722,10 @@ export const DICT = {
     order_tl_done_physical: "Order received",
     order_tl_done_digital: "Digital access active",
     orders_count_n: "{n} orders",
+    promos_pct_off: "% off",
+    promos_until: "until",
+    promos_no_expiry: "No expiry",
+    invoice_modal_title: "Invoice",
   },
 };
 
