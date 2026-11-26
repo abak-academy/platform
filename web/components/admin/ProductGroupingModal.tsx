@@ -12,67 +12,66 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type {
-  AdminCreateProductGroupingInput,
-  AdminUpdateProductGroupingInput,
-  ProductGrouping,
-  ProductGroupingStatus,
-} from "@/lib/types";
+import type { AdminCreateProductGroupingInput } from "@/lib/types";
 
 interface ProductGroupingModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  grouping?: ProductGrouping | null;
-  onSubmit: (input: AdminCreateProductGroupingInput | AdminUpdateProductGroupingInput) => void;
+  onSubmit: (input: AdminCreateProductGroupingInput) => void;
   isPending: boolean;
 }
 
-export function ProductGroupingModal({ open, onOpenChange, grouping, onSubmit, isPending }: ProductGroupingModalProps) {
-  const isEdit = Boolean(grouping);
+export function ProductGroupingModal({ open, onOpenChange, onSubmit, isPending }: ProductGroupingModalProps) {
   const [name, setName] = useState("");
+  const [shortName, setShortName] = useState("");
   const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<ProductGroupingStatus>("draft");
 
   useEffect(() => {
     if (!open) return;
-    setName(grouping?.name ?? "");
-    setDescription(grouping?.description ?? "");
-    setStatus(grouping?.status ?? "draft");
-  }, [open, grouping]);
+    setName("");
+    setShortName("");
+    setDescription("");
+  }, [open]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (isEdit) {
-      onSubmit({ name, description, status } satisfies AdminUpdateProductGroupingInput);
-    } else {
-      onSubmit({ name, description } satisfies AdminCreateProductGroupingInput);
-    }
+    onSubmit({
+      name: name.trim(),
+      ...(shortName.trim() ? { short_name: shortName.trim() } : {}),
+      ...(description.trim() ? { description: description.trim() } : {}),
+    });
   }
-
-  const canSubmit = name.trim().length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "Edit grouping produk" : "Buat grouping produk"}</DialogTitle>
+            <DialogTitle>Tambah event</DialogTitle>
             <DialogDescription>
-              {isEdit
-                ? "Perbarui nama, deskripsi, atau status grouping ini."
-                : "Grouping baru dibuat sebagai draft; produk ditambahkan setelah grouping dibuat."}
+              Event baru dibuat sebagai draft dan disembunyikan dari landing page. Narasi, jadwal, dan edisi diisi di halaman event.
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="grouping-name">Nama</Label>
+              <Label htmlFor="grouping-name">Nama event</Label>
               <Input
                 id="grouping-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="contoh: Paket UTBK"
+                placeholder="contoh: ESOLIO"
+                disabled={isPending}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label htmlFor="grouping-short-name">Nama pendek (opsional)</Label>
+              <Input
+                id="grouping-short-name"
+                value={shortName}
+                onChange={(e) => setShortName(e.target.value)}
+                placeholder="contoh: Einstein"
                 disabled={isPending}
               />
             </div>
@@ -83,32 +82,17 @@ export function ProductGroupingModal({ open, onOpenChange, grouping, onSubmit, i
                 id="grouping-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="contoh: Buku dan paket latihan untuk UTBK"
+                placeholder="Dipakai pada filter Event di Toko"
                 disabled={isPending}
               />
             </div>
-
-            {isEdit && (
-              <div className="grid gap-2">
-                <Label htmlFor="grouping-status">Status</Label>
-                <Select value={status} onValueChange={(v) => setStatus(v as ProductGroupingStatus)} disabled={isPending}>
-                  <SelectTrigger id="grouping-status" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">Draft</SelectItem>
-                    <SelectItem value="published">Published</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
               Batal
             </Button>
-            <Button type="submit" disabled={!canSubmit || isPending}>
+            <Button type="submit" disabled={name.trim().length === 0 || isPending}>
               {isPending ? "Menyimpan..." : "Simpan"}
             </Button>
           </DialogFooter>

@@ -11,8 +11,25 @@ import {
   useDeleteProductGrouping,
   useReorderProductGroupings,
   useSetGroupingProducts,
+  useUpdateEditionLevel,
+  groupingErrorParts,
+  groupingMissingLabel,
 } from "./admin-product-groupings";
-import type { ProductGrouping, ProductGroupingDetail } from "@/lib/types";
+import type { AdminProductGrouping, ProductGrouping, ProductGroupingDetail } from "@/lib/types";
+
+const eventFields: Omit<AdminProductGrouping, "id" | "name" | "status" | "display_order"> = {
+  slug: "paket-utbk",
+  short_name: null,
+  scope: null,
+  subjects: [],
+  tone: "brand",
+  illustration: "trophy",
+  logo_key: null,
+  official_url: null,
+  content: null,
+  is_visible: false,
+  participant_prefix: null,
+};
 
 function wrapperFactory() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -28,8 +45,8 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("admin-product-groupings hooks", () => {
   it("useAdminProductGroupings fetches GET /admin/product-groupings", async () => {
-    const groupings: ProductGrouping[] = [
-      { id: "g1", name: "Paket UTBK", status: "draft", display_order: 0 },
+    const groupings: AdminProductGrouping[] = [
+      { ...eventFields, id: "g1", name: "Paket UTBK", status: "draft", display_order: 0 },
     ];
     const fetchSpy = vi.spyOn(api, "authFetch").mockResolvedValueOnce({ data: groupings });
 
@@ -43,11 +60,14 @@ describe("admin-product-groupings hooks", () => {
 
   it("useAdminProductGrouping fetches GET /admin/product-groupings/:id", async () => {
     const detail: ProductGroupingDetail = {
+      ...eventFields,
       id: "g1",
       name: "Paket UTBK",
       status: "draft",
       display_order: 0,
       products: [],
+      schedule: [],
+      en_complete: false,
     };
     const fetchSpy = vi.spyOn(api, "authFetch").mockResolvedValueOnce(detail);
 
@@ -129,7 +149,7 @@ describe("admin-product-groupings hooks", () => {
   });
 
   it("useSetGroupingProducts puts /admin/product-groupings/:id/products with product_ids and invalidates detail", async () => {
-    const detail: ProductGroupingDetail = { id: "g1", name: "Paket UTBK", status: "draft", display_order: 0, products: [] };
+    const detail: ProductGroupingDetail = { ...eventFields, id: "g1", name: "Paket UTBK", status: "draft", display_order: 0, products: [], schedule: [], en_complete: false };
     vi.spyOn(api, "authFetch").mockResolvedValueOnce(detail);
 
     const { wrapper, queryClient } = wrapperFactory();
@@ -145,5 +165,57 @@ describe("admin-product-groupings hooks", () => {
       body: JSON.stringify({ product_ids: ["p2", "p1"] }),
     });
     expect(spy).toHaveBeenCalledWith({ queryKey: adminProductGroupingsKeys.detail("g1") });
+  });
+
+  it("useUpdateEditionLevel patches /admin/products/:id with the level and invalidates the event detail", async () => {
+    vi.spyOn(api, "authFetch").mockResolvedValueOnce({ id: "p1" });
+
+    const { wrapper, queryClient } = wrapperFactory();
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useUpdateEditionLevel("g1"), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ productId: "p1", input: { stages: ["SD", "SMP"], grade_min: 4, grade_max: null } });
+    });
+
+    expect(api.authFetch).toHaveBeenCalledWith("/admin/products/p1", {
+      method: "PATCH",
+      body: JSON.stringify({ stages: ["SD", "SMP"], grade_min: 4, grade_max: null }),
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: adminProductGroupingsKeys.detail("g1") });
+  });
+
+  it("useReorderProductGroupings reorders the cached list at once and restores it when the PATCH fails", async () => {
+    const list: AdminProductGrouping[] = [
+      { ...eventFields, id: "g1", name: "A", status: "draft", display_order: 0 },
+      { ...eventFields, id: "g2", name: "B", status: "draft", display_order: 1 },
+    ];
+    let reject!: (e: Error) => void;
+    vi.spyOn(api, "authFetch").mockReturnValueOnce(new Promise((_, r) => { reject = r; }));
+
+    const { wrapper, queryClient } = wrapperFactory();
+    queryClient.setQueryData(adminProductGroupingsKeys.list(), list);
+    const { result } = renderHook(() => useReorderProductGroupings(), { wrapper });
+
+    act(() => { result.current.mutate(["g2", "g1"]); });
+    await waitFor(() =>
+      expect(queryClient.getQueryData<AdminProductGrouping[]>(adminProductGroupingsKeys.list())?.map((g) => g.id)).toEqual(["g2", "g1"]),
+    );
+
+    await act(async () => { reject(new Error("boom")); });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(queryClient.getQueryData<AdminProductGrouping[]>(adminProductGroupingsKeys.list())?.map((g) => g.id)).toEqual(["g1", "g2"]);
+  });
+
+  it("groupingErrorParts reads the 422 missing list and groupingMissingLabel names each gap", () => {
+    const err = new api.ApiError("validation_failed", "no", 422, { missing: ["participant_prefix", "id.story", "schedule[0].label_en", 7] });
+    expect(groupingErrorParts(err)).toEqual({ message: "no", code: "validation_failed", missing: ["participant_prefix", "id.story", "schedule[0].label_en"] });
+    expect(["participant_prefix", "id.story", "schedule[0].label_en", "weird"].map(groupingMissingLabel)).toEqual([
+      "Prefiks nomor peserta",
+      "Cerita (Indonesia)",
+      "Label EN jadwal ke-1",
+      "weird",
+    ]);
+    expect(groupingErrorParts(new Error("x"))).toEqual({ message: "x", missing: [] });
   });
 });
