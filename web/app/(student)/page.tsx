@@ -23,8 +23,8 @@ import { ShopPicks } from "@/components/dashboard/ShopPicks";
 import { Landing } from "@/components/landing/Landing";
 import { greetingKey } from "./home-greeting";
 
-const ROW_A = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
-const ROW_B = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,40fr)_minmax(0,60fr)]";
+const ROW_A = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1201px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
+const ROW_B = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1201px]:grid-cols-[minmax(0,40fr)_minmax(0,60fr)]";
 
 function firstName(name?: string): string {
   if (!name) return "";
@@ -55,6 +55,7 @@ function Dashboard() {
     weekday: "long",
     day: "numeric",
     month: "long",
+    year: "numeric",
   }).format(now);
 
   return (
@@ -77,8 +78,10 @@ function Dashboard() {
       {isLoading ? (
         <DashboardSkeleton />
       ) : data ? (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
           <PageHead
+            size="home"
+            highlight={name}
             eyebrow={today}
             title={t("stu_home_greeting").replace("{greeting}", greeting).replace("{name}", name)}
             sub={t("stu_home_intro")}

@@ -65,4 +65,20 @@ describe("PageHead", () => {
     expect(screen.queryByRole("button", { name: /dark_mode|light_mode/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "notifications" })).not.toBeInTheDocument();
   });
+  it("wraps the last match of highlight in the ember .hl span with the squiggle", () => {
+    render(<PageHead title="Selamat pagi, Pagi" highlight="Pagi" size="home" />);
+    const h1 = screen.getByRole("heading", { level: 1, name: "Selamat pagi, Pagi" });
+    const hl = h1.querySelector("span.text-ember-700");
+    expect(hl).toHaveTextContent(/^Pagi$/);
+    expect(hl?.querySelector("svg[aria-hidden='true'] path")).toHaveAttribute("stroke", "var(--color-gold-600)");
+    expect(h1).toHaveClass("text-[clamp(32px,4vw,48px)]", "leading-[1.08]", "tracking-[-0.04em]");
+    expect(h1).not.toHaveClass("type-h1");
+  });
+
+  it("leaves the title plain when highlight is missing or absent from it", () => {
+    const { rerender } = render(<PageHead title="Halo, Budi" />);
+    expect(screen.getByRole("heading", { level: 1 }).querySelector("svg")).toBeNull();
+    rerender(<PageHead title="Halo, Budi" highlight="Sari" />);
+    expect(screen.getByRole("heading", { level: 1 }).querySelector("svg")).toBeNull();
+  });
 });
