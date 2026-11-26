@@ -34,7 +34,7 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TabCount, Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useExam,
   useExamAnalytics,
@@ -433,7 +433,7 @@ function ExamPackageDetail() {
   ];
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         back={{ href: "/admin/exam/packages", label: t("exam_packages_page_title") }}
         title={title}
@@ -478,7 +478,7 @@ function ExamPackageDetail() {
       )}
 
       {isError && (
-        <div className="rounded-2xl bg-danger-50 p-4 text-danger-600">
+        <div className="rounded-[16px] bg-danger-50 p-4 text-danger-600">
           {errorMessage(error, t("error_generic"))}
         </div>
       )}
@@ -490,7 +490,8 @@ function ExamPackageDetail() {
               {visibleTabs.map((key) => (
                 <TabsTrigger key={key} value={key}>
                   {t(`admin_exam_detail_tab_${key}` as const)}
-                  {key === "tests" && ` (${attachedIds.length})`}
+                  {key === "tests" && <TabCount>{attachedIds.length}</TabCount>}
+                  {key === "registrations" && registeredCount != null && <TabCount>{registeredCount}</TabCount>}
                 </TabsTrigger>
               ))}
             </TabsList>
@@ -685,7 +686,7 @@ function ExamPackageDetail() {
                     }
                   >
                     {confirmDisableCertificate && (
-                      <div className="rounded-2xl bg-danger-50 p-4 text-sm">
+                      <div className="rounded-[16px] bg-danger-50 p-4 text-sm">
                         <p className="font-bold">
                           {t("admin_exam_detail_certificate_disable_confirm_title")}
                         </p>
@@ -797,7 +798,7 @@ function ExamPackageDetail() {
                       const materialCount = entry?.material_question_positions?.length ?? 0;
                       const title = meta?.title ?? testId;
                       return (
-                        <li key={`${testId}-${idx}`} className="rounded-2xl bg-surface-sunken px-3.5 py-3">
+                        <li key={`${testId}-${idx}`} className="rounded-[16px] bg-surface-sunken px-3.5 py-3">
                           <div className="flex items-start gap-3">
                             <NumberChip n={idx + 1} />
                             <div className="min-w-0 flex-1">
@@ -969,19 +970,19 @@ function ExamPackageDetail() {
                 />
                 {data.format_version === 2 &&
                   (materialConflicts.length > 0 ? (
-                    <div role="alert" className="rounded-2xl bg-danger-50 p-4 text-sm text-danger-600">
+                    <div role="alert" className="rounded-[16px] bg-danger-50 p-4 text-sm text-danger-600">
                       <strong className="block">{t("exam_admin_valid_conflict_title")}</strong>
                       {materialConflicts.map((message) => (
                         <p key={message} className="mt-1">{message}</p>
                       ))}
                     </div>
                   ) : attachedIds.length > 0 ? (
-                    <div className="rounded-2xl bg-teal-50 p-4 text-sm text-teal-700">
+                    <div className="rounded-[16px] bg-teal-50 p-4 text-sm text-teal-700">
                       <strong className="block">{t("exam_admin_valid_title")}</strong>
                       {t("exam_admin_valid_body")}
                     </div>
                   ) : (
-                    <div className="rounded-2xl bg-gold-50 p-4 text-sm text-gold-700">
+                    <div className="rounded-[16px] bg-gold-50 p-4 text-sm text-gold-700">
                       <strong className="block">{t("exam_admin_valid_empty_title")}</strong>
                       {t("exam_admin_valid_empty_body")}
                     </div>
@@ -1116,7 +1117,7 @@ function ExamPackageDetail() {
 
                 {analytics && (
                   <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                    <div className="rounded-2xl bg-surface-sunken p-4">
+                    <div className="rounded-[16px] bg-surface-sunken p-4">
                       <div className="text-label text-sm text-ink-600">
                         {t("admin_exam_analytics_average_score")}
                       </div>
@@ -1124,7 +1125,7 @@ function ExamPackageDetail() {
                         {analytics.average_score.toFixed(1)}
                       </div>
                     </div>
-                    <div className="rounded-2xl bg-surface-sunken p-4">
+                    <div className="rounded-[16px] bg-surface-sunken p-4">
                       <div className="text-label text-sm text-ink-600">
                         {t("admin_exam_analytics_completion_rate")}
                       </div>
@@ -1132,7 +1133,7 @@ function ExamPackageDetail() {
                         {Math.round(analytics.completion_rate * 100)}%
                       </div>
                     </div>
-                    <div className="rounded-2xl bg-surface-sunken p-4">
+                    <div className="rounded-[16px] bg-surface-sunken p-4">
                       <div className="mb-2 text-label text-sm text-ink-600">
                         {t("admin_exam_analytics_distribution")}
                       </div>
@@ -1256,7 +1257,7 @@ function OverviewGroup({ icon: Icon, title, children }: { icon: LucideIcon; titl
 
 function NumberChip({ n }: { n: number }) {
   return (
-    <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-ink-900 text-[13px] font-extrabold text-surface">
+    <span className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-brand-900 font-[family-name:var(--font-display)] text-[13px] font-extrabold text-white">
       {n}
     </span>
   );
@@ -1276,7 +1277,7 @@ function RuleLine({ icon: Icon, title, body }: { icon: LucideIcon; title: string
 
 function OverviewRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-line py-2.5 text-sm">
+    <div className="flex items-center justify-between gap-4 border-t border-line py-2.5 text-sm leading-[1.55]">
       <dt className="text-ink-600">{label}</dt>
       <dd className="text-right font-bold text-ink-900">{value}</dd>
     </div>
@@ -1307,7 +1308,7 @@ function GradingEssayCard({
         <div className="text-label text-ink-600">
           {t("grading_essay_answer_label")}
         </div>
-        <div className="whitespace-pre-wrap rounded-2xl bg-surface-sunken p-3 text-sm">
+        <div className="whitespace-pre-wrap rounded-[16px] bg-surface-sunken p-3 text-sm">
           {essay.answer?.trim() ? essay.answer : t("grading_essay_no_answer")}
         </div>
       </div>

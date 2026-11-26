@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Check, MessageSquareQuote, Trophy, TriangleAlert } from "lucide-react";
+import { Check, MessageSquareQuote, Pencil, Plus, Trash2, Trophy, TriangleAlert } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolbar";
 import { Badge } from "@/components/ui/badge";
@@ -59,12 +59,12 @@ function TestimonialCard({
   const chips = item.content.id?.achievements ?? [];
   const off = !item.is_visible || !item.has_consent;
   return (
-    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3.5 p-6 ${off ? "border-dashed bg-surface-sunken" : ""}`}>
-      <div className="flex items-center gap-3">
+    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3 p-6 ${off ? "opacity-75" : ""}`}>
+      <div className="flex items-center gap-2">
         <AbakAvatar name={item.name} size="md" src={src || undefined} />
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-extrabold text-ink-900">{item.name}</h3>
-          <p className="truncate text-xs text-ink-600">{item.role_label}</p>
+          <h3 className="truncate font-[family-name:var(--font-display)] text-[15px] leading-[1.55] font-bold text-ink-900">{item.name}</h3>
+          <p className="truncate text-[12.5px] leading-[1.55] text-ink-600">{item.role_label}</p>
         </div>
         <Switch
           size="sm"
@@ -75,28 +75,30 @@ function TestimonialCard({
         />
       </div>
 
-      <blockquote className="line-clamp-4 text-sm text-ink-700">{item.content.id?.quote}</blockquote>
+      <blockquote className="line-clamp-4 flex-1 font-[family-name:var(--font-display)] text-[15px] leading-[1.5] font-semibold text-ink-700">
+        {item.content.id?.quote?.trim() && <>“<span>{item.content.id.quote}</span>”</>}
+      </blockquote>
 
       {chips.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {chips.map((c) => (
-            <Badge key={c} variant="gold"><Trophy className="size-3" aria-hidden />{c}</Badge>
+            <Badge key={c} variant="gold"><Trophy className="size-3.5" aria-hidden />{c}</Badge>
           ))}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 border-t border-dashed border-line pt-2.5">
         {item.has_consent
-          ? <Badge variant="teal"><Check className="size-3" aria-hidden />{t("adm_testi_consent_yes")}</Badge>
-          : <Badge variant="danger"><TriangleAlert className="size-3" aria-hidden />{t("adm_testi_consent_no")}</Badge>}
+          ? <Badge variant="teal"><Check className="size-3.5" aria-hidden />{t("adm_testi_consent_yes")}</Badge>
+          : <Badge variant="danger"><TriangleAlert className="size-3.5" aria-hidden />{t("adm_testi_consent_no")}</Badge>}
         <Badge variant={idComplete(item) ? "mute" : "danger"}>{t(idComplete(item) ? "adm_testi_id_ok" : "adm_testi_id_empty")}</Badge>
         <Badge variant={enComplete(item) ? "mute" : "gold"}>{t(enComplete(item) ? "adm_testi_en_ok" : "adm_testi_en_missing")}</Badge>
         {!item.photo_key && <Badge variant="mute">{t("adm_testi_no_photo")}</Badge>}
       </div>
 
-      <div className="mt-auto flex items-center gap-2 border-t border-dashed border-line pt-3">
-        <Button size="sm" variant="outline" onClick={onEdit}>{t("adm_edit")}</Button>
-        <Button size="sm" variant="ghost" onClick={onDelete}>{t("adm_delete")}</Button>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" onClick={onEdit}><Pencil aria-hidden />{t("adm_edit")}</Button>
+        <Button size="sm" variant="ghost" onClick={onDelete}><Trash2 aria-hidden />{t("adm_delete")}</Button>
         <span className="ml-auto text-xs text-ink-600">{t(item.is_visible ? "adm_on_landing" : "adm_draft")}</span>
       </div>
     </article>
@@ -154,11 +156,16 @@ export default function TestimonialsPage() {
   }
 
   return (
-    <div className="space-y-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("admin_nav_testimonials")}
         description={t("adm_testi_desc")}
-        actions={<Button variant="dark" onClick={() => openEditor(null)}>{t("adm_testi_add")}</Button>}
+        actions={
+          <Button variant="dark" onClick={() => openEditor(null)}>
+            <Plus aria-hidden />
+            {t("adm_testi_add")}
+          </Button>
+        }
       />
 
       {isLoading && (

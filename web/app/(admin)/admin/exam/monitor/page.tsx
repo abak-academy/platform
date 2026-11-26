@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import {
   Dialog,
   DialogContent,
@@ -195,11 +196,11 @@ export default function ExamMonitorPage() {
     },
     {
       key: "actions",
-      header: t("th_actions"),
+      header: <span className="inline-block size-px overflow-hidden whitespace-nowrap [clip-path:inset(50%)]">{t("th_actions")}</span>,
       align: "right",
       cell: (row) => (
-        <Button variant="outline" size="xs" onClick={() => setSelectedExamId(row.id)}>
-          <Eye size={12} />
+        <Button variant="outline" size="sm" onClick={() => setSelectedExamId(row.id)}>
+          <Eye />
           {t("monitor_actions_view")}
         </Button>
       ),
@@ -242,7 +243,17 @@ export default function ExamMonitorPage() {
   // ── Session table columns (detail section) ──
 
   const columns: DataTableColumn<SessionMonitorRow>[] = [
-    { key: "name", header: t("th_name"), cell: (row) => row.student_name },
+    {
+      key: "name",
+      header: t("th_name"),
+      nowrap: true,
+      cell: (row) => (
+        <span className="inline-flex items-center gap-2.5 text-ink-900">
+          <AbakAvatar name={row.student_name} size="xs" ring={false} />
+          {row.student_name}
+        </span>
+      ),
+    },
     {
       key: "school",
       header: t("school"),
@@ -313,26 +324,26 @@ export default function ExamMonitorPage() {
     },
     {
       key: "actions",
-      header: t("th_actions"),
+      header: <span className="inline-block size-px overflow-hidden whitespace-nowrap [clip-path:inset(50%)]">{t("th_actions")}</span>,
       cell: (row) =>
         (row.status === "in_progress" || row.status === "overdue") && row.session_id ? (
           <div className="flex items-center gap-1">
             <Button
-              variant="outline"
-              size="xs"
+              variant="ghost"
+              size="sm"
               onClick={() => handleReopen(row.session_id!)}
               disabled={reopen.isPending}
             >
-              <RotateCcw size={12} />
+              <RotateCcw />
               {t("monitor_actions_reopen")}
             </Button>
             {row.status === "overdue" && <Button
-              variant="outline"
-              size="xs"
+              variant="ghost"
+              size="sm"
               onClick={() => handleForceSubmit(row.session_id!)}
               disabled={forceSubmit.isPending}
             >
-              <XCircle size={12} />
+              <XCircle />
               {t("monitor_actions_force_submit")}
             </Button>}
           </div>
@@ -447,7 +458,7 @@ export default function ExamMonitorPage() {
   // ── Main content ──
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("exam_monitor_title")}
         description={t("exam_monitor_subtitle")}

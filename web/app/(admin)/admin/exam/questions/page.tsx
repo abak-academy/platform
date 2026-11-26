@@ -34,7 +34,6 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { FORMAT_BADGE_VARIANT } from "@/lib/question-tone";
 import { ApiError } from "@/lib/api";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
@@ -75,6 +74,8 @@ const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard
   medium: "diff_medium",
   hard: "diff_hard",
 };
+
+const ROW_ICON_BTN = "border-[1.5px] border-line bg-surface text-ink-700 hover:border-ink-900 hover:bg-surface";
 
 export default function QuestionBankPage() {
   const { t } = useTranslation();
@@ -220,7 +221,7 @@ export default function QuestionBankPage() {
       key: "format",
       header: t("format"),
       cell: (item) => (
-        <Badge variant={FORMAT_BADGE_VARIANT[item.question.format]}>
+        <Badge variant={item.question.format === "essay" ? "ember" : "mute"}>
           {t(FORMAT_LABELS[item.question.format] as Parameters<typeof t>[0])}
         </Badge>
       ),
@@ -233,7 +234,7 @@ export default function QuestionBankPage() {
           ? DIFFICULTY_LABELS[item.question.difficulty]
           : undefined;
         return difficultyKey ? (
-          <span className={cn("text-xs font-bold", DIFFICULTY_TEXT[item.question.difficulty ?? ""])}>
+          <span className={cn("font-[family-name:var(--font-display)] text-xs font-bold", DIFFICULTY_TEXT[item.question.difficulty ?? ""])}>
             {t(difficultyKey)}
           </span>
         ) : (
@@ -245,7 +246,7 @@ export default function QuestionBankPage() {
       key: "used_in",
       header: t("used_in"),
       align: "right",
-      cell: (item) => item.attached_count,
+      cell: (item) => t("tests_count").replace("{n}", String(item.attached_count)),
     },
     {
       key: "points",
@@ -259,13 +260,14 @@ export default function QuestionBankPage() {
     },
     {
       key: "actions",
-      header: t("th_actions"),
+      header: <span className="inline-block size-px overflow-hidden whitespace-nowrap [clip-path:inset(50%)]">{t("th_actions")}</span>,
       align: "right",
       cell: (item) => (
         <div className="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
             size="icon-sm"
+            className={ROW_ICON_BTN}
             aria-label={t("action_view")}
             onClick={() => handleRowClick(item)}
           >
@@ -274,6 +276,7 @@ export default function QuestionBankPage() {
           <Button
             variant="ghost"
             size="icon-sm"
+            className={ROW_ICON_BTN}
             aria-label={t("action_delete")}
             title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
             disabled={item.in_live_exam}
@@ -290,7 +293,7 @@ export default function QuestionBankPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("question_bank_title")}
         description={t("question_bank_subtitle")}
@@ -373,7 +376,7 @@ export default function QuestionBankPage() {
                       .replace("{pages}", String(pageCount))
                       .replace("{total}", String(total))}
                   </span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <Button
                       variant="outline"
                       size="sm"

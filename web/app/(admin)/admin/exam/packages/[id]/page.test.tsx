@@ -415,7 +415,7 @@ describe("ExamPackageDetailPage — overview tab", () => {
   it("names the tests tab 'Tes & section'", async () => {
     render(<ExamPackageDetailPage />);
 
-    expect(await screen.findByRole("tab", { name: /^tes & section \(\d+\)$/i })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: /^tes & section\s*\d+$/i })).toBeInTheDocument();
   });
 });
 
@@ -780,7 +780,7 @@ describe("ExamPackageDetailPage — preset buttons in tests tab", () => {
   });
 
   function openTestsTab() {
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
   }
 
   it("shows IELTS preset button when exam mode is ielts", async () => {
@@ -909,7 +909,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
 
     expect(screen.getByRole("tab", { name: /^ringkasan$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^pendaftaran$/i })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /^tes & section \(\d+\)$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /^tes & section\s*\d+$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^sertifikat$/i })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^penilaian$/i })).not.toBeInTheDocument();
@@ -928,7 +928,7 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^sertifikat$/i })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
@@ -1218,7 +1218,7 @@ describe("ExamPackageDetailPage — Tambah Test dialog", () => {
       expect(screen.getByRole("heading", { name: sampleExam.title })).toBeInTheDocument();
     });
 
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
     fireEvent.click(screen.getByRole("button", { name: /^tambah test$/i }));
   }
 
@@ -1252,7 +1252,7 @@ describe("ExamPackageDetailPage — Tambah Test dialog", () => {
     vi.useFakeTimers();
     try {
       render(<ExamPackageDetailPage />);
-      fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+      fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
       fireEvent.click(screen.getByRole("button", { name: /^tambah test$/i }));
       fireEvent.change(screen.getByPlaceholderText("Cari…"), {
         target: { value: "  optik  " },
@@ -1309,7 +1309,7 @@ describe("composable section presentation", () => {
     mockReplaceTests.mockResolvedValue(undefined);
     examState = {data:{...sampleExam,format_version:2,navigation_policy:"sequential",tests:[{id:"entry",exam_id:"exam-1",test_id:"section-1",sort_order:0,question_presentation:presentation,test:{id:"section-1",title:"Reading Section",subject:"English",duration_minutes:30,question_count:2}}]},isLoading:false,isError:false,error:null,refetch:vi.fn()};
     render(<ExamPackageDetailPage />);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
     expect(await screen.findByLabelText("Tampilan soal Reading Section")).toHaveValue(presentation);
     fireEvent.click(screen.getByRole("button",{name:/^simpan susunan$/i}));
     await waitFor(() => expect(mockReplaceTests).toHaveBeenCalledWith([{test_id:"section-1",question_presentation:presentation}]));
@@ -1376,7 +1376,7 @@ describe("composable exam — material conflicts and policy lock", () => {
     adminTestsState = { data: { data: sampleAvailableTests }, isLoading: false, isFetching: false };
     useUIStore.setState({ lang: "id" });
     const view = render(<ExamPackageDetailPage />);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
     return view;
   }
 
@@ -1509,7 +1509,7 @@ describe("ExamPackageDetailPage — exam event info", () => {
 
   it("puts the Aturan pengerjaan card beside the section list, with no always-visible Test picker", () => {
     open();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
     const rules = screen.getByRole("region", { name: "Aturan pengerjaan" });
     const sections = screen.getByRole("region", { name: "Susunan section" });
     expect(sections.compareDocumentPosition(rules) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -1520,7 +1520,7 @@ describe("ExamPackageDetailPage — exam event info", () => {
 
   it("keeps the rules editable while policy and section controls are locked by sessions", () => {
     open({ has_sessions: true });
-    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
     expect(screen.getAllByRole("button", { name: /^tambah test$/i })[0]).toBeDisabled();
     const toggle = screen.getByRole("checkbox", { name: /tambahkan aturan tambahan/i });
     expect(toggle).toBeEnabled();
@@ -1568,7 +1568,7 @@ describe("ExamPackageDetailPage — prototype parity", () => {
     useUIStore.setState({ lang: "id" });
     return render(<ExamPackageDetailPage />);
   }
-  const openTests = () => fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section \(\d+\)$/i }));
+  const openTests = () => fireEvent.mouseDown(screen.getByRole("tab", { name: /^tes & section\s*\d+$/i }));
 
   describe("header", () => {
     it("counts participants from the registration counts, excluding revoked, with 'belum ada sesi'", () => {
@@ -1599,7 +1599,7 @@ describe("ExamPackageDetailPage — prototype parity", () => {
 
     it("labels the tests tab with the section count", () => {
       open(composable());
-      expect(screen.getByRole("tab", { name: "Tes & section (2)" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Tes & section2" })).toBeInTheDocument();
     });
 
     it("gives Pratinjau siswa an outline and Pengaturan a secondary button, with icons and a back link", () => {
@@ -1806,7 +1806,7 @@ describe("ExamPackageDetailPage — prototype parity", () => {
 
       await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
       expect(screen.getByRole("link", { name: "Tes Aljabar" })).toBeInTheDocument();
-      expect(screen.getByRole("tab", { name: "Tes & section (3)" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Tes & section3" })).toBeInTheDocument();
       const added = screen.getByRole("link", { name: "Tes Aljabar" }).closest("li")!;
       expect(added).not.toHaveTextContent(/materi bersama/i);
       expect(screen.getByRole("button", { name: "Hapus Tes Aljabar" })).toBeInTheDocument();

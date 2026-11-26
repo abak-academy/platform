@@ -105,7 +105,7 @@ vi.mock("@/components/admin/QuestionEditor", () => ({
 }));
 
 vi.mock("@/lib/i18n", () => ({
-  useTranslation: () => ({ t: (k: string) => k, lang: "id" }),
+  useTranslation: () => ({ t: (k: string) => (k === "tests_count" ? "{n} tes" : k), lang: "id" }),
 }));
 
 vi.mock("sonner", () => {
@@ -183,8 +183,8 @@ describe("QuestionBankPage", () => {
     expect(screen.getByText("What is 2+2?")).toBeInTheDocument();
     expect(screen.getByText("Explain photosynthesis.")).toBeInTheDocument();
     expect(document.querySelector(".md-card-flush")).not.toBeNull();
-    expect(screen.getByText("2")).toBeInTheDocument();
-    expect(screen.getByText("0")).toBeInTheDocument();
+    expect(screen.getByText("2 tes")).toBeInTheDocument();
+    expect(screen.getByText("0 tes")).toBeInTheDocument();
   });
 
   it("shows skeleton rows while loading", () => {

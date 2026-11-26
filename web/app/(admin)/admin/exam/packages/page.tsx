@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Calendar, Info, Trophy } from "lucide-react";
+import { Calendar, Info, Plus, Trophy } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ import { useAuthStore } from "@/stores/auth";
 import type { ExamListItem } from "@/lib/types";
 
 function Sub({ children }: { children: React.ReactNode }) {
-  return <div className="mt-0.5 text-xs text-ink-600">{children}</div>;
+  return <small className="block text-xs leading-[1.55] text-ink-600">{children}</small>;
 }
 
 type Phase = "upcoming" | "open" | "ended" | "none";
@@ -135,13 +135,14 @@ export default function ExamPackagesPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("exam_packages_page_title")}
         description={t("exam_packages_page_description")}
         actions={
           role !== "admin_school" ? (
             <Button variant="dark" onClick={() => setShowCreate(true)}>
+              <Plus aria-hidden />
               {t("exam_packages_create")}
             </Button>
           ) : undefined
@@ -240,12 +241,12 @@ export default function ExamPackagesPage() {
               {
                 key: "exam",
                 header: t("exam_admin_col_exam"),
-                className: "min-w-[14rem]",
+                className: "min-w-[14rem] max-w-[24rem]",
                 cell: (exam) => (
                   <TableItem
                     thumb={
-                      <span className="grid size-[38px] place-items-center rounded-xl bg-brand-50 text-brand-ink">
-                        <Trophy className="size-[18px]" aria-hidden />
+                      <span className="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-brand-100 text-brand-800">
+                        <Trophy className="size-4" aria-hidden />
                       </span>
                     }
                     title={exam.title}
@@ -268,51 +269,54 @@ export default function ExamPackagesPage() {
               },
               {
                 key: "composition",
+                nowrap: true,
                 header: t("exam_admin_col_composition"),
                 cell: (exam) =>
                   exam.format_version === 2 ? (
                     <>
-                      <div>{plural(t, "exam_admin_list_sections", exam.section_count ?? 0)}</div>
+                      <span>{plural(t, "exam_admin_list_sections", exam.section_count ?? 0)}</span>
                       <Sub>{plural(t, "exam_admin_list_questions", exam.question_count ?? 0)}</Sub>
                     </>
                   ) : (
                     <>
-                      <div>{t("exam_admin_legacy_format")}</div>
+                      <span>{t("exam_admin_legacy_format")}</span>
                       <Sub>{t("exam_admin_legacy_settings")}</Sub>
                     </>
                   ),
               },
               {
                 key: "delivery",
+                nowrap: true,
                 header: t("exam_admin_col_delivery"),
                 cell: (exam) =>
                   exam.format_version === 2 ? (
                     <>
-                      <div>
+                      <span>
                         {t(
                           exam.navigation_policy === "sequential"
                             ? "exam_admin_list_nav_sequential"
                             : "exam_admin_list_nav_free"
                         )}
-                      </div>
+                      </span>
                       <Sub>{t("exam_admin_presentation_per_section")}</Sub>
                     </>
                   ) : (
                     <>
-                      <div>{examModeLabel(exam.mode, t)}</div>
+                      <span>{examModeLabel(exam.mode, t)}</span>
                       <Sub>{t("exam_admin_legacy_format")}</Sub>
                     </>
                   ),
               },
               {
                 key: "time",
+                nowrap: true,
                 header: t("exam_admin_col_time"),
                 cell: (exam) => {
                   const composable = exam.format_version === 2;
                   if (composable && exam.timer_mode === "per_test") {
                     return (
                       <>
-                        <div>{t("exam_admin_time_per_section")}</div>
+                        <span>{t("exam_admin_time_per_section")}</span>
                         {exam.sections_duration_minutes != null && (
                           <Sub>
                             {t("exam_admin_time_sections_total").replace("{n}", String(exam.sections_duration_minutes))}
@@ -324,12 +328,12 @@ export default function ExamPackagesPage() {
                   if (exam.duration_minutes == null) return "—";
                   return (
                     <>
-                      <div>
+                      <span>
                         {t(composable ? "exam_admin_time_overall" : "exam_admin_time_legacy").replace(
                           "{n}",
                           String(exam.duration_minutes)
                         )}
-                      </div>
+                      </span>
                       <Sub>{t(composable ? "exam_admin_time_overall_hint" : "exam_admin_time_legacy_hint")}</Sub>
                     </>
                   );
@@ -337,13 +341,14 @@ export default function ExamPackagesPage() {
               },
               {
                 key: "access",
+                nowrap: true,
                 header: t("exam_admin_col_access"),
                 cell: (exam) => {
                   const access = accessWindow(exam.scheduled_at ?? null, exam.scheduled_end_at ?? null, lang);
                   if (!access) return t("exam_admin_access_none");
                   return (
                     <>
-                      <div>{`${access.from.date}, ${access.from.time} WIB`}</div>
+                      <span>{`${access.from.date}, ${access.from.time} WIB`}</span>
                       <Sub>
                         {access.to
                           ? t("exam_admin_access_until").replace("{date}", `${access.to.date}, ${access.to.time} WIB`)
@@ -359,8 +364,8 @@ export default function ExamPackagesPage() {
       </div>
 
       {!isLoading && !isError && (
-        <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-600">
-          <Info className="size-3.5" aria-hidden />
+        <p className="flex flex-wrap items-center gap-1.5 text-[13px] leading-[1.55] text-ink-600">
+          <Info className="size-4" aria-hidden />
           {t("exam_admin_products_footnote")}
           <Link href="/admin/products" className="font-bold text-brand-ink hover:underline">
             {t("admin_nav_products")}

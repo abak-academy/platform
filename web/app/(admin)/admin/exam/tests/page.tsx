@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TestModal } from "@/components/admin/TestModal";
 import { Button } from "@/components/ui/button";
@@ -168,11 +168,16 @@ export default function TestsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("tests_page_title")}
         description={t("tests_page_description")}
-        actions={<Button variant="dark" onClick={openCreate}>{t("tests_new")}</Button>}
+        actions={
+          <Button variant="dark" onClick={openCreate}>
+            <Plus aria-hidden />
+            {t("tests_new")}
+          </Button>
+        }
       />
 
       <div
@@ -248,7 +253,7 @@ export default function TestsPage() {
       )}
 
       {!isError && tests.length > 0 && (
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(255px,1fr))] gap-[18px]">
           {tests.map((test) => (
             <article
               key={test.id}
@@ -281,7 +286,7 @@ export default function TestsPage() {
                   </button>
                 </div>
               </div>
-              <h3 className="type-h3 [overflow-wrap:anywhere]">
+              <h3 className="type-h3 font-bold tracking-[-0.02em] [overflow-wrap:anywhere]">
                 <Link
                   href={`/admin/exam/tests/${test.id}`}
                   onClick={(e) => {
@@ -299,7 +304,7 @@ export default function TestsPage() {
                 <Badge variant="sky">{test.subject}</Badge>
                 <span className="text-xs text-ink-600">{test.topic}</span>
               </div>
-              <div className="mt-auto text-xs text-ink-600">
+              <div className="mt-auto text-[13px] leading-[1.55] text-ink-600">
                 <div>
                   {test.shared_material_html?.trim()
                     ? t("tests_content_material")
@@ -316,7 +321,7 @@ export default function TestsPage() {
         <EmptyState framed icon={Search} title={t("tests_empty")} />
       )}
 
-      <p className="text-xs text-ink-600">{t("tests_list_footnote")}</p>
+      <p className="text-[13px] leading-[1.55] text-ink-600">{t("tests_list_footnote")}</p>
 
       {!isLoading && !isError && tests.length > 0 && (
         <div className="flex items-center justify-between gap-3">
