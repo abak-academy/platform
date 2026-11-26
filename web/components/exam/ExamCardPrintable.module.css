@@ -1,6 +1,7 @@
 /* Exam participant card — A6 landscape, print-ready. Ported from design prototype. */
 
 .screen {
+  line-height: normal;
   --navy: #22315b;
   --navy-600: #2c3f73;
   --navy-500: #3c5390;

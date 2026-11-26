@@ -91,8 +91,8 @@ for (const viewport of VIEWPORTS) {
     await expect(toolbar).toBeVisible();
 
     await page.getByRole("button", { name: /^filter/i }).click();
-    const subjectSelect = page.getByTestId("tests-subject-filter");
-    const topicSelect = page.getByTestId("tests-topic-filter");
+    const subjectSelect = page.getByRole("combobox", { name: "Mata pelajaran", exact: true });
+    const topicSelect = page.getByRole("combobox", { name: "Topik", exact: true });
     const searchInput = page.getByTestId("tests-search-input");
 
     // A collapsed 0px control would satisfy the overflow check below

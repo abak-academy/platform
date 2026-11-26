@@ -111,6 +111,7 @@ export function CertificateDocumentCore({
           fontFamily: fonts[field.font || ""] || "var(--font-certificate-source-serif)",
           fontWeight: field.weight === "bold" ? 700 : 400,
           fontStyle: field.italic ? "italic" : "normal",
+          lineHeight: "normal",
           textAlign: field.align === "left" || field.align === "right" ? field.align : "center",
         };
         return (

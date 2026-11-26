@@ -50,6 +50,12 @@ describe("CertificateDocumentStatic markup", () => {
     expect(page).toContain("overflow:hidden");
   });
 
+  it("pins line-height:normal on text fields so preview and PDF match", () => {
+    const html = serialize();
+    const value = /<span[^>]*data-testid="certificate-field-value-title"[^>]*>/.exec(html)?.[0] ?? "";
+    expect(value).toContain("line-height:normal");
+  });
+
   it("inlines absolute cover positioning on the background image", () => {
     const html = serialize("{{certificate_background_url}}");
     const img = /<img[^>]*data-testid="certificate-field-editor-background"[^>]*>/.exec(html)?.[0] ?? "";
