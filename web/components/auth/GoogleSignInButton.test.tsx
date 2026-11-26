@@ -91,6 +91,31 @@ describe("GoogleSignInButton", () => {
     expect(replace).toHaveBeenCalledWith("/complete-profile");
   });
 
+  it.each([
+    ["/cart", "student", "/cart"],
+    ["//evil.example", "student", "/"],
+    ["/cart", "super_admin", "/admin"],
+  ])("next=%s as %s lands on %s", async (next, role, landing) => {
+    let callback: ((response: { credential: string }) => void) | undefined;
+    window.google = {
+      accounts: {
+        id: {
+          initialize: vi.fn((config) => {
+            callback = config.callback;
+          }),
+          renderButton: vi.fn(),
+        },
+      },
+    };
+    render(<GoogleSignInButton next={next} />);
+    await waitFor(() => expect(callback).toBeDefined());
+    callback?.({ credential: "google-id-token" });
+
+    mutate.mock.calls[0][1].onSuccess({ user: { role, auth_provider: "google", school_id: 1, grade: 10 } });
+
+    expect(replace).toHaveBeenCalledWith(landing);
+  });
+
   it("renders nothing when the Google client id is empty", () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_CLIENT_ID", "");
     const initialize = vi.fn();

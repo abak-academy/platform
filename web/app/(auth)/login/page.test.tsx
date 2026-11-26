@@ -4,9 +4,11 @@ import LoginPage from "./page";
 import { ApiError } from "@/lib/api";
 
 const pushMock = vi.fn();
+const search = vi.hoisted(() => ({ value: "" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
+  useSearchParams: () => new URLSearchParams(search.value),
 }));
 
 const mutateAsyncMock = vi.fn();
@@ -23,8 +25,8 @@ vi.mock("@/lib/hooks/affiliate", () => ({
 }));
 
 vi.mock("@/components/auth/GoogleSignInButton", () => ({
-  GoogleSignInButton: ({ text }: { text: string }) => (
-    <div data-testid="google-sign-in" data-text={text} />
+  GoogleSignInButton: ({ text, next }: { text: string; next?: string | null }) => (
+    <div data-testid="google-sign-in" data-text={text} data-next={next ?? ""} />
   ),
   googleSignInAvailable: true,
 }));
@@ -34,6 +36,7 @@ describe("LoginPage", () => {
     pushMock.mockClear();
     mutateAsyncMock.mockClear();
     sessionStorage.clear();
+    search.value = "";
   });
 
   it("links to the affiliate sign-up under the student sign-up link", () => {
@@ -132,5 +135,62 @@ describe("LoginPage", () => {
       "Terlalu banyak percobaan masuk. Coba lagi sebentar lagi.",
     );
     expect(screen.queryByText("too many login attempts")).not.toBeInTheDocument();
+  });
+
+  async function signIn(role: string) {
+    mutateAsyncMock.mockResolvedValue({ user: { role } });
+    render(<LoginPage />);
+    fireEvent.change(
+      screen.getByLabelText(/email atau username|email or username/i, { selector: "input" }),
+      { target: { value: "budi@example.com" } },
+    );
+    fireEvent.change(screen.getByLabelText(/kata sandi|password/i, { selector: "input" }), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /masuk|sign in|login/i }));
+    await waitFor(() => expect(pushMock).toHaveBeenCalled());
+  }
+
+  it.each([
+    ["/cart", "student", "/cart"],
+    ["https://evil.example", "student", "/"],
+    ["//evil.example", "student", "/"],
+    ["/cart", "super_admin", "/admin"],
+  ])("next=%s as %s lands on %s", async (next, role, landing) => {
+    search.value = `next=${encodeURIComponent(next)}`;
+    await signIn(role);
+    expect(pushMock).toHaveBeenCalledWith(landing);
+  });
+
+  it("keeps next on the register link and the OTP hop", async () => {
+    search.value = "next=%2Fcart";
+    render(<LoginPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Daftar sekarang" }));
+    expect(pushMock).toHaveBeenCalledWith("/register?next=%2Fcart");
+  });
+
+  it("carries next to /otp on verification_pending", async () => {
+    search.value = "next=%2Fcart";
+    mutateAsyncMock.mockRejectedValue(
+      new ApiError("verification_pending", "verify", 403, { pending_token: "tok" }),
+    );
+    render(<LoginPage />);
+    fireEvent.change(
+      screen.getByLabelText(/email atau username|email or username/i, { selector: "input" }),
+      { target: { value: "budi@example.com" } },
+    );
+    fireEvent.change(screen.getByLabelText(/kata sandi|password/i, { selector: "input" }), {
+      target: { value: "secret123" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /masuk|sign in|login/i }));
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith("/otp?id=budi%40example.com&next=%2Fcart"),
+    );
+  });
+
+  it("hands next to the Google button", () => {
+    search.value = "next=%2Fcart";
+    render(<LoginPage />);
+    expect(screen.getByTestId("google-sign-in")).toHaveAttribute("data-next", "/cart");
   });
 });

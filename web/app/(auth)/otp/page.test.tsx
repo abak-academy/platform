@@ -4,10 +4,13 @@ import OtpPage from "./page";
 import { ApiError } from "@/lib/api";
 
 const pushMock = vi.fn();
+const nextParam = vi.hoisted(() => ({ value: null as string | null }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-  useSearchParams: () => ({ get: (key: string) => (key === "id" ? "budi@example.com" : null) }),
+  useSearchParams: () => ({
+    get: (key: string) => (key === "id" ? "budi@example.com" : key === "next" ? nextParam.value : null),
+  }),
 }));
 
 const verifyMock = vi.fn();
@@ -37,6 +40,7 @@ describe("OtpPage", () => {
     verifyMock.mockClear();
     sendMock.mockClear();
     sessionStorage.clear();
+    nextParam.value = null;
   });
 
   it("shows the email-failed banner and the server's resend budget instead of the resend button", () => {
@@ -143,5 +147,18 @@ describe("OtpPage", () => {
     });
     expect(sessionStorage.getItem("abak-referral-code")).toBeNull();
     document.cookie = "aff_ref=; path=/; max-age=0";
+  });
+
+  it.each([
+    ["/cart", "student", "/cart"],
+    ["//evil.example", "student", "/"],
+    ["/cart", "super_admin", "/admin"],
+  ])("next=%s as %s lands on %s after verifying", async (next, role, landing) => {
+    nextParam.value = next;
+    verifyMock.mockResolvedValue({ user: { role } });
+    render(<OtpPage />);
+    fillCode("123456");
+    fireEvent.click(screen.getByRole("button", { name: /verifikasi|verify/i }));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith(landing));
   });
 });

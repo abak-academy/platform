@@ -1,12 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { User, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
 import { useLogin } from "@/lib/hooks/auth";
 import { useAffiliateProgramStatus } from "@/lib/hooks/affiliate";
 import { redirectForRole } from "@/lib/auth-redirect";
+import { safeNext } from "@/lib/safe-next";
 import { GoogleSignInButton, googleSignInAvailable } from "@/components/auth/GoogleSignInButton";
 import { ApiError } from "@/lib/api";
 import { loginErrorMessage } from "@/lib/auth-error";
@@ -16,8 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useTranslation } from "@/lib/i18n";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const next = useSearchParams().get("next");
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
   const { t } = useTranslation();
   const login = useLogin();
   const affiliateStatus = useAffiliateProgramStatus();
@@ -31,7 +34,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const data = await login.mutateAsync({ identifier, password });
-      router.push(redirectForRole(data.user?.role));
+      router.push(safeNext(next, data.user?.role) ?? redirectForRole(data.user?.role));
     } catch (err) {
       if (err instanceof ApiError && err.code === "verification_pending") {
         const pendingToken = err.body?.pending_token;
@@ -42,7 +45,7 @@ export default function LoginPage() {
           sessionStorage.setItem("abak-otp-active", err.body?.otp_active ? "1" : "0");
           adoptResendBudget(Number(err.body?.resend_after) || 60);
         }
-        router.push(`/otp?id=${encodeURIComponent(identifier)}`);
+        router.push(`/otp?id=${encodeURIComponent(identifier)}${next ? `&next=${encodeURIComponent(next)}` : ""}`);
         return;
       }
       setError(loginErrorMessage(err, t));
@@ -151,7 +154,7 @@ export default function LoginPage() {
         {t("login_no_account")}{" "}
         <button
           type="button"
-          onClick={() => router.push("/register")}
+          onClick={() => router.push(`/register${nextQuery}`)}
           className="font-bold text-success transition-colors hover:text-success/80"
         >
           {t("login_sign_up_link")}
@@ -184,9 +187,17 @@ export default function LoginPage() {
             <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
             <div className="h-px flex-1 bg-line" />
           </div>
-          <GoogleSignInButton text="signin_with" />
+          <GoogleSignInButton text="signin_with" next={next} />
         </>
       )}
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <React.Suspense fallback={<div className="w-full max-w-[372px]" />}>
+      <LoginForm />
+    </React.Suspense>
   );
 }

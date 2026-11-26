@@ -6,6 +6,7 @@ import { ArrowLeft, ShieldCheck, Loader2, AlertCircle, Info } from "lucide-react
 
 import { useVerifyOtp, useSendOtp } from "@/lib/hooks/auth";
 import { redirectForRole } from "@/lib/auth-redirect";
+import { safeNext } from "@/lib/safe-next";
 import { ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { OtpInput } from "@/components/auth/OtpInput";
@@ -36,6 +37,7 @@ function OtpForm() {
   const { t } = useTranslation();
   const params = useSearchParams();
   const identifier = params.get("id") ?? "";
+  const next = params.get("next");
 
   const verify = useVerifyOtp();
   const sendOtp = useSendOtp();
@@ -94,7 +96,7 @@ function OtpForm() {
         clearManualReferral();
         clearResendBudget();
       }
-      router.push(redirectForRole(data.user?.role));
+      router.push(safeNext(next, data.user?.role) ?? redirectForRole(data.user?.role));
     } catch (err) {
       const msg =
         err instanceof ApiError ? err.message : t("otp_invalid");
@@ -129,7 +131,7 @@ function OtpForm() {
     <div className="w-full max-w-[372px]">
       <button
         type="button"
-        onClick={() => router.push("/login")}
+        onClick={() => router.push(next ? `/login?next=${encodeURIComponent(next)}` : "/login")}
         className="mb-8 flex items-center gap-1.5 text-[13px] font-semibold text-ink-400 transition-colors hover:text-ink-600"
       >
         <ArrowLeft size={15} />
