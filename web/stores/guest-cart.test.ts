@@ -112,3 +112,31 @@ describe("guest cart persistence", () => {
     expect(st().lines.map((l) => l.product_id)).toEqual(["e1"]);
   });
 });
+
+describe("guest cart syncLine", () => {
+  const book = { id: "b1", type: "book", name: "Buku", price: 1000, stock: 5 } as Product;
+
+  it("updates the price snapshot and flags/unflags unavailable, persisted", () => {
+    useGuestCart.getState().add(book);
+    useGuestCart.getState().syncLine("b1", { unit_price: 1500, unavailable: true });
+    expect(useGuestCart.getState().lines[0]).toMatchObject({ unit_price: 1500, unavailable: true });
+    expect(JSON.parse(localStorage.getItem(KEY)!).lines[0]).toMatchObject({ unit_price: 1500, unavailable: true });
+    useGuestCart.getState().syncLine("b1", { unavailable: false });
+    expect(useGuestCart.getState().lines[0]).not.toHaveProperty("unavailable");
+    expect(useGuestCart.getState().lines[0].unit_price).toBe(1500);
+  });
+
+  it("is a no-op when nothing changed", () => {
+    useGuestCart.getState().add(book);
+    const before = useGuestCart.getState().lines;
+    useGuestCart.getState().syncLine("b1", { unit_price: 1000, unavailable: false });
+    expect(useGuestCart.getState().lines).toBe(before);
+  });
+
+  it("loads an old payload without the flag and one with it", async () => {
+    const l = { product_id: "x", qty: 1, name: "X", type: "book", unit_price: 1, image_url: "" };
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, lines: [l, { ...l, product_id: "y", unavailable: true }] }));
+    await useGuestCart.persist.rehydrate();
+    expect(useGuestCart.getState().lines.map((x) => x.unavailable)).toEqual([undefined, true]);
+  });
+});

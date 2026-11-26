@@ -12,6 +12,7 @@ export interface GuestLine {
   type: ProductType;
   unit_price: number;
   image_url: string;
+  unavailable?: true;
 }
 
 export type GuestAddResult = "added" | "duplicate" | "capped" | "full";
@@ -22,6 +23,7 @@ interface GuestCartState {
   setQty: (productId: string, qty: number, stock?: number) => void;
   remove: (productId: string) => void;
   removeMany: (productIds: string[]) => void;
+  syncLine: (productId: string, patch: { unit_price?: number; unavailable: boolean }) => void;
   clear: () => void;
 }
 
@@ -105,6 +107,15 @@ export const useGuestCart = create<GuestCartState>()(
         }),
       remove: (productId) => get().removeMany([productId]),
       removeMany: (ids) => set({ lines: get().lines.filter((l) => !ids.includes(l.product_id)) }),
+      syncLine: (productId, { unit_price, unavailable }) => {
+        const line = get().lines.find((l) => l.product_id === productId);
+        if (!line) return;
+        const price = unit_price ?? line.unit_price;
+        if (price === line.unit_price && !!line.unavailable === unavailable) return;
+        const { unavailable: _drop, ...rest } = line;
+        const next: GuestLine = { ...rest, unit_price: price, ...(unavailable ? { unavailable: true as const } : {}) };
+        set({ lines: get().lines.map((l) => (l === line ? next : l)) });
+      },
       clear: () => set({ lines: [] }),
     }),
     { name: "abak-guest-cart", version: 1, storage, partialize: (s) => ({ lines: s.lines }) }

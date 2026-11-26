@@ -96,7 +96,7 @@ export async function mergeGuestCart(lines: GuestLine[], deps: MergeDeps): Promi
         stopped = code;
         break;
       }
-      outcomes.push({ ...base, code });
+      outcomes.push({ ...base, code, ...(code === "digital_conflict" ? { error: err as ApiError } : {}) });
       removeIds.push(line.product_id);
     }
   }
@@ -134,7 +134,8 @@ export function useGuestCartMerge(enabled: boolean) {
     const { lines, removeMany } = useGuestCart.getState();
     if (lines.length === 0) return;
     ran.current = true;
-    void mergeGuestCart(lines, realDeps).then((res) => {
+    const flagged = new Set(lines.filter((l) => l.unavailable).map((l) => l.product_id));
+    void mergeGuestCart(lines, { ...realDeps, isUnavailable: (id) => flagged.has(id) }).then((res) => {
       removeMany(res.removeIds);
       qc.invalidateQueries({ queryKey: ordersKeys.all });
       if (res.cartCount > 0) useCartStore.getState().setCount(res.cartCount);

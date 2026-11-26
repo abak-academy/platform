@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQueries } from "@tanstack/react-query";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
@@ -23,6 +24,8 @@ export function GuestCart() {
   const lines = useGuestCart((s) => s.lines);
   const setQty = useGuestCart((s) => s.setQty);
   const remove = useGuestCart((s) => s.remove);
+  const syncLine = useGuestCart((s) => s.syncLine);
+  const [repriced, setRepriced] = useState<ReadonlySet<string>>(new Set());
 
   const results = useQueries({
     queries: lines.map((l) => ({
@@ -38,7 +41,20 @@ export function GuestCart() {
     const unavailable =
       (error instanceof ApiError && error.status === 404) || (!!data && outsideWindow(data, now));
     const price = data && !unavailable ? data.price : line.unit_price;
-    return { line, unavailable, price, priceChanged: !unavailable && !!data && data.price !== line.unit_price, stock: data?.stock };
+    const priceChanged = !unavailable && !!data && data.price !== line.unit_price;
+    return { line, unavailable, price, priceChanged: priceChanged || repriced.has(line.product_id), stock: data?.stock };
+  });
+
+  useEffect(() => {
+    rows.forEach((r, i) => {
+      const { data, error } = results[i];
+      if (!data && !error) return;
+      const id = r.line.product_id;
+      if (r.unavailable) return syncLine(id, { unavailable: true });
+      if (!data) return;
+      if (data.price !== r.line.unit_price) setRepriced((prev) => new Set(prev).add(id));
+      syncLine(id, { unit_price: data.price, unavailable: false });
+    });
   });
 
   const subtotal = rows.reduce((sum, r) => (r.unavailable ? sum : sum + r.price * r.line.qty), 0);

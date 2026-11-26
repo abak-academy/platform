@@ -32,8 +32,6 @@ function deps(add: MergeDeps["addItem"], items: OrderItem[] = []): MergeDeps {
   return { getCart: async () => order(items), addItem: add };
 }
 
-const codes = async (lines: GuestLine[], d: MergeDeps) => (await mergeGuestCart(lines, d)).outcomes.map((o) => o.code);
-
 describe("mergeGuestCart outcomes", () => {
   it("added: sends the line, removes it, no notice flag when price is unchanged", async () => {
     const add = vi.fn(async (_o: string, b: { product_id: string }) => order([item(b.product_id)]));
@@ -137,7 +135,13 @@ describe("mergeGuestCart outcomes", () => {
     expect(server).toHaveLength(2);
   });
 
-  it("codes helper sanity: empty list yields nothing", async () => {
-    expect(await codes([], deps(vi.fn()))).toEqual([]);
+  it("digital_conflict carries the server error with its conflicts", async () => {
+    const e = new ApiError("digital_target_conflict", "x", 409, {
+      code: "digital_target_conflict",
+      message: "x",
+      details: { conflicts: [{ kind: "course", reason: "owned" }] },
+    });
+    const r = await mergeGuestCart([line("a")], deps(async () => { throw e; }));
+    expect(r.outcomes[0].error).toBe(e);
   });
 });

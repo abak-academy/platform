@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MergeNotice } from "./MergeNotice";
-import { useMergeNoticeStore, type MergeOutcome } from "@/lib/guest-cart-merge";
+import { mergeGuestCart, useMergeNoticeStore, type MergeOutcome } from "@/lib/guest-cart-merge";
 import { ApiError } from "@/lib/api";
+import type { Order } from "@/lib/types";
 
 function show(...outcomes: MergeOutcome[]) {
   act(() => useMergeNoticeStore.getState().show(outcomes));
@@ -48,11 +49,22 @@ describe("MergeNotice", () => {
     expect(screen.getByText(/Stok habis/)).toBeInTheDocument();
   });
 
-  it("uses the digital conflict message for a conflict", () => {
-    const error = new ApiError("digital_target_conflict", "x", 409, {
+  it("shows the specific digital conflict text produced by the merge", async () => {
+    const conflict = new ApiError("digital_target_conflict", "x", 409, {
+      code: "digital_target_conflict",
+      message: "x",
       details: { conflicts: [{ kind: "course", reason: "owned" }] },
     });
-    show({ product_id: "p1", name: "Kursus B", code: "digital_conflict", error });
+    const { outcomes } = await mergeGuestCart(
+      [{ product_id: "p1", qty: 1, name: "Kursus B", type: "course", unit_price: 1000, image_url: "" }],
+      {
+        getCart: async () => ({ id: "o1", status: "cart", items: [] }) as unknown as Order,
+        addItem: async () => {
+          throw conflict;
+        },
+      },
+    );
+    show(...outcomes);
     render(<MergeNotice />);
     expect(screen.getByText(/Kamu sudah memiliki kursus ini\./)).toBeInTheDocument();
   });

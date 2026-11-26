@@ -132,4 +132,20 @@ describe("GuestCart", () => {
     expect(useGuestCart.getState().lines).toEqual([]);
     expect(screen.getByText("Keranjangmu masih kosong")).toBeInTheDocument();
   });
+
+  it("persists the unavailable mark on the stored line", async () => {
+    useGuestCart.getState().add(course);
+    delete catalog.c1;
+    renderCart();
+    await screen.findByText("Tidak tersedia lagi");
+    await waitFor(() => expect(useGuestCart.getState().lines[0].unavailable).toBe(true));
+  });
+
+  it("updates the stored price snapshot and still shows Harga berubah", async () => {
+    useGuestCart.getState().add(course);
+    catalog.c1 = { ...course, price: 120000 };
+    renderCart();
+    await waitFor(() => expect(useGuestCart.getState().lines[0].unit_price).toBe(120000));
+    expect(screen.getByText("Harga berubah")).toBeInTheDocument();
+  });
 });
