@@ -111,12 +111,11 @@ describe("InvoiceDialog", () => {
     expect(ship).toHaveTextContent("Total berat1,45 kg");
   });
 
-  it("puts the shipping cost and its total in the right-hand column", () => {
+  it("keeps shipping cost only in the totals, with no separate cost card", () => {
     show(PHYSICAL);
-    const cost = screen.getByTestId("invoice-shipping-cost");
-    expect(cost).toHaveTextContent("Rincian biaya pengiriman");
-    expect(cost).toHaveTextContent("Ongkos kirimRp18.000");
-    expect(cost).toHaveTextContent("TotalRp18.000");
+    expect(screen.queryByText("Rincian biaya pengiriman")).not.toBeInTheDocument();
+    expect(screen.getByTestId("invoice-shipping")).not.toHaveTextContent("Ongkos kirim");
+    expect(screen.getAllByText("Ongkos kirim")).toHaveLength(1);
   });
 
   it("shows a dash when the items carry no weight", () => {
