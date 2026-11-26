@@ -30,7 +30,7 @@ function FilterRow({
   const { t } = useTranslation();
   return (
     <div role="group" aria-label={label} className="flex flex-wrap items-center gap-2">
-      <span className="type-label-sm w-16 text-ink-500">{label}</span>
+      <span className="type-label-sm w-16 text-ink-600">{label}</span>
       {[{ value: ALL, label: t("event_page_filter_all") }, ...options].map((o) => (
         <button
           key={o.value}
@@ -121,7 +121,7 @@ export default function EventPage() {
 
       <section data-reveal className="py-12">
         <div className={wrap}>
-          <span className="type-overline text-ink-500">{t("event_page_know_eyebrow")}</span>
+          <span className="type-overline text-ink-600">{t("event_page_know_eyebrow")}</span>
           <h2 className="mt-1 mb-6 type-h1">{t("event_page_know_title")}</h2>
           {isLoading ? (
             <Skeleton data-testid="events-skeleton" className="h-72 w-full rounded-3xl" />
@@ -140,7 +140,7 @@ export default function EventPage() {
 
       <section data-reveal className="pt-12 pb-20">
         <div className={wrap}>
-          <span className="type-overline text-ink-500">{t("event_page_editions_eyebrow")}</span>
+          <span className="type-overline text-ink-600">{t("event_page_editions_eyebrow")}</span>
           <h2 className="mt-1 mb-6 type-h1">{t("event_page_editions_title")}</h2>
           {isLoading ? (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -175,7 +175,7 @@ export default function EventPage() {
                   onChange={setFStage}
                 />
               </div>
-              <p className="mb-4 type-label-sm text-ink-500">{t("event_page_count").replace("{n}", String(filtered.length))}</p>
+              <p className="mb-4 type-label-sm text-ink-600">{t("event_page_count").replace("{n}", String(filtered.length))}</p>
               {filtered.length ? (
                 <div data-reveal-grid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {filtered.map((r) => (

@@ -181,12 +181,12 @@ export default function ProductDetailPage({
               {formatRupiah(product.price)}
             </p>
             {isPhysical && (
-              <p className="text-xs text-ink-500">
+              <p className="text-xs text-ink-600">
                 {t("product_stock_label")}: {product.stock ?? 0} · {t("product_shipped_to_address")}
               </p>
             )}
             {limitedExam && (
-              <p className="text-xs text-ink-500">
+              <p className="text-xs text-ink-600">
                 {soldOutExam ? t("product_sold_out") : `${t("product_stock_label")}: ${product.stock ?? 0}`}
               </p>
             )}
@@ -214,7 +214,7 @@ export default function ProductDetailPage({
                 <span className="text-sm text-ink-600">
                   {t("product_qty_label")}
                   {isPhysical && (
-                    <span className="ml-2 text-xs text-ink-500">
+                    <span className="ml-2 text-xs text-ink-600">
                       {t("product_stock_label")}: {product.stock ?? 0}
                     </span>
                   )}
@@ -243,7 +243,7 @@ export default function ProductDetailPage({
               </div>
             )}
             {isDigital && (
-              <p className="mb-4 text-xs text-ink-500">{t("product_digital_single_qty")}</p>
+              <p className="mb-4 text-xs text-ink-600">{t("product_digital_single_qty")}</p>
             )}
             {missingBiodata.length > 0 && (
               <div className="mb-4 rounded-md border border-warning/30 bg-warning-bg p-3">
@@ -318,7 +318,7 @@ function ProductDescription({ text }: { text?: string | null }) {
   const body = text?.trim().replace(/\n{3,}/g, "\n\n");
 
   if (!body) {
-    return <p className="text-sm text-ink-500">{t("product_no_description")}</p>;
+    return <p className="text-sm text-ink-600">{t("product_no_description")}</p>;
   }
 
   const clampable = body.length > LONG_DESCRIPTION_CHARS;
@@ -327,7 +327,7 @@ function ProductDescription({ text }: { text?: string | null }) {
     <section aria-labelledby="product-description-heading" className="flex flex-col gap-3">
       <h2
         id="product-description-heading"
-        className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500"
+        className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-600"
       >
         {t("product_description_heading")}
       </h2>

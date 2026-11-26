@@ -27,7 +27,7 @@ export function EditionCard({ event, edition }: { event: PublicEvent; edition: P
           <Badge variant="teal">{t("event_page_phase_open")}</Badge>
         )}
       </div>
-      <span className="type-overline text-ink-500">
+      <span className="type-overline text-ink-600">
         {[event.short_name ?? event.name, edition.scheduled_at && formatDay(edition.scheduled_at, lang), level].filter(Boolean).join(" · ")}
       </span>
       <h3 className="type-h3 text-ink-900">{edition.title}</h3>
