@@ -26,6 +26,8 @@ import { ProductCard } from "@/components/catalog/ProductCard";
 import type { Product } from "@/lib/types";
 
 const ALL_GROUPINGS = "all";
+const PRIORITY_CARDS = 4;
+const SKELETON_CARDS = 10;
 const wrap = "mx-auto w-full max-w-public px-6";
 const CATEGORIES: CatalogCategory[] = [
   "book",
@@ -47,7 +49,7 @@ function CatalogGrid({
     if (isFiltered) {
       return (
         <div className="rounded-2xl border border-line bg-surface px-8 py-16 text-center">
-          <p className="text-sm text-ink-500">{t("catalog_empty")}</p>
+          <p className="text-sm text-ink-600">{t("catalog_empty")}</p>
         </div>
       );
     }
@@ -59,7 +61,7 @@ function CatalogGrid({
         <h2 className="font-serif text-2xl font-bold text-ink-900">
           {t("store_setup_title")}
         </h2>
-        <p className="mx-auto mt-3 max-w-sm text-sm text-ink-500">
+        <p className="mx-auto mt-3 max-w-sm text-sm text-ink-600">
           {t("store_setup_desc")}
         </p>
         {token && (
@@ -77,9 +79,9 @@ function CatalogGrid({
       data-reveal-grid
       className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
     >
-      {products.map((p) => (
+      {products.map((p, i) => (
         <div key={p.id} data-tilt className="h-full rounded-lg">
-          <ProductCard product={p} className="hover:translate-y-0 hover:shadow-[var(--sh-sm)]" />
+          <ProductCard product={p} priority={i < PRIORITY_CARDS} className="hover:translate-y-0 hover:shadow-[var(--sh-sm)]" />
         </div>
       ))}
     </div>
@@ -88,16 +90,19 @@ function CatalogGrid({
 
 function CatalogSkeleton() {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-      {Array.from({ length: 8 }).map((_, i) => (
+    <div
+      data-testid="catalog-skeleton"
+      className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+    >
+      {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
         <div
           key={i}
           className="flex flex-col overflow-hidden rounded-lg border border-line bg-surface"
         >
           <Skeleton className="aspect-[3/4] rounded-none" />
-          <div className="flex flex-col gap-2 p-3">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="mt-1 h-5 w-1/3" />
+          <div className="flex flex-col gap-1 p-3">
+            <Skeleton className="h-10 w-3/4" />
+            <Skeleton className="mt-2 h-6 w-1/3" />
           </div>
         </div>
       ))}
@@ -198,7 +203,7 @@ function CatalogContent() {
         <div className="flex flex-col gap-4 md:flex-row md:gap-6">
           <CategoryRail value={category} onChange={setCategory} />
 
-          <div className="min-w-0 flex-1">
+          <div className="min-h-[32rem] min-w-0 flex-1">
             {isError ? (
               <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
                 <p>

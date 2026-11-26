@@ -28,9 +28,10 @@ const COVER_GRADIENT: Record<ProductType, string> = {
 export interface ProductCardProps {
   product: Product;
   className?: string;
+  priority?: boolean;
 }
 
-export function ProductCard({ product, className }: ProductCardProps) {
+export function ProductCard({ product, className, priority = false }: ProductCardProps) {
   const meta = TYPE_META[product.type];
   const { Icon } = meta;
   const cover = fileUrl(product.image_url);
@@ -52,7 +53,9 @@ export function ProductCard({ product, className }: ProductCardProps) {
           <img
             src={cover}
             alt={product.name}
-            loading="lazy"
+            loading={priority ? "eager" : "lazy"}
+            fetchPriority={priority ? "high" : undefined}
+            decoding="async"
             className="size-full object-contain p-2"
           />
         ) : (

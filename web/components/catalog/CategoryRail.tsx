@@ -27,7 +27,7 @@ export function CategoryRail({ value, onChange }: CategoryRailProps) {
       aria-label={t("catalog_category_heading" as any)}
       className="md:sticky md:top-6 md:h-fit md:w-[200px] md:shrink-0 md:self-start"
     >
-      <h2 className="mb-3 hidden text-xs font-semibold uppercase tracking-wide text-ink-500 md:block">
+      <h2 className="mb-3 hidden text-xs font-semibold uppercase tracking-wide text-ink-600 md:block">
         {t("catalog_category_heading" as any)}
       </h2>
       <ul className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2 md:mx-0 md:flex-col md:gap-0.5 md:overflow-visible md:px-0 md:pb-0">
