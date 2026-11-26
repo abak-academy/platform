@@ -43,7 +43,10 @@ const baseData: Dashboard = {
   ranking: {
     position: 3,
     points: 844,
-    leaderboard: [{ rank: 3, name: "Budi Santoso", points: 844, is_me: true }],
+    leaderboard: [
+      { rank: 1, name: "Nadia Salsabila", points: 871, is_me: false },
+      { rank: 3, name: "Budi Santoso", points: 844, is_me: true },
+    ],
   },
   exam_progress: [{ label: "Tryout 1", completed: 148, in_progress: 82 }],
   popular_lessons: [{ title: "Penalaran Matematika HOTS", topics: 12, students: 240, duration: "1j 30m", progress: 0.72 }],
@@ -197,6 +200,23 @@ describe("DashboardPage", () => {
     expect(screen.queryByText(/Babak Terdaftar/)).not.toBeInTheDocument();
   });
 
+  it("holds the skeletons and never shows the empty copy while registrations load", async () => {
+    setApi({ "/exam/registrations": () => new Promise(() => {}) });
+    renderPage();
+    await screen.findByText("Lanjut belajar");
+    expect(screen.getByTestId("carousel-skeleton")).toBeInTheDocument();
+    expect(screen.getByTestId("events-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Belum ada event yang kamu ikuti.")).not.toBeInTheDocument();
+  });
+
+  it("shows a neutral line, not the empty copy, when registrations fail", async () => {
+    setApi({ "/exam/registrations": fail() });
+    renderPage();
+    expect(await screen.findByText("Gagal memuat dashboard.")).toBeInTheDocument();
+    expect(screen.queryByText("Belum ada event yang kamu ikuti.")).not.toBeInTheDocument();
+    expect(await screen.findByText(/Babak Terbuka/)).toBeInTheDocument();
+  });
+
   it("falls back to the empty carousel slide when event-series fails", async () => {
     setApi({ "/event-series": fail() });
     renderPage();
@@ -207,9 +227,9 @@ describe("DashboardPage", () => {
     renderPage();
     await screen.findByText("Lanjut belajar");
     expect(screen.queryByText("Ujian Terbaru")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Peringkat|Ranking/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Peringkat saya|My Ranking/)).not.toBeInTheDocument();
     expect(screen.queryByText("Nadia Salsabila")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Progres ujian|Exam progress/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Progress ujian|Exam progress/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Penalaran Matematika HOTS")).not.toBeInTheDocument();
     expect(screen.queryByText(/Pelajaran populer|Popular lessons/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Tryout 1")).not.toBeInTheDocument();

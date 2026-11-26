@@ -41,7 +41,7 @@ function EventListRow({ row }: { row: EventRow }) {
   const { reg, live, action } = row;
   const [open, setOpen] = useState(false);
   const detailHref = `/exam/${reg.id}`;
-  const needsResult = (action === "result" || action === "external") && !!reg.session_id;
+  const needsResult = (action === "result" || (action === "external" && reg.status === "submitted")) && !!reg.session_id;
   const result = useSessionResult(needsResult ? reg.session_id! : undefined);
   const leaderboardHref = `/exam/sessions/${reg.session_id}/leaderboard`;
   const released = result.data?.state === "result";
@@ -119,7 +119,17 @@ function EventListRow({ row }: { row: EventRow }) {
   );
 }
 
-export function MyEventsCard({ registrations, now }: { registrations: RegistrationListItem[]; now: number }) {
+export function MyEventsCard({
+  registrations,
+  now,
+  isLoading = false,
+  isError = false,
+}: {
+  registrations: RegistrationListItem[];
+  now: number;
+  isLoading?: boolean;
+  isError?: boolean;
+}) {
   const { t } = useTranslation();
   const rows = eventRows(registrations, now);
   return (
@@ -131,7 +141,15 @@ export function MyEventsCard({ registrations, now }: { registrations: Registrati
           {t("stu_home_events_view_all")}
         </Link>
       </div>
-      {rows.length ? (
+      {isLoading ? (
+        <div className="flex flex-col gap-3" data-testid="events-loading">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-11 w-full" />
+          ))}
+        </div>
+      ) : isError ? (
+        <p className="type-body-sm text-ink-600">{t("dash_load_failed")}</p>
+      ) : rows.length ? (
         <ul className="flex flex-col gap-3">
           {rows.map((row) => (
             <EventListRow key={row.reg.id} row={row} />

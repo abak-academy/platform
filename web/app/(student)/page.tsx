@@ -90,12 +90,12 @@ export default function DashboardPage() {
           {shipment && <ShippingStrip order={shipment} />}
 
           <div className={ROW_A}>
-            {eventSeries.isLoading ? (
+            {eventSeries.isLoading || registrations.isLoading ? (
               <Skeleton className="h-64 rounded-xl" data-testid="carousel-skeleton" />
             ) : (
               <EventCarousel slides={eventSeries.isError ? [] : slides} />
             )}
-            <MyEventsCard registrations={regs} now={now} />
+            <MyEventsCard registrations={regs} now={now} isLoading={registrations.isLoading} isError={registrations.isError} />
           </div>
 
           <div className={ROW_B}>

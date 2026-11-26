@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MyEventsCard } from "./MyEventsCard";
@@ -79,11 +79,11 @@ const fullResult = {
   rank: 3,
 } as SessionResult;
 
-function renderCard(regs: RegistrationListItem[]) {
+function renderCard(regs: RegistrationListItem[], state: { isLoading?: boolean; isError?: boolean } = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MyEventsCard registrations={regs} now={NOW} />
+      <MyEventsCard registrations={regs} now={NOW} {...state} />
     </QueryClientProvider>,
   );
 }
@@ -104,6 +104,21 @@ describe("MyEventsCard", () => {
     renderCard([]);
     expect(screen.getByText("Belum ada event yang kamu ikuti.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Lihat event" })).toHaveAttribute("href", "/catalog");
+  });
+
+  it("shows skeleton rows, not the empty copy, while registrations load", () => {
+    renderCard([], { isLoading: true });
+    expect(screen.getByTestId("events-loading")).toBeInTheDocument();
+    expect(screen.queryByText("Belum ada event yang kamu ikuti.")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Lihat semua" })).toBeInTheDocument();
+  });
+
+  it("shows a neutral failure line, not the empty copy, when registrations fail", () => {
+    renderCard([], { isError: true });
+    expect(screen.getByText("Gagal memuat dashboard.")).toBeInTheDocument();
+    expect(screen.queryByText("Belum ada event yang kamu ikuti.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Lihat event" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Lihat semua" })).toHaveAttribute("href", "/exam");
   });
 
   it("has a header link to /exam", () => {
@@ -247,7 +262,16 @@ describe("MyEventsCard external results", () => {
     renderCard([submitted({ external_results: [round()] })]);
     await user.click(screen.getByRole("button", { name: "Lihat hasil" }));
     const dialog = await screen.findByRole("dialog");
+    await waitFor(() => expect(resultCalls()).toHaveLength(1));
+    await mockAuthFetch.mock.results[0].value;
+    await waitFor(() => expect(within(dialog).queryByRole("link", { name: "Lihat papan peringkat" })).not.toBeInTheDocument());
     expect(within(dialog).queryByRole("link", { name: "Lihat papan peringkat" })).not.toBeInTheDocument();
+  });
+
+  it("does not request the result for an external row that is not submitted", async () => {
+    renderCard([reg({ external_results: [round()], session_id: "sess-x" })]);
+    await screen.findByRole("button", { name: "Lihat hasil" });
+    expect(mockAuthFetch).not.toHaveBeenCalled();
   });
 
   it("empty external_results falls through to the normal action", () => {
