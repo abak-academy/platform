@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import QuestionBankPage from "./page";
@@ -128,6 +129,18 @@ function renderWithClient(ui: React.ReactNode) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+async function pick(field: string, name: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+}
+
 describe("QuestionBankPage", () => {
   beforeEach(() => {
     bankState = {
@@ -212,7 +225,7 @@ describe("QuestionBankPage", () => {
     bankState = { data: null, isLoading: false, isError: true, error: new Error("gagal"), isFetching: false, refetch: vi.fn() };
     rerender(ui());
     expect(screen.getByRole("searchbox")).toBe(search);
-    expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("button", { name: /^list_toolbar_filter/ })).toBeInTheDocument();
     expect(screen.getByText("gagal")).toBeInTheDocument();
   });
 
@@ -312,19 +325,19 @@ describe("QuestionBankPage", () => {
     });
   });
 
-  it("changes the format filter via dropdown", async () => {
+  it("sends the format dropdown to the bank query, shows a chip, and Semua clears it", async () => {
     renderWithClient(<QuestionBankPage />);
-
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    const [formatSelect] = screen.getAllByRole("combobox");
-    expect(formatSelect).toHaveValue("all");
+    await userEvent.click(screen.getByRole("button", { name: /^list_toolbar_filter/ }));
+    await pick("format", "fmt_mcq");
 
-    fireEvent.change(formatSelect, { target: { value: "mcq" } });
+    expect(bankFilterCalls.at(-1)?.format).toBe("mcq");
+    expect(within(screen.getByRole("group", { name: "list_toolbar_active" })).getByText("format: fmt_mcq")).toBeInTheDocument();
 
-    await waitFor(() => {
-      expect(formatSelect).toHaveValue("mcq");
-    });
+    await pick("format", "list_toolbar_all");
+    expect(bankFilterCalls.at(-1)?.format).toBeUndefined();
+    expect(screen.queryByRole("group", { name: "list_toolbar_active" })).not.toBeInTheDocument();
   });
 
   it("debounces the search box before it reaches the bank query", () => {
@@ -345,17 +358,16 @@ describe("QuestionBankPage", () => {
     vi.useRealTimers();
   });
 
-  it("lets the user select a topic filter", async () => {
+  it("sends the topic dropdown to the bank query and keeps the toolbar mounted while loading", async () => {
     renderWithClient(<QuestionBankPage />);
-
     await waitFor(() => expect(screen.getByText("What is 2+2?")).toBeInTheDocument());
 
-    const [, topicSelect] = screen.getAllByRole("combobox");
-    fireEvent.change(topicSelect, { target: { value: "topic-2" } });
+    await userEvent.click(screen.getByRole("button", { name: /^list_toolbar_filter/ }));
+    await pick("topic", "Biology");
 
-    await waitFor(() => {
-      expect(topicSelect).toHaveValue("topic-2");
-    });
+    expect(bankFilterCalls.at(-1)?.topic_id).toBe("topic-2");
+    expect(screen.getByRole("group", { name: "list_toolbar_active" })).toHaveTextContent("topic: Biology");
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
   });
 
   it("strips HTML tags from question body in the bank list row", async () => {

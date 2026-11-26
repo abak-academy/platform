@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import TestsPage from "./page";
@@ -80,6 +81,18 @@ const sampleTests: Test[] = [
     duration_minutes: 60,
   },
 ];
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+async function pick(field: string, name: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+}
 
 describe("TestsPage", () => {
   afterEach(() => {
@@ -307,19 +320,18 @@ describe("TestsPage", () => {
     render(<TestsPage />);
     await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    const subjectSelect = screen.getByTestId("tests-subject-filter") as HTMLSelectElement;
-    const topicSelect = screen.getByTestId("tests-topic-filter") as HTMLSelectElement;
+    await userEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    await pick("Mata pelajaran", "Kimia");
+    await pick("Topik", "Stoikiometri");
+    expect(screen.getByRole("combobox", { name: "Topik" })).toHaveTextContent("Stoikiometri");
 
-    fireEvent.change(subjectSelect, { target: { value: "Kimia" } });
-    fireEvent.change(topicSelect, { target: { value: "Stoikiometri" } });
-    expect(topicSelect.value).toBe("Stoikiometri");
+    await pick("Mata pelajaran", "Fisika");
 
-    fireEvent.change(subjectSelect, { target: { value: "Fisika" } });
-
-    expect(topicSelect.value).toBe("");
-    expect(within(topicSelect).queryByText("Stoikiometri")).not.toBeInTheDocument();
-    expect(within(topicSelect).getByText("Mekanika")).toBeInTheDocument();
+    const topic = screen.getByRole("combobox", { name: "Topik" });
+    expect(topic).not.toHaveTextContent("Stoikiometri");
+    await userEvent.click(topic);
+    expect(await screen.findByRole("option", { name: "Mekanika" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Stoikiometri" })).not.toBeInTheDocument();
   });
 
   it("shows shown/total summary and load-more when a next_cursor exists", async () => {
@@ -426,19 +438,20 @@ describe("TestsPage", () => {
     expect(screen.getByTestId("tests-count")).toHaveTextContent("2 tes");
   });
 
-  it("keeps the subject and topic filters behind the Filter button and counts active ones", () => {
+  it("keeps the subject and topic filters behind the Filter button and counts active ones", async () => {
     render(<TestsPage />);
 
-    expect(screen.queryByTestId("tests-subject-filter")).not.toBeInTheDocument();
-    const filterButton = screen.getByRole("button", { name: /^filter$/i });
-    expect(filterButton).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("combobox", { name: "Mata pelajaran" })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^filter$/i }));
+    expect(screen.getByRole("combobox", { name: "Mata pelajaran" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Topik" })).toBeInTheDocument();
 
-    fireEvent.click(filterButton);
-    expect(screen.getByTestId("tests-subject-filter")).toBeInTheDocument();
-    expect(screen.getByTestId("tests-topic-filter")).toBeInTheDocument();
+    await pick("Mata pelajaran", "Fisika");
+    expect(screen.getByRole("button", { name: /^filter \(1\)$/i })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Filter aktif" })).getByText("Mata pelajaran: Fisika")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByTestId("tests-subject-filter"), { target: { value: "Fisika" } });
-    expect(screen.getByRole("button", { name: /^filter \(1\)$/i })).toHaveAttribute("aria-expanded", "true");
+    await pick("Mata pelajaran", "Semua");
+    expect(screen.queryByRole("group", { name: "Filter aktif" })).not.toBeInTheDocument();
   });
 
   it("never requests the previous cursor with a changed filter", async () => {
@@ -451,8 +464,8 @@ describe("TestsPage", () => {
     );
     mockUseAdminTests.mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: /^filter/i }));
-    fireEvent.change(screen.getByTestId("tests-subject-filter"), { target: { value: "Fisika" } });
+    await userEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    await pick("Mata pelajaran", "Fisika");
 
     const stale = mockUseAdminTests.mock.calls.filter(
       ([filters]) => filters?.subject === "Fisika" && filters?.cursor === "cursor-2",

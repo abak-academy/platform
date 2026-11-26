@@ -11,7 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+} from "@/components/admin/ListToolbar";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,9 +41,6 @@ import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const PAGE_SIZE = 25;
 
-const FILTER_SELECT =
-  "h-[var(--spacing-control-md)] rounded-full border-[1.5px] border-line bg-surface px-3.5 text-[13px] font-bold text-ink-900 outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-45";
-
 const DIFFICULTY_TEXT: Record<string, string> = {
   easy: "text-teal-700",
   medium: "text-gold-700",
@@ -44,8 +51,7 @@ const DIFFICULTY_TEXT: Record<string, string> = {
 // multi_blank) and are dropped from the filter too — legacy questions in
 // those formats still appear under "Semua" and in search, and their row
 // badges still render via FORMAT_LABELS below, which stays complete.
-const ALL_FORMATS: Array<QuestionFormat | "all"> = [
-  "all",
+const ALL_FORMATS: QuestionFormat[] = [
   "mcq",
   "multi_answer",
   "essay",
@@ -116,6 +122,20 @@ export default function QuestionBankPage() {
   const total = bank.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const topicOptions = topics.data?.data ?? [];
+  const formatOptions = ALL_FORMATS.map((f) => ({ value: f, label: t(FORMAT_LABELS[f] as Parameters<typeof t>[0]) }));
+  const topicSelectOptions = topicOptions.map((topic) => ({ value: topic.id, label: topic.name }));
+  const activeChips = [
+    ...(format !== "all"
+      ? [{ key: "format", label: `${t("format")}: ${formatOptions.find((o) => o.value === format)?.label ?? format}`, clear: () => setFormat("all") }]
+      : []),
+    ...(topicId
+      ? [{ key: "topic", label: `${t("topic")}: ${topicSelectOptions.find((o) => o.value === topicId)?.label ?? topicId}`, clear: () => setTopicId("") }]
+      : []),
+  ];
+  const resetFilters = () => {
+    setFormat("all");
+    setTopicId("");
+  };
 
   function openCreate() {
     setEditorItem(null);
@@ -294,34 +314,38 @@ export default function QuestionBankPage() {
       <div className="md-card-flush">
           <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
             <ToolbarSearch value={search} onChange={setSearch} placeholder={t("search")} clearLabel={t("list_toolbar_clear_search")} />
-            <select
-              data-slot="select"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
-              className={FILTER_SELECT}
-            >
-              {ALL_FORMATS.map((f) => (
-                <option key={f} value={f}>
-                  {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-                </option>
-              ))}
-            </select>
-            <select
-              data-slot="select"
-              value={topicId}
-              onChange={(e) => setTopicId(e.target.value)}
-              disabled={topics.isLoading}
-              className={FILTER_SELECT}
-            >
-              <option value="">{t("all_topics")}</option>
-              {topicOptions.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.name}
-                </option>
-              ))}
-            </select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <ToolbarFilterButton label={t("list_toolbar_filter")} count={activeChips.length} />
+              </PopoverTrigger>
+              <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
+                <div className="flex flex-col gap-3.5">
+                  <FilterGrid>
+                    <FilterSelect
+                      label={t("format")}
+                      value={format === "all" ? "" : format}
+                      options={formatOptions}
+                      onChange={(v) => setFormat((v || "all") as QuestionFormat | "all")}
+                    />
+                    <FilterSelect label={t("topic")} value={topicId} options={topicSelectOptions} onChange={setTopicId} />
+                  </FilterGrid>
+                  <FilterPanelFooter
+                    onReset={resetFilters}
+                    showLabel={t("list_toolbar_show_n").replace("{n}", String(total))}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
             <ToolbarCount>{total} {t("question")}</ToolbarCount>
           </div>
+          {activeChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
+              {activeChips.map((c) => (
+                <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+              ))}
+              <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
+            </div>
+          )}
           {bank.isLoading && !bank.data ? (
             <div className="space-y-2 p-4">
               {Array.from({ length: 5 }).map((_, i) => (

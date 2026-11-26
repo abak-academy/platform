@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus,
   MoreHorizontal,
@@ -12,11 +12,22 @@ import {
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { PageHead } from "@/components/shell/PageHead";
-import { ToolbarSearch, ToolbarCount, FilterChip } from "@/components/admin/ListToolbar";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+  ToolbarSort,
+} from "@/components/admin/ListToolbar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -81,6 +92,8 @@ export default function SystemSchoolsPage() {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput).trim();
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [sort, setSort] = useState("default");
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
@@ -145,7 +158,31 @@ export default function SystemSchoolsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  const rows = schools;
+  // shortcut: client-side over the loaded page, move to a server param when lists get long
+  const rows = useMemo(() => {
+    const filtered = provinceFilter ? schools.filter((s) => s.provinsi_id === provinceFilter) : schools;
+    if (sort === "students") return [...filtered].sort((a, b) => (b.student_count ?? 0) - (a.student_count ?? 0));
+    if (sort === "name") return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    return filtered;
+  }, [schools, provinceFilter, sort]);
+
+  const statusOptions = [
+    { value: "active", label: t("status_label_active") },
+    { value: "deactivated", label: t("status_label_inactive") },
+  ];
+  const provinceOptions = (provinces ?? []).map((p) => ({ value: String(p.id), label: p.name }));
+  const activeChips = [
+    ...(statusFilter !== "all"
+      ? [{ key: "status", label: `${t("accounts_th_status")}: ${statusOptions.find((o) => o.value === statusFilter)?.label}`, clear: () => setStatusFilter("all") }]
+      : []),
+    ...(provinceFilter
+      ? [{ key: "prov", label: `${t("schools_filter_province")}: ${provinceOptions.find((o) => o.value === provinceFilter)?.label ?? provinceFilter}`, clear: () => setProvinceFilter("") }]
+      : []),
+  ];
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setProvinceFilter("");
+  };
   function resetPagination() {
     setSchools([]);
     setFetchCursor(undefined);
@@ -376,21 +413,50 @@ export default function SystemSchoolsPage() {
             placeholder={t("schools_search_placeholder")}
             clearLabel={t("list_toolbar_clear_search")}
           />
-          <div className="flex flex-wrap gap-2">
-            <FilterChip on={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
-              {t("tab_all")}
-            </FilterChip>
-            <FilterChip on={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-              {t("status_label_active")}
-            </FilterChip>
-            <FilterChip on={statusFilter === "deactivated"} onClick={() => setStatusFilter("deactivated")}>
-              {t("status_label_inactive")}
-            </FilterChip>
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <ToolbarFilterButton label={t("list_toolbar_filter")} count={activeChips.length} />
+            </PopoverTrigger>
+            <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
+              <div className="flex flex-col gap-3.5">
+                <FilterGrid>
+                  <FilterSelect
+                    label={t("accounts_th_status")}
+                    value={statusFilter === "all" ? "" : statusFilter}
+                    options={statusOptions}
+                    onChange={(v) => setStatusFilter((v || "all") as SchoolStatus | "all")}
+                  />
+                  <FilterSelect label={t("schools_filter_province")} value={provinceFilter} options={provinceOptions} onChange={setProvinceFilter} />
+                </FilterGrid>
+                <FilterPanelFooter
+                  onReset={resetFilters}
+                  showLabel={t("list_toolbar_show_n").replace("{n}", String(rows.length))}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+          <ToolbarSort
+            value={sort}
+            onChange={setSort}
+            label={t("list_toolbar_sort")}
+            options={[
+              { value: "default", label: t("filter_sort_default") },
+              { value: "students", label: t("filter_sort_students") },
+              { value: "name", label: t("filter_sort_name") },
+            ]}
+          />
           <ToolbarCount>
             {t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))}
           </ToolbarCount>
         </div>
+        {activeChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
+            {activeChips.map((c) => (
+              <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+            ))}
+            <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
+          </div>
+        )}
 
         <DataTable
           columns={columns}

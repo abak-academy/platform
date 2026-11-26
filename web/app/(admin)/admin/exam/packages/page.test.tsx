@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import ExamPackagesPage from "./page";
 
 const push = vi.fn();
@@ -101,6 +102,24 @@ const sampleExams = [
     sections_duration_minutes: null,
   },
 ];
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+const filterExams = [
+  { id: "f1", title: "Ujian Lampau", scheduled_at: "2020-01-01T08:00:00Z", scheduled_end_at: "2020-01-01T10:00:00Z", has_published_product: true, registration_count: 3 },
+  { id: "f2", title: "Ujian Mendatang", scheduled_at: "2099-01-01T08:00:00Z", has_published_product: false, registration_count: 50 },
+  { id: "f3", title: "Ujian Tanpa Jadwal", scheduled_at: null, has_published_product: false, registration_count: 9 },
+];
+
+async function pick(field: string, name: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+}
 
 describe("ExamPackagesPage", () => {
   beforeEach(() => {
@@ -204,13 +223,13 @@ describe("ExamPackagesPage", () => {
     expect(cells[3]).toHaveTextContent(/^Per section$/);
   });
 
-  it("renders no status badge, no status filter, and the products footnote", async () => {
+  it("renders no status badge, no server status filter UI, and the products footnote", async () => {
     examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
 
     render(<ExamPackagesPage />);
     await screen.findByText("UTS Matematika");
 
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Status" })).not.toBeInTheDocument();
     for (const row of screen.getAllByRole("row").slice(1)) {
       expect(within(row).queryByText(/^(draft|published)$/)).not.toBeInTheDocument();
     }
@@ -473,5 +492,50 @@ describe("ExamPackagesPage", () => {
     expect(search).toHaveValue("");
     expect(search).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Hapus pencarian" })).not.toBeInTheDocument();
+  });
+
+  it("filters the loaded rows by Status from the Filter popover, shows a chip, and Semua clears it", async () => {
+    examsState = { data: { data: filterExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Status", "Akan datang");
+
+    expect(screen.getByText("Ujian Mendatang")).toBeInTheDocument();
+    expect(screen.queryByText("Ujian Lampau")).not.toBeInTheDocument();
+    expect(screen.queryByText("Ujian Tanpa Jadwal")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Filter aktif" })).getByText("Status: Akan datang")).toBeInTheDocument();
+
+    await pick("Status", "Semua");
+    expect(screen.getByText("Ujian Lampau")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filter aktif" })).not.toBeInTheDocument();
+  });
+
+  it("filters by Produk and removes the filter from its chip", async () => {
+    examsState = { data: { data: filterExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Produk", "Terbit");
+    expect(screen.getAllByRole("row").slice(1)).toHaveLength(1);
+    expect(screen.getByText("Ujian Lampau")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Hapus filter: Produk: Terbit" }));
+    expect(screen.getAllByRole("row").slice(1)).toHaveLength(3);
+  });
+
+  it("sorts the loaded rows by most registrants", async () => {
+    examsState = { data: { data: filterExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("Ujian Lampau");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Pendaftar terbanyak" }));
+
+    const titles = screen.getAllByRole("row").slice(1).map((r) => within(r).getAllByRole("cell")[0].textContent);
+    expect(titles[0]).toContain("Ujian Mendatang");
+    expect(titles[2]).toContain("Ujian Lampau");
   });
 });

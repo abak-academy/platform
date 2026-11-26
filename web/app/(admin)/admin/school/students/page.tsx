@@ -24,10 +24,19 @@ import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PageHead } from "@/components/shell/PageHead";
 import { StatCard } from "@/components/admin/StatCard";
-import { ToolbarSearch, ToolbarFilterButton, ToolbarCount, FilterChip, ActiveChip } from "@/components/admin/ListToolbar";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+} from "@/components/admin/ListToolbar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -134,6 +143,7 @@ export default function SchoolStudentsPage() {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput).trim();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [jenjangFilter, setJenjangFilter] = useState("");
 
   // Cursor pagination
   const [accumulated, setAccumulated] = useState<AdminStudent[]>([]);
@@ -148,7 +158,7 @@ export default function SchoolStudentsPage() {
   const [stats, setStats] = useState({ total: 0, active: 0, deactivated: 0 });
 
   // Guard: reset pagination on filter change
-  const filterKey = `${statusFilter}:${debouncedSearch}:${selectedSchoolId}`;
+  const filterKey = `${statusFilter}:${debouncedSearch}:${selectedSchoolId}:${jenjangFilter}`;
   const pageFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -163,6 +173,7 @@ export default function SchoolStudentsPage() {
   const query = useAdminStudents({
     status: statusFilter === "all" ? undefined : statusFilter,
     q: debouncedSearch || undefined,
+    jenjang: jenjangFilter || undefined,
     cursor: activeCursor,
     limit: 20,
     ...(canManageAllStudents && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
@@ -502,14 +513,14 @@ export default function SchoolStudentsPage() {
 
   const filterPanelLabel = t("students_filter_panel_label");
   const rosterLabel = t("students_roster_label");
-  const filterCount = (statusFilter !== "all" ? 1 : 0) + (selectedSchoolId ? 1 : 0);
+  const filterCount = (statusFilter !== "all" ? 1 : 0) + (selectedSchoolId ? 1 : 0) + (jenjangFilter ? 1 : 0);
   const statusOptions = [
-    { value: "all", label: t("accounts_status_all") },
     { value: "active", label: t("status_label_active") },
     { value: "deactivated", label: t("status_label_inactive") },
   ];
   const resetFilters = () => {
     setStatusFilter("all");
+    setJenjangFilter("");
     setSelectedSchoolFilter(null);
     setSelectedSchoolId("");
   };
@@ -560,47 +571,42 @@ export default function SchoolStudentsPage() {
               <PopoverTrigger asChild>
                 <ToolbarFilterButton label={filterPanelLabel} count={filterCount} />
               </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                role="region"
-                aria-label={filterPanelLabel}
-                className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(460px,92vw)] overflow-y-auto"
-              >
+              <PopoverContent align="end" role="region" aria-label={filterPanelLabel} className={FILTER_PANEL_CLASS}>
                 <div className="flex flex-col gap-3.5">
-                  <div>
-                    <span className="mb-2 block type-overline text-ink-600">{t("select_school")}</span>
-                    {canManageAllStudents ? (
-                      <SchoolPicker
-                        id="student-school-filter"
-                        value={selectedSchoolId}
-                        selectedSchool={selectedSchoolFilter}
-                        onChange={(school) => {
-                          setSelectedSchoolFilter(school);
-                          setSelectedSchoolId(school?.id ?? "");
-                        }}
-                      />
-                    ) : (
-                      <p className="text-xs leading-5 text-ink-600">
-                        {t("students_roster_bound_note")}
-                      </p>
-                    )}
-                  </div>
-                  <div role="group" aria-label={t("accounts_th_status")}>
-                    <span className="mb-2 block type-overline text-ink-600">{t("accounts_th_status")}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {statusOptions.map((o) => (
-                        <FilterChip key={o.value} on={statusFilter === o.value} onClick={() => setStatusFilter(o.value)}>
-                          {o.label}
-                        </FilterChip>
-                      ))}
+                  <FilterGrid>
+                    <FilterSelect
+                      label={t("accounts_th_status")}
+                      value={statusFilter === "all" ? "" : statusFilter}
+                      options={statusOptions}
+                      onChange={(v) => setStatusFilter(v || "all")}
+                    />
+                    <FilterSelect
+                      label={t("students_filter_jenjang")}
+                      value={jenjangFilter}
+                      options={JENJANG_OPTIONS.map((j) => ({ value: j, label: j }))}
+                      onChange={setJenjangFilter}
+                    />
+                    <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                      <span className="font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{t("select_school")}</span>
+                      {canManageAllStudents ? (
+                        <SchoolPicker
+                          id="student-school-filter"
+                          value={selectedSchoolId}
+                          selectedSchool={selectedSchoolFilter}
+                          onChange={(school) => {
+                            setSelectedSchoolFilter(school);
+                            setSelectedSchoolId(school?.id ?? "");
+                          }}
+                        />
+                      ) : (
+                        <p className="text-xs leading-5 text-ink-600">{t("students_roster_bound_note")}</p>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
-                    <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_reset")}</Button>
-                    <PopoverClose asChild>
-                      <Button variant="secondary" size="sm">{t("list_toolbar_show_n").replace("{n}", String(stats.total))}</Button>
-                    </PopoverClose>
-                  </div>
+                  </FilterGrid>
+                  <FilterPanelFooter
+                    onReset={resetFilters}
+                    showLabel={t("list_toolbar_show_n").replace("{n}", String(stats.total))}
+                  />
                 </div>
               </PopoverContent>
             </Popover>
@@ -616,6 +622,13 @@ export default function SchoolStudentsPage() {
                     setSelectedSchoolFilter(null);
                     setSelectedSchoolId("");
                   }}
+                />
+              )}
+              {jenjangFilter && (
+                <ActiveChip
+                  label={`${t("students_filter_jenjang")}: ${jenjangFilter}`}
+                  removeLabel={`${t("list_toolbar_remove")}: ${t("students_filter_jenjang")}`}
+                  onRemove={() => setJenjangFilter("")}
                 />
               )}
               {statusFilter !== "all" && (

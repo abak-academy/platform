@@ -11,7 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ToolbarCount, ToolbarFilterButton, ToolbarSearch } from "@/components/admin/ListToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+} from "@/components/admin/ListToolbar";
 import { cn } from "@/lib/utils";
 import {
   useAdminTests,
@@ -24,8 +34,6 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { useTranslation } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
 
-const FILTER_SELECT =
-  "h-10 rounded-full border-[1.5px] border-line bg-surface px-3.5 text-[13px] font-bold text-ink-900 outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-45";
 const ICON_BTN =
   "grid size-8 place-items-center rounded-full text-ink-700 transition-colors hover:bg-brand-50 hover:text-brand-ink disabled:opacity-45";
 
@@ -39,7 +47,6 @@ export default function TestsPage() {
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
   const [search, setSearch] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const q = useDebouncedValue(search).trim();
 
   const allTopics = useTopics();
@@ -60,6 +67,14 @@ export default function TestsPage() {
   }, [topic, topicsForSubject.data]);
 
   const activeFilters = (subject ? 1 : 0) + (topic ? 1 : 0);
+  const activeChips = [
+    ...(subject ? [{ key: "subject", label: `${t("tests_field_subject")}: ${subject}`, clear: () => setSubject("") }] : []),
+    ...(topic ? [{ key: "topic", label: `${t("tests_field_topic")}: ${topic}`, clear: () => setTopic("") }] : []),
+  ];
+  const resetFilters = () => {
+    setSubject("");
+    setTopic("");
+  };
 
   const filterKey = `${subject}\u0000${topic}\u0000${q}`;
   const [page, setPage] = useState<{ key: string; cursor?: string }>({ key: filterKey });
@@ -171,66 +186,45 @@ export default function TestsPage() {
             placeholder={t("tests_search_placeholder")}
             clearLabel={t("exam_packages_search_clear")}
           />
-          <ToolbarFilterButton
-            type="button"
-            label={t("tests_filter")}
-            count={activeFilters}
-            aria-expanded={filtersOpen}
-            aria-controls={filtersOpen ? "tests-filter-panel" : undefined}
-            onClick={() => setFiltersOpen((open) => !open)}
-          />
+          <Popover>
+            <PopoverTrigger asChild>
+              <ToolbarFilterButton label={t("tests_filter")} count={activeFilters} />
+            </PopoverTrigger>
+            <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("tests_filter")}>
+              <div className="flex flex-col gap-3.5">
+                <FilterGrid>
+                  <FilterSelect
+                    label={t("tests_field_subject")}
+                    value={subject}
+                    options={subjectOptions.map((s) => ({ value: s, label: s }))}
+                    onChange={setSubject}
+                  />
+                  <FilterSelect
+                    label={t("tests_field_topic")}
+                    value={topic}
+                    options={topicOptions.map((opt) => ({ value: opt.name, label: opt.name }))}
+                    onChange={setTopic}
+                  />
+                </FilterGrid>
+                <FilterPanelFooter
+                  onReset={resetFilters}
+                  showLabel={t("list_toolbar_show_n").replace("{n}", String(testsResp?.total ?? tests.length))}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
           <ToolbarCount>
             <span data-testid="tests-count">
               {t("tests_count").replace("{n}", String(testsResp?.total ?? tests.length))}
             </span>
           </ToolbarCount>
         </div>
-        {filtersOpen && (
-          <div id="tests-filter-panel" className="flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-center">
-            <select
-              data-slot="select"
-              data-testid="tests-subject-filter"
-              aria-label={t("tests_field_subject")}
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              className={FILTER_SELECT}
-            >
-              <option value="">{t("tab_all")}</option>
-              {subjectOptions.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-            <select
-              data-slot="select"
-              data-testid="tests-topic-filter"
-              aria-label={t("tests_field_topic")}
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              disabled={topicsForSubject.isLoading}
-              className={FILTER_SELECT}
-            >
-              <option value="">{t("all_topics")}</option>
-              {topicOptions.map((opt) => (
-                <option key={opt.id} value={opt.name}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-            {activeFilters > 0 && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setSubject("");
-                  setTopic("");
-                }}
-              >
-                {t("tests_filter_reset")}
-              </Button>
-            )}
+        {activeChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("list_toolbar_active")}>
+            {activeChips.map((c) => (
+              <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+            ))}
+            <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
           </div>
         )}
       </div>

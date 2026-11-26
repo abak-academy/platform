@@ -9,7 +9,18 @@ import { ExamModal } from "@/components/admin/ExamModal";
 import { Button } from "@/components/ui/button";
 import { DataTable, TableItem } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+  ToolbarSort,
+} from "@/components/admin/ListToolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useExams } from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
@@ -22,6 +33,18 @@ import type { ExamListItem } from "@/lib/types";
 function Sub({ children }: { children: React.ReactNode }) {
   return <div className="mt-0.5 text-xs text-ink-600">{children}</div>;
 }
+
+type Phase = "upcoming" | "open" | "ended" | "none";
+
+function phaseOf(exam: ExamListItem, now: number): Phase {
+  const start = exam.scheduled_at ? Date.parse(exam.scheduled_at) : NaN;
+  if (Number.isNaN(start)) return "none";
+  if (now < start) return "upcoming";
+  const end = exam.scheduled_end_at ? Date.parse(exam.scheduled_end_at) : NaN;
+  return !Number.isNaN(end) && now > end ? "ended" : "open";
+}
+
+const startTime = (e: ExamListItem) => (e.scheduled_at ? Date.parse(e.scheduled_at) : NaN);
 
 function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions" | "exam_admin_list_sessions_started", n: number) {
   return t(n === 1 ? `${key}_one` : key).replace("{n}", String(n));
@@ -40,6 +63,9 @@ export default function ExamPackagesPage() {
   const [cursor, setCursor] = useState<string | undefined>();
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [items, setItems] = useState<ExamListItem[]>([]);
+  const [phase, setPhase] = useState("");
+  const [product, setProduct] = useState("");
+  const [sort, setSort] = useState("default");
 
   // A debounced search commit must restart pagination at page 1.
   useEffect(() => {
@@ -65,6 +91,41 @@ export default function ExamPackagesPage() {
     });
     setNextCursor(data.next_cursor);
   }, [cursor, data, q, isPlaceholderData]);
+
+  // shortcut: client-side over the loaded page, move to a server param when lists get long
+  const shown = useMemo(() => {
+    const now = Date.now();
+    const rows = items.filter(
+      (e) =>
+        (!phase || phaseOf(e, now) === phase) &&
+        (!product || (product === "on") === !!e.has_published_product)
+    );
+    if (sort === "default") return rows;
+    const dir = sort === "late" ? -1 : 1;
+    return [...rows].sort((a, b) => {
+      if (sort === "reg") return (b.registration_count ?? 0) - (a.registration_count ?? 0);
+      const [x, y] = [startTime(a), startTime(b)];
+      if (Number.isNaN(x) || Number.isNaN(y)) return Number.isNaN(x) ? (Number.isNaN(y) ? 0 : 1) : -1;
+      return (x - y) * dir;
+    });
+  }, [items, phase, product, sort]);
+
+  const phaseOptions = (["upcoming", "open", "ended", "none"] as const).map((v) => ({
+    value: v,
+    label: t(`exam_filter_phase_${v}` as I18nKey),
+  }));
+  const productOptions = [
+    { value: "on", label: t("exam_filter_product_on") },
+    { value: "off", label: t("exam_filter_product_off") },
+  ];
+  const active = [
+    ...(phase ? [{ key: "phase", label: `${t("exam_filter_phase")}: ${phaseOptions.find((o) => o.value === phase)?.label}`, clear: () => setPhase("") }] : []),
+    ...(product ? [{ key: "product", label: `${t("exam_filter_product")}: ${productOptions.find((o) => o.value === product)?.label}`, clear: () => setProduct("") }] : []),
+  ];
+  const resetFilters = () => {
+    setPhase("");
+    setProduct("");
+  };
 
   return (
     <div className="flex flex-col gap-5 fade-in">
@@ -93,10 +154,46 @@ export default function ExamPackagesPage() {
                 clearLabel={t("exam_packages_search_clear")}
               />
             </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <ToolbarFilterButton label={t("list_toolbar_filter")} count={active.length} />
+              </PopoverTrigger>
+              <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
+                <div className="flex flex-col gap-3.5">
+                  <FilterGrid>
+                    <FilterSelect label={t("exam_filter_phase")} value={phase} options={phaseOptions} onChange={setPhase} />
+                    <FilterSelect label={t("exam_filter_product")} value={product} options={productOptions} onChange={setProduct} />
+                  </FilterGrid>
+                  <FilterPanelFooter
+                    onReset={resetFilters}
+                    showLabel={t("list_toolbar_show_n").replace("{n}", String(shown.length))}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
+            <ToolbarSort
+              value={sort}
+              onChange={setSort}
+              label={t("list_toolbar_sort")}
+              options={[
+                { value: "default", label: t("filter_sort_default") },
+                { value: "soon", label: t("exam_sort_soon") },
+                { value: "late", label: t("exam_sort_late") },
+                { value: "reg", label: t("exam_sort_reg") },
+              ]}
+            />
             <ToolbarCount>
-              {t("exam_packages_count").replace("{n}", `${items.length}${nextCursor ? "+" : ""}`)}
+              {t("exam_packages_count").replace("{n}", `${shown.length}${nextCursor ? "+" : ""}`)}
             </ToolbarCount>
           </div>
+          {active.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
+              {active.map((c) => (
+                <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+              ))}
+              <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
+            </div>
+          )}
           {isLoading ? (
             <div className="space-y-2 p-4">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -110,7 +207,7 @@ export default function ExamPackagesPage() {
           ) : (
           <DataTable
             surface="plain"
-            rows={items}
+            rows={shown}
             rowKey={(exam) => exam.id}
             onRowClick={(exam) => router.push(`/admin/exam/packages/${exam.id}`)}
             empty={<EmptyState icon={Calendar} title={t("exam_packages_empty")} />}
