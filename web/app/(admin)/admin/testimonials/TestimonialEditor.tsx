@@ -84,15 +84,27 @@ export function TestimonialEditor({ open, onOpenChange, testimonial }: Props) {
     setBlocked("");
   }, [open, testimonial]);
 
+  const previewRef = useRef<string | null>(null);
+  previewRef.current = photo?.preview ?? null;
+  useEffect(() => () => {
+    if (previewRef.current) URL.revokeObjectURL(previewRef.current);
+  }, []);
+  useEffect(() => {
+    if (!open && previewRef.current) {
+      URL.revokeObjectURL(previewRef.current);
+      setPhoto(null);
+    }
+  }, [open]);
+
   const set = (patch: Partial<Form>) => setForm((f) => ({ ...f, ...patch }));
   const existingKey = photoRemoved ? null : testimonial?.photo_key ?? null;
   const previewSrc = photo?.preview ?? fileUrl(existingKey);
   const hasPhoto = Boolean(photo) || Boolean(existingKey);
 
-  function buildContent(): AdminTestimonial["content"] {
+  function buildContent(f: Form = form): AdminTestimonial["content"] {
     return {
-      id: { quote: form.quoteId.trim(), achievements: lines(form.achId) },
-      en: { quote: form.quoteEn.trim(), achievements: lines(form.achEn) },
+      id: { quote: f.quoteId.trim(), achievements: lines(f.achId) },
+      en: { quote: f.quoteEn.trim(), achievements: lines(f.achEn) },
     };
   }
 
@@ -151,6 +163,7 @@ export function TestimonialEditor({ open, onOpenChange, testimonial }: Props) {
   async function handleSave() {
     if (!form.name.trim() || !form.role_label.trim()) return setBlocked("Nama dan sekolah/peran wajib diisi");
     if (lines(form.achId).length > 3 || lines(form.achEn).length > 3) return setBlocked("Maksimal 3 pencapaian per bahasa");
+    if (!Number.isInteger(Number(form.sort_order))) return setBlocked("Urutan harus bilangan bulat");
     if (form.is_visible) {
       const missing = missingParts();
       if (missing.length > 0) return setBlocked(testimonialBlockedMessage(missing));
@@ -169,8 +182,22 @@ export function TestimonialEditor({ open, onOpenChange, testimonial }: Props) {
       };
       if (photo) input.photo_key = await uploadPhoto(photo.blob);
       else if (photoRemoved && testimonial?.photo_key) input.photo_key = null;
-      if (testimonial) await update.mutateAsync({ id: testimonial.id, input });
-      else await create.mutateAsync(input);
+      if (testimonial) {
+        const init = formFrom(testimonial);
+        const was: AdminTestimonialInput = {
+          name: init.name.trim(),
+          role_label: init.role_label.trim(),
+          content: buildContent(init),
+          has_consent: init.has_consent,
+          consent_note: init.consent_note.trim() || null,
+          is_visible: init.is_visible,
+          sort_order: Number(init.sort_order) || 0,
+        };
+        const changed = Object.fromEntries(
+          Object.entries(input).filter(([k, v]) => k === "photo_key" || JSON.stringify(v) !== JSON.stringify(was[k as keyof AdminTestimonialInput])),
+        ) as AdminTestimonialInput;
+        if (Object.keys(changed).length > 0) await update.mutateAsync({ id: testimonial.id, input: changed });
+      } else await create.mutateAsync(input);
       toast.success("Testimoni disimpan");
       onOpenChange(false);
     } catch (e) {

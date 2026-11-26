@@ -230,11 +230,58 @@ describe("editor", () => {
     await waitFor(() => expect(writes()).toHaveLength(1));
     expect(writes()[0].path).toBe("/admin/testimonials/t1");
     expect(writes()[0].method).toBe("PATCH");
-    expect(writes()[0].body).toMatchObject({ name: "Nama Baru", is_visible: true, consent_note: "Formulir WA" });
-    expect(writes()[0].body).not.toHaveProperty("photo_key");
+    expect(writes()[0].body).toEqual({ name: "Nama Baru" });
   });
 
-  it("blocks the editor switch and Save with the photo message, then the consent message", async () => {
+  it("sends no request when an edit changes nothing", async () => {
+    mockApi([noEn]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const d = within(await screen.findByRole("dialog"));
+    fireEvent.click(d.getByRole("button", { name: "Simpan" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("blocks Save for a visible testimonial whose English quote was cleared", async () => {
+    mockApi([full]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const d = within(await screen.findByRole("dialog"));
+    fireEvent.change(d.getByLabelText("Kutipan (English)"), { target: { value: "" } });
+    fireEvent.click(d.getByRole("button", { name: "Simpan" }));
+    expect(await d.findByRole("alert")).toHaveTextContent("Isi kutipan English sebelum tampil di landing");
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("names a non-integer sort order instead of sending it", async () => {
+    mockApi([full]);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const d = within(await screen.findByRole("dialog"));
+    fireEvent.change(d.getByLabelText("Urutan"), { target: { value: "1.5" } });
+    fireEvent.click(d.getByRole("button", { name: "Simpan" }));
+    expect(await d.findByRole("alert")).toHaveTextContent("Urutan harus bilangan bulat");
+    expect(writes()).toHaveLength(0);
+  });
+
+  it("revokes a replaced preview and the last one when the dialog closes", async () => {
+    mockApi([draftNoPhoto]);
+    stubImage(3000, 2000);
+    let n = 0;
+    URL.createObjectURL = vi.fn(() => `blob:p${++n}`);
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const d = within(await screen.findByRole("dialog"));
+    await upload(photoFile());
+    await d.findByAltText("Pratinjau foto peserta");
+    await upload(photoFile());
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:p1"));
+    fireEvent.click(d.getByRole("button", { name: "Batal" }));
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:p2"));
+  });
+
+  it("blocks the editor switch with the photo message", async () => {
     mockApi([]);
     const d = within(await openCreate());
     fireEvent.click(d.getByRole("switch", { name: "Tampil di landing page" }));
@@ -303,6 +350,7 @@ describe("editor", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     const d = within(await screen.findByRole("dialog"));
     patchError = new api.ApiError("validation_failed", "gagal", 422, { missing: ["consent_note"] });
+    fireEvent.change(d.getByLabelText("Nama"), { target: { value: "Nama Baru" } });
     fireEvent.click(d.getByRole("button", { name: "Simpan" }));
     expect(await d.findByRole("alert")).toHaveTextContent("Isi catatan lokasi persetujuan sebelum tampil di landing");
   });
