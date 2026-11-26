@@ -7,26 +7,11 @@ const enDict = DICT.en as Dict;
 
 const NEW_KEYS: { key: string; id: string; en: string }[] = [
   // Dashboard (page.tsx)
-  { key: "greeting_morning", id: "Selamat pagi", en: "Good morning" },
-  { key: "greeting_afternoon", id: "Selamat siang", en: "Good afternoon" },
-  { key: "greeting_evening", id: "Selamat malam", en: "Good evening" },
   { key: "hello", id: "Halo", en: "Hello" },
-  { key: "add_course", id: "Tambah Kursus", en: "Add Course" },
   { key: "dash_load_failed", id: "Gagal memuat dashboard.", en: "Failed to load dashboard." },
-  { key: "dash_my_ranking", id: "Peringkat saya", en: "My Ranking" },
-  { key: "dash_ranking_placeholder", id: "Total peringkat akan tersedia setelah ujian pertama.", en: "Overall ranking will be available after your first exam." },
-  { key: "dash_study_hours", id: "Total jam belajar", en: "Total Study Hours" },
-  { key: "dash_hours_placeholder", id: "Ringkasan waktu belajar akan hadir di sini.", en: "Study time summary will appear here." },
-  { key: "dash_exam_progress", id: "Progress ujian", en: "Exam Progress" },
-  { key: "dash_progress_placeholder", id: "Statistik progress ujian sedang disiapkan.", en: "Exam progress statistics are being prepared." },
-  { key: "dash_tryout", id: "Tryout", en: "Tryout" },
-  { key: "dash_view_all", id: "Lihat semua", en: "View all" },
-  { key: "dash_explore_catalog", id: "Jelajahi katalog", en: "Explore catalog" },
-  { key: "dash_catalog_desc", id: "Temukan buku, kursus, dan paket kompetisi baru.", en: "Discover new books, courses, and competition packages." },
   { key: "dash_open_catalog", id: "Buka katalog", en: "Open catalog" },
   { key: "dash_no_courses", id: "Belum ada kursus", en: "No courses yet" },
   { key: "dash_no_courses_desc", id: "Mulai belajar dengan menjelajahi katalog kami.", en: "Start learning by exploring our catalog." },
-  { key: "dash_coming_soon", id: "Akan datang", en: "Coming soon" },
 
   // Catalog (catalog/page.tsx)
   { key: "catalog_tab_all", id: "Semua", en: "All" },
