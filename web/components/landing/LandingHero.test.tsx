@@ -48,7 +48,7 @@ describe("LandingHero", () => {
 
 describe("landing contrast", () => {
   it("keeps small light-background text on ink-600, not ink-500/400", () => {
-    for (const f of ["landing/AboutLines", "landing/StorySlider", "events/EventStoryCard", "events/EventSeriesPicker"]) {
+    for (const f of ["landing/AboutLines", "landing/StorySlider", "events/EventStoryCard", "events/EventSeriesPicker", "events/EventSchedule"]) {
       const src = readFileSync(`components/${f}.tsx`, "utf8");
       expect(src, f).not.toMatch(/type-(overline|caption)[^"]*text-ink-(500|400)/);
     }

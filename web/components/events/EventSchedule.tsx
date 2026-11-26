@@ -19,13 +19,13 @@ export function EventSchedule({ schedule }: { schedule: PublicMilestone[] }) {
   if (schedule.length === 0) return null;
   return (
     <div>
-      <span className="type-overline text-ink-500">{t("land_story_schedule")}</span>
+      <span className="type-overline text-ink-600">{t("land_story_schedule")}</span>
       <ol className="mt-3 grid gap-2">
         {schedule.map((m) => (
           <li
             key={`${m.label}-${m.starts_on}`}
             data-state={m.state}
-            className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", m.state === "done" && "text-ink-500")}
+            className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", m.state === "done" && "text-ink-600")}
           >
             <span
               aria-hidden
@@ -36,7 +36,7 @@ export function EventSchedule({ schedule }: { schedule: PublicMilestone[] }) {
               )}
             />
             <b className="type-label">{m.label}</b>
-            <time className="type-caption text-ink-500">
+            <time className="type-caption text-ink-600">
               {m.ends_on && m.ends_on !== m.starts_on
                 ? `${formatDay(m.starts_on, lang, false)} – ${formatDay(m.ends_on, lang)}`
                 : formatDay(m.starts_on, lang)}

@@ -135,7 +135,7 @@ const realDeps: MergeDeps = {
     }),
   isUnavailable: async (productId) => {
     try {
-      // The public GET already 404s an unpublished or out-of-window product; a 200 is the server's yes.
+      // Relies on GET /products/:id staying unauthenticated: it 404s drafts and out-of-window products only for role "".
       await apiFetch<Product>(`/products/${encodeURIComponent(productId)}`);
       return false;
     } catch (err) {
