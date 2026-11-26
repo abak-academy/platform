@@ -11,8 +11,8 @@ import { savePageAsPdf } from "@/lib/capture-pdf";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { paymentMethodLabel } from "@/lib/payment-method";
-import { hasPhysicalItems } from "@/lib/shipping";
-import type { Order } from "@/lib/types";
+import { calculateTotalPhysicalWeight, hasPhysicalItems, isPhysicalType } from "@/lib/shipping";
+import type { Order, ProductType } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth";
 
 const formatDate = (iso: string | undefined, lang: string) =>
@@ -38,6 +38,12 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
   const recipient = [addr.penerima, addr.telepon].filter(Boolean).join(" · ");
   const address = [addr.alamat, addr.kode_pos].filter(Boolean).join(" ");
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" · ");
+  const goods = items.filter((it) => isPhysicalType(it.product_type as ProductType));
+  const goodsQty = goods.reduce((n, it) => n + it.qty, 0);
+  const grams = calculateTotalPhysicalWeight(items);
+  const weight = grams
+    ? `${(grams / 1000).toLocaleString(lang === "id" ? "id-ID" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg`
+    : "—";
   const paid = Boolean(order.paid_at);
 
   const handleDownload = async () => {
@@ -144,15 +150,30 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
             </div>
 
             {physical && (
-              <section className="mt-5 rounded-md border border-line p-3.5">
-                <b className="text-[11px] font-bold uppercase tracking-[.06em] text-ink-500">{t("invoice_ship_title")}</b>
-                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
-                  {shipRow(t("invoice_ship_recipient"), recipient || "—")}
-                  {shipRow(t("invoice_ship_address"), address || "—")}
-                  {shipRow(t("invoice_ship_courier"), courier || "—")}
-                  {shipRow(t("invoice_ship_resi"), order.tracking_number || t("invoice_ship_resi_pending"))}
-                </dl>
-              </section>
+              <div className="mt-5 grid grid-cols-[1.4fr_1fr] gap-3">
+                <section data-testid="invoice-shipping" className="rounded-md border border-line p-3.5">
+                  <b className="text-[11px] font-bold uppercase tracking-[.06em] text-ink-500">{t("invoice_ship_title")}</b>
+                  <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                    {shipRow(t("invoice_ship_recipient"), recipient || "—")}
+                    {shipRow(t("invoice_ship_address"), address || "—")}
+                    {shipRow(t("invoice_ship_courier"), courier || "—")}
+                    {shipRow(t("invoice_ship_resi"), order.tracking_number || t("invoice_ship_resi_pending"))}
+                    {shipRow(t("invoice_ship_goods"), goods.map((it) => it.name).join(", "))}
+                    {shipRow(t("invoice_ship_qty"), String(goodsQty))}
+                    {shipRow(t("invoice_ship_weight"), weight)}
+                  </dl>
+                </section>
+                <section data-testid="invoice-shipping-cost" className="flex flex-col rounded-md border border-line p-3.5">
+                  <b className="text-[11px] font-bold uppercase tracking-[.06em] text-ink-500">{t("invoice_ship_cost_title")}</b>
+                  <div className="mt-2 flex flex-col gap-1">
+                    {sumRow(t("invoice_shipping"), formatRupiah(order.shipping_cost ?? 0))}
+                    <div className="mt-1 flex justify-between gap-6 border-t border-dashed border-line pt-1.5 font-extrabold">
+                      <span>{t("invoice_total")}</span>
+                      <span>{formatRupiah(order.shipping_cost ?? 0)}</span>
+                    </div>
+                  </div>
+                </section>
+              </div>
             )}
 
             <footer className="mt-auto flex flex-col gap-1 border-t border-line pt-3 text-[11px] text-ink-500">

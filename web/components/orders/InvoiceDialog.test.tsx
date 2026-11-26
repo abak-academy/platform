@@ -46,7 +46,11 @@ const PHYSICAL = {
   selected_courier: "JNE",
   selected_service: "REG",
   tracking_number: "",
-  items: [{ id: "i2", order_id: "o2", product_id: "p2", product_type: "book", name: "Buku Latihan", unit_price: 100000, qty: 1, jumlah: 100000 }],
+  items: [
+    { id: "i2", order_id: "o2", product_id: "p2", product_type: "book", name: "Buku Latihan", unit_price: 60000, qty: 1, jumlah: 60000, weight_grams: 1250 },
+    { id: "i3", order_id: "o2", product_id: "p3", product_type: "medal", name: "Medali Juara", unit_price: 20000, qty: 2, jumlah: 40000, weight_grams: 100 },
+    { id: "i4", order_id: "o2", product_id: "p4", product_type: "course", name: "Kursus Bonus", unit_price: 0, qty: 1, jumlah: 0, weight_grams: 0 },
+  ],
 } as unknown as Order;
 
 function show(order: Order) {
@@ -96,16 +100,33 @@ describe("InvoiceDialog", () => {
 
   it("lists recipient, address, courier and a pending resi for a physical order", () => {
     show(PHYSICAL);
-    const ship = screen.getByText("Rincian pengiriman").closest("section") as HTMLElement;
+    const ship = screen.getByTestId("invoice-shipping");
     expect(ship).toHaveTextContent("PenerimaPenerima Uji · 080000000000");
     expect(ship).toHaveTextContent("AlamatJl. Contoh 1 40111");
     expect(ship).toHaveTextContent("KurirJNE · REG");
     expect(ship).toHaveTextContent("No. resiBelum tersedia");
+    expect(ship).toHaveTextContent("DeskripsiBuku Latihan, Medali Juara");
+    expect(ship).not.toHaveTextContent("Kursus Bonus");
+    expect(ship).toHaveTextContent("Jumlah barang3");
+    expect(ship).toHaveTextContent("Total berat1,45 kg");
+  });
+
+  it("puts the shipping cost and its total in the right-hand column", () => {
+    show(PHYSICAL);
+    const cost = screen.getByTestId("invoice-shipping-cost");
+    expect(cost).toHaveTextContent("Rincian biaya pengiriman");
+    expect(cost).toHaveTextContent("Ongkos kirimRp18.000");
+    expect(cost).toHaveTextContent("TotalRp18.000");
+  });
+
+  it("shows a dash when the items carry no weight", () => {
+    show({ ...PHYSICAL, items: PHYSICAL.items!.map((it) => ({ ...it, weight_grams: 0 })) } as Order);
+    expect(screen.getByTestId("invoice-shipping")).toHaveTextContent("Total berat—");
   });
 
   it("shows the resi once the order has one", () => {
     show({ ...PHYSICAL, status: "shipped", tracking_number: "JNE0012345678" } as Order);
-    const ship = screen.getByText("Rincian pengiriman").closest("section") as HTMLElement;
+    const ship = screen.getByTestId("invoice-shipping");
     expect(ship).toHaveTextContent("No. resiJNE0012345678");
     expect(ship).not.toHaveTextContent("Belum tersedia");
   });

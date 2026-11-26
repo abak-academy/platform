@@ -521,6 +521,9 @@ test("7-9 order detail, invoice, pdf, print", async ({ page, context }) => {
   await expect(physPaper).toContainText("Rincian pengiriman");
   await expect(physPaper).toContainText(RESI);
   await expect(physPaper).toContainText("JNE · REG");
+  await expect(page.getByTestId("invoice-shipping")).toContainText("Total berat0,80 kg");
+  await expect(page.getByTestId("invoice-shipping")).toContainText("Jumlah barang2");
+  await expect(page.getByTestId("invoice-shipping-cost")).toContainText("Ongkos kirimRp18.000");
   await expect(physPaper).toContainText("Transfer bank (Virtual Account)");
   await expect(physPaper).toContainText("bukti pemesanan dan/atau pembelian");
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
