@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { authFetch, authFetchMultipart, API_BASE, ApiError } from "@/lib/api";
 import type {
   AdminQuestionImportResponse,
@@ -43,6 +43,7 @@ export function useBankQuestions(filters?: BankQuestionsFilters) {
   return useQuery({
     queryKey: adminBankQuestionsKeys.list(filters),
     queryFn: () => authFetch<BankQuestionListResponse>(buildListPath(filters)),
+    placeholderData: keepPreviousData,
   });
 }
 

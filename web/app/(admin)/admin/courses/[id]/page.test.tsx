@@ -113,5 +113,6 @@ describe("CourseBuilderPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
     });
+    expect(screen.getByRole("link", { name: /kembali|back/i })).toHaveAttribute("href", "/admin/courses");
   });
 });

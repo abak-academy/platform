@@ -171,7 +171,7 @@ export default function CoursesPage() {
       <AdminPageHeader
         title={t("courses_page_title")}
         description={t("courses_page_description")}
-        actions={<Button variant="secondary" onClick={() => setModalOpen(true)}><Plus aria-hidden />{t("courses_create")}</Button>}
+        actions={<Button variant="dark" onClick={() => setModalOpen(true)}><Plus aria-hidden />{t("courses_create")}</Button>}
       />
 
       {!isLoading && !isError && (

@@ -72,6 +72,7 @@ export default function CourseBuilderPage() {
   if (isLoading) {
     return (
       <div className="flex flex-col gap-5">
+        <AdminPageHeader back={{ href: "/admin/courses", label: t("course_back") }} title={t("courses_edit")} />
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-48 w-full" />
         <Skeleton className="h-64 w-full" />
@@ -81,8 +82,11 @@ export default function CourseBuilderPage() {
 
   if (isError || !course) {
     return (
-      <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-        {t("courses_load_failed")}: {errorMessage(error)}
+      <div className="flex flex-col gap-5">
+        <AdminPageHeader back={{ href: "/admin/courses", label: t("course_back") }} title={t("courses_edit")} />
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+          {t("courses_load_failed")}: {errorMessage(error)}
+        </div>
       </div>
     );
   }

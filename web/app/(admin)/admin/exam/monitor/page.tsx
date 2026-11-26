@@ -379,7 +379,7 @@ export default function ExamMonitorPage() {
               tone="ember"
               icon={Activity}
               label={t("st_inprogress")}
-              value={String(rows.filter((r) => r.status === "in_progress").length)}
+              value={String(rows.filter((r) => r.status === "in_progress" || r.status === "overdue").length)}
             />
             <StatCard
               tone="teal"

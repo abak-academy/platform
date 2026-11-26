@@ -41,7 +41,7 @@ export default function NotificationsPage() {
         description={t("notifications_page_description")}
         actions={
           tab === "announcements" ? (
-            <Button variant="secondary" onClick={handleCreate}>
+            <Button variant="dark" onClick={handleCreate}>
               <Plus aria-hidden />
               {t("create")}
             </Button>

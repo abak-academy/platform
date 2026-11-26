@@ -38,6 +38,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { FORMAT_BADGE_VARIANT } from "@/lib/question-tone";
 import {
   useTestDetail,
   useTestQuestions,
@@ -207,7 +208,7 @@ function QuestionRow({
         <p className="line-clamp-2 text-sm text-ink-900 [overflow-wrap:anywhere]">{stripHtmlToPlainText(q.body)}</p>
       </td>
       <td className="px-4 py-3">
-        <Badge variant={q.format === "essay" ? "ember" : "mute"}>
+        <Badge variant={FORMAT_BADGE_VARIANT[q.format]}>
           {t(FORMAT_BADGE[q.format])}
         </Badge>
       </td>
@@ -422,7 +423,7 @@ export default function TestDetailPage() {
                   <Eye className="size-4" />
                   {t("tests_preview_test")}
                 </Button>
-                <Button type="button" variant="secondary" onClick={handleSaveTest} disabled={!canSaveTest}>
+                <Button type="button" variant="dark" onClick={handleSaveTest} disabled={!canSaveTest}>
                   {update.isPending ? t("saving") : t("tests_save_settings")}
                 </Button>
               </>

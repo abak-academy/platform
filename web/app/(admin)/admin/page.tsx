@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Receipt, UserPlus, Store, Clock, PackageCheck, AlertTriangle, PenLine, Coins,
-  ArrowRight, ArrowUp, ArrowDown, Plus, Calendar, Megaphone, Tag, type LucideIcon,
+  ArrowRight, Plus, Calendar, Megaphone, Tag, type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
@@ -302,7 +302,7 @@ export default function AdminIndexPage() {
         title={`${greeting}, ${name.split(" ")[0]}`}
         sub={`${today} · ${t("admin_home_overview_suffix")}`}
         actions={
-          <Button asChild variant="secondary">
+          <Button asChild variant="dark">
             <Link href="/admin/exam/packages">
               <Plus aria-hidden />
               {t("admin_home_create_exam")}

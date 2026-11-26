@@ -379,23 +379,20 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      )}
-
-      {isError && (
-        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
-          {t("orders_load_failed")}: {errorMessage(error)}
-        </div>
-      )}
-
-      {!isLoading && !isError && (
-        <div className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
+      <div className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
           <OrdersToolbar value={query} onChange={changeQuery} couriers={summary?.couriers} />
+          {isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : isError ? (
+            <div className="m-4 rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+              {t("orders_load_failed")}: {errorMessage(error)}
+            </div>
+          ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-[13.5px]">
               <thead>
@@ -450,8 +447,9 @@ export default function OrdersPage() {
               </SelectContent>
             </Select>
           </TableFooter>
-        </div>
-      )}
+          </>
+          )}
+      </div>
 
       {reviewOrders && <ShippingLabelReviewDialog orders={reviewOrders} mode={reviewMode} focusTarget={reviewMode === "single" ? detailFocus.current : undefined} onClose={() => setReviewOrders(null)} />}
 

@@ -10,6 +10,18 @@ export const FORMAT_TONE: Record<QuestionFormat, string> = {
   true_false: "bg-violet-bg text-violet",
 };
 
+type FormatBadgeVariant = "sky" | "berry" | "teal" | "mute" | "gold";
+
+export const FORMAT_BADGE_VARIANT: Record<QuestionFormat, FormatBadgeVariant> = {
+  mcq: "sky",
+  multi_answer: "berry",
+  short: "teal",
+  fill_blank: "mute",
+  essay: "gold",
+  multi_blank: "mute",
+  true_false: "berry",
+};
+
 export const DIFFICULTY_TONE: Record<string, string> = {
   easy: "bg-success-bg text-success",
   medium: "bg-warn-bg text-warn",

@@ -285,6 +285,16 @@ describe("ExamPackagesPage", () => {
     });
   });
 
+  it("keeps the search input mounted across loading and error", () => {
+    examsState = { data: undefined, isLoading: true, isError: false, error: null };
+    const { rerender } = render(<ExamPackagesPage />);
+    const search = screen.getByRole("searchbox");
+    examsState = { data: undefined, isLoading: false, isError: true, error: new Error("gagal") };
+    rerender(<ExamPackagesPage />);
+    expect(screen.getByRole("searchbox")).toBe(search);
+    expect(screen.getByText("gagal")).toBeInTheDocument();
+  });
+
   it("shows empty state when no packages exist", async () => {
     examsState = {
       data: { data: [] },

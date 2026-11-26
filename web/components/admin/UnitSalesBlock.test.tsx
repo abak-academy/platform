@@ -55,6 +55,16 @@ describe("UnitSalesBlock", () => {
     expect(push).toHaveBeenCalledWith(link.getAttribute("href"));
   });
 
+  it("opens the row link with Enter on the focused native link", async () => {
+    render(<UnitSalesBlock />);
+    const link = screen.getByRole("link", { name: "Lihat produk: Buku" });
+    const activate = vi.fn((event: Event) => event.preventDefault());
+    link.addEventListener("click", activate);
+    link.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(activate).toHaveBeenCalledOnce();
+  });
+
   it.each(["7d", "custom", "all_time"])("restores %s from URL and carries it in all row links", (preset) => {
     const range = preset === "7d" ? explicitUnitRange("7d", {}) : preset === "custom" ? { from: "2026-01-01", to: "2026-01-31" } : {};
     search = unitPeriodSearch({ preset: preset as PeriodPreset, range });

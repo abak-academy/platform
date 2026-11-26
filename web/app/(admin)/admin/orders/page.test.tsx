@@ -1011,6 +1011,16 @@ describe("OrdersPage", () => {
       expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
     });
   });
+
+  it("keeps the search input mounted while loading and the toolbar visible on error", () => {
+    ordersState = { ...ordersState, data: undefined, isLoading: true, isError: false };
+    const { rerender } = render(<OrdersPage />);
+    const search = screen.getByRole("searchbox");
+    ordersState = { ...ordersState, isLoading: false, isError: true, error: new Error("gagal") };
+    rerender(<OrdersPage />);
+    expect(screen.getByRole("searchbox")).toBe(search);
+    expect(screen.getByText(/gagal/i)).toBeInTheDocument();
+  });
 });
 
 describe("OrdersPage failed shipments", () => {

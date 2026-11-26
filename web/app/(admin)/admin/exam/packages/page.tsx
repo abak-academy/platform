@@ -72,29 +72,14 @@ export default function ExamPackagesPage() {
         description={t("exam_packages_page_description")}
         actions={
           role !== "admin_school" ? (
-            <Button variant="secondary" onClick={() => setShowCreate(true)}>
+            <Button variant="dark" onClick={() => setShowCreate(true)}>
               {t("exam_packages_create")}
             </Button>
           ) : undefined
         }
       />
 
-      {isLoading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      )}
-
-      {isError && (
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
-          {error instanceof Error ? error.message : t("error_generic")}
-        </div>
-      )}
-
-      {!isLoading && !isError && (
-        <div className="md-card-flush">
+      <div className="md-card-flush">
           <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
             <div ref={searchRef} className="contents">
               <ToolbarSearch
@@ -111,6 +96,17 @@ export default function ExamPackagesPage() {
               {t("exam_packages_count").replace("{n}", `${items.length}${nextCursor ? "+" : ""}`)}
             </ToolbarCount>
           </div>
+          {isLoading ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : isError ? (
+            <div className="m-4 rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
+              {error instanceof Error ? error.message : t("error_generic")}
+            </div>
+          ) : (
           <DataTable
             surface="plain"
             rows={items}
@@ -236,8 +232,8 @@ export default function ExamPackagesPage() {
               },
             ]}
           />
-        </div>
-      )}
+          )}
+      </div>
 
       {!isLoading && !isError && (
         <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-600">

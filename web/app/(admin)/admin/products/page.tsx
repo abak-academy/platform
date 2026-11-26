@@ -153,7 +153,7 @@ export default function ProductsPage() {
       <AdminPageHeader
         title={t("products_page_title")}
         description={t("products_page_description")}
-        actions={<Button variant="secondary" onClick={openCreate}><Plus aria-hidden />{t("products_create")}</Button>}
+        actions={<Button variant="dark" onClick={openCreate}><Plus aria-hidden />{t("products_create")}</Button>}
       />
 
       {isLoading && (
@@ -204,7 +204,7 @@ export default function ProductsPage() {
                         size="sm"
                         checked={status === "published"}
                         disabled={status === "published" || publish.isPending}
-                        aria-label={t("action_publish")}
+                        aria-label={`${t("action_publish")} ${product.name}`}
                         onCheckedChange={() => handlePublish(product.id)}
                       />
                       {status !== "published" && status !== "draft" && <Badge variant={statusTone(status)}>{t(`products_status_${status}`)}</Badge>}

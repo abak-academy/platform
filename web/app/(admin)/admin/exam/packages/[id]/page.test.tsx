@@ -1609,7 +1609,7 @@ describe("ExamPackageDetailPage — prototype parity", () => {
       expect(preview.querySelector("svg")).not.toBeNull();
       expect(settings.querySelector("svg")).not.toBeNull();
       expect(preview).toHaveAttribute("data-variant", "outline");
-      expect(settings).toHaveAttribute("data-variant", "secondary");
+      expect(settings).toHaveAttribute("data-variant", "dark");
       expect(screen.getByRole("link", { name: "Ujian" })).toHaveAttribute("href", "/admin/exam/packages");
       expect(screen.getAllByRole("tab").length).toBeGreaterThan(0);
     });

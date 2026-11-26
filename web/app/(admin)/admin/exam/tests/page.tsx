@@ -157,7 +157,7 @@ export default function TestsPage() {
       <AdminPageHeader
         title={t("tests_page_title")}
         description={t("tests_page_description")}
-        actions={<Button onClick={openCreate}>{t("tests_new")}</Button>}
+        actions={<Button variant="dark" onClick={openCreate}>{t("tests_new")}</Button>}
       />
 
       <div

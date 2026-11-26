@@ -24,6 +24,7 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { FORMAT_BADGE_VARIANT } from "@/lib/question-tone";
 import { ApiError } from "@/lib/api";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
@@ -199,7 +200,7 @@ export default function QuestionBankPage() {
       key: "format",
       header: t("format"),
       cell: (item) => (
-        <Badge variant={item.question.format === "essay" ? "ember" : "mute"}>
+        <Badge variant={FORMAT_BADGE_VARIANT[item.question.format]}>
           {t(FORMAT_LABELS[item.question.format] as Parameters<typeof t>[0])}
         </Badge>
       ),
@@ -282,7 +283,7 @@ export default function QuestionBankPage() {
               <Upload className="size-4" />
               CSV
             </Button>
-            <Button variant="secondary" onClick={openCreate}>
+            <Button variant="dark" onClick={openCreate}>
               <Plus className="size-4" />
               {t("create")}
             </Button>
@@ -290,22 +291,7 @@ export default function QuestionBankPage() {
         }
       />
 
-      {bank.isLoading && !bank.data && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-12 w-full" />
-          ))}
-        </div>
-      )}
-
-      {bank.isError && !bank.data && (
-        <div className="rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
-          {errorMessage(bank.error)}
-        </div>
-      )}
-
-      {!bank.isLoading && !bank.isError && (
-        <div className="md-card-flush">
+      <div className="md-card-flush">
           <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
             <ToolbarSearch value={search} onChange={setSearch} placeholder={t("search")} clearLabel={t("list_toolbar_clear_search")} />
             <select
@@ -336,6 +322,17 @@ export default function QuestionBankPage() {
             </select>
             <ToolbarCount>{total} {t("question")}</ToolbarCount>
           </div>
+          {bank.isLoading && !bank.data ? (
+            <div className="space-y-2 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : bank.isError && !bank.data ? (
+            <div className="m-4 rounded-lg border border-danger/20 bg-danger/10 p-4 text-danger">
+              {errorMessage(bank.error)}
+            </div>
+          ) : (
           <DataTable
             surface="plain"
             columns={columns}
@@ -392,8 +389,8 @@ export default function QuestionBankPage() {
               ) : undefined
             }
           />
-        </div>
-      )}
+          )}
+      </div>
 
       <QuestionPreview
         item={previewItem}

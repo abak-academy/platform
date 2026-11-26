@@ -126,7 +126,7 @@ export default function PromosPage() {
       <AdminPageHeader
         title={t("promos_page_title")}
         description={t("promos_page_description")}
-        actions={<Button variant="secondary" onClick={openCreate}><Plus aria-hidden />{t("promo_create")}</Button>}
+        actions={<Button variant="dark" onClick={openCreate}><Plus aria-hidden />{t("promo_create")}</Button>}
       />
 
       {!isLoading && !isError && (
@@ -170,9 +170,9 @@ export default function PromosPage() {
             const status = promoStatus(promo);
             const pct = promo.max_uses ? Math.min(100, Math.round((promo.used_count / promo.max_uses) * 100)) : null;
             return (
-              <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "opacity-65")}>
+              <article key={promo.id} className="md-card-outlined flex flex-col gap-2.5">
                 <div className="flex items-center gap-2">
-                  <code className="rounded-[9px] bg-ink-900 px-2.5 py-1.5 font-mono text-[13px] font-bold tracking-[.06em] text-surface">{promo.code}</code>
+                  <code className={cn("rounded-[9px] px-2.5 py-1.5 font-mono text-[13px] font-bold tracking-[.06em] text-surface", status === "active" ? "bg-ink-900" : "bg-ink-600")}>{promo.code}</code>
                   <span className="flex-1" />
                   {promo.affiliator_only ? (
                     <Badge variant="brand">{t("th_affiliator_only")}</Badge>
@@ -180,7 +180,7 @@ export default function PromosPage() {
                     <Badge variant="teal">{t("th_public")}</Badge>
                   ) : null}
                 </div>
-                <div className="font-[family-name:var(--font-display)] text-[46px] leading-none font-extrabold tracking-[-0.04em] text-ember-700">
+                <div className={cn("font-[family-name:var(--font-display)] text-[46px] leading-none font-extrabold tracking-[-0.04em]", status === "active" ? "text-ember-700" : "text-ink-600")}>
                   {discountLabel(promo)}
                 </div>
                 <p className="text-xs text-ink-600">{expiryText(promo.expires_at)}</p>

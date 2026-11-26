@@ -459,7 +459,7 @@ function ExamPackageDetail() {
                 </Button>
               )}
               {!isSchoolScoped && (
-                <Button variant="secondary" onClick={() => setEditOpen(true)}>
+                <Button variant="dark" onClick={() => setEditOpen(true)}>
                   <SlidersHorizontal className="size-4" />
                   {t("exam_admin_settings")}
                 </Button>
