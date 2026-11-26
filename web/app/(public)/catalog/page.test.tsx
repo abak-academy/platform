@@ -121,3 +121,17 @@ describe("CatalogPage", () => {
     expect(screen.getByRole("button", { name: "Kursus" })).toHaveAttribute("aria-current", "true");
   });
 });
+
+describe("CatalogPage suspense shell", () => {
+  it("renders hero and skeleton grid while useSearchParams suspends", async () => {
+    const nav = await import("next/navigation");
+    const spy = vi.spyOn(nav, "useSearchParams").mockImplementation(() => {
+      throw new Promise(() => {});
+    });
+    render(<CatalogPage />);
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.getByTestId("catalog-skeleton")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/cari/i)).not.toBeInTheDocument();
+    spy.mockRestore();
+  });
+});

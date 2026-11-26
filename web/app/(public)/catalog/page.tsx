@@ -152,24 +152,7 @@ function CatalogContent() {
     category !== "all" || groupingId !== ALL_GROUPINGS || search.trim() !== "";
 
   return (
-    <div>
-      <section className="relative overflow-hidden pt-32 pb-12">
-        <div
-          aria-hidden
-          className="page-hero-fade absolute inset-0 -z-10 bg-brand-50"
-        />
-        <div className={wrap}>
-          <span className="type-overline text-ember-700">
-            {t("shop_eyebrow")}
-          </span>
-          <h1 className="mt-2 type-display">{t("shop_title")}</h1>
-          <p className="mt-3 max-w-2xl type-body text-ink-700">
-            {t("shop_tagline")}
-          </p>
-        </div>
-      </section>
-
-      <section data-reveal className={`${wrap} pt-12 pb-20`}>
+    <>
         <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
             value={search}
@@ -220,15 +203,49 @@ function CatalogContent() {
             )}
           </div>
         </div>
-      </section>
-    </div>
+    </>
+  );
+}
+
+function CatalogFallback() {
+  return (
+    <>
+      <Skeleton className="mb-8 h-10 w-full sm:max-w-xs" />
+      <div className="min-h-[32rem]">
+        <CatalogSkeleton />
+      </div>
+    </>
+  );
+}
+
+function CatalogHero() {
+  const { t } = useTranslation();
+  return (
+    <section className="relative overflow-hidden pt-32 pb-12">
+      <div
+        aria-hidden
+        className="page-hero-fade absolute inset-0 -z-10 bg-brand-50"
+      />
+      <div className={wrap}>
+        <span className="type-overline text-ember-700">{t("shop_eyebrow")}</span>
+        <h1 className="mt-2 type-display">{t("shop_title")}</h1>
+        <p className="mt-3 max-w-2xl type-body text-ink-700">
+          {t("shop_tagline")}
+        </p>
+      </div>
+    </section>
   );
 }
 
 export default function CatalogPage() {
   return (
-    <Suspense>
-      <CatalogContent />
-    </Suspense>
+    <div>
+      <CatalogHero />
+      <section data-reveal className={`${wrap} pt-12 pb-20`}>
+        <Suspense fallback={<CatalogFallback />}>
+          <CatalogContent />
+        </Suspense>
+      </section>
+    </div>
   );
 }
