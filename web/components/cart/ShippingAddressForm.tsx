@@ -37,7 +37,7 @@ export interface ShippingAddressFormState {
 }
 
 const FIELD_CLASS =
-  "h-11 w-full rounded-md border border-line bg-surface px-3.5 text-sm text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-400 focus-visible:border-brand-400 focus-visible:ring-[3px] focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-500";
+  "h-[var(--spacing-input)] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-[15px] text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-600 hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-600";
 
 interface ShippingAddressFormProps {
   profile: User | undefined;
@@ -178,26 +178,26 @@ export function ShippingAddressForm({
   };
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-5">
-      <h3 className="font-semibold text-ink-900">{t("cart_shipping_title") || "Shipping Address"}</h3>
+    <div className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-card p-6 shadow-card">
+      <h2 className="type-h2 text-ink-900">{t("cart_shipping_title") || "Shipping Address"}</h2>
 
       <div className="grid gap-3">
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="penerima" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="penerima" className="type-label-sm text-ink-900">
             {t("cart_address_recipient" as any)}
           </Label>
           <input id="penerima" className={FIELD_CLASS} value={penerima}
             onChange={(e) => setPenerima(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="telepon" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="telepon" className="type-label-sm text-ink-900">
             {t("cart_address_phone" as any)}
           </Label>
           <input id="telepon" className={FIELD_CLASS} value={telepon}
             onChange={(e) => setTelepon(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="alamat" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="alamat" className="type-label-sm text-ink-900">
             {t("cart_address_street" as any)}
           </Label>
           <input id="alamat" className={FIELD_CLASS} value={alamat}
@@ -205,7 +205,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="provinsi" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="provinsi" className="type-label-sm text-ink-900">
             {t("students_field_provinsi") || "Province"}
           </Label>
           <Select
@@ -231,7 +231,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="kota" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="kota" className="type-label-sm text-ink-900">
             {t("students_field_kota") || "City"}
           </Label>
           <Select
@@ -258,7 +258,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="kecamatan" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="kecamatan" className="type-label-sm text-ink-900">
             {t("students_field_kecamatan") || "District"}
           </Label>
           <Select
@@ -285,7 +285,7 @@ export function ShippingAddressForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="kode-pos" className="text-xs font-semibold text-ink-600">
+          <Label htmlFor="kode-pos" className="type-label-sm text-ink-900">
             {t("students_field_kode_pos") || "Postal Code"}
           </Label>
           <Input

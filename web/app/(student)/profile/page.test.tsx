@@ -218,6 +218,16 @@ describe("ProfilePage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("puts the identity card (edit + change password) before the form, and the password dialog opens without edit mode", async () => {
+    renderPage();
+    const nameInput = await screen.findByLabelText(/nama/i, { selector: "input" });
+    const edit = screen.getByRole("button", { name: /ubah profil|edit profile/i });
+    expect(edit.compareDocumentPosition(nameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /ubah kata sandi|change password/i }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
   it("entering edit mode unlocks fields and does not save on its own", async () => {
     renderPage();
 

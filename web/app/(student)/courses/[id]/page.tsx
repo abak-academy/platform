@@ -2,8 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertCircle, ArrowLeft, Check, Loader2 } from "lucide-react";
-import Link from "next/link";
+import { AlertCircle, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useCourse, useCompleteLesson } from "@/lib/hooks/courses";
@@ -12,6 +11,7 @@ import type { Lesson } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHead } from "@/components/shell/PageHead";
 import { LessonList } from "@/components/courses/LessonList";
 import { VideoPlayer } from "@/components/courses/VideoPlayer";
 
@@ -87,8 +87,8 @@ export default function CourseDetailPage() {
 
   if (isError) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
-        <Card className="border-danger/30 bg-danger-bg px-5 py-4">
+      <>
+        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -102,23 +102,23 @@ export default function CourseDetailPage() {
             </Button>
           </div>
         </Card>
-      </div>
+      </>
     );
   }
 
   if (!course) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
-        <p className="text-sm text-ink-500">{t("course_not_found")}</p>
+      <>
+        <p className="text-sm text-ink-600">{t("course_not_found")}</p>
         <Button
           variant="ghost"
           size="sm"
-          className="mt-3"
+          className="w-fit"
           onClick={() => router.push("/courses")}
         >
           {t("course_back")}
         </Button>
-      </div>
+      </>
     );
   }
 
@@ -128,70 +128,52 @@ export default function CourseDetailPage() {
   );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8">
-      <Link
-        href="/courses"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-600 hover:text-ink-900"
-      >
-        <ArrowLeft className="size-4" />
-        {t("course_back")}
-      </Link>
+    <>
+      <PageHead
+        back={{ href: "/courses", label: t("course_back") }}
+        title={course.title}
+        sub={course.instructor_name ? `${t("course_instructor")}: ${course.instructor_name}` : undefined}
+      />
 
-      <header className="mb-6">
-        <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">
-          {course.title}
-        </h1>
-        {course.instructor_name && (
-          <p className="mt-1 text-sm text-ink-500">
-            {t("course_instructor")}: {course.instructor_name}
-          </p>
-        )}
-      </header>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
-        <div className="min-w-0">
+      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+        <div className="flex min-w-0 flex-col gap-4">
           <VideoPlayer
             videoRef={activeLesson?.video_url}
             title={activeLesson?.title}
           />
 
-          <Card className="mt-4 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                {activeSection && (
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-brand-700">
-                    {activeSection.title}
-                  </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              {activeSection && (
+                <div className="font-mono text-[10.5px] font-semibold tracking-[0.1em] text-ink-600 uppercase">
+                  {activeSection.title}
+                </div>
+              )}
+              <h2 className="mt-1 text-[26px] leading-tight font-extrabold tracking-[-0.03em] text-ink-900 [font-family:var(--font-display)]">
+                {activeLesson?.title ?? t("course_select_lesson")}
+              </h2>
+              {typeof activeLesson?.duration_seconds === "number" &&
+                activeLesson.duration_seconds > 0 && (
+                  <p className="mt-1 text-xs text-ink-600">
+                    {t("course_duration").replace("{n}", String(Math.round(activeLesson.duration_seconds / 60)))}
+                  </p>
                 )}
-                <h2 className="mt-1 font-serif text-xl font-semibold text-ink-900">
-                  {activeLesson?.title ?? t("course_select_lesson")}
-                </h2>
-                {typeof activeLesson?.duration_seconds === "number" &&
-                  activeLesson.duration_seconds > 0 && (
-                    <p className="mt-1 text-xs text-ink-500">
-                      {t("course_duration").replace("{n}", String(Math.round(activeLesson.duration_seconds / 60)))}
-                    </p>
-                  )}
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant={
-                  activeLesson?.completed ? "secondary" : "default"
-                }
-                disabled={!activeLesson || completeLesson.isPending}
-                onClick={handleToggleComplete}
-                className="shrink-0"
-              >
-                {completeLesson.isPending ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : activeLesson?.completed ? (
-                  <Check className="size-4" />
-                ) : null}
-                {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
-              </Button>
             </div>
-          </Card>
+            <Button
+              type="button"
+              variant={activeLesson?.completed ? "outline" : "default"}
+              disabled={!activeLesson || completeLesson.isPending}
+              onClick={handleToggleComplete}
+              className="shrink-0"
+            >
+              {completeLesson.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : activeLesson?.completed ? (
+                <Check className="size-4" />
+              ) : null}
+              {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
+            </Button>
+          </div>
         </div>
 
         <LessonList
@@ -203,22 +185,22 @@ export default function CourseDetailPage() {
           progressPct={progressPct}
         />
       </div>
-    </div>
+    </>
   );
 }
 
 function CourseDetailSkeleton() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-8">
-      <Skeleton className="mb-4 h-4 w-32" />
-      <Skeleton className="mb-6 h-8 w-2/3" />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+    <>
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-8 w-2/3" />
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
         <div>
           <Skeleton className="h-0 w-full pb-[56.25%]" />
           <Skeleton className="mt-4 h-24 w-full" />
         </div>
         <Skeleton className="h-80 w-full" />
       </div>
-    </div>
+    </>
   );
 }

@@ -127,4 +127,28 @@ describe("SessionLeaderboardPage", () => {
     errSpy.mockRestore();
     expect(dupKeyWarning).toBe(false);
   });
+
+  it("lays the top three out as a podium ordered 2-1-3 and lists the rest on the board", async () => {
+    lbState = {
+      ...lbState,
+      data: {
+        data: [...sampleEntries, { rank: 4, session_id: "sess4", student_id: "s4", student_name: "Dewi Lestari", score: 70 }],
+      },
+    };
+    render(<SessionLeaderboardPage />);
+
+    const podium = await screen.findByTestId("podium");
+    const names = Array.from(podium.querySelectorAll("b.truncate")).map((n) => n.textContent);
+    expect(names).toEqual(["Siti Aminah", "Budi Santoso", "Agus Wijaya"]);
+    const board = screen.getByRole("list");
+    expect(board).toHaveTextContent("Dewi Lestari");
+    expect(board).not.toHaveTextContent("Budi Santoso");
+    expect(screen.getByRole("heading", { level: 1, name: "Peringkat" })).toBeInTheDocument();
+  });
+
+  it("renders no board card when everyone fits on the podium", async () => {
+    render(<SessionLeaderboardPage />);
+    await screen.findByTestId("podium");
+    expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
 });

@@ -619,7 +619,7 @@ describe("ExamPage card parity", () => {
   const cardOf = async (title: string) =>
     (await screen.findByText(title)).closest("[data-slot='card']") as HTMLElement;
   const primaries = (card: HTMLElement) =>
-    Array.from(card.querySelectorAll("[data-slot='button'][data-variant='default']"));
+    Array.from(card.querySelectorAll("[data-cta='main']"));
   const show = (reg: RegistrationListItem) => {
     registrationsState = { data: [reg], isLoading: false, isError: false, error: null, refetch: vi.fn() };
     render(<ExamPage />);
@@ -719,5 +719,30 @@ describe("ExamPage card parity", () => {
   it("counts down in minutes when under an hour", async () => {
     show({ ...base, scheduled_at: new Date(Date.now() + 40 * 60_000).toISOString(), scheduled_end_at: new Date(Date.now() + 3 * 3_600_000).toISOString() });
     expect(within(await cardOf("Paket Parity")).getByText(/^Dibuka dalam (39|40) menit$/)).toBeInTheDocument();
+  });
+
+  it("shows a count chip beside each section label and a primary link to events", async () => {
+    registrationsState = { data: sample, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    render(<ExamPage />);
+    const free = (await screen.findByText("Paket gratis")).parentElement as HTMLElement;
+    expect(free.querySelector("[data-slot='badge']")).toHaveTextContent("1");
+    expect(within(free).getByText("1")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lihat event/i })).toHaveAttribute("href", "/event");
+  });
+
+  it("frames the empty state in a card", async () => {
+    registrationsState = { data: [], isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    render(<ExamPage />);
+    const msg = await screen.findByText("Anda belum terdaftar pada ujian apapun");
+    expect(msg.closest("[data-slot='card']")).not.toBeNull();
+  });
+
+  it("renders the status as a chip in the card's gradient band", async () => {
+    registrationsState = { data: sample, isLoading: false, isError: false, error: null, refetch: vi.fn() };
+    render(<ExamPage />);
+    const card = (await screen.findByText("Try Out UTBK Gratis #12")).closest("[data-slot='card']") as HTMLElement;
+    const band = card.firstElementChild as HTMLElement;
+    expect(within(band).getByText("Paket ujian")).toBeInTheDocument();
+    expect(within(band).getByText("Siap dikerjakan").closest("[data-slot='badge']")).not.toBeNull();
   });
 });

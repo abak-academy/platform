@@ -540,4 +540,31 @@ describe("SessionResultPage", () => {
       screen.getByText('["true","false","true",""]')
     ).toBeInTheDocument();
   });
+
+  it("shows the score hero with rank and counts, and the actions in the page head", () => {
+    resultState = {
+      data: {
+        state: "result",
+        result_config: "score_only",
+        score: 80,
+        correct_count: 8,
+        wrong_count: 1,
+        empty_count: 1,
+        rank: 3,
+        certificate_url: "https://cdn/cert.pdf",
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    };
+    render(<SessionResultPage />);
+    const hero = screen.getByTestId("score-hero");
+    expect(hero).toHaveTextContent("#3");
+    expect(hero).toHaveTextContent("8");
+    expect(hero.querySelector("[role='img']")).toHaveAttribute("aria-label", "Skor Anda 80");
+    const head = screen.getByRole("heading", { level: 1 }).closest("header") as HTMLElement;
+    expect(head).toContainElement(screen.getByRole("link", { name: "Peringkat" }));
+    expect(head).toContainElement(screen.getByRole("link", { name: "Sertifikat" }));
+  });
 });

@@ -2,13 +2,16 @@
 
 import { useParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, Award, Clock, EyeOff, Lock } from "lucide-react";
+import { AlertCircle, Award, ChevronDown, Clock, Crown, EyeOff, Lightbulb, Lock } from "lucide-react";
 
 import { useSessionResult } from "@/lib/hooks/exam";
 import { useTranslation, DICT } from "@/lib/i18n";
 type I18nKey = keyof typeof DICT.id;
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHead } from "@/components/shell/PageHead";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RichContent } from "@/components/admin/RichContent";
@@ -44,8 +47,8 @@ export default function SessionResultPage() {
 
   if (isError) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <Card className="border-danger/30 bg-danger-bg px-5 py-4">
+      <>
+        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -59,7 +62,7 @@ export default function SessionResultPage() {
             </Button>
           </div>
         </Card>
-      </div>
+      </>
     );
   }
 
@@ -67,11 +70,11 @@ export default function SessionResultPage() {
 
   if (isLoading || !result) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8">
-        <p className="mb-4 text-sm text-ink-500">{t("sys_loading")}</p>
-        <Skeleton className="mb-4 h-40 w-full rounded-lg" />
-        <Skeleton className="h-24 w-full rounded-lg" />
-      </div>
+      <>
+        <p className="text-sm text-ink-600">{t("sys_loading")}</p>
+        <Skeleton className="h-40 w-full rounded-[30px]" />
+        <Skeleton className="h-24 w-full rounded-[22px]" />
+      </>
     );
   }
 
@@ -82,7 +85,7 @@ export default function SessionResultPage() {
 
   if (result.end_screen_image_url && result.end_screen_promo_text) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-12 text-center">
+      <div className="mx-auto w-full max-w-2xl text-center">
         <img
           src={result.end_screen_image_url}
           alt={t("result_end_screen_image_alt")}
@@ -121,110 +124,121 @@ export default function SessionResultPage() {
 
   // ── Result state ────────────────────────────────────────────────────────
 
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <Card className="mb-4 p-5 text-center">
-        <Award className="mx-auto mb-3 size-10 text-brand-600" />
-        <p className="text-sm text-ink-500">{t("result_your_score")}</p>
-        <p className="mb-4 text-4xl font-bold text-ink-900">{result.score}</p>
-        <div className="grid grid-cols-3 gap-3 text-sm">
-          <div>
-            <p className="font-semibold text-success">
-              {result.correct_count}
-            </p>
-            <p className="text-ink-500">{t("result_correct")}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-danger">{result.wrong_count}</p>
-            <p className="text-ink-500">{t("result_incorrect")}</p>
-          </div>
-          <div>
-            <p className="font-semibold text-ink-700">
-              {result.empty_count}
-            </p>
-            <p className="text-ink-500">{t("result_empty")}</p>
-          </div>
-        </div>
-        <div className="mt-4 border-t border-line pt-4">
-          <p className="text-sm text-ink-500">{t("result_rank")}</p>
-          <p className="text-2xl font-bold text-ink-900">#{result.rank}</p>
-        </div>
-      </Card>
+  const sections = result.result_config === "score_pembahasan" ? result.breakdown : [];
+  const maxTotal = sections.reduce((n, r) => n + r.max, 0);
+  const pct = Math.round(
+    Math.min(100, Math.max(0, maxTotal > 0 ? (result.score / maxTotal) * 100 : result.score)),
+  );
 
-      {result.result_config === "score_pembahasan" && (
-        <>
-          <Card className="mb-4 p-5">
-            <h2 className="mb-3 text-sm font-semibold text-ink-900">
-              {t("result_by_topic")}
+  return (
+    <>
+      <PageHead
+        back={{ href: "/exam", label: t("competition_detail_back") }}
+        title={t("exam_admin_tab_results")}
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <a href={`/exam/sessions/${sessionId}/leaderboard`}>
+                <Crown />
+                {t("view_leaderboard")}
+              </a>
+            </Button>
+            {result.certificate_url && (
+              <Button asChild variant="secondary">
+                <a href={result.certificate_url} target="_blank" rel="noreferrer">
+                  <Award />
+                  {t("certificate")}
+                </a>
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <section
+          data-testid="score-hero"
+          className="grid items-center gap-5 rounded-[30px] bg-[radial-gradient(120%_140%_at_100%_0%,#4cc3b2,var(--color-teal-600)_50%,#0f4d46)] p-[30px] text-white max-narrow:p-6 sm:grid-cols-[1fr_auto]"
+        >
+          <div>
+            <p className="font-mono text-[11.5px] font-semibold tracking-[0.14em] uppercase opacity-90">
+              {t("result_your_score")}
+            </p>
+            <h2 className="mt-2 text-[30px] leading-[1.1] font-extrabold [font-family:var(--font-display)]">
+              {t("result_rank")} <span>#{result.rank}</span>
             </h2>
-            <div className="space-y-3">
-              {result.breakdown.map((row) => (
-                <div key={row.test_id}>
-                  <div className="mb-1 flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-2 text-ink-800">
-                      {row.title}
-                      {row.section_type && (
-                        <span className="rounded bg-ink-100 px-1.5 py-0.5 text-[11px] font-medium text-ink-500">
-                          {t(
-                            `section_type_${row.section_type}` as I18nKey,
-                          )}
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-ink-500">
-                      {row.earned}/{row.max}
-                    </span>
-                  </div>
-                  <Progress
-                    value={
-                      row.max > 0
-                        ? Math.min(100, Math.max(0, (row.earned / row.max) * 100))
-                        : 0
-                    }
-                  />
+            <div className="mt-3.5 flex gap-[22px]">
+              {(
+                [
+                  [result.correct_count, "result_correct"],
+                  [result.wrong_count, "result_incorrect"],
+                  [result.empty_count, "result_empty"],
+                ] as const
+              ).map(([n, key]) => (
+                <div key={key}>
+                  <b className="block text-[26px] font-extrabold [font-family:var(--font-display)]">{n}</b>
+                  <span className="text-xs opacity-85">{t(key)}</span>
                 </div>
               ))}
             </div>
-          </Card>
+          </div>
+          <div
+            role="img"
+            aria-label={`${t("result_your_score")} ${result.score}`}
+            style={{ background: `conic-gradient(#fff ${pct}%, rgba(255,255,255,.2) 0)` }}
+            className="relative grid size-[150px] place-items-center rounded-full max-narrow:size-[120px]"
+          >
+            <span aria-hidden className="absolute inset-3 rounded-full bg-teal-600" />
+            <b className="relative text-[46px] leading-none font-extrabold [font-family:var(--font-display)]">{result.score}</b>
+          </div>
+        </section>
 
-          <Card className="mb-4 p-5">
-            <h2 className="mb-3 text-sm font-semibold text-ink-900">
-              {t("result_pembahasan")}
-            </h2>
-            <div className="space-y-2">
-              {result.pembahasan.map((item, i) => (
-                <PembahasanItem
-                  key={item.question_id}
-                  index={i}
-                  item={item}
-                  t={t}
-                />
-              ))}
+        {sections.length > 0 && (
+          <Card className="gap-0 p-6">
+            <h2 className="mb-3.5 type-h2 text-ink-900">{t("result_by_topic")}</h2>
+            <div className="space-y-3.5">
+              {sections.map((row) => {
+                const rowPct = row.max > 0 ? Math.min(100, Math.max(0, (row.earned / row.max) * 100)) : 0;
+                return (
+                  <div key={row.test_id}>
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+                      <span className="flex items-center gap-2 text-ink-900">
+                        {row.title}
+                        {row.section_type && (
+                          <Badge variant="mute" className="h-5 px-2 text-[11px]">
+                            {t(`section_type_${row.section_type}` as I18nKey)}
+                          </Badge>
+                        )}
+                      </span>
+                      <span className="font-bold text-ink-900">
+                        {row.earned}/{row.max}
+                      </span>
+                    </div>
+                    <Progress value={rowPct} variant={rowPct >= 70 ? "teal" : "hatch"} />
+                  </div>
+                );
+              })}
             </div>
           </Card>
-        </>
-      )}
+        )}
+      </div>
 
-      {result.certificate_url && (
-        <Button variant="outline" className="w-full" asChild>
-          <a href={result.certificate_url} target="_blank" rel="noreferrer">
-            <Award className="size-4" />
-            {t("certificate")}
-          </a>
-        </Button>
+      {result.result_config === "score_pembahasan" && (
+        <section>
+          <h2 className="mb-3.5 type-h2 text-ink-900">{t("result_pembahasan")}</h2>
+          <div className="flex flex-col gap-2.5">
+            {result.pembahasan.map((item, i) => (
+              <PembahasanItem key={item.question_id} index={i} item={item} t={t} />
+            ))}
+          </div>
+        </section>
       )}
-
-      <Button variant="outline" className="w-full" asChild>
-        <a href={`/exam/sessions/${sessionId}/leaderboard`}>
-          {t("view_leaderboard")}
-        </a>
-      </Button>
-    </div>
+    </>
   );
 }
 
 function NonResultCard({
-  icon: Icon,
+  icon,
   title,
   certificateUrl,
 }: {
@@ -234,18 +248,21 @@ function NonResultCard({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center justify-center px-4 py-24 text-center">
-      <Icon className="mb-4 size-12 text-ink-400" />
-      <h1 className="text-xl font-bold text-ink-900">{title}</h1>
-      {certificateUrl && (
-        <Button variant="outline" className="mt-6 w-full" asChild>
-          <a href={certificateUrl} target="_blank" rel="noreferrer">
-            <Award className="size-4" />
-            {t("certificate")}
-          </a>
-        </Button>
-      )}
-    </div>
+    <EmptyState
+      framed
+      icon={icon}
+      title={title}
+      action={
+        certificateUrl && (
+          <Button variant="outline" asChild>
+            <a href={certificateUrl} target="_blank" rel="noreferrer">
+              <Award />
+              {t("certificate")}
+            </a>
+          </Button>
+        )
+      }
+    />
   );
 }
 
@@ -259,33 +276,50 @@ function PembahasanItem({
   t: (key: I18nKey) => string;
 }) {
   return (
-    <details className="rounded-lg border border-line p-3">
-      <summary className="cursor-pointer text-sm font-medium text-ink-800">
-        {index + 1}. <RichContent html={item.body} />
+    <details className="group rounded-[var(--radius-card)] border border-line bg-card shadow-card">
+      <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
+        <span className="shrink-0 type-label text-ink-900">{index + 1}.</span>
+        <span className="min-w-0 flex-1 text-sm font-medium text-ink-900">
+          <RichContent html={item.body} />
+        </span>
+        <Badge variant={item.is_correct ? "teal" : "danger"}>
+          {item.is_correct ? t("result_correct") : t("result_incorrect")}
+        </Badge>
+        <ChevronDown className="size-4 shrink-0 text-ink-600 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
-      <div className="mt-3 space-y-2 text-sm">
-        <p>
-          <span className="text-ink-500">{t("result_your_answer")}: </span>
-          <span className={item.is_correct ? "text-success" : "text-danger"}>
-            {formatChoiceAnswer(item.your_answer, item.format) || "—"}
-          </span>
-        </p>
+      <div className="flex flex-col gap-3.5 px-5 pb-5 text-sm">
+        <AnswerRow
+          label={t("result_your_answer")}
+          value={formatChoiceAnswer(item.your_answer, item.format) || "—"}
+          tone={item.is_correct ? "right" : "wrong"}
+        />
         {!item.is_correct && item.correct_answer != null && (
-          <p>
-            <span className="text-ink-500">
-              {t("result_correct_answer")}:{" "}
-            </span>
-            <span className="text-success">
-              {formatChoiceAnswer(item.correct_answer, item.format)}
-            </span>
-          </p>
+          <AnswerRow
+            label={t("result_correct_answer")}
+            value={formatChoiceAnswer(item.correct_answer, item.format)}
+            tone="right"
+          />
         )}
         {item.explanation && (
-          <p className="whitespace-pre-wrap text-ink-700">
-            {item.explanation}
-          </p>
+          <div className="flex gap-3 rounded-2xl bg-gold-50 p-4">
+            <Lightbulb className="mt-0.5 size-4 shrink-0 text-gold-700" aria-hidden />
+            <p className="whitespace-pre-wrap text-ink-700">{item.explanation}</p>
+          </div>
         )}
       </div>
     </details>
+  );
+}
+
+function AnswerRow({ label, value, tone }: { label: string; value: string; tone: "right" | "wrong" }) {
+  return (
+    <p
+      className={`flex min-h-12 items-center gap-3 rounded-[18px] border-[1.5px] px-4 py-2 ${
+        tone === "right" ? "border-teal-600 bg-teal-50" : "border-danger bg-danger-50"
+      }`}
+    >
+      <span className="text-xs text-ink-600">{label}:</span>
+      <span className="font-bold text-ink-900">{value}</span>
+    </p>
   );
 }

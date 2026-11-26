@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ShoppingCart, X } from "lucide-react";
+import { ChevronLeft, ShoppingCart, X } from "lucide-react";
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useCitiesByProvince, useDistrictsByCity, useProvinces } from "@/lib/hooks/regions";
@@ -21,7 +21,8 @@ import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateLi
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHead } from "@/components/shell/PageHead";
 import { GuestCart } from "@/components/cart/GuestCart";
 import { MergeNotice } from "@/components/cart/MergeNotice";
 import { useAuthStore } from "@/stores/auth";
@@ -324,24 +325,12 @@ function ServerCart() {
   }, [cart, shippingAddress, patchCart]);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
+    <>
       <MergeNotice />
-      <Link
-        href="/catalog"
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-ink-900"
-      >
-        <ArrowLeft className="size-4" /> {t("cart_continue")}
-      </Link>
-
-      <header className="mb-6 flex items-center gap-3">
-        <ShoppingCart className="size-6 text-success" />
-        <h1 className="font-serif text-2xl font-bold text-ink-900 md:text-3xl">{t("cart_title")}</h1>
-        {items.length > 0 && (
-          <Badge variant="outline" className="border-transparent bg-success-bg text-success">
-            {t("cart_item_count").replace("{n}", String(items.length))}
-          </Badge>
-        )}
-      </header>
+      <PageHead
+        title={t("cart_title")}
+        sub={items.length > 0 ? t("cart_item_count").replace("{n}", String(items.length)) : undefined}
+      />
 
       {isLoading ? (
         <CartSkeleton />
@@ -350,8 +339,8 @@ function ServerCart() {
       ) : items.length === 0 ? (
         <EmptyCart />
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start">
-          <section className="flex flex-col gap-3">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+          <section className="flex flex-col gap-4">
             {hasPhysical &&
               (addressFormOpen ? (
                 <ShippingAddressForm
@@ -369,83 +358,81 @@ function ServerCart() {
                 />
               ))}
 
-            {/* Items, the note and the courier picker share one card: the
-                shipping choice belongs to these goods, not to the page. */}
-            <div className="overflow-hidden rounded-lg border border-line bg-surface shadow-[var(--sh-sm)]">
-              {items.map((it, idx) => (
-                <div key={it.id} className={idx > 0 ? "border-t border-line" : ""}>
-                  <CartLineItem
-                    item={it}
-                    flat
-                    onRemove={() => {
-                      if (!cart) return;
-                      removeItem.mutate({ orderId: cart.id, itemId: it.id });
-                    }}
-                    onQtyChange={(qty) => {
-                      if (!cart) return;
-                      updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
-                    }}
-                    removing={removeItem.isPending}
-                    updatingQty={updateQty.isPending}
+            <Card className="gap-0 p-6">
+              {items.map((it) => (
+                <CartLineItem
+                  key={it.id}
+                  item={it}
+                  flat
+                  onRemove={() => {
+                    if (!cart) return;
+                    removeItem.mutate({ orderId: cart.id, itemId: it.id });
+                  }}
+                  onQtyChange={(qty) => {
+                    if (!cart) return;
+                    updateQty.mutate({ orderId: cart.id, itemId: it.id, qty });
+                  }}
+                  removing={removeItem.isPending}
+                  updatingQty={updateQty.isPending}
+                />
+              ))}
+              <Button asChild variant="ghost" size="sm" className="mt-3 w-fit">
+                <Link href="/catalog">
+                  <ChevronLeft /> {t("cart_continue")}
+                </Link>
+              </Button>
+            </Card>
+
+            {hasPhysical && (addressReady || shippingRates.data) && (
+              /* Note beside the shipping choice, both under the goods they
+                 apply to. The note is for the courier, so it belongs here and
+                 not in the address card. */
+              <Card className="gap-4 p-6">
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="cart-courier-note" className="type-label-sm text-ink-900">
+                    {t("cart_courier_note_label")}
+                  </label>
+                  <textarea
+                    id="cart-courier-note"
+                    value={courierNote}
+                    onChange={(e) => setCourierNote(e.target.value)}
+                    onBlur={handleNoteBlur}
+                    rows={3}
+                    maxLength={200}
+                    placeholder={t("cart_courier_note_placeholder")}
+                    className="w-full resize-none rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 py-3 text-[15px] text-ink-900 outline-none placeholder:text-ink-600 hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50"
                   />
                 </div>
-              ))}
 
-              {hasPhysical && (addressReady || shippingRates.data) && (
-                /* Note beside the shipping choice, both under the goods they
-                   apply to. The note is for the courier, so it belongs here and
-                   not in the address card. */
-                <div className="grid gap-4 border-t border-line px-4 py-4 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-                  <div className="flex flex-col gap-2">
-                    <label
-                      htmlFor="cart-courier-note"
-                      className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500"
-                    >
-                      {t("cart_courier_note_label")}
-                    </label>
-                    <textarea
-                      id="cart-courier-note"
-                      value={courierNote}
-                      onChange={(e) => setCourierNote(e.target.value)}
-                      onBlur={handleNoteBlur}
-                      rows={3}
-                      maxLength={200}
-                      placeholder={t("cart_courier_note_placeholder")}
-                      className="w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink-900 placeholder:text-ink-400 focus-visible:border-brand-500 focus-visible:outline-none"
+                <div className="flex flex-col gap-2">
+                  {shippingRates.data ? (
+                    <CourierRateList
+                      rates={shippingRates.data}
+                      selectedKey={selectedRateKey}
+                      onSelect={handleSelectCourier}
+                      isLoading={false}
+                      isError={shippingRates.isError}
                     />
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    {shippingRates.data ? (
-                      <CourierRateList
-                        rates={shippingRates.data}
-                        selectedKey={selectedRateKey}
-                        onSelect={handleSelectCourier}
-                        isLoading={false}
-                        isError={shippingRates.isError}
-                      />
-                    ) : (
-                      <>
-                        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-                          {t("cart_shipping_options")}
-                        </span>
-                        <Button
-                          type="button"
-                          onClick={handleCheckShipping}
-                          disabled={shippingRates.isPending}
-                          className="w-full"
-                        >
-                          {t("cart_check_shipping_cost")}
-                        </Button>
-                      </>
-                    )}
-                  </div>
+                  ) : (
+                    <>
+                      <span className="type-h2 text-ink-900">{t("cart_shipping_options")}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleCheckShipping}
+                        disabled={shippingRates.isPending}
+                        className="w-full"
+                      >
+                        {t("cart_check_shipping_cost")}
+                      </Button>
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
+              </Card>
+            )}
 
             {hasPhysical && shippingRates.isError && (
-              <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+              <div className="rounded-[var(--radius-card)] border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
                 {t(shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_route_unserved"
                   ? "cart_shipping_route_unserved"
                   : shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_temporarily_unavailable"
@@ -455,15 +442,15 @@ function ServerCart() {
             )}
 
             {hasPhysical && shippingClearedNotice && (
-              <div className="rounded-lg border border-warn/30 bg-warn-bg px-5 py-4 text-sm text-warn">
+              <div className="rounded-[var(--radius-card)] border border-warn/30 bg-warn-bg px-5 py-4 text-sm text-warn">
                 {t("cart_shipping_address_changed" as any)}
               </div>
             )}
           </section>
 
           <aside className="lg:sticky lg:top-6">
-            <Card className="p-5">
-              <h2 className="font-serif text-lg font-semibold text-ink-900">{t("cart_order_summary")}</h2>
+            <Card className="gap-0 p-6">
+              <h2 className="mb-3.5 type-h2 text-ink-900">{t("cart_order_summary")}</h2>
 
               {/* One row, not a wall of codes: the offers live behind it and
                   the manual code box lives with them. */}
@@ -479,15 +466,15 @@ function ServerCart() {
                 onClear={handleClearPromo}
               />
 
-              <div className="mt-4 space-y-2 border-t border-line pt-4 text-sm">
+              <div className="mt-4 space-y-2 text-sm">
                 <Row label={t("cart_subtotal")} value={formatRupiah(subtotal)} />
                 {discount > 0 && <Row label={t("cart_discount")} value={`−${formatRupiah(discount)}`} tone="text-success" />}
                 {(cart?.shipping_cost ?? 0) > 0 && <Row label={t("order_shipping")} value={formatRupiah(cart?.shipping_cost ?? 0)} />}
               </div>
 
-              <div className="mt-4 flex items-center justify-between border-t border-line pt-4">
-                <span className="font-semibold text-ink-900">{t("cart_total")}</span>
-                <span className="font-serif text-2xl font-bold text-success">{formatRupiah(total)}</span>
+              <div className="mt-3 flex items-center justify-between border-t border-dashed border-line pt-3 text-[19px] font-extrabold text-ink-900 [font-family:var(--font-display)]">
+                <span>{t("cart_total")}</span>
+                <span>{formatRupiah(total)}</span>
               </div>
 
               {cart?.affiliate_code_eligible && (
@@ -508,14 +495,14 @@ function ServerCart() {
                 disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
               />
 
-              <p className="mt-3 text-center text-xs text-ink-400">
+              <p className="mt-3 text-center text-xs text-ink-600">
                 {t("cart_secure_payment")}
               </p>
             </Card>
           </aside>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -527,7 +514,7 @@ export default function CartPage() {
 function Row({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-ink-500">{label}</span>
+      <span className="text-ink-600">{label}</span>
       <span className={`font-semibold ${tone ?? "text-ink-900"}`}>{value}</span>
     </div>
   );
@@ -535,9 +522,9 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: stri
 
 function CartSkeleton() {
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {[0, 1, 2].map((i) => (
-        <Skeleton key={i} className="h-24 w-full rounded-lg" />
+        <Skeleton key={i} className="h-24 w-full rounded-[22px]" />
       ))}
     </div>
   );
@@ -546,7 +533,7 @@ function CartSkeleton() {
 function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
   const { t } = useTranslation();
   return (
-    <Card className="flex flex-col items-center gap-3 p-10 text-center">
+    <Card className="items-center gap-3 p-10 text-center">
       <X className="size-8 text-danger" />
       <p className="text-sm text-ink-600">{message}</p>
       <Button variant="outline" size="sm" onClick={onRetry}>{t("retry")}</Button>
@@ -557,17 +544,18 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 function EmptyCart() {
   const { t } = useTranslation();
   return (
-    <Card className="flex flex-col items-center gap-4 p-12 text-center">
-      <div className="flex size-16 items-center justify-center rounded-full bg-paper">
-        <ShoppingCart className="size-7 text-ink-400" />
-      </div>
-      <div>
-        <h2 className="font-serif text-lg font-semibold text-ink-900">{t("cart_empty_title")}</h2>
-        <p className="mt-1 text-sm text-ink-500">{t("cart_empty_desc")}</p>
-      </div>
-      <Button asChild>
-        <Link href="/catalog">{t("cart_view_catalog")}</Link>
-      </Button>
-    </Card>
+    <div className="mx-auto w-full max-w-[820px]">
+      <EmptyState
+        framed
+        icon={ShoppingCart}
+        title={t("cart_empty_title")}
+        text={t("cart_empty_desc")}
+        action={
+          <Button asChild>
+            <Link href="/catalog">{t("cart_view_catalog")}</Link>
+          </Button>
+        }
+      />
+    </div>
   );
 }

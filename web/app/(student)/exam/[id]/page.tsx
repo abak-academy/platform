@@ -14,7 +14,9 @@ import { ApiError } from "@/lib/api";
 import { computeCardState } from "@/lib/exam-card-state";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ExamBriefing } from "@/components/exam/ExamBriefing";
 
@@ -129,8 +131,8 @@ export default function ExamDetailPage() {
 
   if (isError) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8 md:px-6">
-        <Card className="border-danger/30 bg-danger-bg px-5 py-4">
+      <>
+        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -147,30 +149,30 @@ export default function ExamDetailPage() {
         <Button
           variant="ghost"
           size="sm"
-          className="mt-4"
+          className="w-fit"
           onClick={() => router.push("/exam")}
         >
           {t("competition_detail_back")}
         </Button>
-      </div>
+      </>
     );
   }
 
   if (!reg) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-8 md:px-6">
-        <p className="text-sm text-ink-500">
+      <>
+        <p className="text-sm text-ink-600">
           {t("competition_detail_not_found")}
         </p>
         <Button
           variant="ghost"
           size="sm"
-          className="mt-3"
+          className="w-fit"
           onClick={() => router.push("/exam")}
         >
           {t("competition_detail_back")}
         </Button>
-      </div>
+      </>
     );
   }
 
@@ -199,9 +201,9 @@ export default function ExamDetailPage() {
             : cardState.kind;
 
   const afterHowTo = (
-    <Card className="mt-4 space-y-4 p-5">
+    <Card className="gap-4 p-6">
       <dl className="text-sm">
-        <dt className="text-xs uppercase tracking-wide text-ink-500">
+        <dt className="type-label-sm text-ink-900">
           {t("competition_detail_token_label")}
         </dt>
         <dd className="mt-1 flex items-center gap-2 font-mono text-base font-semibold text-ink-900">
@@ -234,30 +236,34 @@ export default function ExamDetailPage() {
   );
 
   const checkIn = showCheckInForm ? (
-    <Card className="mt-4 p-5">
-      <h3 className="font-serif text-base font-semibold text-ink-900">{t("exam_checkin_title")}</h3>
+    <Card className="gap-0 p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="type-h2 text-ink-900">{t("exam_checkin_title")}</h2>
+        <Badge variant="gold">{t("bulk_format_required")}</Badge>
+      </div>
 
-      {isBeforeWindow && <p className="mt-2 text-sm text-ink-500">{t("window_closed_early")}</p>}
-      {isAfterWindow && <p className="mt-2 text-sm text-ink-500">{t("window_closed_late")}</p>}
+      {isBeforeWindow && <p className="mt-2 text-sm text-ink-600">{t("window_closed_early")}</p>}
+      {isAfterWindow && <p className="mt-2 text-sm text-ink-600">{t("window_closed_late")}</p>}
 
-      <div className="mt-3 space-y-3">
+      <div className="mt-3.5 space-y-3">
         <div>
-          <label htmlFor="checkin-token" className="text-xs uppercase tracking-wide text-ink-500">
+          <label htmlFor="checkin-token" className="mb-[7px] block type-label-sm text-ink-900">
             {t("token_label")}
           </label>
-          <input
+          <Input
             id="checkin-token"
             type="text"
             value={token}
             onChange={(e) => setToken(e.target.value.toUpperCase())}
             placeholder={t("token_placeholder")}
             disabled={!inWindow}
-            className="mt-1 block w-full rounded-md border border-ink-200 bg-white px-3 py-2 font-mono text-sm uppercase text-ink-900 placeholder:text-ink-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+            className="font-mono uppercase"
           />
         </div>
-        <p className="text-xs text-ink-400">{t("token_hint")}</p>
+        <p className="text-xs text-ink-600">{t("token_hint")}</p>
         <Button
           type="button"
+          variant="secondary"
           onClick={handleCheckIn}
           disabled={!inWindow || !token.trim() || checkInMutation.isPending}
         >
@@ -292,10 +298,10 @@ export default function ExamDetailPage() {
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6 md:px-6 md:py-8">
-      <Skeleton className="mb-4 h-4 w-32" />
-      <Skeleton className="mb-6 h-8 w-2/3" />
-      <Skeleton className="h-64 w-full rounded-lg" />
-    </div>
+    <>
+      <Skeleton className="h-4 w-32" />
+      <Skeleton className="h-8 w-2/3" />
+      <Skeleton className="h-64 w-full rounded-[22px]" />
+    </>
   );
 }
