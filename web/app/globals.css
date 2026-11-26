@@ -142,6 +142,9 @@
 body {
   font-family: var(--font-sans);
   font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink-900);
+  background: var(--color-paper);
 }
 
 :root {
