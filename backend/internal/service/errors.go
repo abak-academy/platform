@@ -301,6 +301,12 @@ var (
 	ErrInvalidSpecs = errors.New("invalid product specs")
 )
 
+// --- from product_agreement_checkboxes.go ---
+var (
+	// ErrInvalidAgreementCheckboxes is returned when a product's checkout agreement checkbox array is malformed.
+	ErrInvalidAgreementCheckboxes = errors.New("invalid agreement checkboxes")
+)
+
 // --- from school.go ---
 var (
 	ErrSchoolNotFound           = errors.New("school not found")
@@ -340,13 +346,13 @@ var (
 
 // --- from store.go ---
 var (
-	ErrForbidden               = errors.New("forbidden")
-	ErrProductNotFound         = errors.New("product not found")
-	ErrCourseNotFound          = errors.New("course not found")
-	ErrInvalidPromo            = errors.New("invalid or expired promo code")
-	ErrPromoMinOrder           = errors.New("order subtotal below promo minimum")
-	ErrPromoQuotaInsufficient  = errors.New("promo does not have enough uses left for this order")
-	ErrPromoMinStudents        = errors.New("order has fewer students than the promo minimum")
+	ErrForbidden              = errors.New("forbidden")
+	ErrProductNotFound        = errors.New("product not found")
+	ErrCourseNotFound         = errors.New("course not found")
+	ErrInvalidPromo           = errors.New("invalid or expired promo code")
+	ErrPromoMinOrder          = errors.New("order subtotal below promo minimum")
+	ErrPromoQuotaInsufficient = errors.New("promo does not have enough uses left for this order")
+	ErrPromoMinStudents       = errors.New("order has fewer students than the promo minimum")
 
 	// Mitra orders.
 	ErrPartnerStudentNotAllowed = errors.New("a student is outside the schools assigned to this partner")
@@ -354,19 +360,20 @@ var (
 	ErrPartnerProductType       = errors.New("partners can order exam and course products only")
 	ErrParticipantAlreadyOwns   = errors.New("a participant already owns this product")
 	ErrPartnerProgramOff        = errors.New("the partner program is switched off")
-	ErrOutOfStock              = errors.New("product out of stock")
-	ErrInsufficientStock       = errors.New("insufficient stock")
-	ErrOrderNotEditable        = errors.New("order not editable")
-	ErrOrderChanged            = errors.New("order changed during update") // concurrent cart mutation; re-read and re-quote still lost the race
-	ErrOrderNotFound           = errors.New("order not found")
-	ErrMustShipBeforeComplete  = errors.New("order has physical items — must be shipped before completing")
-	ErrInvalidSignature        = errors.New("invalid signature")
-	ErrCourseLinkRequired      = errors.New("course product requires at least one linked course")
-	ErrExamLinkRequired        = errors.New("exam product requires at least one linked exam")
-	ErrShippingRequired        = errors.New("order requires a shipping selection before checkout")
-	ErrInvalidCourierSelection = errors.New("selected courier is not available for this destination")
-	ErrBiodataIncomplete       = errors.New("lengkapi biodata (sekolah, kelas, tanggal lahir) sebelum mendaftar ujian")
-	ErrMissingGatewayRef       = errors.New("order has no gateway reference to reconcile")
+	ErrOutOfStock               = errors.New("product out of stock")
+	ErrInsufficientStock        = errors.New("insufficient stock")
+	ErrOrderNotEditable         = errors.New("order not editable")
+	ErrOrderChanged             = errors.New("order changed during update") // concurrent cart mutation; re-read and re-quote still lost the race
+	ErrOrderNotFound            = errors.New("order not found")
+	ErrMustShipBeforeComplete   = errors.New("order has physical items — must be shipped before completing")
+	ErrInvalidSignature         = errors.New("invalid signature")
+	ErrCourseLinkRequired       = errors.New("course product requires at least one linked course")
+	ErrExamLinkRequired         = errors.New("exam product requires at least one linked exam")
+	ErrShippingRequired         = errors.New("order requires a shipping selection before checkout")
+	ErrAgreementNotAccepted     = errors.New("every configured agreement checkbox must be accepted before checkout")
+	ErrInvalidCourierSelection  = errors.New("selected courier is not available for this destination")
+	ErrBiodataIncomplete        = errors.New("lengkapi biodata (sekolah, kelas, tanggal lahir) sebelum mendaftar ujian")
+	ErrMissingGatewayRef        = errors.New("order has no gateway reference to reconcile")
 
 	// ErrOrderNotShippable and ErrNoCarrierCode gate AdminShipOrder /
 	// AdminShipOrderManual (shipping_order.go) before any Biteship call is made.

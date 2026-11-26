@@ -5,7 +5,7 @@ import { Lock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
-import { useCheckout, ordersKeys } from "@/lib/hooks/orders";
+import { useCheckout, ordersKeys, type CheckoutAgreements } from "@/lib/hooks/orders";
 import { payWithSnap } from "@/lib/snap";
 import { ApiError } from "@/lib/api";
 import { digitalConflictMessage } from "@/lib/digital-conflict";
@@ -18,12 +18,13 @@ export interface SnapCheckoutProps {
   invalidateKey?: QueryKey;
   disabled?: boolean;
   affiliateCode?: string;
+  agreements?: CheckoutAgreements;
 }
 
-export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, disabled, affiliateCode }: SnapCheckoutProps) {
+export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, disabled, affiliateCode, agreements }: SnapCheckoutProps) {
   const router = useRouter();
   const qc = useQueryClient();
-  const checkout = useCheckout(basePath, affiliateCode);
+  const checkout = useCheckout(basePath, affiliateCode, agreements);
   const { t } = useTranslation();
   const [conflict, setConflict] = useState<string | null>(null);
 

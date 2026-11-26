@@ -1,6 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import ExamPackagesPage from "./page";
+
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
 
 const push = vi.fn();
 
@@ -21,6 +27,20 @@ let examsQuery: ((filter?: Record<string, unknown>) => typeof examsState) | unde
 
 const useExamsSpy = vi.fn();
 
+const useExamRegistrantDiversitySpy = vi.fn();
+let diversityState = {
+  data: undefined as { data: unknown[]; next_cursor?: string } | undefined,
+  isLoading: false,
+  isError: false,
+};
+
+const useExamRegistrantDiversitySummarySpy = vi.fn();
+let diversitySummaryState = {
+  data: undefined as { registration_count: number; province_count: number; city_count: number; school_count: number } | undefined,
+  isLoading: false,
+  isError: false,
+};
+
 vi.mock("@/lib/hooks/admin-exams", () => ({
   useExams: (...args: unknown[]) => {
     useExamsSpy(...args);
@@ -28,6 +48,33 @@ vi.mock("@/lib/hooks/admin-exams", () => ({
   },
   useCreateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateExam: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useExamRegistrantDiversity: (...args: unknown[]) => {
+    useExamRegistrantDiversitySpy(...args);
+    return diversityState;
+  },
+  useExamRegistrantDiversitySummary: (...args: unknown[]) => {
+    useExamRegistrantDiversitySummarySpy(...args);
+    return diversitySummaryState;
+  },
+  hasRegistrantDiversityFilter: (filter: Record<string, unknown>) =>
+    Boolean(filter.province_id || filter.city_id || filter.school_id || filter.exam_id),
+}));
+
+vi.mock("@/lib/hooks/regions", () => ({
+  useProvinces: () => ({ data: [{ id: "31", name: "DKI JAKARTA" }] }),
+  useCitiesByProvince: () => ({ data: [] }),
+}));
+
+vi.mock("@/components/SchoolFilterPicker", () => ({
+  SchoolFilterPicker: ({ value, onChange, label, allLabel }: { value: string; onChange: (value: string) => void; label: string; allLabel: string }) => (
+    <div>
+      <label>{label}</label>
+      <select aria-label={label} value={value || ""} onChange={(event) => onChange(event.target.value)}>
+        <option value="">{allLabel}</option>
+        <option value="sch-1">SMAN 1 Jakarta</option>
+      </select>
+    </div>
+  ),
 }));
 
 vi.mock("@/stores/ui", () => ({
@@ -108,6 +155,10 @@ describe("ExamPackagesPage", () => {
     mockRole = undefined;
     useExamsSpy.mockClear();
     examsQuery = undefined;
+    useExamRegistrantDiversitySpy.mockClear();
+    diversityState = { data: undefined, isLoading: false, isError: false };
+    useExamRegistrantDiversitySummarySpy.mockClear();
+    diversitySummaryState = { data: undefined, isLoading: false, isError: false };
   });
 
   it("navigates to the exam detail page when a row is clicked", async () => {
@@ -210,7 +261,10 @@ describe("ExamPackagesPage", () => {
     render(<ExamPackagesPage />);
     await screen.findByText("UTS Matematika");
 
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    // Registrant diversity filters (province/city/school) are comboboxes too,
+    // so this asserts there's specifically no *status* filter, not "no
+    // combobox at all" — the diversity filters are intentional and unrelated.
+    expect(screen.queryByLabelText(/status/i)).not.toBeInTheDocument();
     for (const row of screen.getAllByTestId("package-row")) {
       expect(within(row).queryByText(/^(draft|published)$/)).not.toBeInTheDocument();
     }
@@ -461,5 +515,163 @@ describe("ExamPackagesPage", () => {
     expect(search).toHaveValue("");
     expect(search).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Hapus pencarian" })).not.toBeInTheDocument();
+  });
+
+  it("never fetches registrant diversity on mount or on a plain search — only once a province/city/school filter is set", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    expect(useExamRegistrantDiversitySpy).toHaveBeenCalled();
+    // Called every render, but always disabled until a filter is set.
+    for (const call of useExamRegistrantDiversitySpy.mock.calls) {
+      expect(call[1]).toBe(false);
+    }
+
+    fireEvent.click(screen.getByLabelText("Filter Sekolah"));
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    await waitFor(() => {
+      const lastCall = useExamRegistrantDiversitySpy.mock.calls.at(-1);
+      expect(lastCall?.[1]).toBe(true);
+      expect(lastCall?.[0]).toMatchObject({ school_id: "sch-1" });
+    });
+  });
+
+  it("renders province/city/school diversity pills only for exams the diversity endpoint returned, once a filter is set", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    diversityState = {
+      data: { data: [{ exam_id: "e1", registration_count: 10, province_count: 2, city_count: 3, school_count: 4 }] },
+      isLoading: false,
+      isError: false,
+    };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    expect(screen.queryByTestId("exam-row-diversity")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    const diversityBadges = await screen.findAllByTestId("exam-row-diversity");
+    expect(diversityBadges).toHaveLength(1);
+    expect(within(diversityBadges[0]).getByText("2 Provinsi")).toBeInTheDocument();
+    expect(within(diversityBadges[0]).getByText("3 Kota")).toBeInTheDocument();
+    expect(within(diversityBadges[0]).getByText("4 Sekolah")).toBeInTheDocument();
+  });
+
+  // Review point 1 ("ada yg 0 sekolah masih muncul ketika filter aktif"):
+  // the backend now excludes a non-matching exam from the response, but the
+  // frontend guards on registration_count too — an exam the diversity
+  // endpoint still returned with a zero count must not show a pill.
+  it("never renders a diversity pill for an exam with registration_count 0, even if the endpoint still returned a zero row", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    diversityState = {
+      data: {
+        data: [
+          { exam_id: "e1", registration_count: 0, province_count: 0, city_count: 0, school_count: 0 },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    await waitFor(() => expect(useExamRegistrantDiversitySpy).toHaveBeenCalled());
+    expect(screen.queryByTestId("exam-row-diversity")).not.toBeInTheDocument();
+  });
+
+  // Review point 3 ("filter by ujian belum ada"): a "pilih ujian" filter,
+  // populated from the exams already loaded on the page.
+  it("offers a specific-exam filter and includes exam_id once one is picked", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Filter Ujian" }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    });
+    const listbox = await screen.findByRole("listbox");
+    expect(within(listbox).getByText("UTS Matematika")).toBeInTheDocument();
+    fireEvent.click(within(listbox).getByRole("option", { name: "UTS Matematika" }));
+
+    await waitFor(() => {
+      const lastCall = useExamRegistrantDiversitySpy.mock.calls.at(-1);
+      expect(lastCall?.[1]).toBe(true);
+      expect(lastCall?.[0]).toMatchObject({ exam_id: "e1" });
+    });
+  });
+
+  // Review point 2 ("box jumlah/pendaftar/sekolah/kota seperti di detail"):
+  // the box-summary shows 0 by default (no filter — never fetched) and the
+  // real aggregated numbers once a filter is set.
+  it("shows the box summary at 0 with no filter, then the real aggregate once a filter is set", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    const summary = screen.getByTestId("exam-list-diversity-summary");
+    expect(within(summary).getAllByText("0")).toHaveLength(4);
+    for (const call of useExamRegistrantDiversitySummarySpy.mock.calls) {
+      expect(call[1]).toBe(false);
+    }
+
+    diversitySummaryState = {
+      data: { registration_count: 12, province_count: 3, city_count: 5, school_count: 7 },
+      isLoading: false,
+      isError: false,
+    };
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Filter Ujian" }), {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse",
+    });
+    const listbox = await screen.findByRole("listbox");
+    fireEvent.click(within(listbox).getByRole("option", { name: "UTS Matematika" }));
+
+    await waitFor(() => {
+      const lastCall = useExamRegistrantDiversitySummarySpy.mock.calls.at(-1);
+      expect(lastCall?.[1]).toBe(true);
+      expect(lastCall?.[0]).toMatchObject({ exam_id: "e1" });
+    });
+  });
+
+  // Review point 2 ("filter belum valid karena yg tidak di filter masih
+  // muncul"): once a filter is set, the table itself must narrow to only
+  // the exams the filter actually matched — not just the pill/box, with
+  // every other loaded exam still showing as a row.
+  it("hides exam rows the diversity filter did not match, not just their pill", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+    expect(screen.getByText("UAS IPA")).toBeInTheDocument();
+    expect(screen.getByText("Tryout Lama")).toBeInTheDocument();
+
+    diversityState = {
+      data: { data: [{ exam_id: "e1", registration_count: 2, province_count: 1, city_count: 1, school_count: 1 }] },
+      isLoading: false,
+      isError: false,
+    };
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    await waitFor(() => expect(screen.queryByText("UAS IPA")).not.toBeInTheDocument());
+    expect(screen.queryByText("Tryout Lama")).not.toBeInTheDocument();
+    expect(screen.getByText("UTS Matematika")).toBeInTheDocument();
+  });
+
+  it("shows a filtered-empty message, not the generic empty message, when no exam matches the filter", async () => {
+    examsState = { data: { data: sampleExams }, isLoading: false, isError: false, error: null };
+    render(<ExamPackagesPage />);
+    await screen.findByText("UTS Matematika");
+
+    diversityState = { data: { data: [] }, isLoading: false, isError: false };
+    fireEvent.change(screen.getByLabelText("Filter Sekolah"), { target: { value: "sch-1" } });
+
+    expect(await screen.findByText("Tidak ada ujian yang cocok dengan filter ini.")).toBeInTheDocument();
+    expect(screen.queryByText("Belum ada ujian")).not.toBeInTheDocument();
   });
 });

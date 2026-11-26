@@ -2,13 +2,28 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Calendar, Search, X } from "lucide-react";
+import { Calendar, Search, Users, MapPin, Building2, School, X } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExamModal } from "@/components/admin/ExamModal";
+import { StatCard } from "@/components/admin/StatCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useExams } from "@/lib/hooks/admin-exams";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SchoolFilterPicker } from "@/components/SchoolFilterPicker";
+import { useCitiesByProvince, useProvinces } from "@/lib/hooks/regions";
+import {
+  useExams,
+  useExamRegistrantDiversity,
+  useExamRegistrantDiversitySummary,
+  hasRegistrantDiversityFilter,
+} from "@/lib/hooks/admin-exams";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { examModeLabel } from "@/lib/exam-mode";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
@@ -19,6 +34,7 @@ import type { ExamListItem } from "@/lib/types";
 function Sub({ children }: { children: React.ReactNode }) {
   return <div className="mt-0.5 text-xs text-ink-500">{children}</div>;
 }
+
 
 function plural(t: (key: I18nKey) => string, key: "exam_admin_list_sections" | "exam_admin_list_questions" | "exam_admin_list_sessions_started", n: number) {
   return t(n === 1 ? `${key}_one` : key).replace("{n}", String(n));
@@ -51,6 +67,52 @@ export default function ExamPackagesPage() {
   );
 
   const { data, isLoading, isFetching, isError, error } = useExams(filters);
+
+  // Registrant diversity (Feature 1/Opsi A) is lazy by design: it must never
+  // fire on mount or on a plain search, only once the admin sets one of
+  // these filters — that's what keeps this list's eager load cheap. No
+  // "load more" pairing with the main list's cursor: one best-effort page of
+  // diversity numbers (limit above what the list itself ever shows at once)
+  // is enough for the rows currently on screen.
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [cityFilter, setCityFilter] = useState("");
+  const [schoolFilter, setSchoolFilter] = useState("");
+  // "Ujian tertentu" (review point 3): narrows the box-summary and the
+  // per-row pills to one exam. Populated from the exams already loaded on
+  // this page, not a separate full fetch.
+  const [examFilter, setExamFilter] = useState("");
+  const { data: provinces } = useProvinces();
+  const { data: cities } = useCitiesByProvince(provinceFilter || null);
+  const diversityFilterParams = {
+    province_id: provinceFilter || undefined,
+    city_id: cityFilter || undefined,
+    school_id: schoolFilter || undefined,
+    exam_id: examFilter || undefined,
+  };
+  const hasDiversityFilter = hasRegistrantDiversityFilter(diversityFilterParams);
+  const diversity = useExamRegistrantDiversity(
+    { q: q || undefined, limit: 100, ...diversityFilterParams },
+    hasDiversityFilter,
+  );
+  const diversityByExamId = useMemo(() => {
+    const map = new Map<string, { registration_count: number; province_count: number; city_count: number; school_count: number }>();
+    for (const item of diversity.data?.data ?? []) map.set(item.exam_id, item);
+    return map;
+  }, [diversity.data]);
+  // Box summary (review point 2): one aggregate across every matching exam,
+  // "0" by default until a filter is set, then the real counted numbers.
+  const diversitySummary = useExamRegistrantDiversitySummary(
+    { q: q || undefined, ...diversityFilterParams },
+    hasDiversityFilter,
+  );
+  // Review point 2 ("filter belum valid karena yg tidak di filter masih
+  // muncul"): once a diversity filter is active, the table itself narrows
+  // to the exams the filter actually matched — not just the pill/box. The
+  // "pilih ujian" dropdown still lists every loaded exam (items), since it
+  // has to offer exams you haven't filtered to yet.
+  const visibleItems = hasDiversityFilter && diversity.data
+    ? items.filter((exam) => diversityByExamId.has(exam.id))
+    : items;
 
   useEffect(() => {
     if (!data) return;
@@ -104,9 +166,77 @@ export default function ExamPackagesPage() {
         </div>
         {!isLoading && !isError && (
           <span className="shrink-0 text-sm text-ink-500" aria-live="polite">
-            {t("exam_packages_count").replace("{n}", `${items.length}${nextCursor ? "+" : ""}`)}
+            {t("exam_packages_count").replace(
+              "{n}",
+              `${visibleItems.length}${!hasDiversityFilter && nextCursor ? "+" : ""}`,
+            )}
           </span>
         )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2" data-testid="exam-list-diversity-filters">
+        <Select
+          value={provinceFilter || "__all__"}
+          onValueChange={(v) => {
+            const next = v === "__all__" ? "" : v;
+            setProvinceFilter(next);
+            setCityFilter("");
+          }}
+        >
+          <SelectTrigger className="h-9 w-[180px] text-xs" aria-label={t("exam_roster_filter_province")}>
+            <SelectValue placeholder={t("exam_roster_filter_province")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_roster_filter_province")}</SelectItem>
+            {(provinces ?? []).map((province) => (
+              <SelectItem key={province.id} value={province.id}>{province.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={cityFilter || "__all__"}
+          onValueChange={(v) => setCityFilter(v === "__all__" ? "" : v)}
+          disabled={!provinceFilter}
+        >
+          <SelectTrigger className="h-9 w-[180px] text-xs" aria-label={t("exam_roster_filter_city")}>
+            <SelectValue placeholder={t("exam_roster_filter_city")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_roster_filter_city")}</SelectItem>
+            {(cities ?? []).map((city) => (
+              <SelectItem key={city.id} value={city.id}>{city.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <SchoolFilterPicker
+          value={schoolFilter}
+          onChange={setSchoolFilter}
+          label={t("exam_roster_filter_school")}
+          allLabel={t("exam_roster_filter_school")}
+          compact
+          className="w-[200px]"
+        />
+        <Select
+          value={examFilter || "__all__"}
+          onValueChange={(v) => setExamFilter(v === "__all__" ? "" : v)}
+        >
+          <SelectTrigger className="h-9 w-[220px] text-xs" aria-label={t("exam_packages_filter_exam")}>
+            <SelectValue placeholder={t("exam_packages_filter_exam")} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">{t("exam_packages_filter_exam")}</SelectItem>
+            {items.map((exam) => (
+              <SelectItem key={exam.id} value={exam.id}>{exam.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4" data-testid="exam-list-diversity-summary">
+        <StatCard label={t("exam_roster_stat_total")} value={String(diversitySummary.data?.registration_count ?? 0)} icon={Users} />
+        <StatCard label={t("exam_roster_stat_provinces")} value={String(diversitySummary.data?.province_count ?? 0)} icon={MapPin} accent="secondary" />
+        <StatCard label={t("exam_roster_stat_cities")} value={String(diversitySummary.data?.city_count ?? 0)} icon={Building2} accent="tertiary" />
+        <StatCard label={t("exam_roster_stat_schools")} value={String(diversitySummary.data?.school_count ?? 0)} icon={School} accent="secondary" />
       </div>
 
       {isLoading && (
@@ -124,9 +254,9 @@ export default function ExamPackagesPage() {
       )}
 
       {!isLoading && !isError && (
-        items.length === 0 ? (
+        visibleItems.length === 0 ? (
           <div className="md-card-outlined px-4 py-8 text-center text-ink-500">
-            {t("exam_packages_empty")}
+            {hasDiversityFilter ? t("exam_packages_empty_filtered") : t("exam_packages_empty")}
           </div>
         ) : (
           <div className="overflow-x-auto md-card-outlined">
@@ -141,7 +271,7 @@ export default function ExamPackagesPage() {
                 </tr>
               </thead>
               <tbody>
-                {items.map((exam) => {
+                {visibleItems.map((exam) => {
                   const composable = exam.format_version === 2;
                   const perSection = composable && exam.timer_mode === "per_test";
                   const access = accessWindow(exam.scheduled_at ?? null, exam.scheduled_end_at ?? null, lang);
@@ -177,6 +307,34 @@ export default function ExamPackagesPage() {
                             </>
                           )}
                         </Sub>
+                        {/* Only rendered once the admin sets a diversity
+                            filter — never on a plain page load, per Feature
+                            1/Opsi A's lazy design. registration_count > 0
+                            guards against an exam the backend still returned
+                            with nothing matching the filter (review point 1,
+                            "0 sekolah masih muncul"); the backend excludes
+                            those now, this is defense in depth. */}
+                        {hasDiversityFilter &&
+                          (diversityByExamId.get(exam.id)?.registration_count ?? 0) > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1" data-testid="exam-row-diversity">
+                            {(() => {
+                              const d = diversityByExamId.get(exam.id)!;
+                              return (
+                                <>
+                                  <span className="rounded-full bg-info-bg px-2 py-0.5 text-[11px] font-semibold text-info">
+                                    {d.province_count} {t("exam_roster_stat_provinces")}
+                                  </span>
+                                  <span className="rounded-full bg-violet-bg px-2 py-0.5 text-[11px] font-semibold text-violet">
+                                    {d.city_count} {t("exam_roster_stat_cities")}
+                                  </span>
+                                  <span className="rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-semibold text-success">
+                                    {d.school_count} {t("exam_roster_stat_schools")}
+                                  </span>
+                                </>
+                              );
+                            })()}
+                          </div>
+                        )}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
                         {composable ? (

@@ -19,18 +19,30 @@ import (
 // biodataFieldLabels maps a biodataMissingFields key to the Indonesian label
 // used in BiodataIncompleteError's message.
 var biodataFieldLabels = map[string]string{
+	"name":   "nama",
+	"email":  "email",
+	"phone":  "nomor HP",
 	"school": "sekolah",
 	"grade":  "kelas",
 	"dob":    "tanggal lahir",
 }
 
-// biodataMissingFields reports which of school/grade/dob a student is missing
-// for exam registration, in the order the message lists them.
+// biodataMissingFields reports which of name/email/phone/school/grade/dob a
+// student is missing for exam registration, in the order the message lists them.
 func biodataMissingFields(u *model.User) []string {
 	if u == nil {
-		return []string{"school", "grade", "dob"}
+		return []string{"name", "email", "phone", "school", "grade", "dob"}
 	}
 	var missing []string
+	if strings.TrimSpace(u.Name) == "" {
+		missing = append(missing, "name")
+	}
+	if u.Email == nil || strings.TrimSpace(*u.Email) == "" {
+		missing = append(missing, "email")
+	}
+	if u.Phone == nil || strings.TrimSpace(*u.Phone) == "" {
+		missing = append(missing, "phone")
+	}
 	hasSchool := (u.SchoolID != nil && *u.SchoolID != "") ||
 		(u.UnlistedSchoolName != nil && *u.UnlistedSchoolName != "")
 	if !hasSchool {
@@ -46,7 +58,8 @@ func biodataMissingFields(u *model.User) []string {
 }
 
 // biodataComplete reports whether a student has the biodata required to register
-// for an exam: a school (listed or unlisted), a class/grade, and a date of birth.
+// for an exam: name, email, phone, a school (listed or unlisted), a class/grade,
+// and a date of birth.
 func biodataComplete(u *model.User) bool {
 	return len(biodataMissingFields(u)) == 0
 }
@@ -56,7 +69,7 @@ func biodataComplete(u *model.User) bool {
 // It satisfies errors.Is(err, ErrBiodataIncomplete) so existing callers that
 // only check the sentinel keep working.
 type BiodataIncompleteError struct {
-	Missing []string // subset of "school", "grade", "dob", in that order
+	Missing []string // subset of "name", "email", "phone", "school", "grade", "dob", in that order
 }
 
 func (e *BiodataIncompleteError) Error() string {
@@ -955,6 +968,41 @@ type CheckoutResult struct {
 	Free bool
 }
 
+// CheckoutAgreements is productID -> checkbox ID -> agreed; a product with no configured checkboxes needs no entry at all.
+type CheckoutAgreements map[string]map[string]bool
+
+// buildAgreementSnapshots validates every configured checkbox is agreed to and returns the per-item snapshot to persist on success.
+func (s *Service) buildAgreementSnapshots(ctx context.Context, items []model.OrderItem, agreements CheckoutAgreements) (map[uuid.UUID][]model.OrderItemAgreement, error) {
+	snapshots := make(map[uuid.UUID][]model.OrderItemAgreement)
+	checkboxesByProduct := make(map[uuid.UUID][]model.ProductAgreementCheckbox)
+	now := time.Now()
+	for _, item := range items {
+		checkboxes, loaded := checkboxesByProduct[item.ProductID]
+		if !loaded {
+			product, err := s.storeRepo.GetProductByID(ctx, item.ProductID.String())
+			if err != nil && !errors.Is(err, repository.ErrNotFound) {
+				return nil, err
+			}
+			if err == nil {
+				checkboxes = product.AgreementCheckboxes
+			}
+			checkboxesByProduct[item.ProductID] = checkboxes
+		}
+		if len(checkboxes) == 0 {
+			continue
+		}
+		snapshot := make([]model.OrderItemAgreement, len(checkboxes))
+		for i, cb := range checkboxes {
+			if !agreements[item.ProductID.String()][cb.ID] {
+				return nil, ErrAgreementNotAccepted
+			}
+			snapshot[i] = model.OrderItemAgreement{CheckboxID: cb.ID, Title: cb.Title, Body: cb.Body, AgreedAt: now}
+		}
+		snapshots[item.ID] = snapshot
+	}
+	return snapshots, nil
+}
+
 func fetchCustomerInfo(ctx context.Context, s *Service, userID string) CustomerInfo {
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil || user == nil {
@@ -1073,7 +1121,8 @@ type MidtransNotification struct {
 // payment_pending order whose promo has already been counted — RetryPayment
 // is the documented recovery path for that order, and it does not re-count
 // the promo, so the redemption is not lost or duplicated on retry.
-func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affiliateCode string) (CheckoutResult, error) {
+// skipAgreementCheck exists only for AdminCheckoutBulkOrder, the one caller that opts out of the agreement gate entirely instead of passing agreements.
+func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affiliateCode string, agreements CheckoutAgreements, skipAgreementCheck bool) (CheckoutResult, error) {
 	oID, err := parseUUID(orderID)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -1194,11 +1243,29 @@ func (s *Service) Checkout(ctx context.Context, studentID, orderID, key, affilia
 		}
 	}
 
+	var agreementSnapshots map[uuid.UUID][]model.OrderItemAgreement
+	if !skipAgreementCheck {
+		agreementSnapshots, err = s.buildAgreementSnapshots(ctx, order.Items, agreements)
+		if err != nil {
+			return CheckoutResult{}, err
+		}
+	}
+
 	if err := s.storeRepo.CheckoutOrder(ctx, tx, oID, paymentWindow); err != nil {
 		if errors.Is(err, repository.ErrInsufficientStock) {
 			return CheckoutResult{}, ErrInsufficientStock
 		}
 		return CheckoutResult{}, err
+	}
+
+	for itemID, snapshot := range agreementSnapshots {
+		data, err := json.Marshal(snapshot)
+		if err != nil {
+			return CheckoutResult{}, err
+		}
+		if err := s.storeRepo.SetOrderItemAgreementSnapshotTx(ctx, tx, itemID, data); err != nil {
+			return CheckoutResult{}, err
+		}
 	}
 
 	// The referral code rides on the order row until settlement, where the

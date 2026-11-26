@@ -45,21 +45,24 @@ func TestListExamRoster_NameSearchFiltersRows(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
 
-	counts, err := repo.CountExamRegistrationsByStatus(ctx, examID, nil)
+	counts, err := repo.CountExamRegistrationsByStatus(ctx, examID, nil, model.ExamRosterFilter{})
 	require.NoError(t, err)
 	require.Equal(t, model.ExamRegistrationCounts{
+		// insertSchool doesn't set provinsi_id/kota_id, so those stay NULL and
+		// COUNT(DISTINCT …) ignores them; school_id is always set.
 		Total: 3, Registered: 0, CheckedIn: 1, Submitted: 1, Revoked: 1,
+		ProvinceCount: 0, CityCount: 0, SchoolCount: 1,
 	}, counts)
 
 	otherSchool := insertSchool(t, pool, "Roster Search Other", "roster-search-b")
 	other := insertSchoolUser(t, pool, "student", "Andi Lain", otherSchool)
 	insertRegistration(other, 4, "registered")
 
-	scoped, err := repo.CountExamRegistrationsByStatus(ctx, examID, &school)
+	scoped, err := repo.CountExamRegistrationsByStatus(ctx, examID, &school, model.ExamRosterFilter{})
 	require.NoError(t, err)
 	require.Equal(t, 3, scoped.Total)
 
-	unscoped, err := repo.CountExamRegistrationsByStatus(ctx, examID, nil)
+	unscoped, err := repo.CountExamRegistrationsByStatus(ctx, examID, nil, model.ExamRosterFilter{})
 	require.NoError(t, err)
 	require.Equal(t, 4, unscoped.Total)
 	require.Equal(t, 1, unscoped.Registered)

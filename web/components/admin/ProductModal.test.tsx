@@ -174,6 +174,37 @@ describe("ProductModal", () => {
     });
   });
 
+  it("includes agreement_checkboxes in the create payload, dropping blank rows", async () => {
+    render(
+      <ProductModal
+        open={true}
+        onOpenChange={mockOnOpenChange}
+        onSubmit={mockOnSubmit}
+        isPending={false}
+      />
+    );
+
+    fireEvent.input(screen.getByLabelText(/nama/i), { target: { value: "Try Out UTBK" } });
+    fireEvent.input(screen.getByLabelText(/harga/i), { target: { value: "75000" } });
+    fireEvent.change(screen.getByLabelText(/jenis/i), { target: { value: "book" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /tambah checkbox/i }));
+    fireEvent.change(screen.getByLabelText("Judul checkbox 1"), { target: { value: "Setuju tata tertib" } });
+    fireEvent.change(screen.getByLabelText("Isi checkbox 1"), { target: { value: "Saya bersedia mengikuti tata tertib ujian." } });
+    // A second, still-blank row must be dropped at submit time.
+    fireEvent.click(screen.getByRole("button", { name: /tambah checkbox/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          agreement_checkboxes: [{ id: "", title: "Setuju tata tertib", body: "Saya bersedia mengikuti tata tertib ujian." }],
+        })
+      );
+    });
+  });
+
   // --- edit mode ---
 
   it("shows read-only course_ids from detail in edit mode", () => {

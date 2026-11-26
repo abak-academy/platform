@@ -341,6 +341,12 @@ func TestAdminExportExamRegistrations_IsCompleteScopedAndFormulaSafe(t *testing.
 	if !strings.Contains(rec.Header().Get("Content-Type"), "text/csv") {
 		t.Fatalf("content type: got %q", rec.Header().Get("Content-Type"))
 	}
+	// Review request: filename = <sanitized exam title>_<timestamp>.csv, not
+	// the old hardcoded "roster.csv".
+	disposition := rec.Header().Get("Content-Disposition")
+	if !strings.Contains(disposition, `filename="Roster-Export-Exam_`) || !strings.HasSuffix(disposition, `.csv"`) {
+		t.Fatalf("content-disposition: got %q, want it to name the exam and end in .csv", disposition)
+	}
 	records, err := csv.NewReader(strings.NewReader(rec.Body.String())).ReadAll()
 	if err != nil {
 		t.Fatalf("parse CSV: %v", err)

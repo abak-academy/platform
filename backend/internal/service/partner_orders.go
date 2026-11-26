@@ -391,7 +391,7 @@ func (s *Service) partnerOwnedOrder(ctx context.Context, partnerID, orderID stri
 // Mitra, every student is still in scope and does not own the product yet, and
 // the voucher is still valid and still gives the discount the order carries.
 // Anything that changed is refused before a payment exists.
-func (s *Service) CheckoutPartnerOrder(ctx context.Context, partnerID, orderID, key string) (CheckoutResult, error) {
+func (s *Service) CheckoutPartnerOrder(ctx context.Context, partnerID, orderID, key string, agreements CheckoutAgreements) (CheckoutResult, error) {
 	order, err := s.partnerOwnedOrder(ctx, partnerID, orderID)
 	if err != nil {
 		return CheckoutResult{}, err
@@ -405,7 +405,7 @@ func (s *Service) CheckoutPartnerOrder(ctx context.Context, partnerID, orderID, 
 			return CheckoutResult{}, err
 		}
 	}
-	return s.Checkout(ctx, partnerID, orderID, key, "")
+	return s.Checkout(ctx, partnerID, orderID, key, "", agreements, false)
 }
 
 // revalidatePartnerOrder re-checks every item on the order independently —

@@ -29,6 +29,12 @@ func New(h *handler.Handler, svc *service.Service, jwtSigner *infra.JWTSigner, c
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: cfg.CORSOrigins,
+		// Browsers hide every response header from cross-origin fetch() JS
+		// except a small safelist — Content-Disposition isn't in it. Without
+		// this, a CSV download's filename read back from that header (exam
+		// roster export, unit-sales export, results export) silently falls
+		// back to its hardcoded default on any cross-origin deployment.
+		ExposeHeaders: []string{"Content-Disposition"},
 	}))
 	// Structured request log, kept for every request (cheap in Loki, and the
 	// status code per request is what correlates a slow exam window with its

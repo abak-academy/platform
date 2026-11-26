@@ -500,17 +500,57 @@ type ExamRosterFilter struct {
 	Sort   string
 	// Q is the optional free-text student filter (name or username ILIKE).
 	Q string
+	// ProvinceID, CityID, and SchoolID optionally narrow the roster to
+	// students whose school is in that province/city, or to one school
+	// directly (admin-selected diversity filter, distinct from the
+	// schoolFilter tenant-isolation param ListExamRoster/
+	// CountExamRegistrationsByStatus already take). All nil means no narrowing.
+	ProvinceID *string
+	CityID     *string
+	SchoolID   *string
 }
 
 // ExamRegistrationCounts is the per-status breakdown of an exam's
 // registrations (GET /admin/exams/:id/registrations/counts), scoped like the
 // roster (admin_school sees only its school). Total includes revoked rows.
+// ProvinceCount/CityCount/SchoolCount are the distinct count of the
+// registrants' schools' province/city and of the schools themselves
+// (registrant diversity, Feature 1/Opsi B) — scoped the same way as Total.
 type ExamRegistrationCounts struct {
-	Total      int `json:"total"`
-	Registered int `json:"registered"`
-	CheckedIn  int `json:"checked_in"`
-	Submitted  int `json:"submitted"`
-	Revoked    int `json:"revoked"`
+	Total         int `json:"total"`
+	Registered    int `json:"registered"`
+	CheckedIn     int `json:"checked_in"`
+	Submitted     int `json:"submitted"`
+	Revoked       int `json:"revoked"`
+	ProvinceCount int `json:"province_count"`
+	CityCount     int `json:"city_count"`
+	SchoolCount   int `json:"school_count"`
+}
+
+// ExamRegistrantDiversityItem is one row of GET /admin/exams/registrant-diversity
+// (Feature 1/Opsi A): an exam's registrant count and distinct province/city/
+// school counts, both scoped to the same province_id/city_id/school_id filter
+// the caller must supply — computed only on demand, never on the plain exam
+// list, so AdminListExams's eager registration_count stays the only
+// unconditional per-row query.
+type ExamRegistrantDiversityItem struct {
+	ExamID            uuid.UUID `json:"exam_id"`
+	RegistrationCount int       `json:"registration_count"`
+	ProvinceCount     int       `json:"province_count"`
+	CityCount         int       `json:"city_count"`
+	SchoolCount       int       `json:"school_count"`
+}
+
+// ExamRegistrantDiversitySummary is the box-summary counterpart to
+// ExamRegistrantDiversityItem (GET /admin/exams/registrant-diversity/summary):
+// one aggregate across every exam matching the filter, not a per-exam row —
+// a true distinct province/city/school count across several exams can't be
+// derived by summing their individual distinct counts.
+type ExamRegistrantDiversitySummary struct {
+	RegistrationCount int `json:"registration_count"`
+	ProvinceCount     int `json:"province_count"`
+	CityCount         int `json:"city_count"`
+	SchoolCount       int `json:"school_count"`
 }
 
 // SessionResult is the read shape for GET /api/v1/exam/sessions/:id/result. State is the

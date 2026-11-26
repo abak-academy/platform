@@ -119,6 +119,10 @@ export const CONTENT_MANAGER_NAV: RoleNavConfig = [
       { labelKey: "notifications", href: "/admin/notifications", icon: Bell },
     ],
   },
+  {
+    titleKey: "nav_group_school",
+    items: [{ labelKey: "schools", href: "/admin/system/schools", icon: Building }],
+  },
 ];
 
 export const ADMIN_EXAM_NAV: RoleNavConfig = [
@@ -128,6 +132,7 @@ export const ADMIN_EXAM_NAV: RoleNavConfig = [
       { labelKey: "nav_dashboard", href: "/admin/exam", icon: LayoutDashboard, exact: true },
       ...EXAM_NAV_ITEMS,
       ...SCHOOL_NAV_ITEMS,
+      { labelKey: "schools", href: "/admin/system/schools", icon: Building },
     ],
   },
   {

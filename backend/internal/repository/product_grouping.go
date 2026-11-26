@@ -128,7 +128,7 @@ func (r *Repository) ReplaceGroupingProducts(ctx context.Context, tx pgx.Tx, gro
 // browsing goes through ListProducts with GroupingID set instead, which
 // already applies the public catalog's visibility rules.
 func (r *Repository) ListProductsByGrouping(ctx context.Context, groupingID string) ([]model.Product, error) {
-	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
+	query := `SELECT p.id, p.type, p.name, p.description, p.price, COALESCE(p.stock, 0), (p.stock IS NOT NULL), p.status, p.weight_grams, p.image_url, p.specs, p.agreement_checkboxes, p.available_from, p.available_until, p.grouping_id, p.grouping_order, p.created_at, p.updated_at
 	FROM product p WHERE p.grouping_id = $1
 	ORDER BY p.grouping_order, p.created_at`
 

@@ -1356,7 +1356,7 @@ func (s *Service) checkExamPolicyEditSafety(ctx context.Context, existing, updat
 	if hasSession {
 		return ErrExamHasSessions
 	}
-	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, existing.ID, nil)
+	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, existing.ID, nil, model.ExamRosterFilter{})
 	if err != nil {
 		return err
 	}
@@ -1390,7 +1390,7 @@ func (s *Service) checkExamTestsEditSafety(ctx context.Context, exam model.Exam,
 	if hasSession {
 		return ErrExamHasSessions
 	}
-	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, exam.ID, nil)
+	registrations, err := s.storeRepo.CountExamRegistrationsByStatus(ctx, exam.ID, nil, model.ExamRosterFilter{})
 	if err != nil {
 		return err
 	}
@@ -1525,6 +1525,18 @@ func (s *Service) GetExam(ctx context.Context, id uuid.UUID) (model.ExamDetail, 
 
 func (s *Service) ListExams(ctx context.Context, filter repository.ExamFilter) ([]model.ExamListItem, string, error) {
 	return s.storeRepo.ListExams(ctx, filter)
+}
+
+// ListExamRegistrantDiversity returns, per exam matching filter, the
+// registrant count and distinct province/city/school counts scoped to
+// filter's ProvinceID/CityID/SchoolID (Feature 1/Opsi A). The handler is
+// responsible for requiring at least one of those three before calling this.
+func (s *Service) ListExamRegistrantDiversity(ctx context.Context, filter repository.ExamRegistrantDiversityFilter) ([]model.ExamRegistrantDiversityItem, string, error) {
+	return s.storeRepo.ListExamRegistrantDiversity(ctx, filter)
+}
+
+func (s *Service) AggregateExamRegistrantDiversity(ctx context.Context, filter repository.ExamRegistrantDiversityFilter) (model.ExamRegistrantDiversitySummary, error) {
+	return s.storeRepo.AggregateExamRegistrantDiversity(ctx, filter)
 }
 
 func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([]model.RegistrationListItem, error) {
@@ -1676,8 +1688,8 @@ func (s *Service) AdminListExamRoster(ctx context.Context, examID uuid.UUID, sch
 	return rows, nextCursor, nil
 }
 
-func (s *Service) AdminExamRegistrationCounts(ctx context.Context, examID uuid.UUID, schoolFilter *string) (model.ExamRegistrationCounts, error) {
-	return s.storeRepo.CountExamRegistrationsByStatus(ctx, examID, schoolFilter)
+func (s *Service) AdminExamRegistrationCounts(ctx context.Context, examID uuid.UUID, schoolFilter *string, filter model.ExamRosterFilter) (model.ExamRegistrationCounts, error) {
+	return s.storeRepo.CountExamRegistrationsByStatus(ctx, examID, schoolFilter, filter)
 }
 
 func formatExamRosterRows(rows []model.ExamRosterEntry) {

@@ -195,15 +195,16 @@ func (h *Handler) Checkout(c echo.Context) error {
 	}
 
 	// The body is optional: older clients send none, newer ones may carry the
-	// referral code for attribution at settlement.
+	// referral code for attribution at settlement and/or agreement checkbox answers.
 	var req struct {
-		AffiliateCode string `json:"affiliate_code"`
+		AffiliateCode string                     `json:"affiliate_code"`
+		Agreements    service.CheckoutAgreements `json:"agreements"`
 	}
 	if err := c.Bind(&req); err != nil && !errors.Is(err, io.EOF) {
 		return badRequest(c, "invalid request body")
 	}
 
-	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, req.AffiliateCode)
+	result, err := h.svc.Checkout(c.Request().Context(), claims.Sub, orderID, key, req.AffiliateCode, req.Agreements, false)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

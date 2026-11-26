@@ -288,7 +288,7 @@ func scanOrder(row interface {
 
 func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model.OrderItem, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), agreement_snapshot, fulfilled_at, created_at
 		 FROM order_item
 		 WHERE order_id = $1
 		 ORDER BY created_at`,
@@ -301,9 +301,7 @@ func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model
 
 	var items []model.OrderItem
 	for rows.Next() {
-		item := model.OrderItem{}
-		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
-			&item.Name, &item.UnitPrice, &item.Qty, &item.Jumlah, &item.WeightGrams, &item.FulfilledAt, &item.CreatedAt)
+		item, err := scanOrderItem(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -323,7 +321,7 @@ func (r *Repository) fetchItems(ctx context.Context, orderID uuid.UUID) ([]model
 // stands under that lock rather than via a second, unsynchronized connection.
 func (r *Repository) fetchItemsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) ([]model.OrderItem, error) {
 	rows, err := tx.Query(ctx,
-		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), fulfilled_at, created_at
+		`SELECT id, order_id, product_id, product_type, name, unit_price, qty, jumlah, COALESCE(weight_grams, 0), agreement_snapshot, fulfilled_at, created_at
 		 FROM order_item
 		 WHERE order_id = $1
 		 ORDER BY created_at`,
@@ -336,9 +334,7 @@ func (r *Repository) fetchItemsTx(ctx context.Context, tx pgx.Tx, orderID uuid.U
 
 	var items []model.OrderItem
 	for rows.Next() {
-		item := model.OrderItem{}
-		err := rows.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
-			&item.Name, &item.UnitPrice, &item.Qty, &item.Jumlah, &item.WeightGrams, &item.FulfilledAt, &item.CreatedAt)
+		item, err := scanOrderItem(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -351,6 +347,30 @@ func (r *Repository) fetchItemsTx(ctx context.Context, tx pgx.Tx, orderID uuid.U
 		items = []model.OrderItem{}
 	}
 	return items, nil
+}
+
+// scanOrderItem scans one order_item row, including its never-NULL agreement_snapshot JSON array, for fetchItems/fetchItemsTx.
+func scanOrderItem(row interface{ Scan(dest ...any) error }) (model.OrderItem, error) {
+	item := model.OrderItem{}
+	var agreementSnapshot []byte
+	err := row.Scan(&item.ID, &item.OrderID, &item.ProductID, &item.ProductType,
+		&item.Name, &item.UnitPrice, &item.Qty, &item.Jumlah, &item.WeightGrams, &agreementSnapshot, &item.FulfilledAt, &item.CreatedAt)
+	if err != nil {
+		return model.OrderItem{}, err
+	}
+	item.AgreementSnapshot = []model.OrderItemAgreement{}
+	if len(agreementSnapshot) > 0 {
+		if err := json.Unmarshal(agreementSnapshot, &item.AgreementSnapshot); err != nil {
+			return model.OrderItem{}, err
+		}
+	}
+	return item, nil
+}
+
+// SetOrderItemAgreementSnapshotTx writes the agreed-at-checkout snapshot onto one order_item row inside the caller's checkout transaction.
+func (r *Repository) SetOrderItemAgreementSnapshotTx(ctx context.Context, tx pgx.Tx, itemID uuid.UUID, snapshot []byte) error {
+	_, err := tx.Exec(ctx, `UPDATE order_item SET agreement_snapshot = $1 WHERE id = $2`, snapshot, itemID)
+	return err
 }
 
 func (r *Repository) MintCart(ctx context.Context, studentID uuid.UUID) (model.Order, bool, error) {

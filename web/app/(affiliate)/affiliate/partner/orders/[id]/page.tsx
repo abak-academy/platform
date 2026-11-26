@@ -1,14 +1,16 @@
 "use client";
 
-import { use } from "react";
+import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, ShoppingCart } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { SnapCheckout } from "@/components/cart/SnapCheckout";
+import { AgreementChecklist } from "@/components/cart/AgreementChecklist";
 import { RetryPaymentButton } from "@/components/partner/RetryPaymentButton";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { partnerKeys, usePartnerOrder } from "@/lib/hooks/partner";
+import type { CheckoutAgreements } from "@/lib/hooks/orders";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 
@@ -28,6 +30,12 @@ export default function PartnerOrderDetailPage({ params }: { params: Promise<{ i
   const { t } = useTranslation();
   const query = usePartnerOrder(id);
   const order = query.data;
+  const [agreements, setAgreements] = useState<CheckoutAgreements>({});
+  const [allAgreed, setAllAgreed] = useState(true);
+  const agreementItems = useMemo(
+    () => (order?.items ?? []).map((i) => ({ product_id: i.product_id, name: i.name })),
+    [order?.items],
+  );
 
   return (
     <div className="space-y-4">
@@ -56,7 +64,25 @@ export default function PartnerOrderDetailPage({ params }: { params: Promise<{ i
               <dd className="text-right font-mono">{order.promo_code ?? t("partner_order_no_voucher")}</dd>
             </dl>
             {order.status === "cart" && (
-              <SnapCheckout orderId={order.id} basePath="/partners/me/orders" invalidateKey={partnerKeys.order(order.id)} />
+              <>
+                <AgreementChecklist
+                  items={agreementItems}
+                  onChange={(nextAgreements, nextAllAgreed) => {
+                    setAgreements(nextAgreements);
+                    setAllAgreed(nextAllAgreed);
+                  }}
+                />
+                <SnapCheckout
+                  orderId={order.id}
+                  basePath="/partners/me/orders"
+                  invalidateKey={partnerKeys.order(order.id)}
+                  agreements={agreements}
+                  disabled={!allAgreed}
+                />
+                {!allAgreed && (
+                  <p className="mt-2 text-center text-xs text-warn">{t("cart_agreement_required")}</p>
+                )}
+              </>
             )}
             {order.status === "payment_pending" && (
               <div className="flex justify-end">

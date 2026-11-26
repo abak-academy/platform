@@ -38,8 +38,30 @@ export const adminExamsKeys = {
   rosters: () => [...adminExamsKeys.all, "roster"] as const,
   roster: (examId: string, filter?: ExamRosterFilters) =>
     [...adminExamsKeys.rosters(), examId, filter ?? {}] as const,
-  rosterCounts: (examId: string) => [...adminExamsKeys.rosters(), examId, "counts"] as const,
+  rosterCounts: (examId: string, filter?: RegistrantDiversityFilter) =>
+    [...adminExamsKeys.rosters(), examId, "counts", filter ?? {}] as const,
+  registrantDiversity: (filter: AdminExamsFilters & RegistrantDiversityFilter) =>
+    [...adminExamsKeys.all, "registrant-diversity", filter] as const,
 };
+
+// Shared by the roster-counts endpoint (Opsi B, always-on) and the exam-list
+// endpoint (Opsi A, on-demand) — province_id/city_id/school_id narrow by the
+// registrant's school, distinct from AdminExamsFilters' own q/status.
+// exam_id (Opsi A review fix) narrows to one specific exam; Opsi B is already
+// scoped to one exam by URL, so it never sets this field.
+export interface RegistrantDiversityFilter {
+  province_id?: string;
+  city_id?: string;
+  school_id?: string;
+  exam_id?: string;
+}
+
+function appendRegistrantDiversityParams(params: URLSearchParams, filter?: RegistrantDiversityFilter) {
+  if (filter?.province_id) params.set("province_id", filter.province_id);
+  if (filter?.city_id) params.set("city_id", filter.city_id);
+  if (filter?.school_id) params.set("school_id", filter.school_id);
+  if (filter?.exam_id) params.set("exam_id", filter.exam_id);
+}
 
 export interface GradeEssayInput {
   question_id: string;
@@ -54,7 +76,7 @@ export interface AdminExamsFilters {
   status?: string;
 }
 
-export interface ExamRosterFilters {
+export interface ExamRosterFilters extends RegistrantDiversityFilter {
   cursor?: string;
   limit?: number;
   sort?: "asc" | "desc";
@@ -295,6 +317,7 @@ export function useExamRoster(
       if (filter?.limit !== undefined) params.set("limit", String(filter.limit));
       if (filter?.sort) params.set("sort", filter.sort);
       if (filter?.q) params.set("q", filter.q);
+      appendRegistrantDiversityParams(params, filter);
       const query = params.toString();
       return authFetch<{ data: ExamRosterEntry[]; next_cursor?: string }>(
         `/admin/exams/${encodeURIComponent(examId!)}/registrations${query ? `?${query}` : ""}`,
@@ -310,17 +333,105 @@ export interface ExamRegistrationCounts {
   checked_in: number;
   submitted: number;
   revoked: number;
+  // Registrant diversity (Feature 1/Opsi B) — distinct province/city/school
+  // among the counted registrants, scoped by the same filter as the roster.
+  province_count: number;
+  city_count: number;
+  school_count: number;
 }
 
-export function useExamRegistrationCounts(examId: string | undefined, enabled = true) {
+export function useExamRegistrationCounts(
+  examId: string | undefined,
+  enabled = true,
+  filter?: RegistrantDiversityFilter,
+) {
   return useQuery({
-    queryKey: adminExamsKeys.rosterCounts(examId ?? ""),
-    queryFn: () =>
-      authFetch<ExamRegistrationCounts>(
-        `/admin/exams/${encodeURIComponent(examId!)}/registrations/counts`,
-      ),
+    queryKey: adminExamsKeys.rosterCounts(examId ?? "", filter),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      appendRegistrantDiversityParams(params, filter);
+      const query = params.toString();
+      return authFetch<ExamRegistrationCounts>(
+        `/admin/exams/${encodeURIComponent(examId!)}/registrations/counts${query ? `?${query}` : ""}`,
+      );
+    },
     enabled: Boolean(examId) && enabled,
   });
+}
+
+export interface ExamRegistrantDiversityItem {
+  exam_id: string;
+  registration_count: number;
+  province_count: number;
+  city_count: number;
+  school_count: number;
+}
+
+// Opsi A: a separate, on-demand endpoint — never called without at least one
+// of province_id/city_id/school_id, so the exam list's eager load never pays
+// for this. `enabled` must stay false until the admin sets a filter.
+export function hasRegistrantDiversityFilter(filter: RegistrantDiversityFilter): boolean {
+  return Boolean(filter.province_id || filter.city_id || filter.school_id || filter.exam_id);
+}
+
+export function useExamRegistrantDiversity(
+  filter: AdminExamsFilters & RegistrantDiversityFilter,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: adminExamsKeys.registrantDiversity(filter),
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filter.cursor) params.set("cursor", filter.cursor);
+      if (filter.limit !== undefined) params.set("limit", String(filter.limit));
+      if (filter.q) params.set("q", filter.q);
+      if (filter.status) params.set("status", filter.status);
+      appendRegistrantDiversityParams(params, filter);
+      return authFetch<{ data: ExamRegistrantDiversityItem[]; next_cursor?: string }>(
+        `/admin/exams/registrant-diversity?${params.toString()}`,
+      );
+    },
+    enabled: enabled && hasRegistrantDiversityFilter(filter),
+  });
+}
+
+export interface ExamRegistrantDiversitySummary {
+  registration_count: number;
+  province_count: number;
+  city_count: number;
+  school_count: number;
+}
+
+// Opsi A's box-summary (review point 2): one aggregate across every exam
+// matching the filter — "0" by default (not fetched) until a filter is set,
+// then the real counted numbers, mirroring the Registrasi tab's cards.
+export function useExamRegistrantDiversitySummary(
+  filter: Pick<AdminExamsFilters, "q" | "status"> & RegistrantDiversityFilter,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [...adminExamsKeys.all, "registrant-diversity-summary", filter] as const,
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filter.q) params.set("q", filter.q);
+      if (filter.status) params.set("status", filter.status);
+      appendRegistrantDiversityParams(params, filter);
+      return authFetch<ExamRegistrantDiversitySummary>(
+        `/admin/exams/registrant-diversity/summary?${params.toString()}`,
+      );
+    },
+    enabled: enabled && hasRegistrantDiversityFilter(filter),
+  });
+}
+
+// Extracts `filename="…"` from a Content-Disposition header. The backend is
+// the single source of truth for the exam-name_timestamp naming (it already
+// has to sanitize the admin-authored exam title) — this just reads it back
+// rather than re-deriving a name on the frontend that could drift from it.
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const match = /filename="?([^";]+)"?/i.exec(header);
+  return match?.[1] ?? fallback;
 }
 
 export async function exportExamRoster(examId: string): Promise<void> {
@@ -340,7 +451,7 @@ export async function exportExamRoster(examId: string): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "roster.csv";
+  a.download = filenameFromContentDisposition(res.headers?.get?.("Content-Disposition") ?? null, "roster.csv");
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

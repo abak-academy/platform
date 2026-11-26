@@ -102,6 +102,15 @@ vi.mock("sonner", () => ({
   },
 }));
 
+// Defaults to true so every pre-existing Edit/Deactivate test below keeps
+// exercising a super_admin-like, full-write view unchanged; the admin_exam/
+// admin_store (schools:create only) gating gets its own test flipping this.
+let mockCanWrite = true;
+
+vi.mock("@/lib/hooks/use-capability", () => ({
+  useHasCapability: () => mockCanWrite,
+}));
+
 const sampleSchools: School[] = [
   {
     id: "s1",
@@ -159,6 +168,7 @@ describe("SystemSchoolsPage", () => {
     bulkPresignMutateAsync.mockReset();
     bulkEnqueueMutateAsync.mockReset();
     jobStatusState = { data: null };
+    mockCanWrite = true;
   });
 
   // A prior test throwing before vi.useRealTimers() would otherwise leave
@@ -473,6 +483,20 @@ describe("SystemSchoolsPage", () => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ id: "s1", status: "deactivated" });
       expect(toast.success).toHaveBeenCalledWith("Nonaktifkan berhasil");
     });
+  });
+
+  it("hides edit and deactivate for a role that only holds schools:create (admin_exam/admin_store)", async () => {
+    mockCanWrite = false;
+
+    renderPage(<SystemSchoolsPage />);
+
+    await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
+
+    const s1Row = schoolRecord("SMAN 1 Jakarta");
+    expect(within(s1Row).queryByRole("button", { name: "" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("SMAN 1 Jakarta"));
+    expect(screen.queryByText("Edit data sekolah")).not.toBeInTheDocument();
   });
 
   it("always keeps the school code input editable (Task 32 removed the student-count lock)", async () => {
