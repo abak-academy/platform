@@ -26,7 +26,7 @@ const (
 )
 
 // TestimonialIncompleteError lists what a testimonial still lacks before it can
-// be visible: "has_consent", "consent_note", "content.en.quote", "photo_key".
+// be visible: "has_consent", "consent_note", "content.id.quote", "content.en.quote", "photo_key".
 type TestimonialIncompleteError struct{ Missing []string }
 
 func (e *TestimonialIncompleteError) Error() string {
@@ -140,6 +140,9 @@ func testimonialVisibilityGate(t *model.Testimonial) error {
 	}
 	if t.ConsentNote == nil {
 		missing = append(missing, "consent_note")
+	}
+	if strings.TrimSpace(t.Content["id"].Quote) == "" {
+		missing = append(missing, "content.id.quote")
 	}
 	if strings.TrimSpace(t.Content["en"].Quote) == "" {
 		missing = append(missing, "content.en.quote")

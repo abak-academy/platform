@@ -12,6 +12,7 @@ export const adminTestimonialsKeys = {
 export const TESTIMONIAL_MISSING_MESSAGES: Record<string, string> = {
   has_consent: "Centang persetujuan tertulis sebelum tampil di landing",
   consent_note: "Isi catatan lokasi persetujuan sebelum tampil di landing",
+  "content.id.quote": "Isi kutipan Indonesia sebelum tampil di landing",
   "content.en.quote": "Isi kutipan English sebelum tampil di landing",
   photo_key: "Unggah foto peserta sebelum tampil di landing",
 };
@@ -21,6 +22,7 @@ export function testimonialMissing(t: Pick<AdminTestimonial, "has_consent" | "co
   const missing: string[] = [];
   if (!t.has_consent) missing.push("has_consent");
   if (!t.consent_note?.trim()) missing.push("consent_note");
+  if (!t.content.id?.quote?.trim()) missing.push("content.id.quote");
   if (!t.content.en?.quote?.trim()) missing.push("content.en.quote");
   if (!t.photo_key) missing.push("photo_key");
   return missing;

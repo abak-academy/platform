@@ -93,7 +93,7 @@ func TestAdminTestimonials_Lifecycle(t *testing.T) {
 	if body["code"] != "validation_failed" {
 		t.Errorf("code = %v", body["code"])
 	}
-	want := []any{"has_consent", "consent_note", "content.en.quote", "photo_key"}
+	want := []any{"has_consent", "consent_note", "content.id.quote", "content.en.quote", "photo_key"}
 	got, _ := body["missing"].([]any)
 	if len(got) != len(want) {
 		t.Fatalf("missing = %v, want %v", got, want)
@@ -106,7 +106,7 @@ func TestAdminTestimonials_Lifecycle(t *testing.T) {
 
 	rec = testimonialCall(t, env, http.MethodPatch, "/"+id, token, map[string]any{
 		"has_consent": true, "consent_note": "WA", "photo_key": "question/a.jpg", "is_visible": true,
-		"content": map[string]any{"en": map[string]any{"quote": "Great", "achievements": []string{"Gold"}}},
+		"content": map[string]any{"id": map[string]any{"quote": "Mantap"}, "en": map[string]any{"quote": "Great", "achievements": []string{"Gold"}}},
 	})
 	if rec.Code != http.StatusOK {
 		t.Fatalf("publish = %d %s", rec.Code, rec.Body.String())
