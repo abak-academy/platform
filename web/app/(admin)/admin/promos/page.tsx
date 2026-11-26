@@ -34,16 +34,10 @@ function promoStatus(promo: PromoCode): "active" | "expired" | "exhausted" {
   return "active";
 }
 
-function usageText(promo: PromoCode): string {
-  const max = promo.max_uses != null ? String(promo.max_uses) : "∞";
-  return `${promo.used_count} / ${max}`;
-}
-
-function expiryText(iso?: string | null): string {
-  if (!iso) return "No expiry";
+function expiryDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("id-ID");
+  return new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(d);
 }
 
 export default function PromosPage() {
@@ -122,7 +116,7 @@ export default function PromosPage() {
   }, [promos, toolbar]);
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("promos_page_title")}
         description={t("promos_page_description")}
@@ -170,9 +164,9 @@ export default function PromosPage() {
             const status = promoStatus(promo);
             const pct = promo.max_uses ? Math.min(100, Math.round((promo.used_count / promo.max_uses) * 100)) : null;
             return (
-              <article key={promo.id} className="md-card-outlined flex flex-col gap-2.5">
+              <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "opacity-65")}>
                 <div className="flex items-center gap-2">
-                  <code className={cn("rounded-[9px] px-2.5 py-1.5 font-mono text-[13px] font-bold tracking-[.06em] text-surface", status === "active" ? "bg-ink-900" : "bg-ink-600")}>{promo.code}</code>
+                  <code className="min-w-0 truncate rounded-[9px] bg-deep px-2.5 py-1.5 font-mono text-[13px] leading-4 font-bold tracking-[.06em] text-white">{promo.code}</code>
                   <span className="flex-1" />
                   {promo.affiliator_only ? (
                     <Badge variant="brand">{t("th_affiliator_only")}</Badge>
@@ -180,18 +174,20 @@ export default function PromosPage() {
                     <Badge variant="teal">{t("th_public")}</Badge>
                   ) : null}
                 </div>
-                <div className={cn("font-[family-name:var(--font-display)] text-[46px] leading-none font-extrabold tracking-[-0.04em]", status === "active" ? "text-ember-700" : "text-ink-600")}>
-                  {discountLabel(promo)}
+                <div className="font-[family-name:var(--font-display)] text-[46px] leading-none font-extrabold tracking-[-0.04em] text-ember-700">
+                  {promo.discount_percent != null ? (
+                    <>{promo.discount_percent}<small className="text-sm font-semibold tracking-normal text-ink-600">{t("promos_pct_off")}</small></>
+                  ) : discountLabel(promo)}
                 </div>
-                <p className="text-xs text-ink-600">{expiryText(promo.expires_at)}</p>
-                <div>
-                  <div className="mb-1.5 flex justify-between text-xs text-ink-600">
+                <p className="text-[13px] leading-[1.55] text-ink-600">{promo.expires_at ? `${t("promos_until")} ${expiryDate(promo.expires_at)}` : t("promos_no_expiry")}</p>
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex justify-between text-[13px] text-ink-600">
                     <span>{t("promos_used")}</span>
-                    <span className="tabular-nums">{usageText(promo)}</span>
+                    <span className="tabular-nums"><b className="font-bold text-ink-900">{promo.used_count}</b> / {promo.max_uses ?? "∞"}</span>
                   </div>
                   {pct !== null && <Progress value={pct} variant={pct > 80 ? "hatch" : "ember"} aria-label={t("promos_used")} />}
                 </div>
-                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="self-start">{t(`promos_status_${status}`)}</Badge>
+                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="w-full justify-start">{t(`promos_status_${status}`)}</Badge>
                 <div className="mt-auto flex items-center justify-end gap-1.5 border-t border-line pt-3">
                   <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
                     {t("action_edit")}

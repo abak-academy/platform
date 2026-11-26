@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Receipt, UserPlus, Store, Clock, PackageCheck, AlertTriangle, PenLine, Coins,
-  ArrowRight, Plus, Calendar, Megaphone, Tag, type LucideIcon,
+  ArrowRight, Plus, Calendar, Megaphone, Tag, Trophy, type LucideIcon,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
@@ -87,6 +87,8 @@ function useJakartaFormatter() {
   const { lang } = useTranslation();
   const locale = lang === "en" ? "en-US" : "id-ID";
   return {
+    date: (iso: string) =>
+      new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Jakarta" }).format(new Date(iso)),
     short: (iso: string) =>
       new Intl.DateTimeFormat(locale, { day: "numeric", month: "short", timeZone: "Asia/Jakarta" }).format(new Date(iso)),
     dateTime: (iso: string) =>
@@ -138,15 +140,15 @@ function AttentionCard({
   icon: LucideIcon;
   href?: string;
 }) {
-  const className = "flex items-center gap-4 rounded-[var(--radius-card)] border border-line bg-card p-4 shadow-card";
+  const className = "flex items-center gap-3 rounded-[20px] border border-line bg-card px-4 py-3.5 text-ink-900 transition-transform duration-300 ease-spring hover:-translate-y-[3px]";
   const body = (
     <>
       <span className={`flex size-11 shrink-0 items-center justify-center rounded-[var(--radius-md)] ${ATTENTION_TONE[tone]}`}>
         <Icon aria-hidden className="size-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="type-caption text-ink-600">{label}</div>
-        <div className="type-h1 text-ink-900">{value}</div>
+        <div className="text-[12.5px] leading-[1.55] text-ink-600">{label}</div>
+        <div className="font-[family-name:var(--font-display)] text-2xl leading-[1.25] font-extrabold">{value}</div>
       </div>
       {href && <ArrowRight aria-hidden className="size-4 text-ink-600" />}
     </>
@@ -156,7 +158,7 @@ function AttentionCard({
     <Link
       href={href}
       data-testid={testId}
-      className={`${className} outline-none transition-shadow hover:shadow-pop focus-visible:outline-[2.5px] focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-brand-600`}
+      className={`${className} outline-none focus-visible:outline-[2.5px] focus-visible:outline-offset-2 focus-visible:outline-solid focus-visible:outline-brand-600`}
     >
       {body}
     </Link>
@@ -256,15 +258,15 @@ export default function AdminIndexPage() {
         ) : notifications.items.length === 0 ? (
           <div className="py-8 text-center text-ink-600">{t("notification_inbox_empty")}</div>
         ) : (
-          <ul className="flex flex-col gap-4">
+          <ul className="flex flex-col">
             {notifications.items.slice(0, 5).map((n) => (
-              <li key={n.id} className="flex items-center gap-3">
-                <AbakAvatar name={n.student_name} size={36} />
+              <li key={n.id} className="flex items-center gap-3 rounded-2xl p-2.5 text-[13.5px] [&+&]:rounded-none [&+&]:border-t [&+&]:border-dashed [&+&]:border-line">
+                <AbakAvatar name={n.student_name} size={30} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate type-label">{n.student_name}</div>
-                  <div className="type-caption text-ink-600">{formatRelativeTime(n.created_at)}</div>
+                  <b className="block truncate font-bold">{n.student_name}</b>
+                  <small className="block text-[11.25px] text-ink-600">{formatRelativeTime(n.created_at)}</small>
                 </div>
-                <span className="type-label tabular-nums">{formatRupiah(n.amount)}</span>
+                <span className="font-bold tabular-nums">{formatRupiah(n.amount)}</span>
               </li>
             ))}
           </ul>
@@ -278,17 +280,15 @@ export default function AdminIndexPage() {
       <CardHeader>
         <CardTitle>{t("admin_home_quick_actions")}</CardTitle>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-3">
+      <CardContent className="grid grid-cols-2 gap-2">
         {quickActions.map((action) => (
           <Link
             key={action.href}
             href={action.href}
-            className="flex flex-col items-center gap-2 rounded-[var(--radius-md)] bg-surface-sunken p-4 text-center transition-transform duration-150 hover:-translate-y-0.5"
+            className="flex items-center gap-2 rounded-[14px] bg-surface-sunken p-3 font-[family-name:var(--font-display)] text-[13px] font-bold text-ink-900 transition-transform duration-250 ease-spring hover:-translate-y-0.5"
           >
-            <span className="flex size-10 items-center justify-center rounded-[var(--radius-md)] bg-brand-50 text-brand-700">
-              <action.icon aria-hidden className="size-5" />
-            </span>
-            <span className="type-label-sm">{action.label}</span>
+            <action.icon aria-hidden className="size-5 shrink-0 text-ember-700" />
+            <span>{action.label}</span>
           </Link>
         ))}
       </CardContent>
@@ -296,7 +296,7 @@ export default function AdminIndexPage() {
   );
 
   return (
-    <div className="fade-in flex flex-col gap-4">
+    <div className="fade-in flex flex-col gap-5">
       <PageHead
         title={`${greeting}, ${name.split(" ")[0]}`}
         sub={`${today} · ${t("admin_home_overview_suffix")}`}
@@ -318,7 +318,7 @@ export default function AdminIndexPage() {
         ) : (
           <div
             data-testid="attention-row"
-            className={`grid grid-cols-1 gap-4 sm:grid-cols-3 ${a.shipment_failed > 0 ? "xl:grid-cols-4" : ""}`}
+            className={`grid grid-cols-1 gap-3 sm:grid-cols-3 ${a.shipment_failed > 0 ? "xl:grid-cols-4" : ""}`}
           >
             <AttentionCard
               testId="attention-needs-confirm"
@@ -362,8 +362,8 @@ export default function AdminIndexPage() {
         preset={preset}
         range={range}
         onChange={handlePeriodChange}
-        resolvedFrom={d.period.from || undefined}
-        resolvedTo={d.period.to || undefined}
+        resolvedFrom={d.period.from ? jakarta.date(d.period.from) : undefined}
+        resolvedTo={d.period.to ? jakarta.date(d.period.to) : undefined}
       />
 
       {dashboardError ? (
@@ -376,8 +376,8 @@ export default function AdminIndexPage() {
               </Button>
             </CardContent>
           </Card>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <div className="lg:col-span-2">{purchaseFeed}</div>
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            {purchaseFeed}
             {quickActionsCard}
           </div>
         </>
@@ -391,8 +391,8 @@ export default function AdminIndexPage() {
             <Skeleton className="h-64 w-full" />
             <Skeleton className="h-64 w-full" />
           </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Skeleton className="h-48 w-full lg:col-span-2" />
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <Skeleton className="h-48 w-full" />
             <Skeleton className="h-48 w-full" />
           </div>
         </>
@@ -466,8 +466,8 @@ export default function AdminIndexPage() {
             <RevenueMixCard digital={d.kpi.revenue_digital} physical={d.kpi.revenue_physical} />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle>{t("admin_home_upcoming_exams")}</CardTitle>
@@ -484,19 +484,23 @@ export default function AdminIndexPage() {
                 {d.upcoming_exams.length === 0 ? (
                   <div className="py-12 text-center text-ink-600">{t("admin_home_upcoming_empty")}</div>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="flex flex-col gap-1.5">
                     {d.upcoming_exams.map((exam) => (
                       <Link
                         key={exam.id}
                         href={`/admin/exam/packages/${exam.id}`}
-                        className="flex items-center justify-between gap-3 rounded-[var(--radius-md)] bg-surface-sunken p-3 transition-colors hover:bg-brand-50"
+                        className="flex items-center gap-3 rounded-2xl p-2.5 text-ink-900 transition-colors hover:bg-brand-50"
                       >
-                        <div className="min-w-0">
-                          <div className="truncate type-label">{exam.title}</div>
-                          <div className="type-caption text-ink-600">{jakarta.dateTime(exam.scheduled_at)}</div>
+                        <span className="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-brand-50 text-brand-ink">
+                          <Trophy aria-hidden className="size-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <b className="block truncate font-[family-name:var(--font-display)] text-sm font-bold">{exam.title}</b>
+                          <small className="block text-xs text-ink-600">{jakarta.dateTime(exam.scheduled_at)}</small>
                         </div>
-                        <div className="shrink-0 type-label-sm text-brand-700">
-                          {t("admin_home_registrants").replace("{count}", String(exam.registrant_count))}
+                        <div className="shrink-0 text-right" aria-label={t("admin_home_registrants").replace("{count}", String(exam.registrant_count))}>
+                          <b className="block font-[family-name:var(--font-display)] text-base font-bold">{exam.registrant_count}</b>
+                          <small className="block text-xs text-ink-600">{t("admin_home_registrants_label")}</small>
                         </div>
                       </Link>
                     ))}
@@ -507,8 +511,8 @@ export default function AdminIndexPage() {
             {purchaseFeed}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Card className="lg:col-span-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <Card>
               <CardHeader>
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle>{t("admin_home_top_products")}</CardTitle>
@@ -521,24 +525,22 @@ export default function AdminIndexPage() {
                 {d.top_products.length === 0 ? (
                   <div className="py-12 text-center text-ink-600">{t("admin_home_chart_empty")}</div>
                 ) : (
-                  <ol className="flex flex-col gap-4">
+                  <ol className="flex flex-col gap-2.5">
                     {d.top_products.map((p, i) => (
-                      <li key={p.product_id} data-testid="top-product" className="flex items-center gap-3">
-                        <span className="w-5 shrink-0 type-label text-ink-600">{i + 1}</span>
-                        <div className="min-w-0 flex-1">
-                          <div className="truncate type-label">{p.name}</div>
-                          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-sunken">
-                            <div
-                              data-testid="top-product-bar"
-                              className="h-full rounded-full bg-brand-600"
-                              style={{ width: `${(p.qty_sold / topMax) * 100}%` }}
-                            />
-                          </div>
+                      <li key={p.product_id} data-testid="top-product" className="grid grid-cols-[26px_minmax(0,1fr)_80px_48px] items-center gap-3 font-[family-name:var(--font-display)] text-sm font-semibold sm:grid-cols-[26px_minmax(0,1fr)_minmax(120px,34%)_56px]">
+                        <span className="grid size-[26px] place-items-center rounded-[9px] bg-surface-sunken text-xs">{i + 1}</span>
+                        <span className="min-w-0">
+                          <span className="block truncate">{p.name}</span>
+                          <small className="block font-sans text-xs font-normal text-ink-600">{formatRupiah(p.product_revenue)}</small>
+                        </span>
+                        <div className="h-2.5 overflow-hidden rounded-[5px] bg-surface-sunken">
+                          <div
+                            data-testid="top-product-bar"
+                            className="h-full rounded-[inherit] bg-[linear-gradient(90deg,var(--color-ember-600),var(--color-gold-600))]"
+                            style={{ width: `${(p.qty_sold / topMax) * 100}%` }}
+                          />
                         </div>
-                        <div className="shrink-0 text-right">
-                          <div className="type-label tabular-nums">{t("admin_home_qty_sold").replace("{count}", String(p.qty_sold))}</div>
-                          <div className="type-caption text-ink-600">{formatRupiah(p.product_revenue)}</div>
-                        </div>
+                        <b className="text-right font-black tabular-nums" aria-label={t("admin_home_qty_sold").replace("{count}", String(p.qty_sold))}>{p.qty_sold}</b>
                       </li>
                     ))}
                   </ol>

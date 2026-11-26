@@ -86,14 +86,14 @@ describe("RevenuePage", () => {
 
     const stats = await screen.findByTestId("revenue-stats");
     expect(within(stats).getByText("Rp2.500.000")).toBeInTheDocument();
-    expect(within(screen.getByTestId("stat-order-count")).getByText("4")).toBeInTheDocument();
-    expect(within(stats).getByText("Rp625.000")).toBeInTheDocument();
+    expect(within(stats).getByText("4 pesanan · rata-rata Rp625.000")).toBeInTheDocument();
+    expect(within(stats).getByText("Dari kursus")).toBeInTheDocument();
   });
 
   it("labels the period with the range the server echoed, not local state", async () => {
     renderPage();
 
-    const label = await screen.findByTestId("revenue-period-label");
+    const label = await screen.findByText(/^Menampilkan/);
     expect(label).toHaveTextContent("1 Jul 2026");
     expect(label).toHaveTextContent("31 Jul 2026");
   });
@@ -115,26 +115,23 @@ describe("RevenuePage", () => {
 
     renderPage();
 
-    const tile = await screen.findByTestId("stat-order-count");
-    expect(within(tile).getByText("1")).toBeInTheDocument();
-    expect(within(tile).queryByText("2")).not.toBeInTheDocument();
+    const stats = await screen.findByTestId("revenue-stats");
+    expect(within(stats).getByText(/^1 pesanan/)).toBeInTheDocument();
+    expect(within(stats).queryByText(/^2 pesanan/)).not.toBeInTheDocument();
   });
 
   it("renders revenue-by-type bars", async () => {
     renderPage();
 
-    await waitFor(() => expect(document.querySelector("button.md-fchip.on")).not.toBeNull());
+    expect(screen.getByRole("button", { name: "30 hari" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => {
       expect(screen.getByTestId("bar-book")).toBeInTheDocument();
     });
     expect(screen.getByTestId("bar-course")).toBeInTheDocument();
 
-    expect(
-      screen.getByText((_, node) => node?.textContent === "Rp1.000.000 · 10 pesanan"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText((_, node) => node?.textContent === "Rp1.500.000 · 3 pesanan"),
-    ).toBeInTheDocument();
+    const bookRow = screen.getAllByRole("row").find((row) => row.textContent?.startsWith("Buku"))!;
+    expect(within(bookRow).getByText("10")).toBeInTheDocument();
+    expect(within(bookRow).getByText("Rp1.000.000")).toBeInTheDocument();
   });
 
   it("renders top products from the server payload", async () => {

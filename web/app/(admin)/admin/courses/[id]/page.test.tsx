@@ -76,7 +76,7 @@ describe("CourseBuilderPage", () => {
     });
 
     expect(screen.getByTestId("section-editor")).toHaveTextContent("c1");
-    expect(screen.getByRole("link", { name: /kembali ke kursus/i })).toHaveAttribute("href", "/admin/courses");
+    expect(screen.getByRole("link", { name: /^kursus$/i })).toHaveAttribute("href", "/admin/courses");
   });
 
   it("calls update mutation when metadata is changed and saved", async () => {
@@ -89,7 +89,7 @@ describe("CourseBuilderPage", () => {
     const titleInput = screen.getByLabelText(/judul/i);
     fireEvent.input(titleInput, { target: { value: "Matematika Lanjut" } });
 
-    fireEvent.click(screen.getByRole("button", { name: /simpan metadata/i }));
+    fireEvent.click(screen.getByRole("button", { name: /simpan kursus/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith(
@@ -113,6 +113,6 @@ describe("CourseBuilderPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/gagal memuat/i)).toBeInTheDocument();
     });
-    expect(screen.getByRole("link", { name: /kembali|back/i })).toHaveAttribute("href", "/admin/courses");
+    expect(screen.getByRole("link", { name: /^kursus$/i })).toHaveAttribute("href", "/admin/courses");
   });
 });

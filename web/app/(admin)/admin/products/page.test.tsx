@@ -159,9 +159,9 @@ describe("ProductsPage", () => {
 
     await waitFor(() => expect(screen.getByText("Buku Matematika")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /buat produk/i }));
+    fireEvent.click(screen.getByRole("button", { name: /tambah produk/i }));
 
-    expect(screen.getByRole("dialog", { name: /buat produk/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /tambah produk/i })).toBeInTheDocument();
 
     const nameInput = within(screen.getByRole("dialog")).getByLabelText(/nama/i);
     fireEvent.input(nameInput, { target: { value: "Buku Baru" } });
@@ -191,10 +191,10 @@ describe("ProductsPage", () => {
 
     const row = screen.getByText("Buku Matematika").closest("tr");
     expect(row).toBeTruthy();
-    const editButton = within(row!).getByRole("button", { name: /^edit$/i });
+    const editButton = within(row!).getByRole("button", { name: /^ubah$/i });
     fireEvent.click(editButton);
 
-    expect(screen.getByRole("dialog", { name: /edit produk/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /ubah produk/i })).toBeInTheDocument();
     expect(screen.getByDisplayValue("Buku Matematika")).toBeInTheDocument();
 
     const nameInput = within(screen.getByRole("dialog")).getByLabelText(/nama/i);

@@ -17,7 +17,7 @@ import { LessonModal } from "@/components/admin/LessonModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronUp, ChevronDown, Plus, Trash2, Edit2, Check, X } from "lucide-react";
+import { ChevronUp, ChevronDown, Plus, Trash2, Edit2, Check, X, GripVertical, PlayCircle } from "lucide-react";
 import type { CourseSection, Lesson, AdminCreateLessonInput, AdminUpdateLessonInput } from "@/lib/types";
 
 interface SectionEditorProps {
@@ -112,15 +112,15 @@ function SectionLessons({
   return (
     <>
       {lessons.length === 0 ? (
-        <p className="text-sm text-ink-600">Belum ada materi.</p>
+        <p className="mt-2 border-t border-line pt-2 text-sm text-ink-600">Belum ada materi.</p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="mt-2">
           {lessons.map((lesson, index) => (
-            <li key={lesson.id} className="flex items-center justify-between gap-2 rounded-2xl bg-surface-sunken px-3.5 py-3">
-              <div className="flex flex-1 items-center gap-3 min-w-0">
-                <span className="text-xs text-ink-600">#{lesson.position ?? index + 1}</span>
-                <span className="text-sm truncate">{lesson.title}</span>
-                <span className="text-xs text-ink-600">{formatDuration(lesson.duration_seconds)}</span>
+            <li key={lesson.id} className="flex items-center justify-between gap-2 border-t border-line py-[7px] text-sm">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <PlayCircle aria-hidden className="size-4 shrink-0 text-ink-600" />
+                <span className="truncate">{lesson.title}</span>
+                <small className="ml-auto text-xs text-ink-600">{formatDuration(lesson.duration_seconds)}</small>
               </div>
               <div className="flex items-center gap-1">
                 <Button size="icon-xs" variant="ghost" onClick={() => setEditLesson(lesson)}>
@@ -146,8 +146,8 @@ function SectionLessons({
         </ul>
       )}
 
-      <Button variant="outline" size="sm" className="mt-4" onClick={() => setCreateOpen(true)} disabled={createLesson.isPending}>
-        <Plus className="mr-1 size-4" />
+      <Button variant="ghost" size="sm" className="mt-1" onClick={() => setCreateOpen(true)} disabled={createLesson.isPending}>
+        <Plus aria-hidden />
         Tambah materi
       </Button>
 
@@ -296,14 +296,14 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
         </div>
       )}
 
-      <div className="space-y-4">
+      <div className="flex flex-col gap-2.5">
         {sectionList.map((section, index) => {
           const isEditing = editingSectionId === section.id;
           return (
-            <div key={section.id} className="rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
-              <div className="flex items-center justify-between gap-2 border-b border-line p-4">
-                <div className="flex flex-1 items-center gap-2 min-w-0">
-                  <span className="text-sm text-ink-600">#{section.position ?? index + 1}</span>
+            <div key={section.id} className="rounded-2xl border border-line px-3.5 py-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <GripVertical aria-hidden className="size-4 shrink-0 text-ink-600" />
                   {isEditing ? (
                     <Input
                       value={editingSectionTitle}
@@ -311,7 +311,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
                       className="h-8"
                     />
                   ) : (
-                    <h3 className="type-h3 truncate">{section.title}</h3>
+                    <h3 className="truncate font-[family-name:var(--font-display)] text-[15px] font-bold">Bab {section.position ?? index + 1} · {section.title}</h3>
                   )}
                 </div>
 
@@ -364,7 +364,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
                 </div>
               </div>
 
-              <div className="p-4">
+              <div>
                 <SectionLessons courseId={courseId} sectionId={section.id} lessons={section.lessons ?? []} />
               </div>
             </div>

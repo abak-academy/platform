@@ -22,8 +22,29 @@ import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolb
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Course, AdminCreateCourseInput } from "@/lib/types";
+import type { Course, AdminCreateCourseInput, EventIllustration } from "@/lib/types";
+import { Spot } from "@/components/dashboard/Spot";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import type { DICT } from "@/lib/i18n";
+
+// Prototype SUBJ tones and GLYPHS, keyed by subject.
+const TONES = {
+  brand: { a: "#3d4ddb", b: "#6e7cee" }, teal: { a: "#1e978a", b: "#4cc3b2" }, sky: { a: "#2f6fde", b: "#6fa2f2" },
+  berry: { a: "#c23b6b", b: "#ec7ea4" }, gold: { a: "#e3a131", b: "#f5c868" }, navy: { a: "#22315b", b: "#3c5390" },
+};
+const SUBJECT_TONE: Record<string, keyof typeof TONES> = {
+  Matematika: "brand", Penalaran: "brand", Sains: "teal", Fisika: "teal", Kimia: "teal",
+  "Bahasa Inggris": "sky", Literasi: "berry", "Bahasa Indonesia": "berry", Coding: "gold", AI: "navy",
+};
+const GLYPH: Record<string, string> = {
+  Matematika: "∑", Penalaran: "∞", Sains: "⚛", Fisika: "F", Kimia: "K", "Bahasa Inggris": "Aa", Literasi: "“", "Bahasa Indonesia": "“", Coding: "</>", AI: "◎",
+};
+const SUBJECT_SPOT: Record<string, EventIllustration> = {
+  Matematika: "math", Penalaran: "math", Sains: "science", Fisika: "science", Kimia: "science",
+  "Bahasa Inggris": "language", Literasi: "language", "Bahasa Indonesia": "language", Coding: "coding", AI: "coding",
+};
+const tone = (course: Course) => TONES[SUBJECT_TONE[course.subject ?? ""] ?? "gold"];
+const subjectSpot = (subject?: string) => (subject ? SUBJECT_SPOT[subject] : undefined);
 
 type TFunc = (key: keyof (typeof DICT)["id"]) => string;
 
@@ -167,10 +188,10 @@ export default function CoursesPage() {
   });
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("courses_page_title")}
-        description={t("courses_page_description")}
+        description={`${all.length} ${t("courses_unit")}`}
         actions={<Button variant="dark" onClick={() => setModalOpen(true)}><Plus aria-hidden />{t("courses_create")}</Button>}
       />
 
@@ -214,14 +235,25 @@ export default function CoursesPage() {
               onClick={() => openCourse(course)}
               className="md-card-flush group flex flex-col text-left transition-all duration-300 ease-spring hover:-translate-y-[5px] hover:shadow-pop focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600"
             >
-              <span className="relative grid h-[120px] place-items-center bg-[radial-gradient(120%_110%_at_100%_0%,var(--color-teal-100),var(--color-brand-100))] text-brand-700">
-                <Library className="size-10" aria-hidden />
-                {course.subject && <Badge variant="teal" className="absolute top-3 left-3">{course.subject}</Badge>}
+              <span
+                className="relative grid h-[120px] place-items-center overflow-hidden"
+                style={{ background: `radial-gradient(120% 110% at 100% 0%, ${tone(course).b}, ${tone(course).a})` }}
+              >
+                <Spot illustration={subjectSpot(course.subject)} className="relative z-[1] size-[84px] drop-shadow-[0_10px_14px_rgba(0,0,0,0.18)]" />
+                <span aria-hidden className="absolute -right-2.5 -bottom-[34px] font-[family-name:var(--font-display)] text-[150px] leading-none font-extrabold tracking-[-0.06em] text-white/16">
+                  {GLYPH[course.subject ?? ""] ?? course.title.charAt(0)}
+                </span>
+                {course.subject && <Badge variant="teal" className="absolute top-3 left-3 z-[2]">{course.subject}</Badge>}
               </span>
-              <span className="flex flex-col gap-2 px-[18px] pt-4 pb-[18px]">
-                <h3 className="type-h3 text-ink-900">{course.title}</h3>
-                <span className="text-[13px] text-ink-600">{course.instructor_name ?? "-"}</span>
-                <span className="text-[13px] font-bold text-ink-700">{course.level ?? "-"}</span>
+              <span className="flex flex-1 flex-col gap-2 px-[18px] pt-4 pb-[18px]">
+                <h3 className="font-[family-name:var(--font-display)] text-base leading-[1.35] font-bold tracking-[-0.02em] text-ink-900">{course.title}</h3>
+                <span className="flex items-center gap-2 text-[13px] text-ink-600">
+                  <AbakAvatar name={course.instructor_name || "Pengajar"} size={24} />
+                  <span className="truncate">{course.instructor_name ?? "—"}</span>
+                </span>
+                <span className="flex items-center justify-between gap-2 text-[13px] text-ink-600">
+                  <span>{course.level ?? "—"}</span>
+                </span>
               </span>
             </button>
           ))}

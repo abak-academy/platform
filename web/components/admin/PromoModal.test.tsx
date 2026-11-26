@@ -38,7 +38,7 @@ describe("PromoModal", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: /buat kode promo/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /buat promo/i })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/contoh: diskon10/i)).toHaveValue("");
     expect(screen.getByRole("combobox", { name: /jenis diskon/i })).toHaveTextContent("Persen");
   });
@@ -65,7 +65,7 @@ describe("PromoModal", () => {
       />
     );
 
-    expect(screen.getByRole("dialog", { name: /edit kode promo/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /ubah promo/i })).toBeInTheDocument();
     expect(screen.getByDisplayValue("DISKON10")).toBeInTheDocument();
     expect(screen.getByDisplayValue("10")).toBeInTheDocument();
     expect(screen.getByDisplayValue("100")).toBeInTheDocument();

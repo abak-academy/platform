@@ -51,6 +51,14 @@ let promoState = {
   data: PROMOS as PromoCode[],
 };
 
+vi.mock("@/lib/hooks/admin-products", () => ({
+  useAdminProducts: () => ({ data: [
+    { id: "b1", type: "book", name: "Buku Sisa Sedikit", stock: 3 },
+    { id: "b2", type: "medal", name: "Medali Habis", stock: 0 },
+    { id: "b3", type: "book", name: "Buku Aman", stock: 40 },
+  ] }),
+}));
+
 vi.mock("@/lib/hooks/admin-promos", () => ({
   useAdminPromoCodes: () => promoState,
 }));
@@ -117,7 +125,7 @@ describe("admin_store dashboard", () => {
 
   it("includes the unit sales block with its own all-time control", () => {
     render(<StoreDashboardPage />);
-    expect(screen.getByRole("heading", { name: "Unit terjual per tipe produk" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Unit terjual per jenis" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Semua waktu" })).toBeInTheDocument();
   });
 
@@ -209,20 +217,29 @@ describe("admin_store dashboard", () => {
 
     expect(container.querySelector('a[href="/admin/revenue"]')).toBeNull();
     expect(container.querySelector('a[href="/admin/orders?status=pending"]')).not.toBeNull();
-    expect(container.querySelector('a[href="/admin/products"]')).toBeNull();
+
   });
 
   it("keeps the hero, compact volume, and promo link and removes Quick Actions", () => {
     render(<StoreDashboardPage />);
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
     expect(screen.queryByText("Akses Cepat")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /kelola produk|buat promo|kirim pengumuman/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /buat promo|kirim pengumuman/i })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /lihat promo/i })).toHaveAttribute("href", "/admin/promos");
     const volume = screen.getByRole("region", { name: "Volume bulan ini" });
     expect(volume).toHaveTextContent("148");
     expect(volume).toHaveTextContent("96");
     expect(volume).toHaveClass("grid", "grid-cols-2");
     expect(summaryRequest).toHaveBeenCalledWith({ status: "all" });
+  });
+
+  it("lists low-stock physical products with the prototype chips and a link to Produk", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByRole("heading", { name: "Stok menipis" })).toBeInTheDocument();
+    expect(screen.getByText("Sisa 3")).toBeInTheDocument();
+    expect(screen.getByText("Habis")).toBeInTheDocument();
+    expect(screen.queryByText("Buku Aman")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Kelola produk" })).toHaveAttribute("href", "/admin/products");
   });
 
   it("keeps the shipment failure accent only for nonzero failures", () => {

@@ -302,7 +302,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
       <DialogContent className="flex flex-col gap-0 overflow-hidden p-0 sm:max-w-[740px]">
         <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
           <DialogHeader className="shrink-0 border-b px-6 py-5">
-            <DialogTitle>{isEdit ? "Edit produk" : "Buat produk"}</DialogTitle>
+            <DialogTitle>{isEdit ? "Ubah produk" : "Tambah produk"}</DialogTitle>
             <DialogDescription>
               {isEdit ? "Perbarui metadata produk." : "Tambahkan produk baru ke katalog."}
             </DialogDescription>

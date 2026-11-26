@@ -1,6 +1,6 @@
 "use client";
 
-import { ActiveChip, FILTER_PANEL_CLASS, FilterGrid, FilterPanelFooter, FilterSelect, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
+import { ActiveChip, FILTER_PANEL_CLASS, FilterGrid, FilterPanelFooter, FilterSelect, ToolbarCount, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useTranslation } from "@/lib/i18n";
 import type { Product, ProductType, ProductStatus } from "@/lib/types";
@@ -104,6 +104,7 @@ export function ProductsToolbar({ value, onChange, types, count }: {
         </Popover>
         <ToolbarSort value={value.sort} onChange={(sort) => onChange({ ...value, sort: sort as ProductsSort })}
           options={SORTS.map((sort) => ({ value: sort, label: t(`products_sort_${sort}`) }))} label={t("products_sort")} />
+        {count !== undefined && <ToolbarCount>{t("products_count_n").replace("{n}", String(count))}</ToolbarCount>}
       </div>
       {chips.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("products_active_filters")}>

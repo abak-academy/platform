@@ -43,6 +43,20 @@ describe("AnnouncementComposer", () => {
     expect(screen.getByText(/notification_scheduled_at/i)).toBeInTheDocument();
   });
 
+  it("renders inline as a page card and clears the form after sending", () => {
+    const onOpenChange = vi.fn();
+    render(<AnnouncementComposer inline open onOpenChange={onOpenChange} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "notification_compose_title" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
+    const title = screen.getByPlaceholderText(/notification_title/i) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: "Libur" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    expect(mockCreateMutate).toHaveBeenCalledWith(expect.objectContaining({ title: "Libur", status: "sent" }));
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(title.value).toBe("");
+  });
+
   it("does not render when closed", () => {
     render(<AnnouncementComposer open={false} onOpenChange={vi.fn()} />);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

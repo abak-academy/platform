@@ -107,7 +107,7 @@ function shipAllowed(order: Order): boolean {
   );
 }
 
-const TH = "bg-surface-sunken px-4 py-3 text-left font-mono text-[10.5px] font-semibold tracking-[.1em] whitespace-nowrap text-ink-600 uppercase";
+const TH = "bg-surface-sunken px-4 py-3 text-left font-mono text-[10.5px] leading-normal font-semibold tracking-[.1em] whitespace-nowrap text-ink-600 uppercase";
 
 export default function OrdersPage() {
   const { t } = useTranslation();
@@ -365,10 +365,10 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("admin_orders_page_title")}
-        description={t("admin_orders_page_description")}
+        description={total !== undefined ? t("orders_count_n").replace("{n}", String(total)) : t("admin_orders_page_description")}
       />
 
       {selectedOrders.length > 0 && (
@@ -398,7 +398,7 @@ export default function OrdersPage() {
               <thead>
                 <tr>
                   <th className={TH}>
-                    <input type="checkbox" className="size-4 accent-brand-700" aria-label={t("labels_select_all")} checked={orders.length > 0 && selectedOrders.length === orders.length} disabled={orders.length === 0 || isFetching || isPlaceholderData} ref={(el) => { if (el) el.indeterminate = selectedOrders.length > 0 && selectedOrders.length < orders.length; }} onChange={(e) => setSelectedIds(e.target.checked ? orders.map((order) => order.id) : [])} />
+                    <input type="checkbox" className="m-0 size-4 align-middle accent-brand-700" aria-label={t("labels_select_all")} checked={orders.length > 0 && selectedOrders.length === orders.length} disabled={orders.length === 0 || isFetching || isPlaceholderData} ref={(el) => { if (el) el.indeterminate = selectedOrders.length > 0 && selectedOrders.length < orders.length; }} onChange={(e) => setSelectedIds(e.target.checked ? orders.map((order) => order.id) : [])} />
                   </th>
                   <th className={TH}>{t("orders")}</th>
                   <th className={`${TH} hidden md:table-cell`}>{t("th_buyer")}</th>
