@@ -23,13 +23,23 @@ export function StorySlider({ items }: { items: PublicTestimonial[] }) {
       <div className="grid overflow-hidden rounded-[var(--radius-panel)] border border-line bg-surface shadow-card md:grid-cols-2">
         <div data-story-photo className="relative min-h-[260px] overflow-hidden bg-surface-sunken md:min-h-[380px]">
           {photo && (
-            <img
-              key={current.id}
-              src={photo}
-              alt={t("land_stories_photo_alt").replace("{name}", current.name)}
-              loading="lazy"
-              className="absolute inset-0 h-full w-full object-cover object-top"
-            />
+            <>
+              <img
+                key={`${current.id}-bg`}
+                src={photo}
+                alt=""
+                aria-hidden="true"
+                loading="lazy"
+                className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
+              />
+              <img
+                key={current.id}
+                src={photo}
+                alt={t("land_stories_photo_alt").replace("{name}", current.name)}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-contain"
+              />
+            </>
           )}
         </div>
         <div className="flex flex-col justify-center gap-5 p-6 md:p-10">

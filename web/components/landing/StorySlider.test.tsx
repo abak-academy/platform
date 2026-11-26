@@ -25,7 +25,8 @@ describe("StorySlider", () => {
     const photo = container.querySelector<HTMLElement>("[data-story-photo]")!;
     expect(photo.parentElement!.className).toContain("md:grid-cols-2");
     expect(photo.className).not.toContain("aspect-[4/5]");
-    expect(photo.querySelector("img")!.className).toContain("absolute");
+    const shown = photo.querySelector<HTMLImageElement>("img[alt]:not([alt=\"\"])")!;
+    expect(shown.className).toContain("object-contain");
   });
 
   it("shows one story with its photo, role, chips and counter", () => {
