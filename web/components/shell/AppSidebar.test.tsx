@@ -45,9 +45,6 @@ vi.mock("@/stores/auth", () => ({
   useAuthStore: (selector: (s: typeof authStore) => unknown) => selector(authStore),
 }));
 
-vi.mock("./AbakMark", () => ({
-  AbakMark: () => <span data-testid="abak-mark" />,
-}));
 
 // Radix AvatarImage only renders <img> after native image load, which
 // never fires in jsdom.  We mock the avatar UI to behave like a real
