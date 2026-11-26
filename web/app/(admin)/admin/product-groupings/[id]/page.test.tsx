@@ -169,6 +169,7 @@ describe("event editor: fields", () => {
     expect(patches()[0].body).toEqual(roundTrip);
   });
 
+  // ~40 getByLabelText calls over the full editor DOM exceed the 5s default under suite load.
   it("sends every edited field from both language tabs, the schedule and the display card", async () => {
     mockApi();
     renderPage();
@@ -262,7 +263,7 @@ describe("event editor: fields", () => {
         { label: "Technical meeting", label_en: "Technical meeting EN", starts_on: "2027-01-10", ends_on: "2027-01-11" },
       ],
     });
-  });
+  }, 20_000);
 
   it("shows the preview chip with the short name, falling back to the name", async () => {
     mockApi();
