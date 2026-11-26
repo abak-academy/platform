@@ -44,10 +44,14 @@ type Product struct {
 	// GroupingID is the product_grouping this product belongs to, or nil when
 	// ungrouped. GroupingOrder only has meaning while grouped: it is the
 	// product's position within that grouping's display order.
-	GroupingID    *string   `json:"grouping_id"`
-	GroupingOrder int       `json:"grouping_order"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	GroupingID    *string `json:"grouping_id"`
+	GroupingOrder int     `json:"grouping_order"`
+	// Stages (SD/SMP/SMA) and the grade range structure an edition's level.
+	Stages    []string  `json:"stages"`
+	GradeMin  *int      `json:"grade_min"`
+	GradeMax  *int      `json:"grade_max"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 const (

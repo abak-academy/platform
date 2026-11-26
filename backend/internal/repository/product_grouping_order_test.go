@@ -18,7 +18,7 @@ func TestListProducts_GroupingOrder_SortsByGroupingOrderNotID(t *testing.T) {
 	r := New(pool)
 
 	tag := uuid.NewString()[:8]
-	grouping := &model.ProductGrouping{Name: tag + "-grouping", Status: model.ProductGroupingStatusPublished}
+	grouping := &model.ProductGrouping{Name: tag + "-grouping", Slug: tag + "-grouping", Status: model.ProductGroupingStatusPublished}
 	if err := r.CreateProductGrouping(ctx, grouping); err != nil {
 		t.Fatalf("create grouping: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestListProducts_GroupingOrder_PaginatesWithoutSkippingOrRepeating(t *testi
 	r := New(pool)
 
 	tag := uuid.NewString()[:8]
-	grouping := &model.ProductGrouping{Name: tag + "-grouping", Status: model.ProductGroupingStatusPublished}
+	grouping := &model.ProductGrouping{Name: tag + "-grouping", Slug: tag + "-grouping", Status: model.ProductGroupingStatusPublished}
 	if err := r.CreateProductGrouping(ctx, grouping); err != nil {
 		t.Fatalf("create grouping: %v", err)
 	}
