@@ -18,14 +18,18 @@ const STEP_KEY = {
 
 export function ShippingStrip({ order }: { order: Order }) {
   const { t, lang } = useTranslation();
-  const dateFmt = new Intl.DateTimeFormat(lang === "id" ? "id-ID" : "en-US", { day: "numeric", month: "short" });
+  const dateFmt = new Intl.DateTimeFormat(lang === "id" ? "id-ID" : "en-US", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
   const goods = physicalItems(order).map((i) => i.name).join(", ");
   const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" ");
   const resi = order.tracking_number;
 
   const copy = async () => {
-    await navigator.clipboard.writeText(resi!);
-    toast.success(t("stu_home_ship_resi_copied"));
+    try {
+      await navigator.clipboard.writeText(resi!);
+      toast.success(t("stu_home_ship_resi_copied"));
+    } catch {
+      toast.error(t("stu_home_ship_copy_failed"));
+    }
   };
 
   return (
