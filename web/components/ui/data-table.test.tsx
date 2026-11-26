@@ -183,6 +183,18 @@ describe("DataTable", () => {
     expect(onRowClick).toHaveBeenCalledTimes(1);
   });
   describe("mobileCards", () => {
+    it("keeps explicit table roles in card mode so WebKit screen readers still see a table", () => {
+      const { container, rerender } = render(<DataTable mobileCards columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(container.querySelector("table")).toHaveAttribute("role", "table");
+      expect(container.querySelector("tbody")).toHaveAttribute("role", "rowgroup");
+      expect(screen.getByText("Alpha").closest("tr")).toHaveAttribute("role", "row");
+      expect(screen.getByText("Alpha").closest("td")).toHaveAttribute("role", "cell");
+      expect(container.querySelector("th")).toHaveAttribute("role", "columnheader");
+      rerender(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(container.querySelector("table")).not.toHaveAttribute("role");
+      expect(screen.getByText("Alpha").closest("td")).not.toHaveAttribute("role");
+    });
+
     it("labels every non-primary cell with its header and leaves default tables unlabelled", () => {
       const { rerender } = render(<DataTable mobileCards columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
       expect(screen.getByText("Alpha").closest("td")).toHaveAttribute("data-label", "Name");
