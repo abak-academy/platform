@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { User, Mail, Lock, Eye, EyeOff, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,8 +26,10 @@ type Errors = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  const next = useSearchParams().get("next");
+  const nextQuery = next ? `?next=${encodeURIComponent(next)}` : "";
   const { t } = useTranslation();
   const register = useRegister();
   const [name, setName] = React.useState("");
@@ -106,10 +108,10 @@ export default function RegisterPage() {
         } else {
           toast.success(t("register_success"));
         }
-        router.push(`/otp?id=${encodeURIComponent(email.trim())}`);
+        router.push(`/otp?id=${encodeURIComponent(email.trim())}${next ? `&next=${encodeURIComponent(next)}` : ""}`);
       } else {
         toast.success(t("register_success"));
-        router.push("/login");
+        router.push(`/login${nextQuery}`);
       }
     } catch (err) {
       const msg =
@@ -136,7 +138,7 @@ export default function RegisterPage() {
       </div>
 
       <div className="mb-5">
-        <GoogleSignInButton text="signup_with" />
+        <GoogleSignInButton text="signup_with" next={next} />
       </div>
 
       <div className="mb-5 flex items-center gap-3">
@@ -303,12 +305,20 @@ export default function RegisterPage() {
         {t("register_already_have_account")}{" "}
         <button
           type="button"
-          onClick={() => router.push("/login")}
+          onClick={() => router.push(`/login${nextQuery}`)}
           className="font-bold text-success transition-colors hover:text-success/80"
         >
           {t("register_sign_in_link")}
         </button>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <React.Suspense fallback={<div className="w-full max-w-[372px]" />}>
+      <RegisterForm />
+    </React.Suspense>
   );
 }

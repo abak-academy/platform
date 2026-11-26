@@ -3,13 +3,12 @@
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-export type CatalogCategory = "all" | "book" | "course" | "exam" | "merchandise" | "medal";
+export type CatalogCategory = "all" | "book" | "course" | "merchandise" | "medal";
 
 export const CATALOG_CATEGORIES: { value: CatalogCategory; labelKey: string }[] = [
   { value: "all", labelKey: "catalog_tab_all" },
   { value: "book", labelKey: "catalog_tab_book" },
   { value: "course", labelKey: "catalog_tab_course" },
-  { value: "exam", labelKey: "catalog_tab_competition" },
   { value: "merchandise", labelKey: "catalog_tab_merchandise" },
   { value: "medal", labelKey: "catalog_tab_medal" },
 ];

@@ -103,4 +103,14 @@ describe("authFetch session refresh", () => {
     expect(useAuthStore.getState().token).toBeNull();
     expect(window.location.href).toBe("/login");
   });
+
+  it("with redirectOn401:false an unrecoverable 401 clears the session but does not navigate", async () => {
+    useAuthStore.setState({ token: "stale", refreshToken: "rt", user: student });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 401 })));
+
+    await expect(authFetch("/orders", undefined, { redirectOn401: false })).rejects.toBeInstanceOf(ApiError);
+
+    expect(useAuthStore.getState().token).toBeNull();
+    expect(window.location.href).toBe("");
+  });
 });

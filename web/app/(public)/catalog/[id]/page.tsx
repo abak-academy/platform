@@ -11,6 +11,7 @@ import { useAddToCart, useCart } from "@/lib/hooks/orders";
 import { useProfile } from "@/lib/hooks/students";
 import { useCartStore } from "@/stores/cart";
 import { useAuthStore } from "@/stores/auth";
+import { useGuestCart } from "@/stores/guest-cart";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import { ApiError, fileUrl } from "@/lib/api";
@@ -54,10 +55,11 @@ export default function ProductDetailPage({
   const router = useRouter();
   const { data: product, isLoading, isError, error, refetch } = useProduct(id);
   const addToCart = useAddToCart();
-  const { data: cart } = useCart();
-  const { data: profile } = useProfile();
-  const bumpBadge = useCartStore((s) => s.setCount);
   const token = useAuthStore((s) => s.token);
+  // a guest's 401 on these would hard-navigate to /login
+  const { data: cart } = useCart({ enabled: !!token });
+  const { data: profile } = useProfile({ enabled: !!token });
+  const bumpBadge = useCartStore((s) => s.setCount);
   const [qty, setQty] = useState(1);
 
   if (isLoading) return <DetailSkeleton />;
@@ -87,16 +89,32 @@ export default function ProductDetailPage({
   // Warns before checkout instead of only after — the backend still enforces
   // this gate at checkout regardless.
   const missingBiodata =
-    product.type === "exam" ? missingExamBiodataFields(profile) : [];
+    product.type === "exam" && token ? missingExamBiodataFields(profile) : [];
   const biodataFieldLabelKeys: Record<ExamBiodataField, "product_biodata_field_school" | "product_biodata_field_grade" | "product_biodata_field_dob"> = {
     school: "product_biodata_field_school",
     grade: "product_biodata_field_grade",
     dob: "product_biodata_field_dob",
   };
 
+  const maxQty = !token && isPhysical ? Math.max(1, Math.min(10, product.stock ?? 0)) : 10;
+
   const handleAdd = (thenRoute?: () => void) => {
     if (!token) {
-      router.push("/login");
+      const result = useGuestCart.getState().add(product, isDigital ? 1 : qty);
+      if (result === "added") {
+        toast.success(t("gcart_toast_added"), {
+          description: product.name,
+          action: { label: t("gcart_toast_view"), onClick: () => router.push("/cart") },
+        });
+        thenRoute?.();
+      } else if (result === "duplicate") {
+        toast.message(t("gcart_already_in_cart"), { description: product.name });
+        thenRoute?.();
+      } else if (result === "capped") {
+        toast.error(t("gcart_out_of_stock"), { description: product.name });
+      } else {
+        toast.error(t("gcart_full"));
+      }
       return;
     }
     if (alreadyInCart) {
@@ -124,7 +142,7 @@ export default function ProductDetailPage({
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-public px-6 pt-32 pb-20">
       <Button variant="ghost" size="sm" className="mb-4" onClick={() => router.back()}>
         <ArrowLeft className="size-4" />
         {t("product_back_catalog")}
@@ -215,8 +233,8 @@ export default function ProductDetailPage({
                   <button
                     type="button"
                     aria-label={t("product_qty_label")}
-                    onClick={() => setQty((q) => Math.min(10, q + 1))}
-                    disabled={qty >= 10}
+                    onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                    disabled={qty >= maxQty}
                     className="flex size-8 items-center justify-center rounded-full border border-line text-ink-600 hover:bg-paper disabled:opacity-40"
                   >
                     <Plus className="size-3.5" />
@@ -344,7 +362,7 @@ function ProductDescription({ text }: { text?: string | null }) {
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-public px-6 pt-32 pb-20">
       <Skeleton className="mb-4 h-8 w-24" />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_300px]">
         <div className="md:col-span-2 lg:col-span-1">

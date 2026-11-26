@@ -107,8 +107,10 @@ vi.mock("@/lib/i18n", () => ({
   }),
 }));
 
+const auth = vi.hoisted(() => ({ token: "token" as string | null }));
+
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: () => ({}),
+  useAuthStore: (selector: (s: { token: string | null }) => unknown) => selector({ token: auth.token }),
 }));
 
 // Mock sonner for toast notifications
@@ -121,6 +123,7 @@ vi.mock("sonner", () => ({
 
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
+import { useGuestCart } from "@/stores/guest-cart";
 import { useProvinces, useCitiesByProvince, useDistrictsByCity } from "@/lib/hooks/regions";
 
 const mockUseCart = useCart as ReturnType<typeof vi.fn>;
@@ -193,9 +196,50 @@ function renderWithQueryClient(component: React.ReactNode) {
   );
 }
 
+describe("CartPage guest vs signed-in", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    auth.token = null;
+    useGuestCart.getState().clear();
+    useGuestCart.getState().add({ id: "c1", type: "course", name: "Kursus Tamu", price: 90000 });
+  });
+
+  it("renders the guest cart without touching the server cart hooks", () => {
+    renderWithQueryClient(<CartPage />);
+
+    expect(screen.getByRole("link", { name: "gcart_pay" })).toHaveAttribute("href", "/login?next=/cart");
+    expect(screen.getByText("Kursus Tamu")).toBeInTheDocument();
+    expect(mockUseCart).not.toHaveBeenCalled();
+    expect(screen.queryByText("cart_order_summary")).toBeNull();
+  });
+
+  it("renders the server cart for a signed-in student", () => {
+    auth.token = "token";
+    mockUseRemoveCartItem.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mockUseUpdateCartItemQty.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mockUseValidatePromo.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mockUseShippingRates.mockReturnValue({ mutate: vi.fn(), isPending: false, reset: vi.fn() });
+    mockUsePatchCart.mockReturnValue({ mutate: vi.fn(), isPending: false });
+    mockUseActivePromoCodes.mockReturnValue({ data: [] });
+    mockUseProfile.mockReturnValue({ data: undefined });
+    mockUseUpdateProfile.mockReturnValue({ mutate: vi.fn() });
+    mockUseProvinces.mockReturnValue({ data: [] });
+    mockUseCitiesByProvince.mockReturnValue({ data: [] });
+    mockUseDistrictsByCity.mockReturnValue({ data: [] });
+    mockUseCart.mockReturnValue({ data: { id: "o1", items: [digitalItem], subtotal: 100000 }, isLoading: false, isError: false });
+
+    renderWithQueryClient(<CartPage />);
+
+    expect(mockUseCart).toHaveBeenCalled();
+    expect(screen.queryByRole("link", { name: "gcart_pay" })).toBeNull();
+    expect(screen.getByText("Course Item")).toBeInTheDocument();
+  });
+});
+
 describe("CartPage with Shipping", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    auth.token = "token";
 
     mockUseRemoveCartItem.mockReturnValue({
       mutate: vi.fn(),

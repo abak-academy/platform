@@ -1,0 +1,1 @@
+export const SESSION_FLAG_SCRIPT = `try{var s=JSON.parse(localStorage.getItem("abak-auth")||"null");var t=s&&s.state&&s.state.token;if(typeof t==="string"&&t)document.documentElement.dataset.session="1"}catch(e){}`;

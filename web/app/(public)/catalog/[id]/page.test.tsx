@@ -4,11 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { Suspense } from "react";
 import ProductDetailPage from "./page";
 import { ApiError } from "@/lib/api";
+import { useGuestCart } from "@/stores/guest-cart";
+import type { Product } from "@/lib/types";
 
-const { routerBack } = vi.hoisted(() => ({ routerBack: vi.fn() }));
+const { routerBack, routerPush } = vi.hoisted(() => ({ routerBack: vi.fn(), routerPush: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), back: routerBack }),
+  useRouter: () => ({ push: routerPush, back: routerBack }),
 }));
 
 const BASE_PRODUCT = {
@@ -32,25 +34,29 @@ vi.mock("@/lib/hooks/products", () => ({
   }),
 }));
 
-const { addToCartMutate, toastError, cartItems } = vi.hoisted(() => ({
+const { addToCartMutate, toastError, toastSuccess, toastMessage, cartItems, auth, authedHookArgs } = vi.hoisted(() => ({
+  authedHookArgs: vi.fn(),
   addToCartMutate: vi.fn(),
   toastError: vi.fn(),
+  toastSuccess: vi.fn(),
+  toastMessage: vi.fn(),
   cartItems: [] as { product_id: string }[],
+  auth: { token: "token" as string | null },
 }));
 
 vi.mock("sonner", () => ({
-  toast: { error: toastError, success: vi.fn() },
+  toast: { error: toastError, success: toastSuccess, message: toastMessage },
 }));
 
 vi.mock("@/lib/hooks/orders", () => ({
   useAddToCart: () => ({ mutate: addToCartMutate, isPending: false }),
-  useCart: () => ({ data: { items: cartItems } }),
+  useCart: (opts?: { enabled?: boolean }) => (authedHookArgs("cart", opts?.enabled ?? true), { data: { items: cartItems } }),
 }));
 
 let profile: Record<string, unknown> | undefined;
 
 vi.mock("@/lib/hooks/students", () => ({
-  useProfile: () => ({ data: profile }),
+  useProfile: (opts?: { enabled?: boolean }) => (authedHookArgs("profile", opts?.enabled ?? true), { data: profile }),
 }));
 
 vi.mock("@/stores/cart", () => ({
@@ -59,7 +65,7 @@ vi.mock("@/stores/cart", () => ({
 }));
 
 vi.mock("@/stores/auth", () => ({
-  useAuthStore: (selector: (state: { token: string }) => unknown) => selector({ token: "token" }),
+  useAuthStore: (selector: (state: { token: string | null }) => unknown) => selector({ token: auth.token }),
 }));
 
 async function renderPage(overrides: Record<string, unknown> = {}) {
@@ -77,7 +83,12 @@ beforeEach(() => {
   cartItems.length = 0;
   addToCartMutate.mockReset();
   toastError.mockReset();
+  toastSuccess.mockReset();
+  toastMessage.mockReset();
   routerBack.mockReset();
+  routerPush.mockReset();
+  auth.token = "token";
+  useGuestCart.setState({ lines: [] });
   product = { ...BASE_PRODUCT };
   profile = undefined;
 });
@@ -95,7 +106,7 @@ describe("ProductDetailPage", () => {
   it("goes back in history instead of a fixed /catalog link", async () => {
     await renderPage();
 
-    await userEvent.click(screen.getByRole("button", { name: /katalog/i }));
+    await userEvent.click(screen.getByRole("button", { name: /toko/i }));
 
     expect(routerBack).toHaveBeenCalledTimes(1);
   });
@@ -182,6 +193,13 @@ describe("ProductDetailPage", () => {
         "href",
         "/profile",
       );
+    });
+
+    it("shows nothing to a guest, who has no profile to complete", async () => {
+      auth.token = null;
+      await renderPage({ id: "exam-1", type: "exam", name: "Ujian Try Out" });
+      expect(screen.queryByText(/lengkapi biodata sebelum mendaftar/i)).toBeNull();
+      expect(screen.queryByRole("link", { name: /lengkapi profil/i })).toBeNull();
     });
 
     it("shows nothing when biodata is complete", async () => {
@@ -291,5 +309,98 @@ describe("ProductDetailPage", () => {
       expect(screen.queryByText(/stok/i)).toBeNull();
       expect(screen.getByRole("button", { name: /tambah ke keranjang/i })).toBeEnabled();
     });
+  });
+});
+
+describe("guest add-to-cart", () => {
+  beforeEach(() => {
+    auth.token = null;
+  });
+
+  const addButton = () => screen.getByRole("button", { name: /tambah ke keranjang/i });
+
+  it("never enables the signed-in cart or profile queries for a guest (their 401 redirects to /login)", async () => {
+    authedHookArgs.mockClear();
+    await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+    expect(authedHookArgs).toHaveBeenCalledWith("cart", false);
+    expect(authedHookArgs).toHaveBeenCalledWith("profile", false);
+    expect(authedHookArgs).not.toHaveBeenCalledWith("cart", true);
+    expect(authedHookArgs).not.toHaveBeenCalledWith("profile", true);
+  });
+
+  it("adds to the guest cart instead of sending the guest to /login", async () => {
+    await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+
+    await userEvent.click(addButton());
+
+    expect(useGuestCart.getState().lines).toMatchObject([{ product_id: "course-1", qty: 1 }]);
+    expect(addToCartMutate).not.toHaveBeenCalled();
+    expect(routerPush).not.toHaveBeenCalledWith("/login");
+    expect(toastSuccess).toHaveBeenCalledWith(
+      "Ditambahkan ke keranjang",
+      expect.objectContaining({ action: expect.objectContaining({ label: "Lihat keranjang" }) }),
+    );
+  });
+
+  it("the toast action opens the cart", async () => {
+    await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+    await userEvent.click(addButton());
+
+    toastSuccess.mock.calls[0][1].action.onClick();
+
+    expect(routerPush).toHaveBeenCalledWith("/cart");
+  });
+
+  it("buy now adds and then goes to the cart", async () => {
+    await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+
+    await userEvent.click(screen.getByRole("button", { name: /beli sekarang/i }));
+
+    expect(useGuestCart.getState().lines).toHaveLength(1);
+    expect(routerPush).toHaveBeenCalledWith("/cart");
+  });
+
+  it("says so when a digital product is added a second time", async () => {
+    await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+
+    await userEvent.click(addButton());
+    await userEvent.click(addButton());
+
+    expect(useGuestCart.getState().lines).toHaveLength(1);
+    expect(toastMessage).toHaveBeenCalledWith("Sudah ada di keranjangmu", expect.anything());
+  });
+
+  it("caps the physical stepper at the visible stock", async () => {
+    await renderPage({ stock: 2 });
+    const panel = within(screen.getByRole("complementary", { name: /atur jumlah/i }));
+    const [, plus] = panel.getAllByRole("button", { name: /jumlah/i });
+
+    await userEvent.click(plus);
+    expect(plus).toBeDisabled();
+    await userEvent.click(addButton());
+
+    expect(useGuestCart.getState().lines[0].qty).toBe(2);
+  });
+
+  it("reports out of stock when the stock is already in the guest cart", async () => {
+    useGuestCart.getState().add(BASE_PRODUCT as unknown as Product, 12);
+    await renderPage();
+
+    await userEvent.click(addButton());
+
+    expect(toastError).toHaveBeenCalledWith("Stok habis", expect.anything());
+    expect(useGuestCart.getState().lines[0].qty).toBe(12);
+  });
+
+  it("reports a failure when the guest cart is full", async () => {
+    for (let i = 0; i < 20; i++) {
+      useGuestCart.getState().add({ id: `c${i}`, type: "course", name: `K${i}`, price: 1 });
+    }
+    await renderPage({ id: "course-new", type: "course", name: "Kursus Baru" });
+
+    await userEvent.click(addButton());
+
+    expect(toastError).toHaveBeenCalledWith("Keranjang tamu penuh (maks. 20 item). Masuk untuk melanjutkan.");
+    expect(useGuestCart.getState().lines).toHaveLength(20);
   });
 });

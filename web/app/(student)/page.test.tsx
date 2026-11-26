@@ -20,6 +20,8 @@ vi.mock("@/lib/api", async (importOriginal) => ({
   apiFetch: (path: string) => route(path),
 }));
 
+vi.mock("@/components/landing/Landing", () => ({ Landing: () => <div data-testid="landing" /> }));
+
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn() }) }));
 
 let authStore = { user: null as { name?: string; username?: string } | null, token: "t" };
@@ -147,6 +149,16 @@ describe("DashboardPage", () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it("renders the landing and calls no dashboard endpoint for a guest", async () => {
+    authStore = { user: null, token: "" };
+    const calls: string[] = [];
+    setApi(Object.fromEntries(Object.keys(api.handlers).map((k) => [k, () => (calls.push(k), Promise.resolve({ data: [] }))])));
+    renderPage();
+    expect(await screen.findByTestId("landing")).toBeInTheDocument();
+    expect(calls).toEqual([]);
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  });
 
   it("greets by first name", async () => {
     renderPage();

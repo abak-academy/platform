@@ -19,6 +19,7 @@ import { MyEventsCard } from "@/components/dashboard/MyEventsCard";
 import { ContinueLearningCard } from "@/components/dashboard/ContinueLearningCard";
 import { StudySummaryCard } from "@/components/dashboard/StudySummaryCard";
 import { ShopPicks } from "@/components/dashboard/ShopPicks";
+import { Landing } from "@/components/landing/Landing";
 import { greetingKey } from "./home-greeting";
 
 const ROW_A = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
@@ -29,7 +30,12 @@ function firstName(name?: string): string {
   return name.trim().split(/\s+/)[0];
 }
 
-export default function DashboardPage() {
+export default function Page() {
+  const token = useAuthStore((s) => s.token);
+  return token ? <Dashboard /> : <Landing />;
+}
+
+function Dashboard() {
   const { t, lang } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const { data, isLoading, isError, error, refetch } = useDashboard();

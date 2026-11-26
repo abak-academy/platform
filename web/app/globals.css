@@ -552,3 +552,26 @@ html[data-theme="dark"] {
     break-inside: avoid; print-color-adjust: exact; -webkit-print-color-adjust: exact;
   }
 }
+
+/* ---- public motion (PublicMotion) ---- */
+html[data-session] [data-guest-only] { display: none; }
+[data-public-shell] { overflow-x: clip; }
+.page-hero-fade { -webkit-mask-image: linear-gradient(to bottom, black 45%, transparent); mask-image: linear-gradient(to bottom, black 45%, transparent); }
+section.pm-reveal { transition: opacity .8s var(--ease-standard), transform .9s var(--ease-standard), filter .8s var(--ease-standard); }
+section.pm-reveal:not(.pm-in) { opacity: 0; }
+section.pm-up:not(.pm-in) { transform: translateY(64px); }
+section.pm-left:not(.pm-in) { transform: translateX(-80px); }
+section.pm-right:not(.pm-in) { transform: translateX(80px); }
+section.pm-zoom:not(.pm-in) { transform: scale(.9); }
+section.pm-blur:not(.pm-in) { transform: translateY(24px); filter: blur(12px); }
+section.pm-tilt { transform-origin: 50% 0; }
+section.pm-tilt:not(.pm-in) { transform: perspective(1200px) rotateX(14deg) translateY(48px); }
+section.pm-reveal.pm-in { opacity: 1; transform: none; filter: none; }
+section.pm-reveal .pm-kid { transition: opacity .6s var(--ease-standard) var(--pm-d, 0ms), transform .7s var(--ease-spring) var(--pm-d, 0ms); }
+section.pm-reveal:not(.pm-in) .pm-kid { opacity: 0; transform: translateY(28px) scale(.97); }
+section.pm-reveal.pm-done .pm-kid { transition: transform .25s var(--ease-standard), box-shadow .25s var(--ease-standard); }
+section.pm-reveal.pm-done .pm-kid.pm-tilting { transform: perspective(900px) rotateX(var(--pm-ty, 0deg)) rotateY(var(--pm-tx, 0deg)) translateY(-4px); box-shadow: var(--shadow-pop); z-index: 1; }
+[data-tilt].pm-tilting { transition: transform .25s var(--ease-standard), box-shadow .25s var(--ease-standard); transform: perspective(900px) rotateX(var(--pm-ty, 0deg)) rotateY(var(--pm-tx, 0deg)) translateY(-4px); box-shadow: var(--shadow-pop); position: relative; z-index: 1; }
+#pm-swarm { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 60; image-rendering: pixelated; }
+@media (prefers-reduced-motion: reduce), (pointer: coarse) { #pm-swarm { display: none; } }
+/* ---- end public motion ---- */

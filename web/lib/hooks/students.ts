@@ -21,10 +21,11 @@ export function useDashboard() {
   });
 }
 
-export function useProfile() {
+export function useProfile({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: studentsKeys.profile(),
     queryFn: () => authFetch<User>(`/students/profile`),
+    enabled,
   });
 }
 

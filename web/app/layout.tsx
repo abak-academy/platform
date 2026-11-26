@@ -9,6 +9,8 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
+import { siteUrl } from "@/lib/site-metadata";
+import { SESSION_FLAG_SCRIPT } from "@/lib/session-flag";
 
 const plusJakarta = Plus_Jakarta_Sans({ subsets: ["latin"], weight: ["500", "600", "700", "800"], variable: "--font-display" });
 const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-public-sans" });
@@ -19,6 +21,7 @@ const cinzel = Cinzel({ subsets: ["latin"], weight: ["600", "700"], variable: "-
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
+  metadataBase: siteUrl(),
   title: "Abak Academy",
   description: "Tingkatkan Skills Bersama Abak Academy",
   other: { google: "notranslate" },
@@ -26,7 +29,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id" translate="no">
+    <html lang="id" translate="no" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SESSION_FLAG_SCRIPT }} />
+      </head>
       <body
         className={`${plusJakarta.variable} ${publicSans.variable} ${sourceSerif.variable} ${splineMono.variable} ${cinzel.variable} ${inter.variable} antialiased`}
       >

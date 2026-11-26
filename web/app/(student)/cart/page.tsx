@@ -22,9 +22,12 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { GuestCart } from "@/components/cart/GuestCart";
+import { MergeNotice } from "@/components/cart/MergeNotice";
+import { useAuthStore } from "@/stores/auth";
 import { hasPhysicalItems, calculateTotalPhysicalWeight } from "@/lib/shipping";
 
-export default function CartPage() {
+function ServerCart() {
   const { t } = useTranslation();
   const { data: cart, isLoading, isError, error, refetch } = useCart();
   const { data: profile } = useProfile();
@@ -322,6 +325,7 @@ export default function CartPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10">
+      <MergeNotice />
       <Link
         href="/catalog"
         className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-ink-500 transition-colors hover:text-ink-900"
@@ -513,6 +517,11 @@ export default function CartPage() {
       )}
     </div>
   );
+}
+
+export default function CartPage() {
+  const token = useAuthStore((s) => s.token);
+  return token ? <ServerCart /> : <GuestCart />;
 }
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: string }) {

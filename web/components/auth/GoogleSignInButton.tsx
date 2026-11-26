@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useGoogleLogin } from "@/lib/hooks/auth";
 import { isProfileComplete } from "@/lib/profile";
 import { redirectForRole } from "@/lib/auth-redirect";
+import { safeNext } from "@/lib/safe-next";
 import { readReferralFields } from "@/lib/referral";
 import { useRouter } from "next/navigation";
 
@@ -28,6 +29,7 @@ const GSI_SRC = "https://accounts.google.com/gsi/client";
 interface Props {
   /** Button text passed to GSI renderButton. "signin_with" | "signup_with" */
   text?: "signin_with" | "signup_with";
+  next?: string | null;
 }
 
 /** False when NEXT_PUBLIC_GOOGLE_CLIENT_ID is unset, in which case the button
@@ -35,7 +37,7 @@ interface Props {
  *  the page separating nothing. The value is inlined at build time. */
 export const googleSignInAvailable = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID);
 
-export function GoogleSignInButton({ text }: Props) {
+export function GoogleSignInButton({ text, next }: Props) {
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "";
   const containerRef = useRef<HTMLDivElement>(null);
   const googleLogin = useGoogleLogin();
@@ -78,12 +80,12 @@ export function GoogleSignInButton({ text }: Props) {
           ) {
             router.replace("/complete-profile");
           } else {
-            router.replace(redirectForRole(data.user.role));
+            router.replace(safeNext(next, data.user.role) ?? redirectForRole(data.user.role));
           }
         },
       });
     },
-    [googleLogin, router]
+    [googleLogin, router, next]
   );
 
   useEffect(() => {
