@@ -15,7 +15,6 @@ import type { VariantProps } from "class-variance-authority";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -49,6 +48,7 @@ import {
   useResetAccountPassword,
 } from "@/lib/hooks/admin-accounts";
 import type { AdminAccount, AdminAccountRole, AdminAccountStatus } from "@/lib/types";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>["variant"]>;
 
@@ -60,15 +60,6 @@ const ROLE_TONE: Record<AdminAccountRole, BadgeVariant> = {
 };
 
 const ROLES: AdminAccountRole[] = ["super_admin", "admin_exam", "admin_school", "admin_store"];
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
 
 export default function SystemAccountsPage() {
   const { t, lang } = useTranslation();
@@ -263,9 +254,7 @@ export default function SystemAccountsPage() {
               cell: (a) => (
                 <TableItem
                   thumb={
-                    <Avatar size="sm">
-                      <AvatarFallback className="bg-brand-50 text-xs text-brand-700">{initials(a.name)}</AvatarFallback>
-                    </Avatar>
+                    <AbakAvatar name={a.name} size="sm" />
                   }
                   title={a.name}
                   sub={a.email ?? "—"}

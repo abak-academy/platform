@@ -8,21 +8,13 @@ import { useUpdateOwnPhoto } from "@/lib/hooks/profile";
 import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { roleLabelKey } from "@/lib/nav-config";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PageHead } from "@/components/shell/PageHead";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChangePasswordForm } from "@/components/profile/ChangePasswordForm";
 import { toast } from "sonner";
-
-function initials(name?: string): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const second = parts[1]?.[0] ?? "";
-  return (first + second).toUpperCase() || name.trim()[0].toUpperCase();
-}
 
 function Field({
   label,
@@ -93,106 +85,91 @@ export default function AdminProfilePage() {
   }
 
   return (
-    <div className="fade-in flex flex-col gap-4">
-      <AdminPageHeader title={t("profile_title")} />
+    <>
+      <PageHead title={t("profile_title")} />
 
-      <Card className="p-6">
-        <h2 className="mb-4 type-h2 text-ink-900">
-          {t("admin_profile_identity_card")}
-        </h2>
-
-        <div className="mb-6 flex items-center gap-4">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <Card className="items-center gap-0 bg-[radial-gradient(100%_70%_at_50%_0%,var(--color-brand-50),var(--color-surface)_70%)] p-6 text-center">
           {isLoading ? (
-            <Skeleton className="size-20 rounded-full" />
+            <Skeleton className="size-[104px] rounded-full" />
           ) : (
-            <Avatar
-              size="lg"
-              className="size-20 rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 ring-4 ring-surface shadow-sm"
-            >
-              {me?.photo_url ? (
-                <AvatarImage
-                  src={fileUrl(me.photo_url)}
-                  alt={me?.name ?? ""}
-                  className="object-cover"
-                />
-              ) : null}
-              <AvatarFallback className="rounded-full bg-transparent text-2xl font-semibold">
-                {initials(me?.name)}
-              </AvatarFallback>
-            </Avatar>
+            <AbakAvatar
+              name={me?.name ?? ""}
+              size="xl"
+              src={me?.photo_url ? fileUrl(me.photo_url) : undefined}
+              className={uploading ? "animate-pulse" : undefined}
+            />
           )}
-          <div className="flex flex-col gap-2">
+          <div className="mt-4 w-full min-w-0">
             {isLoading ? (
-              <Skeleton className="h-5 w-40" />
+              <Skeleton className="mx-auto h-5 w-40" />
             ) : (
-              <div className="font-[family-name:var(--font-display)] text-xl font-bold text-ink-900">
-                {me?.name}
+              <>
+                <h2 className="type-h2 text-ink-900 [overflow-wrap:anywhere]">{me?.name}</h2>
+                <div className="truncate text-sm text-ink-600">{roleLabel}</div>
+              </>
+            )}
+          </div>
+          {!isLoading && (
+            <div className="mt-4 flex w-full flex-col gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+              >
+                {uploading ? t("saving") : t("upload_photo")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setChangingPassword((open) => !open)}
+                aria-expanded={changingPassword}
+                aria-controls={changingPassword ? "change-password-panel" : undefined}
+              >
+                <KeyRound />
+                {changingPassword ? t("cancel") : t("admin_profile_change_password")}
+              </Button>
+            </div>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePhotoSelect}
+          />
+        </Card>
+
+        <div className="flex flex-col gap-4">
+          <Card className="gap-0 p-6">
+            <h2 className="mb-4 type-h2 text-ink-900">{t("admin_profile_identity_card")}</h2>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label={t("admin_profile_role_label")} value={roleLabel} isLoading={isLoading} />
+              <Field label={t("email")} value={me?.email || me?.username} isLoading={isLoading} />
+              <Field label={t("admin_profile_status")} value={me?.status} isLoading={isLoading} />
+              <Field
+                label={t("admin_profile_signin_method")}
+                value={signInMethodLabel}
+                isLoading={isLoading}
+              />
+            </div>
+            <p className="mt-4 text-xs text-ink-600">{t("admin_profile_edit_hint")}</p>
+          </Card>
+
+          <Card className="gap-0 p-6">
+            <h2 className="type-h2 text-ink-900">{t("admin_profile_security_card")}</h2>
+            <p className="mt-1 text-xs text-ink-600">{t("admin_profile_password_hint")}</p>
+            {changingPassword && (
+              <div id="change-password-panel" className="mt-5 border-t border-line pt-5">
+                <ChangePasswordForm onDone={() => setChangingPassword(false)} />
               </div>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="w-fit"
-            >
-              {uploading ? t("saving") : t("upload_photo")}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handlePhotoSelect}
-            />
-          </div>
+          </Card>
         </div>
-
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label={t("admin_profile_role_label")} value={roleLabel} isLoading={isLoading} />
-          <Field label={t("email")} value={me?.email || me?.username} isLoading={isLoading} />
-          <Field label={t("admin_profile_status")} value={me?.status} isLoading={isLoading} />
-          <Field
-            label={t("admin_profile_signin_method")}
-            value={signInMethodLabel}
-            isLoading={isLoading}
-          />
-        </div>
-
-        <p className="mt-4 text-xs text-ink-600">{t("admin_profile_edit_hint")}</p>
-      </Card>
-
-      <Card className="p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="type-h2 text-ink-900">
-              {t("admin_profile_security_card")}
-            </h2>
-            <p className="mt-1 text-xs text-ink-600">
-              {t("admin_profile_password_hint")}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setChangingPassword((open) => !open)}
-            aria-expanded={changingPassword}
-            aria-controls={changingPassword ? "change-password-panel" : undefined}
-            className="shrink-0"
-          >
-            <KeyRound className="mr-1 size-4" />
-            {changingPassword ? t("cancel") : t("admin_profile_change_password")}
-          </Button>
-        </div>
-
-        {changingPassword && (
-          <div id="change-password-panel" className="mt-5 border-t border-line pt-5">
-            <ChangePasswordForm onDone={() => setChangingPassword(false)} />
-          </div>
-        )}
-      </Card>
-    </div>
+      </div>
+    </>
   );
 }

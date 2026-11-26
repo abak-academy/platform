@@ -119,12 +119,13 @@ describe("testimonials list", () => {
     renderPage();
     await screen.findByRole("article", { name: "Peserta Satu" });
     expect(cardNames()).toEqual(["Peserta Satu", "Peserta Dua", "Peserta Tiga"]);
-    const card = within(screen.getByRole("article", { name: "Peserta Satu" }));
+    const article = screen.getByRole("article", { name: "Peserta Satu" });
+    const card = within(article);
     expect(card.getByText("Seru sekali")).toBeInTheDocument();
     expect(card.getByText("Medali perak")).toBeInTheDocument();
     expect(card.getByText("Ada persetujuan")).toBeInTheDocument();
     expect(card.getByText("EN lengkap")).toBeInTheDocument();
-    expect(card.getByRole("img", { name: "Peserta Satu" })).toHaveAttribute("src", expect.stringContaining("/files/question/a.jpg"));
+    expect((article.querySelector('[data-slot="abak-avatar"]') as HTMLElement).style.backgroundImage).toContain("/files/question/a.jpg");
     const three = within(screen.getByRole("article", { name: "Peserta Tiga" }));
     expect(three.getByText("Belum ada persetujuan")).toBeInTheDocument();
     expect(three.getByText("EN belum lengkap")).toBeInTheDocument();

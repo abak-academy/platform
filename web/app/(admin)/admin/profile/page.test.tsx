@@ -82,8 +82,19 @@ describe("AdminProfilePage", () => {
     renderPage();
 
     expect(screen.getByText("Budi Santoso")).toBeInTheDocument();
-    expect(screen.getByText("Store Manager")).toBeInTheDocument();
+    expect(screen.getAllByText("Store Manager").length).toBeGreaterThan(0);
     expect(screen.getByText("budi@abak.id")).toBeInTheDocument();
+  });
+
+  it("uses the two-column profile layout with a sprite avatar when there is no photo", () => {
+    meState = { data: { ...baseUser(), photo_url: undefined }, isLoading: false };
+    const { container } = renderPage();
+
+    expect(container.querySelector(".lg\\:grid-cols-\\[300px_minmax\\(0\\,1fr\\)\\]")).not.toBeNull();
+    const av = container.querySelector('[data-slot="abak-avatar"]') as HTMLElement;
+    expect(av.style.width).toBe("104px");
+    expect(av.style.backgroundSize).toBe("700% 500%");
+    expect(screen.getByRole("button", { name: /unggah foto|upload/i })).toBeInTheDocument();
   });
 
   it("reports the sign-in method as password, naming the Google origin for a migrated account", () => {

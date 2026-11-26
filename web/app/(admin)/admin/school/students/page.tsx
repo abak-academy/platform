@@ -61,7 +61,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { SchoolPicker } from "@/components/SchoolPicker";
@@ -83,6 +82,7 @@ import type {
   StudentCredentials,
   SchoolOption,
 } from "@/lib/types";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way the schools page debounces school search — otherwise every keystroke
@@ -116,15 +116,6 @@ function compactStudentRegistration(
   const unlistedSchoolName = form.unlisted_school_name?.trim();
   if (unlistedSchoolName) payload.unlisted_school_name = unlistedSchoolName;
   return payload;
-}
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 }
 
 export default function SchoolStudentsPage() {
@@ -416,11 +407,7 @@ export default function SchoolStudentsPage() {
       header: t("students_field_name"),
       cell: (s) => (
         <div className="flex items-center gap-3">
-          <Avatar size="sm">
-            <AvatarFallback className="bg-brand-50 text-brand-700 text-xs">
-              {initials(s.name)}
-            </AvatarFallback>
-          </Avatar>
+          <AbakAvatar name={s.name} size="sm" />
           <div className="min-w-0">
             <div className="font-medium text-ink-900">{s.name}</div>
             <div className="mt-1 font-mono text-xs text-brand-700">

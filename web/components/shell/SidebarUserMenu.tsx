@@ -7,7 +7,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useUIStore, type Lang } from "@/stores/ui";
 import { useLogout, useMe } from "@/lib/hooks/auth";
 import { fileUrl } from "@/lib/api";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -131,7 +131,6 @@ export function SidebarUserMenu({ role, counts, dotCountKey, subtitle }: Sidebar
   const me = useMe({ enabled: role === "affiliator" });
 
   const name = user?.name || user?.email || user?.username || t("account");
-  const initial = (user?.name ?? user?.email ?? user?.username ?? "A").trim().charAt(0).toUpperCase();
   const roleKey =
     role === "affiliator"
       ? affiliatorRoleLabelKey(me.data?.affiliator_programs)
@@ -149,12 +148,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey, subtitle }: Sidebar
     });
   }
 
-  const avatar = (
-    <Avatar className="size-9">
-      <AvatarImage src={fileUrl(user?.photo_url)} />
-      <AvatarFallback className="bg-brand-600 type-label-sm text-on-brand">{initial}</AvatarFallback>
-    </Avatar>
-  );
+  const avatar = <AbakAvatar name={name} size={36} src={user?.photo_url ? fileUrl(user.photo_url) : undefined} />;
 
   return (
     <DropdownMenu>

@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHead } from "@/components/shell/PageHead";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 export default function SessionLeaderboardPage() {
   const { t } = useTranslation();
@@ -131,7 +132,7 @@ export default function SessionLeaderboardPage() {
           const tier = POD[i];
           return (
             <div key={entry.session_id} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
-              <Initial name={entry.student_name} className={i === 0 ? "size-[84px] ring-4 ring-gold-600" : "size-16"} />
+              <AbakAvatar name={entry.student_name} size={i === 0 ? 84 : 64} ring={i === 0 ? "0 0 0 4px var(--color-gold-600)" : true} />
               <b className="max-w-full truncate type-label text-ink-900">{entry.student_name}</b>
               <div
                 className={`flex w-full flex-col items-center gap-1.5 rounded-[22px_22px_8px_8px] pt-4 ${tier.bar}`}
@@ -157,7 +158,7 @@ export default function SessionLeaderboardPage() {
                 <span className="w-[34px] text-center text-sm font-extrabold text-ink-600 [font-family:var(--font-display)]">
                   {entry.rank}
                 </span>
-                <Initial name={entry.student_name} className="size-[30px] text-xs" />
+                <AbakAvatar name={entry.student_name} size="sm" />
                 <span className="min-w-0 flex-1 truncate font-bold text-ink-900">{entry.student_name}</span>
                 <b className="font-extrabold text-ink-900 tabular-nums [font-family:var(--font-display)]">{entry.score}</b>
               </li>
@@ -189,13 +190,3 @@ const POD = [
   { bar: "h-[104px] border-t-4 border-ember-600 bg-ember-50 text-ink-900", medal: "bg-surface text-ink-900 ring-2 ring-ember-600" },
 ] as const;
 
-function Initial({ name, className }: { name: string; className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={`grid shrink-0 place-items-center rounded-full bg-brand-100 font-extrabold text-brand-800 ring-2 ring-surface ${className ?? ""}`}
-    >
-      {name.trim().charAt(0).toUpperCase()}
-    </span>
-  );
-}

@@ -48,10 +48,10 @@ describe("SidebarUserMenu", () => {
     authStore = { user: { name: "Rizky Admin", email: "rizky@abak.test", role: "super_admin" } };
   });
 
-  it("shows avatar initial, name and role label on the card", () => {
+  it("shows sprite avatar, name and role label on the card", () => {
     render(<SidebarUserMenu role="super_admin" />);
     const card = screen.getByRole("button", { name: "user_menu_label" });
-    expect(within(card).getByText("R")).toBeInTheDocument();
+    expect(card.querySelector('[data-slot="abak-avatar"]')).not.toBeNull();
     expect(within(card).getByText("Rizky Admin")).toBeInTheDocument();
     expect(within(card).getByText("role_super_admin")).toBeInTheDocument();
   });

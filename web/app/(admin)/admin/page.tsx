@@ -28,6 +28,7 @@ import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
 import type { AdminDashboard } from "@/lib/types";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 // Series colours, verified 3:1 against BOTH the light surface (#FFFFFF) and
 // the dark surface (--md-sys-color-surface, #211b34) — the mockup's own
@@ -258,9 +259,7 @@ export default function AdminIndexPage() {
           <ul className="flex flex-col gap-4">
             {notifications.items.slice(0, 5).map((n) => (
               <li key={n.id} className="flex items-center gap-3">
-                <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-brand-50 type-label text-brand-700">
-                  {n.student_name.charAt(0).toUpperCase()}
-                </span>
+                <AbakAvatar name={n.student_name} size={36} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate type-label">{n.student_name}</div>
                   <div className="type-caption text-ink-600">{formatRelativeTime(n.created_at)}</div>

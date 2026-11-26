@@ -23,6 +23,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import type { AdminTestimonial } from "@/lib/types";
 import { TestimonialEditor } from "./TestimonialEditor";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 const FILTERS = [
   { key: "landing", label: "Landing page", options: [{ value: "shown", label: "Tampil" }, { value: "draft", label: "Draft" }] },
@@ -60,9 +61,7 @@ function TestimonialCard({
   return (
     <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3.5 p-6 ${off ? "border-dashed bg-surface-sunken" : ""}`}>
       <div className="flex items-center gap-3">
-        <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-50 text-sm font-extrabold text-brand-800">
-          {src ? <img src={src} alt={item.name} className="size-full object-cover" /> : item.name.slice(0, 1).toUpperCase()}
-        </div>
+        <AbakAvatar name={item.name} size="md" src={src || undefined} />
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-[15px] font-extrabold text-ink-900">{item.name}</h3>
           <p className="truncate text-xs text-ink-600">{item.role_label}</p>

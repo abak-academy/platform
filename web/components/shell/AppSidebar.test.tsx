@@ -81,15 +81,11 @@ describe("AppSidebar — avatar rendering", () => {
     };
     const { container } = render(<AppSidebar role="student" />);
 
-    const imgs = container.querySelectorAll('img[data-slot="avatar-image"]');
-    expect(imgs.length).toBeGreaterThan(0);
-    const imgWithSrc = Array.from(imgs).find(
-      (img) => img.getAttribute("src") === "https://example.com/photo.jpg"
-    );
-    expect(imgWithSrc).toBeTruthy();
+    const av = container.querySelector('[data-slot="abak-avatar"]') as HTMLElement;
+    expect(av.style.backgroundImage).toContain("https://example.com/photo.jpg");
   });
 
-  it("falls back to AvatarFallback initials when photo_url is absent", () => {
+  it("falls back to the sprite avatar when photo_url is absent", () => {
     authStore = {
       user: {
         name: "Budi Santoso",
@@ -100,16 +96,15 @@ describe("AppSidebar — avatar rendering", () => {
     };
     render(<AppSidebar role="student" />);
 
-    const imgs = document.querySelectorAll('img[data-slot="avatar-image"]');
-    expect(imgs.length).toBe(0);
-    expect(screen.getAllByText("B").length).toBeGreaterThan(0);
+    const av = document.querySelector('[data-slot="abak-avatar"]') as HTMLElement;
+    expect(av.style.backgroundImage).toContain("/avatars/sprite.webp");
   });
 
-  it("shows default initial 'A' when user has no name/email/username", () => {
+  it("still renders an avatar when user has no name/email/username", () => {
     authStore = { user: { role: "student", photo_url: undefined } };
     render(<AppSidebar role="student" />);
 
-    expect(screen.getByText("A")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="abak-avatar"]')).not.toBeNull();
   });
 });
 

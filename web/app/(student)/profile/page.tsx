@@ -21,7 +21,7 @@ import { fileUrl } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { useAuthStore } from "@/stores/auth";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -53,14 +53,6 @@ import { toast } from "sonner";
 
 const PROFILE_INPUT_CLASS =
   "h-[var(--spacing-input)] w-full rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 text-[15px] text-ink-900 shadow-none transition-[border-color,box-shadow] outline-none placeholder:text-ink-600 hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:cursor-not-allowed disabled:bg-surface-2/60 disabled:text-ink-600 read-only:bg-surface-2/60";
-
-function initials(name?: string): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  const first = parts[0]?.[0] ?? "";
-  const second = parts[1]?.[0] ?? "";
-  return (first + second).toUpperCase() || name.trim()[0].toUpperCase();
-}
 
 function formatJoined(iso?: string, lang: "id" | "en" = "id"): string {
   if (!iso) return "—";
@@ -459,18 +451,14 @@ export default function ProfilePage() {
     );
   }
 
-  const avatarFace = (
-    <>
-      {profile?.photo_url ? (
-        <AvatarImage src={fileUrl(profile.photo_url)} alt={displayName} className="object-cover" />
-      ) : null}
-      <AvatarFallback className="rounded-full bg-transparent text-3xl font-extrabold">
-        {initials(displayName)}
-      </AvatarFallback>
-    </>
+  const avatarEl = (
+    <AbakAvatar
+      name={displayName ?? ""}
+      size="xl"
+      src={profile?.photo_url ? fileUrl(profile.photo_url) : undefined}
+      className={photoUploading ? "animate-pulse" : undefined}
+    />
   );
-  const avatarClass =
-    "size-[104px] rounded-full bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700 shadow-[0_0_0_4px_var(--color-surface),0_0_0_6px_var(--color-brand-50)]";
 
   return (
     <>
@@ -490,17 +478,13 @@ export default function ProfilePage() {
                   aria-label={t("upload_photo")}
                   className="relative flex cursor-pointer items-center justify-center rounded-full border-0 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Avatar size="lg" className={cn(avatarClass, photoUploading && "animate-pulse")}>
-                    {avatarFace}
-                  </Avatar>
+                  {avatarEl}
                   <span className="absolute right-0 bottom-0 flex size-8 items-center justify-center rounded-full bg-ember-600 text-on-ember shadow-[0_0_0_3px_var(--color-surface)]">
                     {photoUploading ? <Loader2 className="size-4 animate-spin" /> : <Camera className="size-4" />}
                   </span>
                 </button>
               ) : (
-                <Avatar size="lg" className={avatarClass}>
-                  {avatarFace}
-                </Avatar>
+                avatarEl
               )}
               <input
                 ref={fileInputRef}

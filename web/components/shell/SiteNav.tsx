@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import { AbakWordmark } from "./AbakWordmark";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import { useResolvedRole } from "@/lib/hooks/use-capability";
@@ -17,6 +16,7 @@ import { kompetisiCount, pendingCount } from "@/lib/student-home";
 import { redirectForRole } from "@/lib/auth-redirect";
 import { cn } from "@/lib/utils";
 import { LanguageToggle } from "./LanguageToggle";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 const LINKS: { key: I18nKey; href: string; match: string[] }[] = [
   { key: "pub_nav_event", href: "/event", match: ["/event"] },
@@ -65,9 +65,7 @@ function AccountControl({ light }: { light: boolean }) {
         href={redirectForRole(role)}
         className="inline-flex h-10 items-center gap-2 rounded-[var(--radius-pill)] border border-line bg-surface py-1 pl-1 pr-3 text-sm font-semibold text-ink-900"
       >
-        <Avatar size="sm">
-          <AvatarFallback>{(name ?? "A").slice(0, 1).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        <AbakAvatar name={name ?? "A"} size={34} ring={false} />
         {t("pub_nav_dashboard")}
         {role === "student" && <StudentCount />}
       </Link>
