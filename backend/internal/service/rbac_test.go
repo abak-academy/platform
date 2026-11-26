@@ -338,3 +338,13 @@ func TestEventCapabilitiesPerRole(t *testing.T) {
 		}
 	}
 }
+
+func TestTestimonialCapabilitiesSuperAdminOnly(t *testing.T) {
+	for _, role := range []string{RoleSuperAdmin, RoleAdminStore, RoleAdminExam, RoleAdminSchool, RoleAffiliator, RoleStudent, "unknown"} {
+		for _, cap := range []string{"testimonials:write", "testimonials:read"} {
+			if got, want := HasCapability(role, cap), role == RoleSuperAdmin; got != want {
+				t.Errorf("HasCapability(%s, %s) = %v, want %v", role, cap, got, want)
+			}
+		}
+	}
+}
