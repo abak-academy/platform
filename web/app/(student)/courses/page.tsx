@@ -30,7 +30,7 @@ export default function CoursesPage() {
         title={t("nav_courses")}
         sub={t("course_subtitle")}
         actions={
-          <Button asChild variant="secondary">
+          <Button asChild variant="dark">
             <Link href="/catalog">{t("stu_home_learn_add")}</Link>
           </Button>
         }

@@ -118,7 +118,7 @@ describe("CatalogPage", () => {
   it("preselects courses from ?type=course", () => {
     query = "type=course";
     render(<CatalogPage />);
-    expect(screen.getByRole("tab", { name: /Kursus/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("button", { name: /Kursus/ })).toHaveAttribute("aria-pressed", "true");
   });
 });
 

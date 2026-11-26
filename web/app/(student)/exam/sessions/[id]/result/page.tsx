@@ -126,15 +126,14 @@ export default function SessionResultPage() {
 
   const sections = result.result_config === "score_pembahasan" ? result.breakdown : [];
   const maxTotal = sections.reduce((n, r) => n + r.max, 0);
-  const pct = Math.round(
-    Math.min(100, Math.max(0, maxTotal > 0 ? (result.score / maxTotal) * 100 : result.score)),
-  );
+  const hasRing = maxTotal > 0;
+  const pct = hasRing ? Math.round(Math.min(100, Math.max(0, (result.score / maxTotal) * 100))) : 0;
 
   return (
     <>
       <PageHead
         back={{ href: "/exam", label: t("competition_detail_back") }}
-        title={t("exam_admin_tab_results")}
+        title={t("result_page_title")}
         actions={
           <>
             <Button asChild variant="outline">
@@ -185,10 +184,12 @@ export default function SessionResultPage() {
           <div
             role="img"
             aria-label={`${t("result_your_score")} ${result.score}`}
-            style={{ background: `conic-gradient(#fff ${pct}%, rgba(255,255,255,.2) 0)` }}
-            className="relative grid size-[150px] place-items-center rounded-full max-narrow:size-[120px]"
+            data-testid="score-ring"
+            data-ring={hasRing}
+            style={hasRing ? { background: `conic-gradient(#fff ${pct}%, rgba(255,255,255,.2) 0)` } : undefined}
+            className={`relative grid size-[150px] place-items-center rounded-full max-narrow:size-[120px] ${hasRing ? "" : "bg-white/20"}`}
           >
-            <span aria-hidden className="absolute inset-3 rounded-full bg-teal-600" />
+            {hasRing && <span aria-hidden className="absolute inset-3 rounded-full bg-teal-600" />}
             <b className="relative text-[46px] leading-none font-extrabold [font-family:var(--font-display)]">{result.score}</b>
           </div>
         </section>
@@ -282,9 +283,13 @@ function PembahasanItem({
         <span className="min-w-0 flex-1 text-sm font-medium text-ink-900">
           <RichContent html={item.body} />
         </span>
-        <Badge variant={item.is_correct ? "teal" : "danger"}>
-          {item.is_correct ? t("result_correct") : t("result_incorrect")}
-        </Badge>
+        {item.your_answer ? (
+          <Badge variant={item.is_correct ? "teal" : "danger"}>
+            {item.is_correct ? t("result_correct") : t("result_incorrect")}
+          </Badge>
+        ) : (
+          <Badge variant="mute">{t("result_empty")}</Badge>
+        )}
         <ChevronDown className="size-4 shrink-0 text-ink-600 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
       <div className="flex flex-col gap-3.5 px-5 pb-5 text-sm">

@@ -26,7 +26,7 @@ export function CategoryRail({ value, onChange, counts }: CategoryRailProps) {
   return (
     <div
       data-testid="category-rail"
-      role="tablist"
+      role="group"
       aria-label={t("catalog_category_heading" as any)}
       className="-mx-0.5 flex gap-2 overflow-x-auto p-0.5 [scrollbar-width:none]"
     >
@@ -37,8 +37,7 @@ export function CategoryRail({ value, onChange, counts }: CategoryRailProps) {
           <button
             key={c.value}
             type="button"
-            role="tab"
-            aria-selected={active}
+            aria-pressed={active}
             onClick={() => onChange(c.value)}
             className={cn(
               "type-label inline-flex h-11 shrink-0 items-center gap-2 whitespace-nowrap rounded-[var(--radius-pill)] border-[1.5px] px-4 transition-transform duration-300 hover:-translate-y-0.5",

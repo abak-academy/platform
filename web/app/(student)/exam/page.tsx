@@ -41,7 +41,7 @@ export default function ExamPage() {
         title={t("comp_title")}
         sub={t("comp_sub")}
         actions={
-          <Button asChild variant="secondary">
+          <Button asChild variant="dark">
             <Link href="/event">
               <Plus />
               {t("stu_home_events_browse")}

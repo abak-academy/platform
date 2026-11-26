@@ -151,4 +151,14 @@ describe("SessionLeaderboardPage", () => {
     await screen.findByTestId("podium");
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
   });
+
+  it("styles the podium with tokens and dark ink text, never raw hex or white", async () => {
+    render(<SessionLeaderboardPage />);
+    const podium = await screen.findByTestId("podium");
+    const html = podium.innerHTML;
+    expect(html).not.toMatch(/#[0-9a-f]{3,8}\b/i);
+    expect(html).not.toContain("text-white");
+    expect(html).toContain("bg-gold-50");
+    expect(html).toContain("text-ink-900");
+  });
 });

@@ -131,7 +131,7 @@ export default function SessionLeaderboardPage() {
           const tier = POD[i];
           return (
             <div key={entry.session_id} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
-              <Initial name={entry.student_name} className={i === 0 ? "size-[84px] ring-4 ring-[#f3cd6b]" : "size-16"} />
+              <Initial name={entry.student_name} className={i === 0 ? "size-[84px] ring-4 ring-gold-600" : "size-16"} />
               <b className="max-w-full truncate type-label text-ink-900">{entry.student_name}</b>
               <div
                 className={`flex w-full flex-col items-center gap-1.5 rounded-[22px_22px_8px_8px] pt-4 ${tier.bar}`}
@@ -184,9 +184,9 @@ export default function SessionLeaderboardPage() {
 }
 
 const POD = [
-  { bar: "h-[170px] bg-[linear-gradient(180deg,#f3cd6b,var(--color-gold))] text-[#3d2b08]", medal: "bg-[#f3cd6b] text-[#5b3f05]" },
-  { bar: "h-[130px] bg-[linear-gradient(180deg,#c4cdd4,#8a979b)] text-white", medal: "bg-[#d5dbe0] text-[#3a4650]" },
-  { bar: "h-[104px] bg-[linear-gradient(180deg,#f59a6b,var(--color-ember-600))] text-white", medal: "bg-[#f2b48e] text-[#6b2f13]" },
+  { bar: "h-[170px] border-t-4 border-gold-600 bg-gold-50 text-ink-900", medal: "bg-surface text-ink-900 ring-2 ring-gold-600" },
+  { bar: "h-[130px] border-t-4 border-line-strong bg-mute-50 text-ink-900", medal: "bg-surface text-ink-900 ring-2 ring-line-strong" },
+  { bar: "h-[104px] border-t-4 border-ember-600 bg-ember-50 text-ink-900", medal: "bg-surface text-ink-900 ring-2 ring-ember-600" },
 ] as const;
 
 function Initial({ name, className }: { name: string; className?: string }) {

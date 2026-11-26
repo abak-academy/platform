@@ -140,7 +140,7 @@ function RegisterForm() {
       {googleSignInAvailable && (
         <div className="mb-5 flex items-center gap-3">
           <div className="h-px flex-1 bg-line" />
-          <span className="text-xs font-medium text-ink-400">{t("auth_or_divider")}</span>
+          <span className="text-xs font-medium text-ink-600">{t("auth_or_divider")}</span>
           <div className="h-px flex-1 bg-line" />
         </div>
       )}

@@ -83,7 +83,7 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
             className="size-8 text-ink-600 hover:text-danger"
             onClick={onRemove}
             disabled={busy}
-            aria-label={`Hapus ${item.name} dari keranjang`}
+            aria-label={t("cart_remove_item").replace("{name}", item.name)}
           >
             <Trash2 className="size-4" />
           </Button>
@@ -99,7 +99,7 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
                 onClick={() => onQtyChange(item.qty - 1)}
                 disabled={busy || item.qty <= 1}
                 className="flex size-[28px] items-center justify-center rounded-full text-ink-600 hover:bg-surface-sunken disabled:opacity-40"
-                aria-label="Kurangi jumlah"
+                aria-label={t("cart_qty_decrease")}
               >
                 <Minus className="size-3" />
               </button>
@@ -109,7 +109,7 @@ export function CartLineItem({ item, onRemove, onQtyChange, removing, updatingQt
                 onClick={() => onQtyChange(item.qty + 1)}
                 disabled={busy || item.qty >= 10}
                 className="flex size-[28px] items-center justify-center rounded-full text-ink-600 hover:bg-surface-sunken disabled:opacity-40"
-                aria-label="Tambah jumlah"
+                aria-label={t("cart_qty_increase")}
               >
                 <Plus className="size-3" />
               </button>

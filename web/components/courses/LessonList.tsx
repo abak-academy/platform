@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, PlayCircle } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
 import { Progress } from "@/components/ui/progress";
 import type { CourseSection, Lesson } from "@/lib/types";
 
@@ -21,10 +22,11 @@ export function LessonList({
   totalCount,
   progressPct,
 }: LessonListProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex max-h-[calc(100vh-40px)] flex-col overflow-y-auto rounded-[var(--radius-card)] border border-line bg-card p-1.5 shadow-card lg:sticky lg:top-5">
       <div className="px-3.5 pt-3 pb-3.5">
-        <h3 className="type-label text-ink-900">Daftar Pelajaran</h3>
+        <h3 className="type-label text-ink-900">{t("lesson_list_title")}</h3>
         <div className="mt-1 mb-2 flex items-center justify-between text-xs text-ink-600">
           <span>
             {doneCount}/{totalCount}

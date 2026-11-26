@@ -239,7 +239,7 @@ export default function ExamDetailPage() {
     <Card className="gap-0 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="type-h2 text-ink-900">{t("exam_checkin_title")}</h2>
-        <Badge variant="gold">{t("bulk_format_required")}</Badge>
+        <Badge variant="gold">{t("exam_required_badge")}</Badge>
       </div>
 
       {isBeforeWindow && <p className="mt-2 text-sm text-ink-600">{t("window_closed_early")}</p>}

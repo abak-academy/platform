@@ -43,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHead } from "@/components/shell/PageHead";
 import { SchoolPicker } from "@/components/SchoolPicker";
@@ -139,33 +140,6 @@ function ProfileSection({
       </h2>
       <div className="space-y-3.5">{children}</div>
     </div>
-  );
-}
-
-function Switch({
-  on,
-  onClick,
-  ariaLabel,
-}: {
-  on: boolean;
-  onClick: () => void;
-  ariaLabel?: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={ariaLabel}
-      onClick={onClick}
-      className={`relative h-7 w-[46px] shrink-0 rounded-full border-0 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 ${
-        on ? "bg-brand-600" : "bg-line-strong"
-      }`}
-    >
-      <span
-        className={`absolute top-[3px] size-[22px] rounded-full bg-white shadow transition-all ${
-          on ? "left-[21px]" : "left-[3px]"
-        }`}
-      />
-    </button>
   );
 }
 
@@ -585,18 +559,18 @@ export default function ProfilePage() {
                   <div className="text-sm text-ink-900">{t("email_notif")}</div>
                   <div className="text-xs text-ink-600">{profile?.email ?? "—"}</div>
                 </div>
-                <Switch on={emailNotif} onClick={() => setEmailNotif((v) => !v)} />
+                <Switch checked={emailNotif} onCheckedChange={setEmailNotif} aria-label={t("email_notif")} />
               </label>
               <label className="flex items-center justify-between gap-3 py-3">
                 <div>
                   <div className="text-sm text-ink-900">{t("wa_notif")}</div>
                   <div className="text-xs text-ink-600">{profile?.phone ?? "—"}</div>
                 </div>
-                <Switch on={waNotif} onClick={() => setWaNotif((v) => !v)} />
+                <Switch checked={waNotif} onCheckedChange={setWaNotif} aria-label={t("wa_notif")} />
               </label>
               <label className="flex items-center justify-between gap-3 py-3">
                 <span className="text-sm text-ink-900">{t("push_notif")}</span>
-                <Switch on={pushNotif} onClick={() => setPushNotif((v) => !v)} />
+                <Switch checked={pushNotif} onCheckedChange={setPushNotif} aria-label={t("push_notif")} />
               </label>
             </div>
           </Card>

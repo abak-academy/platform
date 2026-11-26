@@ -169,7 +169,7 @@ function LoginForm() {
 
       {googleSignInAvailable && (
         <>
-          <div className="flex items-center gap-3 text-xs text-ink-500">
+          <div className="flex items-center gap-3 text-xs text-ink-600">
             <div className="h-px flex-1 bg-line" />
             <span>{t("auth_or_divider")}</span>
             <div className="h-px flex-1 bg-line" />

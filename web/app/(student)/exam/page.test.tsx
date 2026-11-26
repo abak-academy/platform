@@ -618,8 +618,8 @@ describe("ExamPage", () => {
 describe("ExamPage card parity", () => {
   const cardOf = async (title: string) =>
     (await screen.findByText(title)).closest("[data-slot='card']") as HTMLElement;
-  const primaries = (card: HTMLElement) =>
-    Array.from(card.querySelectorAll("[data-cta='main']"));
+  const filled = (card: HTMLElement) =>
+    Array.from(card.querySelectorAll("[data-slot='button'][data-variant='default'], [data-slot='button'][data-variant='secondary']"));
   const show = (reg: RegistrationListItem) => {
     registrationsState = { data: [reg], isLoading: false, isError: false, error: null, refetch: vi.fn() };
     render(<ExamPage />);
@@ -662,21 +662,23 @@ describe("ExamPage card parity", () => {
   });
 
   it.each([
-    ["ready", { ...base }, /Lihat aturan ujian/],
-    ["in progress", { ...base, status: "in_progress" }, /Lanjutkan ujian/],
-    ["done", { ...base, status: "submitted", session_id: "s-1", max_attempts: 3 }, /Lihat hasil/],
+    ["ready", { ...base }, /Lihat aturan ujian/, 1],
+    ["in progress", { ...base, status: "in_progress" }, /Lanjutkan ujian/, 1],
+    ["done", { ...base, status: "submitted", session_id: "s-1", max_attempts: 3 }, /Lihat hasil/, 1],
     [
       "upcoming",
       { ...base, scheduled_at: new Date(Date.now() + 3 * 3_600_000).toISOString(), scheduled_end_at: new Date(Date.now() + 5 * 3_600_000).toISOString() },
       /^Lihat detail\s*$/,
+      0,
     ],
-    ["expired", { ...base, scheduled_at: "2020-01-01T00:00:00Z", scheduled_end_at: "2020-01-01T02:00:00Z" }, /^Lihat detail\s*$/],
-  ])("has exactly one primary CTA in the %s state", async (_n, reg, name) => {
+    ["expired", { ...base, scheduled_at: "2020-01-01T00:00:00Z", scheduled_end_at: "2020-01-01T02:00:00Z" }, /^Lihat detail\s*$/, 0],
+  ])("renders at most one filled (primary) button in the %s state", async (_n, reg, name, filledCount) => {
     show(reg as RegistrationListItem);
     const card = await cardOf("Paket Parity");
-    const primary = primaries(card);
-    expect(primary).toHaveLength(1);
-    expect(primary[0].textContent).toMatch(name);
+    const main = card.querySelectorAll("[data-cta='main']");
+    expect(main).toHaveLength(1);
+    expect(main[0].textContent).toMatch(name);
+    expect(filled(card)).toHaveLength(filledCount);
   });
 
   it("demotes the retake and detail actions to secondary next to the result CTA", async () => {
