@@ -322,3 +322,57 @@ test("guest journey: Toko, product, add, cart, Masuk untuk bayar goes to login w
   await expect(page).toHaveURL(/\/login\?next=(\/cart|%2Fcart)$/);
   expect(requested.filter((r) => r.startsWith("POST /orders"))).toEqual([]);
 });
+
+for (const width of [1366, 390]) {
+  test(`AC18 product detail content sits below the fixed nav at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockApi(page);
+    await gotoReady(page, "/catalog/prod-book-1");
+    const h1 = page.locator("main h1").first();
+    await expect(h1).toBeVisible();
+    const navBottom = (await page.locator("header[data-state]").boundingBox())!.y + (await page.locator("header[data-state]").boundingBox())!.height;
+    expect((await h1.boundingBox())!.y).toBeGreaterThanOrEqual(navBottom);
+  });
+}
+
+test("guest cart merges into the server cart after login and empties localStorage", async ({ page }) => {
+  await mockApi(page);
+  const course = PRODUCTS[2];
+  const added: unknown[] = [];
+  const serverCart = { id: "cart-1", student_id: "stu-1", status: "cart", subtotal: 0, discount: 0, shipping_cost: 0, total: 0, created_at: iso(0), items: [] as unknown[] };
+  const line = (price: number) => ({ id: "i1", order_id: "cart-1", product_id: course.id, product_type: "course", name: course.name, unit_price: price, qty: 1, jumlah: price });
+  await page.route("**/api/v1/**", async (route) => {
+    const req = route.request();
+    const path = new URL(req.url()).pathname.replace(/^.*\/api\/v1/, "");
+    const m = req.method();
+    if (path === "/provinces") return json(route, []);
+    if (path === "/auth/login" && m === "POST") return json(route, { access_token: "tok-student", refresh_token: "ref", user: USER });
+    if (path === "/orders" && m === "POST") return json(route, serverCart);
+    if (path === "/orders/cart-1/items" && m === "POST") {
+      added.push(req.postDataJSON());
+      serverCart.items = [line(160000)];
+      return json(route, { ...serverCart, subtotal: 160000, total: 160000 });
+    }
+    if (path === "/orders/cart-1" && m === "GET") return json(route, serverCart);
+    return route.fallback();
+  });
+
+  await gotoReady(page, `/catalog/${course.id}`);
+  await page.getByRole("button", { name: "Tambah ke Keranjang" }).click();
+  await page.getByRole("button", { name: "Lihat keranjang" }).click();
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.getByText(course.name)).toBeVisible();
+  await page.getByRole("link", { name: "Masuk untuk bayar" }).click();
+  await expect(page).toHaveURL(/\/login\?next=(\/cart|%2Fcart)$/);
+
+  await page.locator("#identifier").fill("siswauji");
+  await page.locator("#password").fill("test-password");
+  await page.getByRole("button", { name: "Masuk", exact: true }).click();
+
+  await expect(page).toHaveURL(/\/cart$/);
+  await expect(page.getByRole("status").filter({ hasText: "Keranjangmu berubah setelah masuk" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Harga berubah")).toBeVisible();
+  expect(added).toEqual([{ product_id: course.id, qty: 1 }]);
+  await expect(page.getByRole("link", { name: "Masuk untuk bayar" })).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("abak-guest-cart") ?? '{"lines":[]}').lines.length)).toBe(0);
+});
