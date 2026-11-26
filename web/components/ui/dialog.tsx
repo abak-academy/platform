@@ -64,7 +64,7 @@ function DialogContent({
         data-slot="dialog-content"
         data-size={size}
         className={cn(
-          "fixed top-[50%] left-[50%] z-[var(--z-dialog)] w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-4rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[var(--radius-modal)] border bg-background p-6 shadow-pop duration-300 ease-spring outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+          "fixed top-[50%] left-[50%] z-[var(--z-dialog)] w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-4rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-[var(--radius-modal)] border bg-background p-6 text-foreground shadow-pop duration-300 ease-spring outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
           size === "wide"
             ? "flex flex-col overflow-hidden sm:max-w-[var(--container-dialog-wide)] [&>:not([data-slot^=dialog-])]:min-h-0 [&>:not([data-slot^=dialog-])]:flex-1 [&>:not([data-slot^=dialog-])]:overflow-y-auto [&>[data-slot=dialog-header]]:shrink-0 [&>[data-slot=dialog-footer]]:shrink-0"
             : "grid overflow-y-auto sm:max-w-[var(--container-dialog)]",
