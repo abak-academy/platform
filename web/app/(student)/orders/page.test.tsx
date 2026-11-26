@@ -20,7 +20,7 @@ vi.mock("@/lib/i18n", () => ({
         billing_subtitle: "Your orders",
         billing_no_tx_title: "No transactions yet",
         billing_no_tx_desc: "You haven't made any purchases",
-        billing_browse_store: "Browse store",
+        billing_to_store: "Browse store",
         billing_payment_methods: "Payment methods",
         billing_secure: "Secure",
       };

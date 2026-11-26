@@ -19,11 +19,11 @@ const physicalOrder = {
 } as any;
 
 describe("ShippingInfo", () => {
-  it("shows courier, service, address and tracking for a physical order", () => {
+  // The resi itself sits in the status card's resi box (order detail page), as in the prototype.
+  it("shows courier, service and address for a physical order", () => {
     render(<ShippingInfo order={physicalOrder} />);
     expect(screen.getByText("JNE — REG")).toBeTruthy();
     expect(screen.getByText(/Jl. Merdeka No. 1/)).toBeTruthy();
-    expect(screen.getByText("JP1234567")).toBeTruthy();
   });
 
   it("renders nothing for a digital-only order", () => {

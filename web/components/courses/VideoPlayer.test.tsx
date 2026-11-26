@@ -455,10 +455,9 @@ describe("VideoPlayer", () => {
   // of it, or the scrim turns light and the controls on it vanish.
   it("keeps the video chrome dark in both themes", () => {
     const { container } = render(<VideoPlayer videoRef="abc123" title="L1" />);
-    const bar = container.querySelector('[data-testid="video-shield"]')!
-      .parentElement!.querySelector(".bg-gradient-to-t")!;
+    const bar = container.querySelector('[data-testid="video-controls"]')!;
 
-    expect(bar.className).toContain("from-black/90");
+    expect(bar.className).toContain("bg-[rgba(10,24,32,0.55)]");
     expect(bar.className).not.toContain("ink-900");
   });
 

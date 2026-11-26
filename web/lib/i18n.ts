@@ -3367,6 +3367,13 @@ export const DICT = {
     promos_until: "s.d.",
     promos_no_expiry: "Tanpa batas waktu",
     invoice_modal_title: "Invoice",
+    notification_compose_title: "Tulis pengumuman",
+    notification_sent_title: "Terkirim",
+    notification_sent_empty: "Belum ada pengumuman terkirim.",
+    revenue_total_sub: "{n} pesanan · rata-rata {aov}",
+    revenue_share_exam: "Dari kompetisi",
+    revenue_share_course: "Dari kursus",
+    revenue_share_physical: "Dari fisik",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -6726,6 +6733,13 @@ export const DICT = {
     promos_until: "until",
     promos_no_expiry: "No expiry",
     invoice_modal_title: "Invoice",
+    notification_compose_title: "Write an announcement",
+    notification_sent_title: "Sent",
+    notification_sent_empty: "No announcements sent yet.",
+    revenue_total_sub: "{n} orders · avg {aov}",
+    revenue_share_exam: "From competitions",
+    revenue_share_course: "From courses",
+    revenue_share_physical: "From physical goods",
   },
 };
 

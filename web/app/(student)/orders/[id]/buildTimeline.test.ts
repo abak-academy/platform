@@ -26,9 +26,18 @@ describe("buildTimeline", () => {
     expect(keys(completedOrder)).toEqual(["created", "checkout", "paid", "shipped", "completed"]);
   });
 
-  it("stops at the step the order is currently on", () => {
+  it("lists the steps still ahead as unreached", () => {
     const inFlight = { ...completedOrder, status: "shipped", completed_at: undefined } as unknown as Order;
-    expect(keys(inFlight)).toEqual(["created", "checkout", "paid", "shipped"]);
+    const steps = buildTimeline(inFlight, t);
+    expect(steps.map((s) => s.key)).toEqual(["created", "checkout", "paid", "shipped", "completed"]);
+    expect(steps.filter((s) => !s.reached).map((s) => s.key)).toEqual(["completed"]);
+  });
+
+  it("only plans a shipping step for an order with physical items", () => {
+    const pending = (type: string) =>
+      ({ id: "o", status: "payment_pending", created_at: "2026-08-04T07:00:00Z", items: [{ product_type: type }] }) as unknown as Order;
+    expect(keys(pending("book"))).toEqual(["created", "paid", "shipped", "completed"]);
+    expect(keys(pending("course"))).toEqual(["created", "paid", "completed"]);
   });
 
   // completed and cancelled are terminal alternatives; listing both was the
@@ -50,8 +59,8 @@ describe("buildTimeline", () => {
     expect(buildTimeline(cancelled, t).find((s) => s.key === "cancelled")?.cancelled).toBe(true);
   });
 
-  it("keeps a brand-new order down to the one step it has", () => {
-    const fresh = { id: "o", status: "cart", created_at: "2026-08-04T07:00:00Z" } as unknown as Order;
-    expect(keys(fresh)).toEqual(["created"]);
+  it("plans nothing past a cancellation", () => {
+    const cancelled = { id: "o", status: "cancelled", created_at: "2026-08-04T07:00:00Z", items: [] } as unknown as Order;
+    expect(keys(cancelled)).toEqual(["created", "cancelled"]);
   });
 });

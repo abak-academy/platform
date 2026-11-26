@@ -1,4 +1,5 @@
 import type { Order } from "@/lib/types";
+import { hasPhysicalItems } from "@/lib/shipping";
 
 // Lives beside the page rather than inside it: Next validates page.tsx's
 // exports and rejects anything that is not one of its own fields, so a helper
@@ -12,7 +13,17 @@ export interface TimelineStep {
   cancelled?: boolean;
 }
 
+// Prototype .tl: what happened, then the steps still ahead on this order's path.
 export function buildTimeline(o: Order, t: (key: any) => string): TimelineStep[] {
+  const reached = buildReached(o, t);
+  if (o.status === "cancelled" || o.status === "payment_expired" || o.status === "completed") return reached;
+  const ahead = (hasPhysicalItems(o.items ?? []) ? ["paid", "shipped", "completed"] : ["paid", "completed"])
+    .filter((k) => !reached.some((s) => s.key === k))
+    .map((k) => ({ key: k, label: t(`order_tl_${k}`), reached: false }));
+  return [...reached, ...ahead];
+}
+
+function buildReached(o: Order, t: (key: any) => string): TimelineStep[] {
   const cancelled = o.status === "cancelled";
   return [
     {
