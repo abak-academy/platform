@@ -490,12 +490,12 @@ export default function ProductGroupingDetailPage() {
       toast.success(t("changes_saved"));
     } catch (e) {
       const { message, missing: gaps, code } = groupingErrorParts(e);
-      if (code === "grouping_prefix_taken" || message.includes("participant_prefix")) {
-        setPrefixError(message);
-      } else if (gaps.length > 0) {
+      if (gaps.length > 0) {
         setMissing(gaps);
         if (gaps.some((g) => g.startsWith("en.") || g.startsWith("schedule["))) setTab("en");
         if (gaps.includes("participant_prefix")) setPrefixError(groupingMissingLabel("participant_prefix") + " wajib diisi.");
+      } else if (code === "grouping_prefix_taken" || message.includes("participant_prefix must be")) {
+        setPrefixError(message);
       } else {
         toast.error(message);
       }

@@ -431,7 +431,7 @@ describe("event editor: visibility", () => {
     mockApi();
     renderPage();
     await ready();
-    patchError = new api.ApiError("validation_failed", "event cannot be visible yet", 422, {
+    patchError = new api.ApiError("validation_failed", "event cannot be visible yet, missing: status, en.tagline, schedule[1].label_en", 422, {
       missing: ["status", "en.tagline", "schedule[1].label_en"],
     });
 
@@ -484,12 +484,12 @@ describe("event editor: participant prefix", () => {
     mockApi();
     renderPage();
     await ready();
-    patchError = new api.ApiError("validation_failed", "participant_prefix must be 2 to 6 uppercase letters", 422);
+    patchError = new api.ApiError("validation_failed", "validation failed: participant_prefix must be 2 to 6 uppercase letters", 422);
     type("Prefiks nomor peserta", "E");
 
     save();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("participant_prefix must be 2 to 6 uppercase letters");
+    expect(await screen.findByRole("alert")).toHaveTextContent("validation failed: participant_prefix must be 2 to 6 uppercase letters");
     type("Prefiks nomor peserta", "ES");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -498,12 +498,28 @@ describe("event editor: participant prefix", () => {
     mockApi({ participant_prefix: null });
     renderPage();
     await ready();
-    patchError = new api.ApiError("validation_failed", "event cannot be visible yet", 422, { missing: ["participant_prefix"] });
+    patchError = new api.ApiError("validation_failed", "event cannot be visible yet, missing: participant_prefix", 422, { missing: ["participant_prefix"] });
 
     fireEvent.click(toggle());
     save();
 
     await waitFor(() => expect(screen.getAllByRole("alert").some((a) => a.textContent === "Prefiks nomor peserta wajib diisi.")).toBe(true));
+  });
+
+  it("shows the missing panel and opens the English tab when the prefix and an English field are both missing", async () => {
+    mockApi({ participant_prefix: null });
+    renderPage();
+    await ready();
+    patchError = new api.ApiError("validation_failed", "event cannot be visible yet, missing: participant_prefix, en.tagline", 422, {
+      missing: ["participant_prefix", "en.tagline"],
+    });
+
+    fireEvent.click(toggle());
+    save();
+
+    expect(await screen.findByText(/Belum lengkap: .*Tagline \(English\)/)).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /English/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText(/event cannot be visible yet/)).not.toBeInTheDocument();
   });
 });
 
@@ -577,6 +593,34 @@ describe("event editor: editions and products", () => {
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.path).toBe("/admin/product-groupings/g1/products");
     expect(put.body).toEqual({ product_ids: ["p2", "p1", "p3"] });
+  });
+
+  it("offers a drag handle and both arrows on every row of both lists", async () => {
+    mockApi();
+    renderPage();
+    await ready();
+
+    const editions = within(screen.getByRole("list", { name: "Edisi" }));
+    const other = within(screen.getByRole("list", { name: "Produk lain" }));
+    expect(editions.getAllByRole("button", { name: "Seret untuk mengurutkan" })).toHaveLength(2);
+    expect(editions.getAllByRole("button", { name: "Naikkan urutan" })).toHaveLength(2);
+    expect(other.getAllByRole("button", { name: "Seret untuk mengurutkan" })).toHaveLength(1);
+    expect(other.getAllByRole("button", { name: "Turunkan urutan" })).toHaveLength(1);
+  });
+
+  it("disables moving the first item up and the last item down in each list", async () => {
+    mockApi();
+    renderPage();
+    await ready();
+
+    for (const name of ["Edisi", "Produk lain"]) {
+      const list = within(screen.getByRole("list", { name }));
+      expect(list.getAllByRole("button", { name: "Naikkan urutan" })[0]).toBeDisabled();
+      expect(list.getAllByRole("button", { name: "Turunkan urutan" }).at(-1)).toBeDisabled();
+    }
+    const editions = within(screen.getByRole("list", { name: "Edisi" }));
+    expect(editions.getAllByRole("button", { name: "Naikkan urutan" })[1]).toBeEnabled();
+    expect(editions.getAllByRole("button", { name: "Turunkan urutan" })[0]).toBeEnabled();
   });
 
   it("adds a product from the search and removes another before saving", async () => {
