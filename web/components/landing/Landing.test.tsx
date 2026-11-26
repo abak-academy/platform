@@ -30,7 +30,7 @@ beforeEach(() => {
 describe("Landing", () => {
   it("renders the sections in spec order with every optional section present", () => {
     render(<Landing />);
-    expect(order()).toEqual(["hero", "programs", "about", "events", "features", "courses", "stories", "shop", "school", "faq", "cta"]);
+    expect(order()).toEqual(["hero", "programs", "about", "events", "features", "stories", "shop", "school", "faq", "cta"]);
   });
 
   it("has no Baru kicker and only the hero stats list (no end-of-page stats band)", () => {
@@ -63,15 +63,19 @@ describe("Landing", () => {
     expect(order()).not.toContain("courses");
   });
 
-  it("shop shows only book/merchandise/medal products, at most 4", () => {
-    h.all = { data: [product("b1", "book"), product("e1", "exam"), product("c1", "course"), product("m1", "merchandise"), product("b2", "book"), product("b3", "book"), product("b4", "book")] };
+  it("one Toko section mixes courses with books/merchandise/medals, no exams, at most 8", () => {
+    h.all = {
+      data: [
+        product("b1", "book"), product("e1", "exam"), product("c1", "course"), product("m1", "merchandise"),
+        product("b2", "book"), product("b3", "book"), product("b4", "book"), product("b5", "book"),
+        product("b6", "book"), product("b7", "book"),
+      ],
+    };
     render(<Landing />);
+    expect(document.querySelector('[data-section="courses"]')).toBeNull();
     const shop = within(document.querySelector('[data-section="shop"]') as HTMLElement);
-    expect(shop.getAllByRole("link", { name: /Produk/ }).map((a) => a.getAttribute("href"))).toEqual([
-      "/catalog/b1",
-      "/catalog/m1",
-      "/catalog/b2",
-      "/catalog/b3",
+    expect(shop.getAllByRole("link", { name: /Produk|Kursus/ }).map((a) => a.getAttribute("href"))).toEqual([
+      "/catalog/b1", "/catalog/c1", "/catalog/m1", "/catalog/b2", "/catalog/b3", "/catalog/b4", "/catalog/b5", "/catalog/b6",
     ]);
     expect(shop.getByRole("link", { name: "Ke toko" })).toHaveAttribute("href", "/catalog");
   });

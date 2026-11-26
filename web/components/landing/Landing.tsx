@@ -23,7 +23,7 @@ import { useTranslation } from "@/lib/i18n";
 import { waHref } from "@/lib/site-config";
 import type { Product } from "@/lib/types";
 
-const SHOP_TYPES = ["book", "merchandise", "medal"];
+const SHOP_TYPES = ["course", "book", "merchandise", "medal"];
 const SECTION = "mx-auto w-full max-w-public px-6 pt-[60px] md:pt-[88px]";
 
 function ProductSection({
@@ -67,14 +67,14 @@ export function Landing() {
   const { t, lang } = useTranslation();
   const events = useEventSeries(lang);
   const testimonials = useTestimonials(lang);
-  const courses = useProducts("course");
   const products = useProducts();
   const [picked, setPicked] = useState<string | null>(null);
 
   const list = events.isError ? [] : (events.data ?? []);
   const selected = list.find((e) => e.slug === picked) ?? list[0];
-  const courseList = (courses.isError ? [] : (courses.data ?? [])).filter((p) => !p.status || p.status === "published").slice(0, 4);
-  const shopList = (products.isError ? [] : (products.data ?? [])).filter((p) => SHOP_TYPES.includes(p.type)).slice(0, 4);
+  const shopList = (products.isError ? [] : (products.data ?? []))
+    .filter((p) => SHOP_TYPES.includes(p.type) && (!p.status || p.status === "published"))
+    .slice(0, 8);
   const stories = testimonials.isError ? [] : (testimonials.data ?? []);
 
   return (
@@ -117,16 +117,6 @@ export function Landing() {
       <div data-section="features" className="contents">
         <FeatureGrid />
       </div>
-      {courseList.length > 0 && (
-        <ProductSection
-          name="courses"
-          eyebrow={t("land_courses_eyebrow")}
-          title={t("land_courses_title")}
-          linkLabel={t("land_courses_all")}
-          href="/catalog?type=course"
-          products={courseList}
-        />
-      )}
       {stories.length > 0 && (
         <div data-section="stories" className="contents">
           <StorySlider items={stories} />
