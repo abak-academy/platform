@@ -7,6 +7,9 @@ export type Lang = "id" | "en";
 interface UIState {
   theme: Theme;
   lang: Lang;
+  publicShells: number;
+  enterPublic: () => void;
+  leavePublic: () => void;
   toggleTheme: () => void;
   setLang: (lang: Lang) => void;
 }
@@ -16,10 +19,16 @@ export const useUIStore = create<UIState>()(
     (set) => ({
       theme: "light",
       lang: "id",
+      publicShells: 0,
+      enterPublic: () => set((s) => ({ publicShells: s.publicShells + 1 })),
+      leavePublic: () => set((s) => ({ publicShells: Math.max(0, s.publicShells - 1) })),
       toggleTheme: () =>
         set((s) => ({ theme: s.theme === "light" ? "dark" : "light" })),
       setLang: (lang) => set({ lang }),
     }),
-    { name: "abak-ui" }
+    {
+      name: "abak-ui",
+      partialize: (s) => ({ theme: s.theme, lang: s.lang }),
+    }
   )
 );

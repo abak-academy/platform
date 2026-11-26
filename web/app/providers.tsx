@@ -6,8 +6,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { useUIStore } from "@/stores/ui"
 import { useAuthStore } from "@/stores/auth"
 
-function ThemeSync() {
-  const theme = useUIStore((s) => s.theme)
+export function ThemeSync() {
+  const theme = useUIStore((s) => (s.publicShells > 0 ? "light" : s.theme))
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme)
   }, [theme])

@@ -1,5 +1,7 @@
 "use client";
 
+import { useLayoutEffect } from "react";
+import { useUIStore } from "@/stores/ui";
 import { PublicMotion } from "@/components/motion/PublicMotion";
 import { useTranslation } from "@/lib/i18n";
 import { SiteFooter } from "./SiteFooter";
@@ -7,6 +9,11 @@ import { SiteNav } from "./SiteNav";
 
 export function PublicShell({ children, guestOnly }: { children: React.ReactNode; guestOnly?: boolean }) {
   const { t } = useTranslation();
+  useLayoutEffect(() => {
+    const { enterPublic, leavePublic } = useUIStore.getState();
+    enterPublic();
+    return leavePublic;
+  }, []);
   return (
     <div data-public-shell data-guest-only={guestOnly ? "" : undefined} onContextMenu={(e) => e.preventDefault()}>
       <a
