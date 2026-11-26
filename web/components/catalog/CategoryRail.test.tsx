@@ -3,9 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { CATALOG_CATEGORIES, CategoryRail } from "./CategoryRail";
 
 describe("CategoryRail", () => {
-  it("lists all six categories, medal and merchandise included", () => {
+  it("lists five categories, medal and merchandise included, and no exam tab (exams live on /event)", () => {
     render(<CategoryRail value="all" onChange={() => {}} />);
-    expect(CATALOG_CATEGORIES).toHaveLength(6);
+    expect(CATALOG_CATEGORIES.map((c) => c.value)).toEqual(["all", "book", "course", "merchandise", "medal"]);
+    expect(screen.queryByRole("button", { name: /kompetisi/i })).toBeNull();
     expect(screen.getByRole("button", { name: "Merchandise" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Medali" })).toBeTruthy();
   });
