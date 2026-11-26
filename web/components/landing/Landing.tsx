@@ -24,7 +24,7 @@ import { waHref } from "@/lib/site-config";
 import type { Product } from "@/lib/types";
 
 const SHOP_TYPES = ["book", "merchandise", "medal"];
-const SECTION = "mx-auto w-full max-w-public px-6 py-20";
+const SECTION = "mx-auto w-full max-w-public px-6 pt-[60px] md:pt-[88px]";
 
 function ProductSection({
   name,

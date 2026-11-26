@@ -15,7 +15,7 @@ const QA = [
 export function Faq() {
   const { t } = useTranslation();
   return (
-    <section data-reveal className="mx-auto w-full max-w-public-narrow px-6 py-20">
+    <section data-reveal className="mx-auto w-full max-w-public-narrow px-6 pt-[60px] md:pt-[88px]">
       <div className="mb-8">
         <span className="type-overline text-brand-ink">{t("land_faq_eyebrow")}</span>
         <h2 className="type-display mt-2 text-ink-900">{t("land_faq_title")}</h2>

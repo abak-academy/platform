@@ -19,7 +19,7 @@ export function StorySlider({ items }: { items: PublicTestimonial[] }) {
   const photo = fileUrl(current.photo_url);
 
   return (
-    <section data-reveal className="mx-auto w-full max-w-public px-6 py-20">
+    <section data-reveal className="mx-auto w-full max-w-public px-6 pt-[60px] md:pt-[88px]">
       <div className="grid gap-8 overflow-hidden rounded-[var(--radius-panel)] border border-line bg-surface p-4 shadow-card md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:p-6">
         <div className="aspect-[4/5] overflow-hidden rounded-[var(--radius-card)] bg-surface-sunken">
           {photo && (
