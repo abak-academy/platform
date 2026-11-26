@@ -20,7 +20,7 @@ import { toast } from "sonner";
 import { ApiError, fileUrl } from "@/lib/api";
 import { ProductSpecsEditor } from "@/components/admin/ProductSpecsEditor";
 import { PartnerAccessSection, usePartnerAccessDraft } from "@/components/admin/PartnerAccessSection";
-import type { Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
+import type { EventStage, Product, ProductType, ProductStatus, ProductSpec, ProductRelation, AdminCreateProductInput, AdminUpdateProductInput } from "@/lib/types";
 import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { useAdminProduct, useUpdateProductRelations } from "@/lib/hooks/admin-products";
 import { useTranslation } from "@/lib/i18n";
@@ -98,6 +98,9 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const [availableFrom, setAvailableFrom] = useState("");
   const [availableUntil, setAvailableUntil] = useState("");
   const [specs, setSpecs] = useState<ProductSpec[]>([]);
+  const [stages, setStages] = useState<EventStage[]>([]);
+  const [gradeMin, setGradeMin] = useState("");
+  const [gradeMax, setGradeMax] = useState("");
   const { data: courses } = useAdminCourses();
   const [examSearch, setExamSearch] = useState("");
   const examQ = useDebouncedValue(examSearch).trim();
@@ -126,6 +129,9 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setAvailableFrom(toLocalInput(product.available_from));
         setAvailableUntil(toLocalInput(product.available_until));
         setSpecs(product.specs ?? []);
+        setStages(product.stages ?? []);
+        setGradeMin(product.grade_min != null ? String(product.grade_min) : "");
+        setGradeMax(product.grade_max != null ? String(product.grade_max) : "");
       } else {
         setName("");
         setType("");
@@ -141,6 +147,9 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         setAvailableFrom("");
         setAvailableUntil("");
         setSpecs([]);
+        setStages([]);
+        setGradeMin("");
+        setGradeMax("");
       }
     }
   }, [open, product]);
@@ -178,8 +187,10 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
   const effectiveType = isEdit ? product?.type : type;
   const showCourses = effectiveType === "course";
   const showExams = effectiveType === "exam";
+  const showLevel = isEdit && product?.type === "exam";
   const canSubmit =
     name.trim() !== "" &&
+    !(showLevel && gradeRangeInvalid(gradeMin, gradeMax)) &&
     (isEdit || type !== "") &&
     price !== "" &&
     (type !== "exam" || !quotaLimited || (stock.trim() !== "" && Number.isInteger(Number(stock)) && Number(stock) >= 0)) &&
@@ -229,6 +240,7 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
         ...(showWeight && weight !== "" ? { weight_grams: Number(weight) } : {}),
         ...(imageUrl !== "" ? { image_url: imageUrl } : {}),
         specs: specs.filter((s) => s.label.trim() !== "" && s.value.trim() !== ""),
+        ...(showLevel ? levelPayload(stages, gradeMin, gradeMax) : {}),
       };
       void saveAccessThen(() => onSubmit(input));
       return;
@@ -579,6 +591,23 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
               </div>
             </Section>
 
+            {showLevel && (
+              <Section title="Jenjang & kelas">
+                <ProductLevelFields
+                  idPrefix="product"
+                  stages={stages}
+                  gradeMin={gradeMin}
+                  gradeMax={gradeMax}
+                  disabled={isPending}
+                  onChange={(n) => {
+                    setStages(n.stages);
+                    setGradeMin(n.gradeMin);
+                    setGradeMax(n.gradeMax);
+                  }}
+                />
+              </Section>
+            )}
+
             <ProductSpecsEditor type={type as ProductType} value={specs} onChange={setSpecs} />
 
             <Section title="Deskripsi">
@@ -652,6 +681,84 @@ export function ProductModal({ open, onOpenChange, product, onSubmit, isPending 
 
 // Each group gets a heading on a hairline so the form reads as a handful of
 // topics rather than one run of fourteen fields.
+const LEVEL_STAGES: EventStage[] = ["SD", "SMP", "SMA"];
+
+export function gradeRangeInvalid(min: string, max: string): boolean {
+  return min !== "" && max !== "" && Number(max) < Number(min);
+}
+
+export function levelPayload(stages: EventStage[], min: string, max: string) {
+  return { stages, grade_min: min === "" ? null : Number(min), grade_max: max === "" ? null : Number(max) };
+}
+
+export function ProductLevelFields({
+  stages,
+  gradeMin,
+  gradeMax,
+  onChange,
+  disabled,
+  idPrefix,
+}: {
+  stages: EventStage[];
+  gradeMin: string;
+  gradeMax: string;
+  onChange: (next: { stages: EventStage[]; gradeMin: string; gradeMax: string }) => void;
+  disabled?: boolean;
+  idPrefix: string;
+}) {
+  const invalid = gradeRangeInvalid(gradeMin, gradeMax);
+  return (
+    <div className="grid gap-3">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Jenjang">
+        {LEVEL_STAGES.map((stage) => {
+          const on = stages.includes(stage);
+          return (
+            <button
+              key={stage}
+              type="button"
+              aria-pressed={on}
+              disabled={disabled}
+              onClick={() =>
+                onChange({ stages: LEVEL_STAGES.filter((x) => (x === stage ? !on : stages.includes(x))), gradeMin, gradeMax })
+              }
+              className={`md-chip cursor-pointer text-[13px] transition-colors ${on ? "md-chip-primary ring-1 ring-[var(--md-sys-color-primary)]" : ""}`}
+            >
+              {stage}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-1">
+          <Label htmlFor={`${idPrefix}-grade-min`}>Kelas dari</Label>
+          <Input
+            id={`${idPrefix}-grade-min`}
+            type="number"
+            min={1}
+            max={12}
+            value={gradeMin}
+            onChange={(e) => onChange({ stages, gradeMin: e.target.value, gradeMax })}
+            disabled={disabled}
+          />
+        </div>
+        <div className="grid gap-1">
+          <Label htmlFor={`${idPrefix}-grade-max`}>Kelas sampai</Label>
+          <Input
+            id={`${idPrefix}-grade-max`}
+            type="number"
+            min={1}
+            max={12}
+            value={gradeMax}
+            onChange={(e) => onChange({ stages, gradeMin, gradeMax: e.target.value })}
+            disabled={disabled}
+          />
+        </div>
+      </div>
+      {invalid && <p role="alert" className="text-sm text-destructive">Kelas sampai tidak boleh lebih kecil dari kelas dari.</p>}
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="flex flex-col gap-3">

@@ -110,6 +110,16 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusForbidden, APIError{Code: "registration_revoked", Message: err.Error()}
 	case errors.Is(err, service.ErrRegistrationHasActiveSession):
 		status, apiErr = http.StatusConflict, APIError{Code: "registration_has_active_session", Message: err.Error()}
+	case errors.Is(err, service.ErrGroupingIncomplete):
+		var incErr *service.GroupingIncompleteError
+		errors.As(err, &incErr)
+		return c.JSON(http.StatusUnprocessableEntity, map[string]any{"code": "validation_failed", "message": err.Error(), "missing": incErr.Missing})
+	case errors.Is(err, service.ErrGroupingHasProducts):
+		status, apiErr = http.StatusConflict, APIError{Code: "grouping_has_products", Message: err.Error()}
+	case errors.Is(err, repository.ErrGroupingPrefixTaken):
+		status, apiErr = http.StatusConflict, APIError{Code: "grouping_prefix_taken", Message: err.Error()}
+	case errors.Is(err, repository.ErrGroupingSlugTaken):
+		status, apiErr = http.StatusConflict, APIError{Code: "grouping_slug_taken", Message: err.Error()}
 	case errors.Is(err, service.ErrValidation):
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "validation_failed", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidPromo):

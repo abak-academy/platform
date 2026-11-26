@@ -14,12 +14,12 @@ const (
 var roleCapabilities = map[string][]string{
 	RoleStudent:    {},
 	RoleAffiliator: {},
-	RoleAdminExam:  {"questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "students:*", "student-passwords:write", "student-scope:all", "results-answers:read", "results-workspace:read", "exam-grants:write", "product-relations:write", "schools:read", "exam-preview:read"},
+	RoleAdminExam:  {"questions:*", "tests:*", "products(exam):*", "products(course):*", "sections:*", "sessions:*", "uploads:write", "results:read", "students:*", "student-passwords:write", "student-scope:all", "results-answers:read", "results-workspace:read", "exam-grants:write", "product-relations:write", "schools:read", "exam-preview:read", "product-groupings:write", "exam-results-external:write"},
 	// No revenue:read — store admins fulfil orders; revenue reporting is
 	// super_admin's. Per-order totals stay visible to them on the orders page,
 	// because confirming a manual transfer means matching the receipt to the
 	// amount. The restriction is on aggregates.
-	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "product-groupings:write", "notifications:*", "uploads:write"},
+	RoleAdminStore:  {"products(book|course):write", "sections:*", "orders:*", "promos:*", "product-groupings:write", "exam-results-external:write", "notifications:*", "uploads:write"},
 	RoleAdminSchool: {"students:*", "results:read", "bulk-exam-orders:write", "products(exam):read"},
 	RoleSuperAdmin:  {"*", "schools:write"},
 }

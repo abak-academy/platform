@@ -1109,4 +1109,68 @@ describe("ProductModal", () => {
     });
   });
 
+
+  describe("level fields (exam products)", () => {
+    const examProduct: Product = {
+      id: "p1",
+      type: "exam",
+      name: "ESOLIO 2026",
+      price: 150000,
+      status: "published",
+      stages: ["SD"],
+      grade_min: 4,
+      grade_max: 6,
+    };
+
+    function renderEdit(product: Product) {
+      render(<ProductModal open onOpenChange={mockOnOpenChange} product={product} onSubmit={mockOnSubmit} isPending={false} />);
+    }
+
+    it("prefills the stored level and sends the edited level in the update payload", async () => {
+      renderEdit(examProduct);
+
+      expect(screen.getByRole("button", { name: "SD" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "SMP" })).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByLabelText("Kelas dari")).toHaveValue(4);
+
+      fireEvent.click(screen.getByRole("button", { name: "SMP" }));
+      fireEvent.change(screen.getByLabelText("Kelas sampai"), { target: { value: "8" } });
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalled());
+      expect(mockOnSubmit.mock.calls[0][0]).toMatchObject({ stages: ["SD", "SMP"], grade_min: 4, grade_max: 8 });
+    });
+
+    it("sends null grades and no stages when the level is cleared", async () => {
+      renderEdit(examProduct);
+
+      fireEvent.click(screen.getByRole("button", { name: "SD" }));
+      fireEvent.change(screen.getByLabelText("Kelas dari"), { target: { value: "" } });
+      fireEvent.change(screen.getByLabelText("Kelas sampai"), { target: { value: "" } });
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalled());
+      expect(mockOnSubmit.mock.calls[0][0]).toMatchObject({ stages: [], grade_min: null, grade_max: null });
+    });
+
+    it("blocks saving when the grade range is reversed", () => {
+      renderEdit(examProduct);
+
+      fireEvent.change(screen.getByLabelText("Kelas sampai"), { target: { value: "2" } });
+
+      expect(screen.getByRole("button", { name: /^simpan$/i })).toBeDisabled();
+      expect(screen.getByText("Kelas sampai tidak boleh lebih kecil dari kelas dari.")).toBeInTheDocument();
+    });
+
+    it("does not show or send level fields for non-exam products", async () => {
+      renderEdit({ id: "b1", type: "book", name: "Buku", price: 1000, status: "published", stock: 3 });
+
+      expect(screen.queryByRole("button", { name: "SD" })).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
+
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalled());
+      expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("stages");
+      expect(mockOnSubmit.mock.calls[0][0]).not.toHaveProperty("grade_min");
+    });
+  });
 });

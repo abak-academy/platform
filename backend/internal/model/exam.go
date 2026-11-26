@@ -214,8 +214,8 @@ type ExamRegistration struct {
 	AttemptsUsed int        `json:"attempts_used"`
 	Status       string     `json:"status"`
 	CreatedAt    time.Time  `json:"created_at"`
-	// ParticipantNumber is a per-exam sequence assigned at registration (nil for
-	// rows predating the column until backfilled). Displayed as ParticipantNo.
+	// ParticipantNumber is a per-exam sequence assigned at registration.
+	// Displayed as ParticipantNo.
 	ParticipantNumber *int `json:"participant_number"`
 	// RevokedAt/RevokedBy are set when an admin revokes the registration (soft
 	// revoke — the row is kept so sessions/history stay referentially intact).
@@ -383,6 +383,8 @@ type RegistrationListItem struct {
 	QuestionCount           int             `json:"question_count"`
 	SectionsDurationMinutes *int            `json:"sections_duration_minutes"`
 	RawRules                ExamRuleColumns `json:"-"`
+	// ExternalResults are the published uploaded-round results of this registration.
+	ExternalResults []StudentExternalResult `json:"external_results"`
 }
 
 // ExamRuleColumns carries the raw exam columns the service resolves into the
@@ -437,10 +439,14 @@ type RegistrationExam struct {
 // an ExamRegistration joined with the nested exam config needed by the student detail page.
 type RegistrationDetail struct {
 	ExamRegistration `json:",inline"`
-	// ParticipantNo is the display form of ParticipantNumber, "YYMMDD-<exam_number(pad4)>-NNNNNN"
-	// where YYMMDD is the exam's scheduled start date (falls back to the
-	// registration date if the exam is not yet scheduled). Empty if unassigned.
+	// ParticipantNo is the display form of ParticipantNumber,
+	// "[<PREFIX>-]YYMMDD-<exam_number(pad4)>-NNNNNN" where YYMMDD is the exam's
+	// scheduled start date (falls back to the registration date if the exam is
+	// not yet scheduled). Empty if unassigned.
 	ParticipantNo string `json:"participant_no"`
+	// EventPrefix is the participant_prefix of the exam's single event; nil
+	// when the exam has no event, the event has no prefix, or it is in two events.
+	EventPrefix *string `json:"-"`
 	// Subject is the aggregated subject(s) of the exam's attached test(s)
 	// (Paket/Mapel on the card). Platform is the single, system-config-sourced
 	// exam platform (Platform/Ruang on the card).
@@ -463,10 +469,9 @@ type RegistrationDetail struct {
 
 // ExamRosterEntry is one row of the admin participant roster for an exam
 // (GET /admin/exams/:id/registrations, FR-32): a registration joined with the
-// student's name/username. ParticipantNumber may be nil for rows predating
-// FR-24 (participant_number backfill) — ParticipantNo stays "" in that case;
+// student's name/username. ParticipantNo stays "" when ParticipantNumber is nil;
 // the service composes it (formatParticipantNo) from the raw ExamScheduledAt/
-// ExamNumber/RegisteredAt ingredients, which are join inputs only and not
+// ExamNumber/RegisteredAt/EventPrefix ingredients, which are join inputs only and not
 // surfaced on the wire (json:"-").
 // Token (FR-47/FR-48, NFR-S7) is the exam check-in credential; it must never
 // be added to the CSV export or logged, and only ever served on this
@@ -486,6 +491,7 @@ type ExamRosterEntry struct {
 	SchoolKota        *string    `json:"school_kota"`
 	ParticipantNumber *int       `json:"participant_number"`
 	ParticipantNo     string     `json:"participant_no"`
+	EventPrefix       *string    `json:"-"`
 	Status            string     `json:"status"`
 	CheckedInAt       *time.Time `json:"checked_in_at"`
 	Token             string     `json:"token"`

@@ -196,10 +196,18 @@ export interface Product {
   relations?: ProductRelation[];
   grouping_id?: string | null;
   grouping_order?: number;
+  stages?: EventStage[] | null;
+  grade_min?: number | null;
+  grade_max?: number | null;
+  /** Exam products inside an event only. */
+  phase?: EditionPhase;
+  multi_event?: boolean;
   created_at?: string;
   updated_at?: string;
 }
 
+export type EventStage = "SD" | "SMP" | "SMA";
+export type EditionPhase = "open" | "live" | "closed" | "done";
 export type ProductGroupingStatus = "draft" | "published";
 
 export interface ProductGrouping {
@@ -212,19 +220,88 @@ export interface ProductGrouping {
   updated_at?: string;
 }
 
-export interface ProductGroupingDetail extends ProductGrouping {
+export type EventScope = "national" | "international";
+export type EventTone = "brand" | "ember" | "teal" | "gold" | "sky" | "berry" | "navy";
+export type EventIllustration = "math" | "science" | "language" | "coding" | "trophy";
+export type EventLocale = "id" | "en";
+
+export interface EventNarrative {
+  full_name: string;
+  tagline: string;
+  levels_label: string;
+  story: string[];
+  rounds: string[];
+  categories: { name: string; detail: string }[];
+  facts: { label: string; value: string }[];
+}
+
+export interface EventScheduleItem {
+  id?: string;
+  label: string;
+  label_en: string | null;
+  starts_on: string;
+  ends_on: string | null;
+}
+
+export interface EventMilestone {
+  label: string;
+  starts_on: string;
+  ends_on: string | null;
+  state: "done" | "ongoing" | "upcoming";
+}
+
+/** An event: the admin view of a product grouping. */
+export interface AdminProductGrouping extends ProductGrouping {
+  slug: string;
+  short_name: string | null;
+  scope: EventScope | null;
+  subjects: string[] | null;
+  tone: EventTone;
+  illustration: EventIllustration;
+  logo_key: string | null;
+  official_url: string | null;
+  content: Partial<Record<EventLocale, Partial<EventNarrative>>> | null;
+  is_visible: boolean;
+  participant_prefix: string | null;
+  logo_url?: string | null;
+  edition_count?: number;
+  open_edition_count?: number;
+  next_milestone?: EventMilestone | null;
+}
+
+export interface ProductGroupingDetail extends AdminProductGrouping {
   products: Product[];
+  schedule: EventScheduleItem[] | null;
+  en_complete: boolean;
 }
 
 export interface AdminCreateProductGroupingInput {
   name: string;
   description?: string;
+  short_name?: string;
 }
 
 export interface AdminUpdateProductGroupingInput {
   name?: string;
   description?: string;
   status?: ProductGroupingStatus;
+  short_name?: string;
+  scope?: EventScope | "";
+  subjects?: string[];
+  tone?: EventTone;
+  illustration?: EventIllustration;
+  logo_key?: string;
+  official_url?: string;
+  content?: Partial<Record<EventLocale, EventNarrative>>;
+  is_visible?: boolean;
+  participant_prefix?: string;
+  schedule?: EventScheduleItem[];
+}
+
+export interface AdminUpdateProductLevelInput {
+  stages: EventStage[];
+  grade_min: number | null;
+  grade_max: number | null;
 }
 
 export interface AdminCreateProductInput {
@@ -253,6 +330,9 @@ export interface AdminUpdateProductInput {
   specs?: ProductSpec[];
   available_from?: string | null;
   available_until?: string | null;
+  stages?: EventStage[];
+  grade_min?: number | null;
+  grade_max?: number | null;
 }
 
 export type AdminUpdateProductRelationsInput =
@@ -1218,6 +1298,50 @@ export interface RegistrationListItem {
   section_count: number;
   question_count: number;
   sections_duration_minutes: number | null;
+  external_results?: StudentExternalResult[];
+}
+
+export interface StudentExternalResult {
+  round_id: string;
+  round_label: string;
+  score: number;
+  rank: number | null;
+  award: string | null;
+  certificate_url: string | null;
+  published_at: string;
+}
+
+export interface ExternalRound {
+  id: string;
+  exam_id: string;
+  label: string;
+  label_en: string | null;
+  row_count: number;
+  published_at: string | null;
+  updated_at: string;
+}
+
+export interface ExternalRowError {
+  line: number;
+  participant_no: string;
+  reason: string;
+}
+
+export interface ExternalRoundPreview {
+  matched: number;
+  errors: ExternalRowError[];
+  round_exists: boolean;
+  round_published: boolean;
+}
+
+export interface ExternalResultRow {
+  registration_id: string;
+  student_name: string;
+  participant_no: string;
+  score: number;
+  rank: number | null;
+  award: string | null;
+  certificate_url: string | null;
 }
 
 export interface ExamPreviewSection {

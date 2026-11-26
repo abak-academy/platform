@@ -108,7 +108,7 @@ const STUDENTS: NavItem = { labelKey: "students", href: "/admin/school/students"
 const ANNOUNCEMENTS: NavItem = { labelKey: "nav_announcements", href: "/admin/notifications", icon: Bell };
 const ORDERS: NavItem = { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt };
 const PRODUCTS: NavItem = { labelKey: "admin_nav_products", href: "/admin/products", icon: Package };
-const GROUPINGS: NavItem = { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Layers };
+const EVENT: NavItem = { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Layers };
 const COURSES: NavItem = { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library };
 const PROMOS: NavItem = { labelKey: "promos", href: "/admin/promos", icon: Tag };
 
@@ -118,13 +118,13 @@ const home = (href: string): NavGroup => ({
 
 export const CONTENT_MANAGER_NAV: RoleNavConfig = [
   home("/admin/store"),
-  academicItems(ANNOUNCEMENTS),
-  { titleKey: "nav_group_store", items: [ORDERS, PRODUCTS, GROUPINGS, COURSES, PROMOS] },
+  academicItems(EVENT, ANNOUNCEMENTS),
+  { titleKey: "nav_group_store", items: [ORDERS, PRODUCTS, COURSES, PROMOS] },
 ];
 
 export const ADMIN_EXAM_NAV: RoleNavConfig = [
   home("/admin/exam"),
-  academicItems(PACKAGES, MONITOR, TESTS, QUESTIONS, STUDENTS),
+  academicItems(EVENT, PACKAGES, MONITOR, TESTS, QUESTIONS, STUDENTS),
   { titleKey: "nav_group_store", items: [PRODUCTS, COURSES] },
 ];
 
@@ -136,6 +136,7 @@ export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
 const SUPER_ADMIN_NAV: RoleNavConfig = [
   home("/admin"),
   academicItems(
+    EVENT,
     PACKAGES,
     MONITOR,
     TESTS,
@@ -149,7 +150,6 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     items: [
       ORDERS,
       PRODUCTS,
-      GROUPINGS,
       COURSES,
       PROMOS,
       { labelKey: "nav_store_summary", href: "/admin/store", icon: Store, exact: true },

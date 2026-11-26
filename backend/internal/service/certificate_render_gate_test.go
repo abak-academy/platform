@@ -320,3 +320,25 @@ func TestCardRender_ThroughWorker(t *testing.T) {
 		t.Fatal("rasterized card has zero dimensions")
 	}
 }
+
+// TestCardRender_PrefixedParticipantNo_ThroughWorker proves the widest card
+// string (event prefix + number) still renders to a PDF through Gotenberg.
+func TestCardRender_PrefixedParticipantNo_ThroughWorker(t *testing.T) {
+	renderer := NewGotenbergPDFGenerator(renderGateGotenbergURL(), nil)
+	data := &CardPrintData{
+		ParticipantNo: "ABCDEF-250620-0001-000001",
+		StudentName:   "Render Gate Card Student",
+		School:        "SMA Gate Test",
+		ExamTitle:     "Ujian Gerbang Render",
+		ExamSchedule:  "02 Aug 2026 09:00 WIB",
+		CheckInCode:   "GATECODE1",
+	}
+
+	pdf, err := generateExamCardPDF(context.Background(), renderer, data)
+	if err != nil {
+		t.Fatalf("generateExamCardPDF: %v", err)
+	}
+	if !bytes.HasPrefix(pdf, []byte("%PDF-")) {
+		t.Fatalf("output is not a PDF (no %%PDF- header)")
+	}
+}

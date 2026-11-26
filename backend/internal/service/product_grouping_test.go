@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"akademi-bimbel/internal/model"
 	"akademi-bimbel/internal/repository"
@@ -78,7 +79,7 @@ func TestAdminSetGroupingProducts_AssignsOrdersAndUnassignsRemoved(t *testing.T)
 	}
 }
 
-func TestAdminDeleteProductGrouping_UngroupsMembers(t *testing.T) {
+func TestAdminDeleteProductGrouping_RefusedWhileMembersExist(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	g, err := svc.AdminCreateProductGrouping(ctx, model.ProductGrouping{Name: "Grouping " + uniqueSuffix()})
@@ -90,16 +91,19 @@ func TestAdminDeleteProductGrouping_UngroupsMembers(t *testing.T) {
 		t.Fatalf("assign product: %v", err)
 	}
 
-	if err := svc.AdminDeleteProductGrouping(ctx, g.ID); err != nil {
-		t.Fatalf("AdminDeleteProductGrouping() err = %v", err)
+	if err := svc.AdminDeleteProductGrouping(ctx, g.ID); !errors.Is(err, ErrGroupingHasProducts) {
+		t.Fatalf("AdminDeleteProductGrouping() with members err = %v, want ErrGroupingHasProducts", err)
+	}
+	after, err := repo.GetProductByID(ctx, p.ID)
+	if err != nil || after.GroupingID == nil {
+		t.Fatalf("member must stay grouped after the refused delete: %+v err=%v", after, err)
 	}
 
-	after, err := repo.GetProductByID(ctx, p.ID)
-	if err != nil {
-		t.Fatalf("get product after grouping delete: %v", err)
+	if _, _, err := svc.AdminSetGroupingProducts(ctx, g.ID, nil); err != nil {
+		t.Fatalf("unassign product: %v", err)
 	}
-	if after.GroupingID != nil {
-		t.Fatalf("product.GroupingID = %v, want nil once its grouping is deleted", *after.GroupingID)
+	if err := svc.AdminDeleteProductGrouping(ctx, g.ID); err != nil {
+		t.Fatalf("AdminDeleteProductGrouping() when empty err = %v", err)
 	}
 	if _, _, err := svc.AdminGetProductGrouping(ctx, g.ID); !errors.Is(err, ErrProductGroupingNotFound) {
 		t.Fatalf("AdminGetProductGrouping() after delete err = %v, want ErrProductGroupingNotFound", err)
@@ -130,7 +134,7 @@ func TestListProducts_GroupingIDFilter_RespectsGroupingPublishStatus(t *testing.
 	}
 
 	published := model.ProductGroupingStatusPublished
-	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, nil, nil, &published); err != nil {
+	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{Status: &published}); err != nil {
 		t.Fatalf("publish grouping: %v", err)
 	}
 	products, _, err = svc.ListProducts(ctx, repository.ProductFilter{GroupingID: g.ID}, RoleStudent)
@@ -150,7 +154,7 @@ func TestAdminUpdateProductGrouping_RejectsInvalidStatus(t *testing.T) {
 		t.Fatalf("create grouping: %v", err)
 	}
 	bogus := "archived"
-	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, nil, nil, &bogus); !errors.Is(err, ErrValidation) {
+	if _, err := svc.AdminUpdateProductGrouping(ctx, g.ID, ProductGroupingPatch{Status: &bogus}); !errors.Is(err, ErrValidation) {
 		t.Fatalf("AdminUpdateProductGrouping() err = %v, want ErrValidation", err)
 	}
 }
@@ -181,5 +185,48 @@ func TestAdminReorderProductGroupings_SetsDisplayOrder(t *testing.T) {
 	}
 	if idx[g2.ID] >= idx[g1.ID] {
 		t.Fatalf("list order = %+v, want g2 before g1", all)
+	}
+}
+
+// A membership write committed while DELETE waits on the grouping lock must
+// make the DELETE refuse, not ungroup the new member via ON DELETE SET NULL.
+func TestAdminDeleteProductGrouping_WaitsForConcurrentMembershipWrite(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	g, err := svc.AdminCreateProductGrouping(ctx, model.ProductGrouping{Name: "Grouping " + uniqueSuffix()})
+	if err != nil {
+		t.Fatalf("create grouping: %v", err)
+	}
+	p := seedGroupingProduct(t, repo, "Buku "+uniqueSuffix())
+
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := repo.GetProductGroupingForUpdateTx(ctx, tx, g.ID); err != nil {
+		t.Fatalf("lock grouping: %v", err)
+	}
+	if _, err := tx.Exec(ctx, `UPDATE product SET grouping_id = $1 WHERE id = $2`, g.ID, p.ID); err != nil {
+		t.Fatalf("assign in tx: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- svc.AdminDeleteProductGrouping(ctx, g.ID) }()
+	select {
+	case err := <-done:
+		t.Fatalf("delete returned %v before the membership tx committed; it must wait on the grouping lock", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	if err := <-done; !errors.Is(err, ErrGroupingHasProducts) {
+		t.Fatalf("AdminDeleteProductGrouping() err = %v, want ErrGroupingHasProducts", err)
+	}
+	after, err := repo.GetProductByID(ctx, p.ID)
+	if err != nil || after.GroupingID == nil || *after.GroupingID != g.ID {
+		t.Fatalf("member must stay grouped: %+v err=%v", after, err)
 	}
 }

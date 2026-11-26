@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { DICT } from "./i18n";
 import { ADMIN_ROLES, NAV_CONFIG, USER_MENU, type UserRole } from "./nav-config";
 
 const hrefs = (role: UserRole, titleKey?: string) =>
@@ -19,6 +20,7 @@ describe("admin navigation", () => {
 
   it("orders super-admin Akademik items by workflow", () => {
     expect(hrefs("super_admin", "nav_group_academic")).toEqual([
+      "/admin/product-groupings",
       "/admin/exam/packages",
       "/admin/exam/monitor",
       "/admin/exam/tests",
@@ -29,11 +31,10 @@ describe("admin navigation", () => {
     ]);
   });
 
-  it("orders super-admin Toko items with Grup produk right after Produk", () => {
+  it("orders super-admin Toko items without the event entry", () => {
     expect(hrefs("super_admin", "nav_group_store")).toEqual([
       "/admin/orders",
       "/admin/products",
-      "/admin/product-groupings",
       "/admin/courses",
       "/admin/promos",
       "/admin/store",
@@ -60,6 +61,7 @@ describe("admin navigation", () => {
     expect(titles("admin_exam")).toEqual([undefined, "nav_group_academic", "nav_group_store"]);
     expect(NAV_CONFIG.admin_exam[0].items.map((i) => i.href)).toEqual(["/admin/exam"]);
     expect(hrefs("admin_exam", "nav_group_academic")).toEqual([
+      "/admin/product-groupings",
       "/admin/exam/packages",
       "/admin/exam/monitor",
       "/admin/exam/tests",
@@ -81,14 +83,24 @@ describe("admin navigation", () => {
   it("uses Beranda, Akademik, Toko for admin_store", () => {
     expect(titles("admin_store")).toEqual([undefined, "nav_group_academic", "nav_group_store"]);
     expect(NAV_CONFIG.admin_store[0].items.map((i) => i.href)).toEqual(["/admin/store"]);
-    expect(hrefs("admin_store", "nav_group_academic")).toEqual(["/admin/notifications"]);
+    expect(hrefs("admin_store", "nav_group_academic")).toEqual(["/admin/product-groupings", "/admin/notifications"]);
     expect(hrefs("admin_store", "nav_group_store")).toEqual([
       "/admin/orders",
       "/admin/products",
-      "/admin/product-groupings",
       "/admin/courses",
       "/admin/promos",
     ]);
+  });
+
+  it("lists the event entry in Akademik for every role that manages events and never in Toko", () => {
+    const event = NAV_CONFIG.super_admin.flatMap((g) => g.items).find((i) => i.href === "/admin/product-groupings")!;
+    expect(event.labelKey).toBe("admin_nav_product_groupings");
+    expect(DICT.id.admin_nav_product_groupings).toBe("Event");
+    for (const role of ["super_admin", "admin_exam", "admin_store"] as const) {
+      expect(hrefs(role, "nav_group_academic")[0]).toBe("/admin/product-groupings");
+      expect(hrefs(role, "nav_group_store")).not.toContain("/admin/product-groupings");
+    }
+    expect(NAV_CONFIG.admin_school.flatMap((g) => g.items.map((i) => i.href))).not.toContain("/admin/product-groupings");
   });
 
   it("never renders a group with zero items and hides school reports", () => {

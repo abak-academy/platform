@@ -321,7 +321,7 @@ func (s *Service) UpdateProductRelations(ctx context.Context, id string, examIDs
 		return model.Product{}, ErrProductRelationsLocked
 	}
 	if productType == "exam" {
-		err = s.storeRepo.ReplaceProductExams(ctx, tx, pID, ids)
+		err = s.replaceProductExamsClearingCards(ctx, tx, pID, ids)
 	} else {
 		err = s.storeRepo.ReplaceProductCourses(ctx, tx, pID, ids)
 	}
@@ -332,6 +332,44 @@ func (s *Service) UpdateProductRelations(ctx context.Context, id string, examIDs
 		return model.Product{}, err
 	}
 	return s.GetProduct(ctx, id, role)
+}
+
+// replaceProductExamsClearingCards drops the cached cards of every exam this
+// change moves into or out of an event, because the printed number carries the event prefix.
+func (s *Service) replaceProductExamsClearingCards(ctx context.Context, tx pgx.Tx, productID uuid.UUID, examIDs []uuid.UUID) error {
+	groupingID, err := s.storeRepo.GetProductGroupingIDTx(ctx, tx, productID)
+	if err != nil {
+		return err
+	}
+	if groupingID == nil {
+		return s.storeRepo.ReplaceProductExams(ctx, tx, productID, examIDs)
+	}
+	before, err := s.storeRepo.ListProductExamIDsTx(ctx, tx, []uuid.UUID{productID})
+	if err != nil {
+		return err
+	}
+	if err := s.storeRepo.ReplaceProductExams(ctx, tx, productID, examIDs); err != nil {
+		return err
+	}
+	return s.clearCardsTx(ctx, tx, symmetricDifference(before, examIDs))
+}
+
+// ValidateProductLevel checks an edition's stages and grade range (display-only fields).
+func ValidateProductLevel(stages []string, gradeMin, gradeMax *int) error {
+	for _, st := range stages {
+		if st != "SD" && st != "SMP" && st != "SMA" {
+			return validationf("unknown stage %q, use SD, SMP or SMA", st)
+		}
+	}
+	for _, g := range []*int{gradeMin, gradeMax} {
+		if g != nil && (*g < 1 || *g > 12) {
+			return validationf("grade must be between 1 and 12")
+		}
+	}
+	if gradeMin != nil && gradeMax != nil && *gradeMax < *gradeMin {
+		return validationf("grade_max must not be below grade_min")
+	}
+	return nil
 }
 
 func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product, role string) (model.Product, error) {
@@ -357,6 +395,9 @@ func (s *Service) UpdateProduct(ctx context.Context, id string, p model.Product,
 	}
 	if !p.AvailableUntilSet {
 		p.AvailableUntil = existing.AvailableUntil
+	}
+	if err := ValidateProductLevel(p.Stages, p.GradeMin, p.GradeMax); err != nil {
+		return model.Product{}, err
 	}
 	if err := s.storeRepo.UpdateProduct(ctx, id, &p); err != nil {
 		return model.Product{}, err
