@@ -53,17 +53,18 @@ export default function ExamPackagesPage() {
     [cursor, q]
   );
 
-  const { data, isLoading, isFetching, isError, error } = useExams(filters);
+  const { data, isLoading, isFetching, isError, error, isPlaceholderData } = useExams(filters);
 
   useEffect(() => {
-    if (!data) return;
+    // keepPreviousData: don't adopt the old query's rows and cursor while the new one loads.
+    if (!data || isPlaceholderData) return;
     setItems((previous) => {
       if (!cursor) return data.data;
       const ids = new Set(previous.map((exam) => exam.id));
       return [...previous, ...data.data.filter((exam) => !ids.has(exam.id))];
     });
     setNextCursor(data.next_cursor);
-  }, [cursor, data, q]);
+  }, [cursor, data, q, isPlaceholderData]);
 
   return (
     <div className="flex flex-col gap-5 fade-in">
