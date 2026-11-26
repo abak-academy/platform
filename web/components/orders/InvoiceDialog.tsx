@@ -118,7 +118,13 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
               </div>
             </div>
 
-            <table className="w-full border-collapse">
+            <table className="w-full table-fixed border-collapse">
+              <colgroup>
+                <col />
+                <col className="w-12" />
+                <col className="w-24" />
+                <col className="w-28" />
+              </colgroup>
               <thead>
                 <tr className="bg-line-2 text-[11px] font-bold uppercase tracking-[.06em] text-ink-500">
                   <th className="p-1.5 text-left">{t("invoice_col_item")}</th>
@@ -130,7 +136,7 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
               <tbody>
                 {items.map((it) => (
                   <tr key={it.id} className="border-b border-line">
-                    <td className="p-1.5 py-2.5">{it.name}</td>
+                    <td className="break-words p-1.5 py-2.5">{it.name}</td>
                     <td className="p-1.5 text-center">{it.qty}</td>
                     <td className="whitespace-nowrap p-1.5 text-right">{formatRupiah(it.unit_price)}</td>
                     <td className="whitespace-nowrap p-1.5 text-right">{formatRupiah(it.jumlah ?? it.unit_price * it.qty)}</td>
