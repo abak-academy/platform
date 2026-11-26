@@ -10,7 +10,7 @@ vi.mock("@/lib/i18n", () => ({
 }));
 
 const themeBtn = () => screen.queryByRole("button", { name: /dark_mode|light_mode/ });
-const bellLink = () => screen.queryByRole("link", { name: "Notifikasi" });
+const bellLink = () => screen.queryByRole("link", { name: "notifications" });
 
 describe("AppHeader — admin and affiliator roles", () => {
   it.each<UserRole>([...ADMIN_ROLES, "affiliator"])(
@@ -30,7 +30,7 @@ describe("AppHeader — admin and affiliator roles", () => {
   it("renders the bell as a link to announcements, never a dead button", () => {
     render(<AppHeader role="super_admin" />);
     expect(bellLink()).toHaveAttribute("href", "/admin/notifications");
-    expect(screen.queryByRole("button", { name: "Notifikasi" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "notifications" })).not.toBeInTheDocument();
   });
 
   it("omits the bell for a role without an announcements page", () => {
@@ -68,7 +68,7 @@ describe("AppHeader — menu button", () => {
     const menuButtonRef = createRef<HTMLButtonElement>();
     render(<AppHeader role="student" onMenuClick={onMenuClick} menuButtonRef={menuButtonRef} />);
 
-    const button = screen.getByRole("button", { name: "Toggle sidebar" });
+    const button = screen.getByRole("button", { name: "toggle_sidebar" });
     await userEvent.click(button);
 
     expect(onMenuClick).toHaveBeenCalledTimes(1);

@@ -182,7 +182,7 @@ export function ListToolbar({ value, onChange, filters, sorts, count, unit, vari
             <PopoverTrigger asChild>
               <ToolbarFilterButton label={t("list_toolbar_filter")} count={active.length} />
             </PopoverTrigger>
-            <PopoverContent align="end" className="admin-shell max-h-[var(--radix-popover-content-available-height)] overflow-y-auto" aria-label={t("list_toolbar_filter")}>
+            <PopoverContent align="end" className="admin-shell w-96 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto" aria-label={t("list_toolbar_filter")}>
               <div className="flex flex-col gap-3.5">
                 {filters.map((f) => (
                   <div key={f.key} role="group" aria-label={f.label}>

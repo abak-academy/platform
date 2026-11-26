@@ -210,7 +210,7 @@ export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
         <Link href="/" aria-label="Abak Academy">
           <AbakWordmark size={36} />
         </Link>
-        <span className="mt-1.5 text-[11px] font-medium text-ink-500">
+        <span className="mt-1.5 text-[11px] font-medium text-ink-600">
           {ADMIN_ROLES.includes(role) ? t("admin_panel") : t("app_tag")}
         </span>
       </div>

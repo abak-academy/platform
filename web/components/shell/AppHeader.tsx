@@ -23,12 +23,13 @@ export function MenuButton({
   buttonRef?: React.Ref<HTMLButtonElement>;
   className?: string;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       ref={buttonRef}
       type="button"
       onClick={onClick}
-      aria-label="Toggle sidebar"
+      aria-label={t("toggle_sidebar")}
       className={cn(ICON_BTN, "lg:hidden", className)}
     >
       <Menu className="size-5" />
@@ -56,9 +57,8 @@ export function HeaderActions({ role }: { role: UserRole }) {
         {theme === "dark" ? <Sun className="size-5" /> : <Moon className="size-5" />}
       </button>
       {bellHref && (
-        <Link href={bellHref} aria-label="Notifikasi" className={ICON_BTN}>
+        <Link href={bellHref} aria-label={t("notifications")} className={ICON_BTN}>
           <Bell className="size-5" />
-          <span className="absolute top-[9px] right-2.5 size-2 rounded-full bg-ember-500 ring-2 ring-surface" />
         </Link>
       )}
     </>

@@ -45,12 +45,12 @@ describe("PageHead", () => {
         <PageHead title="x" actions={<button>Aksi</button>} />
       </ShellChromeContext.Provider>
     );
-    const menu = screen.getByRole("button", { name: "Toggle sidebar" });
+    const menu = screen.getByRole("button", { name: "toggle_sidebar" });
     expect(menu).toHaveClass("lg:hidden");
     await userEvent.click(menu);
     expect(c.openMenu).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: /dark_mode|light_mode/ })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Notifikasi" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "notifications" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Aksi" })).toBeInTheDocument();
     expect(c.registerHead).toHaveBeenCalled();
   });
@@ -61,8 +61,8 @@ describe("PageHead", () => {
         <PageHead title="x" />
       </ShellChromeContext.Provider>
     );
-    expect(screen.getByRole("button", { name: "Toggle sidebar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "toggle_sidebar" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /dark_mode|light_mode/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Notifikasi" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "notifications" })).not.toBeInTheDocument();
   });
 });

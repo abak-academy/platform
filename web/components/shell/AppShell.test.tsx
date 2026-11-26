@@ -129,7 +129,7 @@ describe("AppShell — layout", () => {
       </QueryClientProvider>
     );
     expect(screen.queryByTestId("menu-button")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Toggle sidebar" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "toggle_sidebar" })).toBeInTheDocument();
     rerender(
       <QueryClientProvider client={new QueryClient()}>
         <AppShell role="super_admin"><div>plain</div></AppShell>
@@ -144,7 +144,7 @@ describe("AppShell — layout", () => {
         <AppShell role="student"><PageHead title="Halaman" /></AppShell>
       </QueryClientProvider>
     );
-    const menu = screen.getByRole("button", { name: "Toggle sidebar" });
+    const menu = screen.getByRole("button", { name: "toggle_sidebar" });
     await userEvent.click(menu);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");

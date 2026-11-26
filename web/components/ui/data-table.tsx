@@ -2,6 +2,7 @@ import * as React from "react";
 import { Inbox } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/lib/i18n";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export interface DataTableColumn<T> {
@@ -10,6 +11,7 @@ export interface DataTableColumn<T> {
   cell: (row: T) => React.ReactNode;
   align?: "left" | "right";
   strong?: boolean;
+  nowrap?: boolean;
   className?: string;
 }
 
@@ -60,6 +62,7 @@ export function DataTable<T>({
   rowActions,
   "data-testid": dataTestId,
 }: DataTableProps<T>) {
+  const { t } = useTranslation();
   const colCount = columns.length + (rowActions ? 1 : 0);
   const hover = onRowClick && "group-hover/row:bg-brand-50";
   return (
@@ -87,7 +90,11 @@ export function DataTable<T>({
                   {column.header}
                 </th>
               ))}
-              {rowActions && <th className="bg-surface-sunken px-4 py-3" />}
+              {rowActions && (
+                <th className="bg-surface-sunken px-4 py-3">
+                  <span className="sr-only">{t("table_actions")}</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -106,6 +113,7 @@ export function DataTable<T>({
                   onClick={
                     onRowClick
                       ? (e) => {
+                          if (!e.currentTarget.contains(e.target as Node)) return;
                           if ((e.target as HTMLElement).closest(INTERACTIVE)) return;
                           onRowClick(row);
                         }
@@ -127,7 +135,8 @@ export function DataTable<T>({
                     <td
                       key={column.key}
                       className={cn(
-                        "border-t border-line px-4 py-3 whitespace-nowrap text-ink-700",
+                        "border-t border-line px-4 py-3 text-ink-700",
+                        (column.nowrap || column.strong || column.align === "right") && "whitespace-nowrap",
                         column.strong && "font-bold text-ink-900",
                         column.align === "right" && "text-right",
                         hover,

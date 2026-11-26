@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { createPortal } from "react-dom";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { DataTable, type DataTableColumn } from "./data-table";
 
@@ -111,7 +112,7 @@ describe("DataTable", () => {
       expect(th).toHaveClass(c);
     }
     const td = container.querySelector("td")!;
-    for (const c of ["border-t", "border-line", "text-ink-700", "whitespace-nowrap"]) expect(td).toHaveClass(c);
+    for (const c of ["border-t", "border-line", "text-ink-700"]) expect(td).toHaveClass(c);
     expect(container.querySelector("table")).toHaveClass("text-[13.5px]");
   });
 
@@ -154,5 +155,31 @@ describe("DataTable", () => {
     );
     expect(container.querySelectorAll("tbody tr:first-child td")).toHaveLength(columns.length + 1);
     expect(container.querySelector("tbody tr td:last-child")).toHaveClass("text-right");
+  });
+
+  it("wraps cells by default and keeps nowrap for opted-in, strong and right-aligned columns", () => {
+    const cols: DataTableColumn<Row>[] = [
+      { key: "name", header: "Name", cell: (r) => r.name },
+      { key: "n", header: "N", cell: (r) => r.id, nowrap: true },
+      { key: "s", header: "S", cell: () => "strong", strong: true },
+      { key: "r", header: "R", cell: () => "right", align: "right" },
+    ];
+    render(<DataTable columns={cols} rows={rows} rowKey={(r) => r.id} empty="x" />);
+    expect(screen.getAllByText("Alpha")[0].closest("td")).not.toHaveClass("whitespace-nowrap");
+    expect(screen.getAllByText("1")[0].closest("td")).toHaveClass("whitespace-nowrap");
+    expect(screen.getAllByText("strong")[0].closest("td")).toHaveClass("whitespace-nowrap");
+    expect(screen.getAllByText("right")[0].closest("td")).toHaveClass("whitespace-nowrap");
+  });
+
+  it("labels the actions column and ignores clicks from outside the row", () => {
+    const onRowClick = vi.fn();
+    render(
+      <DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="x" onRowClick={onRowClick} rowActions={() => createPortal(<i>portal</i>, document.body)} />,
+    );
+    expect(screen.getByText("Aksi")).toHaveClass("sr-only");
+    fireEvent.click(screen.getAllByText("portal")[0]);
+    expect(onRowClick).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Alpha"));
+    expect(onRowClick).toHaveBeenCalledTimes(1);
   });
 });
