@@ -34,7 +34,8 @@ vi.mock("@/lib/hooks/products", () => ({
   }),
 }));
 
-const { addToCartMutate, toastError, toastSuccess, toastMessage, cartItems, auth } = vi.hoisted(() => ({
+const { addToCartMutate, toastError, toastSuccess, toastMessage, cartItems, auth, authedHookArgs } = vi.hoisted(() => ({
+  authedHookArgs: vi.fn(),
   addToCartMutate: vi.fn(),
   toastError: vi.fn(),
   toastSuccess: vi.fn(),
@@ -49,13 +50,13 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/lib/hooks/orders", () => ({
   useAddToCart: () => ({ mutate: addToCartMutate, isPending: false }),
-  useCart: () => ({ data: { items: cartItems } }),
+  useCart: (opts?: { enabled?: boolean }) => (authedHookArgs("cart", opts?.enabled ?? true), { data: { items: cartItems } }),
 }));
 
 let profile: Record<string, unknown> | undefined;
 
 vi.mock("@/lib/hooks/students", () => ({
-  useProfile: () => ({ data: profile }),
+  useProfile: (opts?: { enabled?: boolean }) => (authedHookArgs("profile", opts?.enabled ?? true), { data: profile }),
 }));
 
 vi.mock("@/stores/cart", () => ({
@@ -310,6 +311,15 @@ describe("guest add-to-cart", () => {
   });
 
   const addButton = () => screen.getByRole("button", { name: /tambah ke keranjang/i });
+
+  it("never enables the signed-in cart or profile queries for a guest (their 401 redirects to /login)", async () => {
+    authedHookArgs.mockClear();
+    await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });
+    expect(authedHookArgs).toHaveBeenCalledWith("cart", false);
+    expect(authedHookArgs).toHaveBeenCalledWith("profile", false);
+    expect(authedHookArgs).not.toHaveBeenCalledWith("cart", true);
+    expect(authedHookArgs).not.toHaveBeenCalledWith("profile", true);
+  });
 
   it("adds to the guest cart instead of sending the guest to /login", async () => {
     await renderPage({ id: "course-1", type: "course", name: "Kursus Fisika" });

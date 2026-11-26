@@ -44,10 +44,11 @@ export function useOrder(id: string) {
   });
 }
 
-export function useCart() {
+export function useCart({ enabled = true }: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: ordersKeys.cart(),
     queryFn: () => authFetch<Order>(`/orders`, { method: "POST" }),
+    enabled,
   });
 }
 

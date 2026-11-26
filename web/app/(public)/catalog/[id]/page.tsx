@@ -55,10 +55,11 @@ export default function ProductDetailPage({
   const router = useRouter();
   const { data: product, isLoading, isError, error, refetch } = useProduct(id);
   const addToCart = useAddToCart();
-  const { data: cart } = useCart();
-  const { data: profile } = useProfile();
-  const bumpBadge = useCartStore((s) => s.setCount);
   const token = useAuthStore((s) => s.token);
+  // a guest's 401 on these would hard-navigate to /login
+  const { data: cart } = useCart({ enabled: !!token });
+  const { data: profile } = useProfile({ enabled: !!token });
+  const bumpBadge = useCartStore((s) => s.setCount);
   const [qty, setQty] = useState(1);
 
   if (isLoading) return <DetailSkeleton />;
