@@ -149,13 +149,10 @@ describe("SystemAccountsPage", () => {
     expect(screen.getAllByText("Aktif").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("shows stat cards with total, active, deactivated counts", async () => {
+  it("shows the row count in the toolbar", async () => {
     render(<SystemAccountsPage />);
 
-    await waitFor(() => {
-      const threes = screen.getAllByText("3");
-      expect(threes.length).toBeGreaterThanOrEqual(1);
-    });
+    await waitFor(() => expect(screen.getByText(/^3 /)).toBeInTheDocument());
   });
 
   it("school picker is hidden in create dialog (default role is admin_store)", async () => {

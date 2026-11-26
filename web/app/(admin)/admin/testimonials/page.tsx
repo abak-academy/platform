@@ -2,10 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { MessageSquareQuote } from "lucide-react";
+import { Check, MessageSquareQuote, Trophy, TriangleAlert } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolbar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fileUrl } from "@/lib/api";
@@ -52,51 +55,49 @@ function TestimonialCard({
 }) {
   const src = fileUrl(item.photo_key);
   const chips = item.content.id?.achievements ?? [];
+  const off = !item.is_visible || !item.has_consent;
   return (
-    <article aria-label={item.name} className="md-card-outlined flex flex-col gap-3 p-4">
-      <div className="flex items-start gap-3">
-        <div className="aspect-[4/5] w-16 shrink-0 overflow-hidden rounded-lg bg-surface-sunken">
-          {src && <img src={src} alt={item.name} className="size-full object-cover" />}
+    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3.5 p-6 ${off ? "opacity-70" : ""}`}>
+      <div className="flex items-center gap-3">
+        <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-50 text-sm font-extrabold text-brand-800">
+          {src ? <img src={src} alt={item.name} className="size-full object-cover" /> : item.name.slice(0, 1).toUpperCase()}
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="type-h3 truncate">{item.name}</h3>
-          <p className="text-xs text-ink-600">{item.role_label}</p>
-          <p className="mt-1 line-clamp-3 text-sm text-ink-700">{item.content.id?.quote}</p>
+          <h3 className="truncate text-[15px] font-extrabold text-ink-900">{item.name}</h3>
+          <p className="truncate text-xs text-ink-600">{item.role_label}</p>
         </div>
+        <Switch
+          size="sm"
+          checked={item.is_visible}
+          disabled={pending}
+          aria-label={`Tampilkan ${item.name} di landing`}
+          onCheckedChange={onToggle}
+        />
       </div>
+
+      <blockquote className="line-clamp-4 text-sm text-ink-700">{item.content.id?.quote}</blockquote>
 
       {chips.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {chips.map((c) => <span key={c} className="md-chip">{c}</span>)}
+          {chips.map((c) => (
+            <Badge key={c} variant="gold"><Trophy className="size-3" aria-hidden />{c}</Badge>
+          ))}
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2 text-xs">
-        <span className="md-chip">{item.has_consent ? "Ada persetujuan" : "Belum ada persetujuan"}</span>
-        <span className="md-chip">{idComplete(item) ? "ID lengkap" : "ID kosong"}</span>
-        <span className="md-chip">{enComplete(item) ? "EN lengkap" : "EN belum lengkap"}</span>
-        {!item.photo_key && <span className="md-chip">Belum ada foto</span>}
+      <div className="flex flex-wrap gap-2">
+        {item.has_consent
+          ? <Badge variant="teal"><Check className="size-3" aria-hidden />Ada persetujuan</Badge>
+          : <Badge variant="danger"><TriangleAlert className="size-3" aria-hidden />Belum ada persetujuan</Badge>}
+        <Badge variant={idComplete(item) ? "mute" : "danger"}>{idComplete(item) ? "ID lengkap" : "ID kosong"}</Badge>
+        <Badge variant={enComplete(item) ? "mute" : "gold"}>{enComplete(item) ? "EN lengkap" : "EN belum lengkap"}</Badge>
+        {!item.photo_key && <Badge variant="mute">Belum ada foto</Badge>}
       </div>
 
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
-          <Button size="sm" variant="ghost" onClick={onDelete}>Hapus</Button>
-        </div>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-ink-600">{item.is_visible ? "Tampil di landing" : "Draft"}</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={item.is_visible}
-            aria-label={`Tampilkan ${item.name} di landing`}
-            disabled={pending}
-            onClick={onToggle}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${item.is_visible ? "bg-brand-600" : "bg-line-strong"}`}
-          >
-            <span className={`pointer-events-none block size-5 rounded-full bg-white shadow transition-transform ${item.is_visible ? "translate-x-5" : "translate-x-0"}`} />
-          </button>
-        </label>
+      <div className="mt-auto flex items-center gap-2 border-t border-dashed border-line pt-3">
+        <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
+        <Button size="sm" variant="ghost" onClick={onDelete}>Hapus</Button>
+        <span className="ml-auto text-xs text-ink-600">{item.is_visible ? "Tampil di landing" : "Draft"}</span>
       </div>
     </article>
   );
@@ -156,12 +157,12 @@ export default function TestimonialsPage() {
       <AdminPageHeader
         icon={MessageSquareQuote}
         title={t("admin_nav_testimonials")}
-        description="Cerita peserta untuk landing page. Hanya tayang dengan persetujuan tertulis."
+        description="Cerita peserta di landing page. Hanya yang punya persetujuan tertulis yang bisa tampil."
         actions={<Button onClick={() => openEditor(null)}>Tambah testimoni</Button>}
       />
 
       {isLoading && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-4">
           {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-48 w-full" />)}
         </div>
       )}
@@ -184,9 +185,9 @@ export default function TestimonialsPage() {
             searchPlaceholder="Cari nama atau kutipan"
           />
           {rows.length === 0 ? (
-            <div className="md-card-outlined p-8 text-center text-ink-600">Belum ada testimoni.</div>
+            <EmptyState framed icon={MessageSquareQuote} title="Belum ada testimoni." text="Ubah kata kunci atau filter." />
           ) : (
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-4">
               {rows.map((x) => (
                 <TestimonialCard
                   key={x.id}
