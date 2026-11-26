@@ -281,6 +281,46 @@ describe("AppSidebar — accordion", () => {
     expect(screen.queryByRole("button", { name: /nav_dashboard/ })).toBeNull();
   });
 
+  it("gives every titled group an icon tile in its header", () => {
+    render(<AppSidebar role="super_admin" />);
+    for (const g of NAV_CONFIG.super_admin.filter((g) => g.titleKey)) {
+      expect(g.icon).toBeDefined();
+      expect(header(g.titleKey!).querySelector("svg")).not.toBeNull();
+      expect(header(g.titleKey!).querySelector("span.size-8")).not.toBeNull();
+    }
+  });
+
+  it("renders the active top item on a brand tile and no caption under the logo", () => {
+    render(<AppSidebar role="super_admin" />);
+    const home = screen.getByRole("link", { name: "nav_dashboard" });
+    expect(home.querySelector("span.bg-brand-600")).not.toBeNull();
+    expect(screen.queryByText("admin_panel")).toBeNull();
+    expect(screen.queryByText("app_tag")).toBeNull();
+  });
+
+  it("uses focus-visible rings only, never :focus", () => {
+    render(<AppSidebar role="super_admin" />);
+    for (const el of [header("nav_group_store"), screen.getByRole("link", { name: "nav_dashboard" })]) {
+      expect(el.className).toMatch(/focus-visible:ring-2/);
+      expect(el.className).not.toMatch(/(^|\s)focus:/);
+    }
+  });
+
+  it("sizes the group badge to the prototype (20px) and item badges to 22px", async () => {
+    nav.pathname = "/admin";
+    const orders = NAV_CONFIG.super_admin.flatMap((g) => g.items).find((i) => i.labelKey === "admin_nav_orders")!;
+    orders.countKey = "orders";
+    try {
+      const user = userEvent.setup();
+      render(<AppSidebar role="super_admin" counts={{ orders: 2 }} />);
+      expect(within(header("nav_group_store")).getByText("2").className).toMatch(/h-5/);
+      await user.click(header("nav_group_store"));
+      expect(within(panelOf("nav_group_store")).getByText("2").className).toMatch(/h-\[22px\]/);
+    } finally {
+      delete orders.countKey;
+    }
+  });
+
   describe("counts", () => {
     const orders = NAV_CONFIG.super_admin.flatMap((g) => g.items).find((i) => i.labelKey === "admin_nav_orders")!;
     const promos = NAV_CONFIG.super_admin.flatMap((g) => g.items).find((i) => i.labelKey === "promos")!;
