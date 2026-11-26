@@ -135,8 +135,9 @@ const realDeps: MergeDeps = {
     }),
   isUnavailable: async (productId) => {
     try {
-      const p = await apiFetch<Product>(`/products/${encodeURIComponent(productId)}`);
-      return outsideWindow(p, Date.now());
+      // The public GET already 404s an unpublished or out-of-window product; a 200 is the server's yes.
+      await apiFetch<Product>(`/products/${encodeURIComponent(productId)}`);
+      return false;
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) return true;
       throw err;
