@@ -6,8 +6,8 @@ import { ApiError } from "@/lib/api";
 import { useGuestCart } from "@/stores/guest-cart";
 import { useGuestCartMerge, useMergeNoticeStore } from "./guest-cart-merge";
 
-const { authFetch, toastError } = vi.hoisted(() => ({ authFetch: vi.fn(), toastError: vi.fn() }));
-vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), authFetch }));
+const { authFetch, apiFetch, toastError } = vi.hoisted(() => ({ authFetch: vi.fn(), apiFetch: vi.fn(), toastError: vi.fn() }));
+vi.mock("@/lib/api", async (orig) => ({ ...(await orig<typeof import("@/lib/api")>()), authFetch, apiFetch }));
 vi.mock("sonner", () => ({ toast: { error: toastError } }));
 
 const line = (id: string, over = {}) => ({
@@ -43,6 +43,8 @@ beforeEach(() => {
   useGuestCart.setState({ lines: [] });
   useMergeNoticeStore.getState().dismiss();
   authFetch.mockReset();
+  apiFetch.mockReset();
+  apiFetch.mockResolvedValue({});
   toastError.mockReset();
 });
 
@@ -58,7 +60,7 @@ describe("useGuestCartMerge", () => {
     renderHook(() => useGuestCartMerge(true), { wrapper });
     await waitFor(() => expect(ids()).toEqual([]));
     expect(authFetch.mock.calls.filter(([p]) => p === "/orders")).toHaveLength(1);
-        expect(posts()).toHaveLength(2);
+    expect(posts()).toHaveLength(2);
     expect(useMergeNoticeStore.getState().outcomes).toEqual([]);
   });
 
@@ -88,8 +90,12 @@ describe("useGuestCartMerge", () => {
     expect(ids()).toEqual([]);
   });
 
-  it("skips and removes a line flagged unavailable, reporting it", async () => {
-    useGuestCart.setState({ lines: [line("a", { unavailable: true }), line("b")] });
+  it("re-checks availability at merge time: stale line skipped, previously flagged line merged", async () => {
+    useGuestCart.setState({ lines: [line("stale"), line("back", { unavailable: true })] });
+    apiFetch.mockImplementation(async (path: string) => {
+      if (path.endsWith("/stale")) throw new ApiError("product_not_found", "x", 404, { code: "product_not_found" });
+      return {};
+    });
     const added: string[] = [];
     authFetch.mockImplementation(async (path: string, init: { body?: string }) => {
       if (path === "/orders") return cart([]);
@@ -98,8 +104,18 @@ describe("useGuestCartMerge", () => {
     });
     renderHook(() => useGuestCartMerge(true), { wrapper });
     await waitFor(() => expect(ids()).toEqual([]));
-    expect(added).toEqual(["b"]);
-    expect(useMergeNoticeStore.getState().outcomes.map((o) => o.code)).toEqual(["unavailable"]);
+    expect(added).toEqual(["back"]);
+    expect(useMergeNoticeStore.getState().outcomes.map((o) => [o.product_id, o.code])).toEqual([["stale", "unavailable"]]);
+  });
+
+  it("keeps the lines and toasts when the availability check fails with 5xx", async () => {
+    useGuestCart.setState({ lines: [line("a")] });
+    apiFetch.mockRejectedValue(new ApiError("boom", "x", 503));
+    authFetch.mockImplementation(async () => cart([]));
+    renderHook(() => useGuestCartMerge(true), { wrapper });
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(ids()).toEqual(["a"]);
+    expect(posts()).toHaveLength(0);
   });
 
   it("toasts on failure, keeps the lines, and retries on the next mount", async () => {

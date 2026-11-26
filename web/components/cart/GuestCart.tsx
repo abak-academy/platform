@@ -7,17 +7,12 @@ import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { apiFetch, ApiError } from "@/lib/api";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
+import { outsideWindow } from "@/lib/guest-cart-merge";
 import { productsKeys } from "@/lib/hooks/products";
 import type { Product } from "@/lib/types";
 import { isDigitalType, useGuestCart } from "@/stores/guest-cart";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-
-function outsideWindow(p: Product, now: number): boolean {
-  const from = p.available_from ? Date.parse(p.available_from) : null;
-  const until = p.available_until ? Date.parse(p.available_until) : null;
-  return (from !== null && from > now) || (until !== null && until < now);
-}
 
 export function GuestCart() {
   const { t } = useTranslation();
