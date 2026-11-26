@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bell, ShoppingBag } from "lucide-react";
 import { useProducts } from "@/lib/hooks/products";
@@ -103,7 +103,7 @@ function CatalogSkeleton() {
   );
 }
 
-export default function CatalogPage() {
+function CatalogContent() {
   const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
@@ -215,5 +215,13 @@ export default function CatalogPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense>
+      <CatalogContent />
+    </Suspense>
   );
 }
