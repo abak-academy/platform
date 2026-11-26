@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   CreditCard,
+  FileText,
   Loader2,
   PlayCircle,
   Receipt,
@@ -26,6 +27,7 @@ import { digitalConflictMessage } from "@/lib/digital-conflict";
 import type { Order, OrderItem, OrderStatus } from "@/lib/types";
 
 import { OrderStatusBadge } from "@/components/orders/OrderStatusBadge";
+import { InvoiceDialog } from "@/components/orders/InvoiceDialog";
 import { ShippingInfo } from "@/components/orders/ShippingInfo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -147,29 +149,13 @@ function PaymentInfo({ order, t }: { order: Order; t: (key: any) => string }) {
   if (order.payment_expires_at) {
     rows.push({ labelKey: "order_valid_until", value: formatDate(order.payment_expires_at) });
   }
-  if (order.invoice_url) {
-    rows.push({ labelKey: "order_invoice", value: order.invoice_url });
-  }
   if (rows.length === 0) return null;
   return (
     <dl className="flex flex-col gap-2 text-sm">
       {rows.map((r) => (
         <div key={r.labelKey} className="flex items-start justify-between gap-3">
           <dt className="text-ink-500">{t(r.labelKey)}</dt>
-          <dd className="text-right font-medium text-ink-900 break-all">
-            {r.labelKey === "order_invoice" && r.value.startsWith("http") ? (
-              <a
-                href={r.value}
-                target="_blank"
-                rel="noreferrer"
-                className="text-info underline underline-offset-2"
-              >
-                {t("order_view_invoice")}
-              </a>
-            ) : (
-              r.value
-            )}
-          </dd>
+          <dd className="text-right font-medium text-ink-900 break-all">{r.value}</dd>
         </div>
       ))}
     </dl>
@@ -206,6 +192,7 @@ export default function OrderDetailPage({
   const [retrying, setRetrying] = useState(false);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
+  const [invoiceOpen, setInvoiceOpen] = useState(false);
   const handleExpired = useCallback(() => setExpired(true), []);
   const isPaymentPending = order?.status === "payment_pending";
 
@@ -274,6 +261,7 @@ export default function OrderDetailPage({
   }
 
   const timeline = buildTimeline(order, t);
+  const canViewInvoice = order.status !== "cancelled" && order.status !== "payment_expired";
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 md:px-6 md:py-10">
@@ -294,7 +282,15 @@ export default function OrderDetailPage({
           </div>
           <span className="text-xs text-ink-500">{t("order_created_at").replace("{date}", formatDate(order.created_at))}</span>
         </div>
-        <OrderStatusBadge status={order.status as OrderStatus} className="text-sm" />
+        <div className="flex items-center gap-3">
+          {canViewInvoice && (
+            <Button variant="outline" size="sm" onClick={() => setInvoiceOpen(true)}>
+              <FileText className="size-4" />
+              {t("invoice_view")}
+            </Button>
+          )}
+          <OrderStatusBadge status={order.status as OrderStatus} className="text-sm" />
+        </div>
       </header>
 
       {isPaymentPending && (
@@ -339,56 +335,44 @@ export default function OrderDetailPage({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_380px] md:gap-8">
-        <div className="flex flex-col gap-6">
-          <section>
-            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("order_items_section")}</h2>
-            <Card className="p-5">
-              <OrderItems items={order.items ?? []} t={t} />
-            </Card>
-          </section>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:gap-8">
+        <Card className="flex flex-col gap-5 p-5">
+          <h2 className="font-serif text-lg font-semibold text-ink-900">{t("cart_order_summary")}</h2>
+          <OrderItems items={order.items ?? []} t={t} />
 
-          <section>
-            <h2 className="mb-3 font-serif text-lg font-semibold text-ink-900">{t("order_status_history")}</h2>
-            <Card className="p-5">
-              <Timeline steps={timeline} />
-            </Card>
-          </section>
-        </div>
+          <dl className="flex flex-col gap-2 border-t border-line pt-4 text-sm">
+            {summaryRows(t).map(({ key, labelKey }) => {
+              const val = (order[key] as number) ?? 0;
+              return (
+                <div key={key} className="flex items-center justify-between gap-3">
+                  <dt className="text-ink-500">{t(labelKey)}</dt>
+                  <dd className="font-medium text-ink-900">{formatRupiah(val)}</dd>
+                </div>
+              );
+            })}
+            <div className="my-1 h-px bg-line" />
+            <div className="flex items-center justify-between gap-3">
+              <dt className="font-semibold text-ink-900">{t("order_total")}</dt>
+              <dd className="font-serif text-lg font-bold text-success">{formatRupiah(order.total)}</dd>
+            </div>
+          </dl>
 
-        <aside className="md:sticky md:top-6 md:self-start">
-          <Card className="p-5">
-            <h2 className="mb-3 font-serif text-base font-semibold text-ink-900">{t("order_summary")}</h2>
-            <dl className="flex flex-col gap-2 text-sm">
-              {summaryRows(t).map(({ key, labelKey }) => {
-                const val = (order[key] as number) ?? 0;
-                return (
-                  <div key={key} className="flex items-center justify-between gap-3">
-                    <dt className="text-ink-500">{t(labelKey)}</dt>
-                    <dd className="font-medium text-ink-900">{formatRupiah(val)}</dd>
-                  </div>
-                );
-              })}
-              <div className="my-1 h-px bg-line" />
-              <div className="flex items-center justify-between gap-3">
-                <dt className="font-semibold text-ink-900">{t("order_total")}</dt>
-                <dd className="font-serif text-lg font-bold text-success">
-                  {formatRupiah(order.total)}
-                </dd>
-              </div>
-            </dl>
+          <ShippingInfo order={order} />
 
-            <ShippingInfo order={order} />
-
-            <div className="my-4 h-px bg-line" />
-
+          <div>
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
               {t("order_payment_info")}
             </h3>
             <PaymentInfo order={order} t={t} />
-          </Card>
-        </aside>
+          </div>
+        </Card>
+
+        <Card className="p-5 md:self-start">
+          <h2 className="mb-4 font-serif text-lg font-semibold text-ink-900">{t("order_status_history")}</h2>
+          <Timeline steps={timeline} />
+        </Card>
       </div>
+      <InvoiceDialog order={order} open={invoiceOpen} onOpenChange={setInvoiceOpen} />
     </div>
   );
 }
@@ -401,12 +385,9 @@ function DetailSkeleton() {
         <Skeleton className="h-7 w-40" />
         <Skeleton className="h-6 w-28" />
       </div>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_380px] md:gap-8">
-        <div className="flex flex-col gap-6">
-          <Skeleton className="h-40 w-full rounded-lg" />
-          <Skeleton className="h-48 w-full rounded-lg" />
-        </div>
-        <Skeleton className="h-64 w-full rounded-lg" />
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)] md:gap-8">
+        <Skeleton className="h-72 w-full rounded-lg" />
+        <Skeleton className="h-48 w-full rounded-lg" />
       </div>
     </div>
   );

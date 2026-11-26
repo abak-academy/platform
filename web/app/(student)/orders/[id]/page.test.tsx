@@ -372,3 +372,52 @@ it("guards synchronous double clicks while retry is pending", async () => {
   expect(outcome).toHaveBeenCalledTimes(1);
   expect(open).not.toHaveBeenCalled();
 });
+
+describe("OrderDetailPage layout and invoice", () => {
+  async function renderOrder(order: object) {
+    authFetch.mockImplementation(() => Promise.resolve(order));
+    await act(async () => {
+      render(
+        <QueryClientProvider client={client}>
+          <Suspense fallback={null}>
+            <OrderDetailPage params={Promise.resolve({ id: ORDER_ID })} />
+          </Suspense>
+        </QueryClientProvider>,
+      );
+    });
+  }
+
+  it.each(["payment_pending", "paid", "completed"])("offers Lihat invoice for %s", async (status) => {
+    await renderOrder({ ...PENDING_ORDER, status });
+    expect(await screen.findByRole("button", { name: "Lihat invoice" })).toBeInTheDocument();
+  });
+
+  it.each(["cancelled", "payment_expired"])("hides Lihat invoice for %s", async (status) => {
+    await renderOrder({ ...PENDING_ORDER, status });
+    await screen.findByText("Kursus A");
+    expect(screen.queryByRole("button", { name: "Lihat invoice" })).toBeNull();
+  });
+
+  it("opens the invoice dialog from the header action", async () => {
+    await renderOrder({ ...PENDING_ORDER, status: "paid", paid_at: "2026-11-20T03:00:00Z" });
+    await userEvent.click(await screen.findByRole("button", { name: "Lihat invoice" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("LUNAS");
+  });
+
+  it("renders no invoice_url row even when the order carries one", async () => {
+    await renderOrder({ ...PENDING_ORDER, status: "paid", payment_method: "gopay", invoice_url: "https://inv.example/x" });
+    await screen.findByText("gopay");
+    expect(document.querySelector('a[href="https://inv.example/x"]')).toBeNull();
+    expect(screen.queryByText("Invoice")).toBeNull();
+  });
+
+  it("puts the order summary and status history in two titled cards, items on the left", async () => {
+    await renderOrder({ ...PENDING_ORDER, status: "paid" });
+    const summary = await screen.findByRole("heading", { name: /ringkasan pesanan/i });
+    const history = screen.getByRole("heading", { name: "Riwayat status" });
+    const left = summary.parentElement!;
+    expect(left).toHaveTextContent("Kursus A");
+    expect(left).not.toContainElement(history);
+    expect(history.parentElement).not.toHaveTextContent("Kursus A");
+  });
+});

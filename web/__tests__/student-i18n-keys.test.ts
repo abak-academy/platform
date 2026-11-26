@@ -7,26 +7,11 @@ const enDict = DICT.en as Dict;
 
 const NEW_KEYS: { key: string; id: string; en: string }[] = [
   // Dashboard (page.tsx)
-  { key: "greeting_morning", id: "Selamat pagi", en: "Good morning" },
-  { key: "greeting_afternoon", id: "Selamat siang", en: "Good afternoon" },
-  { key: "greeting_evening", id: "Selamat malam", en: "Good evening" },
   { key: "hello", id: "Halo", en: "Hello" },
-  { key: "add_course", id: "Tambah Kursus", en: "Add Course" },
   { key: "dash_load_failed", id: "Gagal memuat dashboard.", en: "Failed to load dashboard." },
-  { key: "dash_my_ranking", id: "Peringkat saya", en: "My Ranking" },
-  { key: "dash_ranking_placeholder", id: "Total peringkat akan tersedia setelah ujian pertama.", en: "Overall ranking will be available after your first exam." },
-  { key: "dash_study_hours", id: "Total jam belajar", en: "Total Study Hours" },
-  { key: "dash_hours_placeholder", id: "Ringkasan waktu belajar akan hadir di sini.", en: "Study time summary will appear here." },
-  { key: "dash_exam_progress", id: "Progress ujian", en: "Exam Progress" },
-  { key: "dash_progress_placeholder", id: "Statistik progress ujian sedang disiapkan.", en: "Exam progress statistics are being prepared." },
-  { key: "dash_tryout", id: "Tryout", en: "Tryout" },
-  { key: "dash_view_all", id: "Lihat semua", en: "View all" },
-  { key: "dash_explore_catalog", id: "Jelajahi katalog", en: "Explore catalog" },
-  { key: "dash_catalog_desc", id: "Temukan buku, kursus, dan paket kompetisi baru.", en: "Discover new books, courses, and competition packages." },
   { key: "dash_open_catalog", id: "Buka katalog", en: "Open catalog" },
   { key: "dash_no_courses", id: "Belum ada kursus", en: "No courses yet" },
   { key: "dash_no_courses_desc", id: "Mulai belajar dengan menjelajahi katalog kami.", en: "Start learning by exploring our catalog." },
-  { key: "dash_coming_soon", id: "Akan datang", en: "Coming soon" },
 
   // Catalog (catalog/page.tsx)
   { key: "catalog_tab_all", id: "Semua", en: "All" },
@@ -119,7 +104,6 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "order_retry_failed_title", id: "Gagal melanjutkan pembayaran", en: "Failed to continue payment" },
   { key: "order_items_section", id: "Item pesanan", en: "Order items" },
   { key: "order_status_history", id: "Riwayat status", en: "Status history" },
-  { key: "order_summary", id: "Ringkasan", en: "Summary" },
   { key: "order_subtotal", id: "Subtotal", en: "Subtotal" },
   { key: "order_discount", id: "Diskon", en: "Discount" },
   { key: "order_shipping", id: "Ongkos kirim", en: "Shipping cost" },
@@ -128,9 +112,7 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "order_payment_method", id: "Metode pembayaran", en: "Payment method" },
   { key: "order_gateway_ref", id: "Referensi gateway", en: "Gateway reference" },
   { key: "order_valid_until", id: "Berlaku sampai", en: "Valid until" },
-  { key: "order_invoice", id: "Invoice", en: "Invoice" },
   { key: "order_tracking", id: "No. resi", en: "Tracking no." },
-  { key: "order_view_invoice", id: "Lihat invoice", en: "View invoice" },
 
   // Competition / Registration (competition/page.tsx + competition/[id]/page.tsx)
   { key: "competition_list_subtitle", id: "Paket ujian yang Anda ikuti", en: "Exam packages you are enrolled in" },

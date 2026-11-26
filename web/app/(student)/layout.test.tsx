@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, waitFor } from "@testing-library/react";
 import StudentLayout from "./layout";
+import { useCartStore } from "@/stores/cart";
 
 const replace = vi.fn();
 
@@ -13,8 +14,18 @@ vi.mock("next/script", () => ({
 }));
 
 vi.mock("@/components/shell/AppShell", () => ({
-  AppShell: ({ role, children }: { role: string; children: React.ReactNode }) => (
-    <div data-testid="shell" data-role={role}>
+  AppShell: ({
+    role,
+    counts,
+    subtitle,
+    children,
+  }: {
+    role: string;
+    counts?: Record<string, number>;
+    subtitle?: string;
+    children: React.ReactNode;
+  }) => (
+    <div data-testid="shell" data-role={role} data-counts={JSON.stringify(counts)} data-subtitle={subtitle}>
       {children}
     </div>
   ),
@@ -31,9 +42,17 @@ let roleState = {
   meIsError: false,
 };
 
+let regsState = { data: [] as unknown[] };
+let ordersState = { data: [] as unknown[] };
+let schoolState = { data: undefined as { name: string } | undefined };
+
+vi.mock("@/lib/hooks/exam", () => ({ useRegistrations: () => regsState }));
+vi.mock("@/lib/hooks/orders", () => ({ useOrders: () => ordersState }));
+vi.mock("@/lib/i18n", () => ({ useTranslation: () => ({ t: (k: string) => (k === "grade" ? "Kelas" : k) }) }));
+
 let profileState = {
   data: undefined as
-    | { auth_provider: "google" | "password"; school_id?: string; grade?: number }
+    | { auth_provider: "google" | "password"; school_id?: string; grade?: number; unlisted_school_name?: string | null }
     | undefined,
   isLoading: false,
   isFetching: false,
@@ -46,6 +65,7 @@ vi.mock("@/stores/auth", () => ({
 
 vi.mock("@/lib/hooks/students", () => ({
   useProfile: () => profileState,
+  useSchoolById: () => schoolState,
 }));
 
 vi.mock("@/lib/hooks/use-capability", () => ({
@@ -81,6 +101,10 @@ describe("StudentLayout", () => {
     authStore = { token: null, user: null };
     roleState = { role: undefined, hydrated: true, meIsError: false };
     meState = { data: undefined };
+    regsState = { data: [] };
+    ordersState = { data: [] };
+    schoolState = { data: undefined };
+    useCartStore.setState({ count: 0 });
     profileState = {
       data: undefined,
       isLoading: false,
@@ -259,5 +283,56 @@ describe("StudentLayout", () => {
 
     await waitFor(() => expect(queryByTestId("shell")).toBeInTheDocument());
     expect(queryByTestId("pw-notice")).not.toBeInTheDocument();
+  });
+
+  describe("shell counts and subtitle", () => {
+    const reg = (status: string, over: Record<string, unknown> = {}) => ({
+      status,
+      max_attempts: 1,
+      attempts_used: status === "submitted" ? 1 : 0,
+      requires_checkin: false,
+      scheduled_at: null,
+      scheduled_end_at: null,
+      check_in_window_minutes: null,
+      ...over,
+    });
+    const mountStudent = async () => {
+      authStore = { token: "t", user: { role: "student" } };
+      roleState = { role: "student", hydrated: true, meIsError: false };
+      const { getByTestId } = render(<StudentLayout>protected</StudentLayout>);
+      await waitFor(() => expect(getByTestId("shell")).toBeInTheDocument());
+      return getByTestId("shell");
+    };
+
+    it("passes kompetisi, tagihan and cart counts", async () => {
+      regsState = { data: [reg("registered"), reg("in_progress"), reg("submitted"), reg("registered")] };
+      ordersState = { data: [{ status: "payment_pending" }, { status: "paid" }, { status: "payment_pending" }] };
+      useCartStore.setState({ count: 4 });
+      const shell = await mountStudent();
+      expect(JSON.parse(shell.dataset.counts!)).toEqual({ kompetisi: 3, tagihan: 2, cart: 4 });
+    });
+
+    it("passes zeros when nothing is pending", async () => {
+      regsState = { data: [reg("submitted")] };
+      ordersState = { data: [{ status: "paid" }] };
+      const shell = await mountStudent();
+      expect(JSON.parse(shell.dataset.counts!)).toEqual({ kompetisi: 0, tagihan: 0, cart: 0 });
+    });
+
+    it("builds the subtitle from grade and school, dropping an empty part", async () => {
+      profileState.data = { auth_provider: "password", grade: 11, school_id: "s1" };
+      schoolState = { data: { name: "SMAN 1" } };
+      expect((await mountStudent()).dataset.subtitle).toBe("Kelas 11 · SMAN 1");
+    });
+
+    it("uses the unlisted school name and omits a missing grade", async () => {
+      profileState.data = { auth_provider: "password", unlisted_school_name: "SMA Swasta" };
+      expect((await mountStudent()).dataset.subtitle).toBe("SMA Swasta");
+    });
+
+    it("leaves the subtitle empty when the profile has neither", async () => {
+      profileState.data = { auth_provider: "password" };
+      expect((await mountStudent()).dataset.subtitle).toBe("");
+    });
   });
 });
