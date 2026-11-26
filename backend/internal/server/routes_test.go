@@ -389,4 +389,3 @@ func TestRegisterRoutes_EventSeriesIsPublic(t *testing.T) {
 		}
 	}
 }
-
