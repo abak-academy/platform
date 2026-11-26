@@ -78,8 +78,8 @@ function CatalogGrid({
       className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
     >
       {products.map((p) => (
-        <div key={p.id} data-tilt className="h-full">
-          <ProductCard product={p} />
+        <div key={p.id} data-tilt className="h-full rounded-lg">
+          <ProductCard product={p} className="hover:translate-y-0 hover:shadow-[var(--sh-sm)]" />
         </div>
       ))}
     </div>

@@ -179,7 +179,7 @@ export default function EventPage() {
               {filtered.length ? (
                 <div data-reveal-grid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {filtered.map((r) => (
-                    <div key={r.edition.product_id} data-tilt className="h-full">
+                    <div key={r.edition.product_id} className="h-full">
                       <EditionCard event={r.event} edition={r.edition} />
                     </div>
                   ))}

@@ -80,7 +80,10 @@ describe("EventPage", () => {
     const { container } = renderPage();
     await screen.findByRole("heading", { name: "ESOLIO", level: 3 });
     expect(container.querySelector("main")).toBeNull();
-    expect(grid().querySelectorAll(":scope > [data-tilt]").length).toBeGreaterThan(0);
+    const cards = grid().querySelectorAll("[data-tilt]");
+    expect(cards.length).toBeGreaterThan(0);
+    expect(cards).toHaveLength(grid().children.length);
+    expect(grid().querySelector("[data-tilt] [data-tilt]")).toBeNull();
   });
 
   it("shows an EmptyState with a WhatsApp CTA when the API fails", async () => {

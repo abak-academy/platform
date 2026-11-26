@@ -64,6 +64,8 @@ describe("CatalogPage", () => {
   it("wraps every product card for the tilt effect", () => {
     render(<CatalogPage />);
     expect(document.querySelectorAll("[data-reveal-grid] > [data-tilt]")).toHaveLength(2);
+    expect(document.querySelectorAll("[data-tilt]")).toHaveLength(2);
+    expect(document.querySelector("[data-tilt] [data-tilt]")).toBeNull();
   });
 
   describe("empty store", () => {
