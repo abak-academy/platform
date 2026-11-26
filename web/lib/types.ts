@@ -2306,3 +2306,46 @@ export interface PartnerAccess {
   scope: PartnerAccessScope;
   ids: string[];
 }
+
+export interface PublicEdition {
+  product_id: string;
+  exam_ids: string[];
+  title: string;
+  stages: string[];
+  grade_min: number | null;
+  grade_max: number | null;
+  price: number;
+  image_url: string;
+  phase: "open" | "live";
+  scheduled_at: string | null;
+  scheduled_end_at: string | null;
+  available_until: string | null;
+}
+
+export interface PublicMilestone {
+  label: string;
+  starts_on: string;
+  ends_on: string | null;
+  state: string;
+}
+
+export interface PublicEvent {
+  slug: string;
+  name: string;
+  short_name: string | null;
+  scope: string | null;
+  subjects: string[];
+  tone: string;
+  illustration: string;
+  logo_url: string;
+  official_url: string | null;
+  full_name: string;
+  tagline: string;
+  levels_label: string;
+  story: string[];
+  rounds: string[];
+  categories: { name: string; detail: string }[];
+  facts: { label: string; value: string }[];
+  schedule: PublicMilestone[];
+  open_editions: PublicEdition[];
+}
