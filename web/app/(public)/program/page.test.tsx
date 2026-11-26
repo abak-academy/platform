@@ -16,6 +16,16 @@ describe("ProgramPage", () => {
     expect(blocks(container).map((s) => s.id)).toEqual(IDS);
   });
 
+  it("alternates the art card left/right like the prototype, with the icon and number inside it", () => {
+    const { container } = render(<ProgramPage />);
+    blocks(container).forEach((s, i) => {
+      const art = s.querySelector<HTMLElement>("[data-program-art]")!;
+      expect(art.querySelector("svg")).not.toBeNull();
+      expect(art).toHaveTextContent(String(i + 1).padStart(2, "0"));
+      expect(art.className.includes("min-[901px]:order-2")).toBe(i % 2 === 1);
+    });
+  });
+
   it("fades the hero into the canvas like /event and /catalog", () => {
     const { container } = render(<ProgramPage />);
     expect(container.querySelector("h1")?.closest("section")?.querySelector("[aria-hidden].page-hero-fade")).not.toBeNull();

@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,14 +8,15 @@ import { useTranslation } from "@/lib/i18n";
 import { PROGRAMS, type Program } from "@/lib/programs";
 import { waHref } from "@/lib/site-config";
 
-const TONE: Record<string, string> = {
-  brand: "bg-brand-50 text-brand-ink",
-  ember: "bg-ember-50 text-ember-700",
-  teal: "bg-teal-50 text-teal-700",
-  gold: "bg-gold-50 text-gold-700",
-  sky: "bg-sky-50 text-sky-700",
-  berry: "bg-berry-50 text-berry-700",
-  navy: "bg-brand-50 text-brand-ink",
+// Same gradient pairs as the prototype's .p-* tones (public pages are light-only).
+const GRAD: Record<string, [string, string]> = {
+  brand: ["#3d4ddb", "#6e7cee"],
+  ember: ["#e2683c", "#f59a6b"],
+  teal: ["#1e978a", "#4cc3b2"],
+  gold: ["#e3a131", "#f5c868"],
+  sky: ["#2f6fde", "#6fa2f2"],
+  berry: ["#c23b6b", "#ec7ea4"],
+  navy: ["#22315b", "#3c5390"],
 };
 
 const WRAP = "mx-auto w-full max-w-public px-6";
@@ -23,20 +25,37 @@ function ProgramBlock({ program, index }: { program: Program; index: number }) {
   const { t } = useTranslation();
   const Icon = program.icon;
   const external = program.waKey !== null;
+  const [a, b] = GRAD[program.tone] ?? GRAD.brand;
+  const flip = index % 2 === 1;
   return (
-    <section id={program.id} data-reveal className={`${WRAP} scroll-mt-24 py-16 md:grid md:grid-cols-[240px_1fr] md:gap-12`}>
-      <div className="mb-6 flex items-center gap-4 md:mb-0 md:flex-col md:items-start">
-        <span className={`grid size-20 place-items-center rounded-3xl ${TONE[program.tone]}`}>
-          <Icon className="size-10" aria-hidden="true" />
+    <section
+      id={program.id}
+      data-reveal
+      className={`${WRAP} grid scroll-mt-24 items-start gap-5 py-16 min-[901px]:gap-12 ${
+        flip ? "min-[901px]:grid-cols-[1fr_320px]" : "min-[901px]:grid-cols-[320px_1fr]"
+      }`}
+      style={{ "--a": a, "--b": b } as CSSProperties}
+    >
+      <div
+        data-program-art
+        className={`relative grid aspect-[16/7] place-items-center overflow-hidden rounded-[28px] border border-line bg-[linear-gradient(135deg,color-mix(in_srgb,var(--a)_18%,var(--color-paper)),color-mix(in_srgb,var(--b)_26%,var(--color-paper)))] min-[901px]:aspect-square ${
+          flip ? "min-[901px]:order-2" : ""
+        }`}
+      >
+        <span className="grid size-[120px] -rotate-6 place-items-center rounded-[34px] bg-[linear-gradient(135deg,var(--a),var(--b))] text-white shadow-[0_10px_20px_-10px_var(--a)]">
+          <Icon className="size-14" aria-hidden="true" />
         </span>
-        <span className="type-display-xl text-ink-400" aria-hidden="true">
+        <span
+          aria-hidden="true"
+          className="absolute bottom-1.5 right-[22px] font-[family-name:var(--font-display)] text-[120px] font-extrabold leading-none tracking-[-0.06em] text-[color-mix(in_srgb,var(--a)_22%,transparent)]"
+        >
           {String(index + 1).padStart(2, "0")}
         </span>
       </div>
       <div>
         <h2 className="type-display text-ink-900">{t(program.titleKey)}</h2>
         <p className="mt-3 max-w-[60ch] text-ink-600">{t(program.descKey)}</p>
-        <dl data-reveal-grid className="mt-6 grid gap-4 sm:grid-cols-3">
+        <dl data-reveal-grid className="mt-6 grid gap-3 min-[901px]:grid-cols-3">
           {(
             [
               ["prog_label_for", program.forKey],
@@ -51,7 +70,7 @@ function ProgramBlock({ program, index }: { program: Program; index: number }) {
           ))}
         </dl>
         <h3 className="type-h3 mt-8 text-ink-900">{t("prog_label_gets")}</h3>
-        <ul className="mt-3 grid gap-2">
+        <ul className="mt-3 grid gap-x-5 gap-y-2 min-[901px]:grid-cols-2">
           {program.gets.map((key) => (
             <li key={key} className="flex items-start gap-2 text-ink-700">
               <Check className="mt-1 size-4 shrink-0 text-teal-700" aria-hidden="true" />
