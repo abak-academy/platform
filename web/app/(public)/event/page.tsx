@@ -109,7 +109,7 @@ export default function EventPage() {
   );
 
   return (
-    <main>
+    <div>
       <section className="relative overflow-hidden pt-32 pb-12">
         <div aria-hidden className="page-hero-fade absolute inset-0 -z-10 bg-brand-50" />
         <div className={wrap}>
@@ -179,7 +179,9 @@ export default function EventPage() {
               {filtered.length ? (
                 <div data-reveal-grid className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {filtered.map((r) => (
-                    <EditionCard key={r.edition.product_id} event={r.event} edition={r.edition} />
+                    <div key={r.edition.product_id} data-tilt className="h-full">
+                      <EditionCard event={r.event} edition={r.edition} />
+                    </div>
                   ))}
                 </div>
               ) : (
@@ -198,6 +200,6 @@ export default function EventPage() {
           )}
         </div>
       </section>
-    </main>
+    </div>
   );
 }

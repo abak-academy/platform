@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { StorySlider } from "./StorySlider";
 import { fileUrl } from "@/lib/api";
 import type { PublicTestimonial } from "@/lib/hooks/testimonials";
@@ -30,6 +30,14 @@ describe("StorySlider", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
     expect(screen.getByText("C")).toBeInTheDocument();
     expect(screen.queryByText("D")).not.toBeInTheDocument();
+  });
+
+  it("renders duplicate achievements without key collisions", () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<StorySlider items={[item(1, { achievements: ["Emas", "Emas"] })]} />);
+    expect(screen.getAllByText("Emas")).toHaveLength(2);
+    expect(err).not.toHaveBeenCalled();
+    err.mockRestore();
   });
 
   it("next swaps quote and photo; prev wraps around", () => {

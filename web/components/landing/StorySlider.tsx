@@ -43,8 +43,8 @@ export function StorySlider({ items }: { items: PublicTestimonial[] }) {
             <span className="type-body-sm text-ink-600">{current.role_label}</span>
           </div>
           <ul className="flex flex-wrap gap-2">
-            {current.achievements.slice(0, 3).map((a) => (
-              <li key={a} className="type-label-xs inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-gold-50 px-3 py-1.5 text-gold-700">
+            {current.achievements.slice(0, 3).map((a, i) => (
+              <li key={`${i}-${a}`} className="type-label-xs inline-flex items-center gap-1.5 rounded-[var(--radius-pill)] bg-gold-50 px-3 py-1.5 text-gold-700">
                 <Trophy className="size-3.5" aria-hidden="true" />
                 {a}
               </li>

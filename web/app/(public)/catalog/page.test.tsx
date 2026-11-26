@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import CatalogPage from "./page";
 import { useProducts } from "@/lib/hooks/products";
+import { useAuthStore } from "@/stores/auth";
 import type { Product } from "@/lib/types";
 
 let query = "";
@@ -58,6 +59,32 @@ describe("CatalogPage", () => {
     expect(screen.getByText("Kursus Aljabar")).toBeInTheDocument();
     expect(screen.queryByText("Tryout Nasional")).not.toBeInTheDocument();
     expect(document.querySelector("[data-reveal-grid]")).not.toBeNull();
+  });
+
+  it("wraps every product card for the tilt effect", () => {
+    render(<CatalogPage />);
+    expect(document.querySelectorAll("[data-reveal-grid] > [data-tilt]")).toHaveLength(2);
+  });
+
+  describe("empty store", () => {
+    beforeEach(() => {
+      vi.mocked(useProducts).mockReturnValue({ data: [], isLoading: false, isError: false } as never);
+    });
+
+    it("offers a guest no dashboard link and no inert notify button", () => {
+      useAuthStore.setState({ token: null });
+      render(<CatalogPage />);
+      expect(screen.getByRole("heading", { name: /toko/i })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /beranda/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /beritahu/i })).not.toBeInTheDocument();
+    });
+
+    it("links a signed-in student back to the dashboard", () => {
+      useAuthStore.setState({ token: "tok" });
+      render(<CatalogPage />);
+      expect(screen.getByRole("link", { name: /beranda/i })).toHaveAttribute("href", "/");
+      useAuthStore.setState({ token: null });
+    });
   });
 
   it("labels the grouping filter Event", () => {

@@ -195,6 +195,13 @@ describe("ProductDetailPage", () => {
       );
     });
 
+    it("shows nothing to a guest, who has no profile to complete", async () => {
+      auth.token = null;
+      await renderPage({ id: "exam-1", type: "exam", name: "Ujian Try Out" });
+      expect(screen.queryByText(/lengkapi biodata sebelum mendaftar/i)).toBeNull();
+      expect(screen.queryByRole("link", { name: /lengkapi profil/i })).toBeNull();
+    });
+
     it("shows nothing when biodata is complete", async () => {
       profile = { id: "u1", school_id: "s1", grade: 10, dob: "2008-01-01" };
 

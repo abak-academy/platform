@@ -21,9 +21,9 @@ export function LandingHero({ eventNames }: { eventNames: string[] }) {
           className="h-full w-full object-cover object-bottom"
         />
       </div>
-      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-black via-black/55 via-40% to-surface md:from-black/65 md:via-black/45 md:via-60%" />
+      <div aria-hidden="true" className="absolute inset-0 -z-10 bg-linear-to-b from-black/65 via-black/45 to-black/60" />
       <MathFloaters light />
-      <div data-hero-content className="mx-auto flex w-full max-w-public flex-col gap-6 px-6 pt-32 pb-12">
+      <div data-hero-content className="mx-auto flex w-full max-w-public flex-col gap-6 px-6 pt-32 pb-[110px] md:pb-[170px]">
         <h1 className="type-display-hero max-w-[16ch] text-white">
           {t("land_hero_prefix")}{" "}
           <span className="[&>span]:text-ember-500">
@@ -50,6 +50,7 @@ export function LandingHero({ eventNames }: { eventNames: string[] }) {
           ))}
         </dl>
       </div>
+      <div aria-hidden="true" data-hero-fade className="absolute inset-x-0 bottom-0 h-24 bg-linear-to-b from-transparent to-surface md:h-36" />
     </section>
   );
 }

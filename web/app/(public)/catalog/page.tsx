@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, ShoppingBag } from "lucide-react";
+import { ShoppingBag } from "lucide-react";
 import { useProducts } from "@/lib/hooks/products";
 import { useProductGroupings } from "@/lib/hooks/product-groupings";
 import { useTranslation } from "@/lib/i18n";
+import { useAuthStore } from "@/stores/auth";
 import {
   CategoryRail,
   type CatalogCategory,
@@ -41,6 +42,7 @@ function CatalogGrid({
   isFiltered: boolean;
 }) {
   const { t } = useTranslation();
+  const token = useAuthStore((s) => s.token);
   if (!products || products.length === 0) {
     if (isFiltered) {
       return (
@@ -60,15 +62,13 @@ function CatalogGrid({
         <p className="mx-auto mt-3 max-w-sm text-sm text-ink-500">
           {t("store_setup_desc")}
         </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Button>
-            <Bell className="mr-2 size-4" />
-            {t("store_notify_me")}
-          </Button>
-          <Button asChild variant="ghost">
-            <Link href="/">{t("store_back_dashboard")}</Link>
-          </Button>
-        </div>
+        {token && (
+          <div className="mt-8 flex justify-center">
+            <Button asChild variant="ghost">
+              <Link href="/">{t("store_back_dashboard")}</Link>
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -78,7 +78,9 @@ function CatalogGrid({
       className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
     >
       {products.map((p) => (
-        <ProductCard key={p.id} product={p} />
+        <div key={p.id} data-tilt className="h-full">
+          <ProductCard product={p} />
+        </div>
       ))}
     </div>
   );

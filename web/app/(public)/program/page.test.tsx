@@ -16,6 +16,11 @@ describe("ProgramPage", () => {
     expect(blocks(container).map((s) => s.id)).toEqual(IDS);
   });
 
+  it("fades the hero into the canvas like /event and /catalog", () => {
+    const { container } = render(<ProgramPage />);
+    expect(container.querySelector("h1")?.closest("section")?.querySelector("[aria-hidden].page-hero-fade")).not.toBeNull();
+  });
+
   it("jump chips link to each block", () => {
     render(<ProgramPage />);
     const nav = screen.getByRole("navigation", { name: t("id", "prog_jump_label") });

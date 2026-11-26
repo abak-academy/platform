@@ -76,6 +76,13 @@ describe("EventPage", () => {
     expect(within(grid()).getAllByRole("link")).toHaveLength(3);
   });
 
+  it("leaves the main landmark to the shell and tilts each edition card", async () => {
+    const { container } = renderPage();
+    await screen.findByRole("heading", { name: "ESOLIO", level: 3 });
+    expect(container.querySelector("main")).toBeNull();
+    expect(grid().querySelectorAll(":scope > [data-tilt]").length).toBeGreaterThan(0);
+  });
+
   it("shows an EmptyState with a WhatsApp CTA when the API fails", async () => {
     vi.spyOn(api, "apiFetch").mockRejectedValue(new Error("boom"));
     renderPage();

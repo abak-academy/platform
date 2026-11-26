@@ -23,16 +23,16 @@ describe("LandingHero", () => {
     expect(img.getAttribute("fetchpriority")).toBe("high");
     expect(img.getAttribute("loading")).toBe("eager");
     expect(img.getAttribute("alt")).toBe("");
-    expect(img.className).toContain("object-cover");
-    expect(img.className).toContain("object-bottom");
   });
 
-  it("sits under the transparent navbar: white text, dark scrim ending in the surface colour, ember word", () => {
+  it("puts the stats above a decorative fade that comes after the content", () => {
     const { container } = render(<LandingHero eventNames={["IKMC"]} />);
-    expect(container.querySelector("h1")?.className).toContain("text-white");
-    expect(container.querySelector("[data-hero]")?.className).toContain("min-h-[min(980px,100svh)]");
-    expect(container.querySelector("[data-hero] [aria-hidden].bg-linear-to-b")?.className).toContain("to-surface");
-    expect(container.querySelector("h1 > span")?.className).toContain("text-ember-500");
-    expect(screen.getByRole("link", { name: "Konsultasi gratis" }).className).toContain("border-white");
+    const content = container.querySelector("[data-hero-content]") as HTMLElement;
+    const fade = container.querySelector("[data-hero-fade]") as HTMLElement;
+    expect(fade.getAttribute("aria-hidden")).toBe("true");
+    expect(content.compareDocumentPosition(fade) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(fade.contains(content)).toBe(false);
+    for (const s of SITE_CONFIG.stats) expect(content.contains(screen.getByText(s.value))).toBe(true);
+    expect(fade.textContent).toBe("");
   });
 });

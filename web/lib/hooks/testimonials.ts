@@ -7,7 +7,7 @@ export type PublicTestimonial = {
   id: string;
   name: string;
   role_label: string;
-  photo_url: string | null;
+  photo_url: string;
   quote: string;
   achievements: string[];
 };

@@ -89,7 +89,7 @@ export default function ProductDetailPage({
   // Warns before checkout instead of only after — the backend still enforces
   // this gate at checkout regardless.
   const missingBiodata =
-    product.type === "exam" ? missingExamBiodataFields(profile) : [];
+    product.type === "exam" && token ? missingExamBiodataFields(profile) : [];
   const biodataFieldLabelKeys: Record<ExamBiodataField, "product_biodata_field_school" | "product_biodata_field_grade" | "product_biodata_field_dob"> = {
     school: "product_biodata_field_school",
     grade: "product_biodata_field_grade",
@@ -142,7 +142,7 @@ export default function ProductDetailPage({
   };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-public px-6 pt-32 pb-20">
       <Button variant="ghost" size="sm" className="mb-4" onClick={() => router.back()}>
         <ArrowLeft className="size-4" />
         {t("product_back_catalog")}
@@ -362,7 +362,7 @@ function ProductDescription({ text }: { text?: string | null }) {
 
 function DetailSkeleton() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 md:px-6 md:py-10">
+    <div className="mx-auto max-w-public px-6 pt-32 pb-20">
       <Skeleton className="mb-4 h-8 w-24" />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_300px] md:gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)_300px]">
         <div className="md:col-span-2 lg:col-span-1">
