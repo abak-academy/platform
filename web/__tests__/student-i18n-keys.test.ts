@@ -104,7 +104,6 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "order_retry_failed_title", id: "Gagal melanjutkan pembayaran", en: "Failed to continue payment" },
   { key: "order_items_section", id: "Item pesanan", en: "Order items" },
   { key: "order_status_history", id: "Riwayat status", en: "Status history" },
-  { key: "order_summary", id: "Ringkasan", en: "Summary" },
   { key: "order_subtotal", id: "Subtotal", en: "Subtotal" },
   { key: "order_discount", id: "Diskon", en: "Discount" },
   { key: "order_shipping", id: "Ongkos kirim", en: "Shipping cost" },
@@ -113,9 +112,7 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "order_payment_method", id: "Metode pembayaran", en: "Payment method" },
   { key: "order_gateway_ref", id: "Referensi gateway", en: "Gateway reference" },
   { key: "order_valid_until", id: "Berlaku sampai", en: "Valid until" },
-  { key: "order_invoice", id: "Invoice", en: "Invoice" },
   { key: "order_tracking", id: "No. resi", en: "Tracking no." },
-  { key: "order_view_invoice", id: "Lihat invoice", en: "View invoice" },
 
   // Competition / Registration (competition/page.tsx + competition/[id]/page.tsx)
   { key: "competition_list_subtitle", id: "Paket ujian yang Anda ikuti", en: "Exam packages you are enrolled in" },

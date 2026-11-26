@@ -1,6 +1,7 @@
 import { computeCardState } from "@/lib/exam-card-state";
 import { workingMinutes } from "@/lib/exam-schedule";
-import type { Order, OrderItem, Product, PublicEvent, RegistrationListItem } from "@/lib/types";
+import { isPhysicalType } from "@/lib/shipping";
+import type { Order, OrderItem, Product, ProductType, PublicEvent, RegistrationListItem } from "@/lib/types";
 
 export { workingMinutes as minutesFor };
 
@@ -15,7 +16,7 @@ export function pendingCount(orders: Order[]): number {
 }
 
 export function physicalItems(order: Order): OrderItem[] {
-  return (order.items ?? []).filter((i) => i.product_type !== "exam" && i.product_type !== "course");
+  return (order.items ?? []).filter((i) => isPhysicalType(i.product_type as ProductType));
 }
 
 const time = (s?: string) => (s ? new Date(s).getTime() : 0);
