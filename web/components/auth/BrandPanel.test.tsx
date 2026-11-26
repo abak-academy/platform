@@ -14,4 +14,13 @@ describe("BrandPanel", () => {
     expect(screen.getByText("20.000+ pelajar")).toBeInTheDocument();
     expect(container.querySelector("img")?.getAttribute("src")).toBe("/landing/hero-award.webp");
   });
+
+  it("admin variant swaps the copy and drops the proof line", () => {
+    render(<BrandPanel variant="admin" />);
+    expect(screen.getByText("ABAK ACADEMY · ADMIN")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Kelola platform dari satu tempat." }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("20.000+ pelajar")).toBeNull();
+  });
 });

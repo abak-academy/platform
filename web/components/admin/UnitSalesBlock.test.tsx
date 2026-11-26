@@ -55,14 +55,15 @@ describe("UnitSalesBlock", () => {
     expect(push).toHaveBeenCalledWith(link.getAttribute("href"));
   });
 
-  it("opens the row link with Enter on the focused native link", async () => {
+  it("opens the book detail when Enter is pressed on the focused row", async () => {
     render(<UnitSalesBlock />);
     const link = screen.getByRole("link", { name: "Lihat produk: Buku" });
-    const activate = vi.fn((event: Event) => event.preventDefault());
-    link.addEventListener("click", activate);
-    link.focus();
+    const row = link.closest("tr")!;
+    row.focus();
+    expect(row).toHaveFocus();
     await userEvent.keyboard("{Enter}");
-    expect(activate).toHaveBeenCalledOnce();
+    expect(push).toHaveBeenCalledOnce();
+    expect(push).toHaveBeenCalledWith(link.getAttribute("href"));
   });
 
   it.each(["7d", "custom", "all_time"])("restores %s from URL and carries it in all row links", (preset) => {

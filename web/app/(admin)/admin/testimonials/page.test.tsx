@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import * as api from "@/lib/api";
 import type { AdminTestimonial } from "@/lib/types";
+import { useUIStore } from "@/stores/ui";
 import TestimonialsPage from "./page";
 
 const toastError = vi.fn();
@@ -95,6 +96,18 @@ beforeEach(() => toastError.mockReset());
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+describe("testimonials i18n", () => {
+  afterEach(() => useUIStore.setState({ lang: "id" }));
+
+  it("renders the search placeholder in English", async () => {
+    useUIStore.setState({ lang: "en" });
+    mockApi([full]);
+    renderPage();
+    await screen.findByRole("article", { name: "Peserta Satu" });
+    expect(screen.getByPlaceholderText("Search name or quote")).toBeInTheDocument();
+  });
 });
 
 describe("testimonials list", () => {

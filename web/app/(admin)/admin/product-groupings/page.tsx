@@ -160,7 +160,7 @@ function EventCard({
               {next.state === "ongoing" && <Badge variant="live">{t("adm_ongoing")}</Badge>}
             </>
           ) : (
-            <span className="text-ink-600">Jadwal belum diisi</span>
+            <span className="text-ink-600">{t("adm_pg_no_schedule")}</span>
           )}
         </div>
 

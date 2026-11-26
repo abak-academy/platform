@@ -266,9 +266,7 @@ export default function SystemSchoolsPage() {
       ? t("sys_error_load")
       : isLoading
         ? t("sys_loading_data")
-        : lang === "en"
-          ? "No schools found."
-          : "Tidak ada sekolah ditemukan.";
+        : t("sys_no_schools_found");
 
   const columns: DataTableColumn<School>[] = [
     {
@@ -543,9 +541,7 @@ export default function SystemSchoolsPage() {
             </DialogTitle>
             <DialogDescription>
               {editTarget
-                ? (lang === "en"
-                    ? `Edit school: ${editTarget.name}`
-                    : `Edit sekolah: ${editTarget.name}`)
+                ? t("sys_edit_school_desc").replace("{name}", editTarget.name)
                 : ""}
             </DialogDescription>
           </DialogHeader>

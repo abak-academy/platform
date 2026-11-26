@@ -72,7 +72,7 @@ function UnitSalesDetail({ type, period }: { type: UnitSalesProductType; period:
           </div>
           {downloadError && <p role="alert">{t("admin_unit_download_error")}</p>}
           {!selected?.products.length ? <p className="text-ink-600">{t("admin_unit_empty")}</p> :
-            <DataTable rows={selected.products} rowKey={(p) => p.product_id} empty={t("admin_unit_empty")} columns={[
+            <DataTable mobileCards rows={selected.products} rowKey={(p) => p.product_id} empty={t("admin_unit_empty")} columns={[
               { key: "name", header: t("admin_unit_product"), strong: true, cell: (p) => p.name },
               ...UNITS.map((key) => ({ key, header: t(`admin_unit_${key}`), align: "right" as const, strong: key === "net_units",
                 className: "tabular-nums", cell: (p: (typeof selected.products)[number]) => p[key] })),

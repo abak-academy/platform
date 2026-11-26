@@ -182,4 +182,54 @@ describe("DataTable", () => {
     fireEvent.click(screen.getByText("Alpha"));
     expect(onRowClick).toHaveBeenCalledTimes(1);
   });
+  describe("mobileCards", () => {
+    it("keeps explicit table roles in card mode so WebKit screen readers still see a table", () => {
+      const { container, rerender } = render(<DataTable mobileCards columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(container.querySelector("table")).toHaveAttribute("role", "table");
+      expect(container.querySelector("tbody")).toHaveAttribute("role", "rowgroup");
+      expect(screen.getByText("Alpha").closest("tr")).toHaveAttribute("role", "row");
+      expect(screen.getByText("Alpha").closest("td")).toHaveAttribute("role", "cell");
+      expect(container.querySelector("th")).toHaveAttribute("role", "columnheader");
+      rerender(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(container.querySelector("table")).not.toHaveAttribute("role");
+      expect(screen.getByText("Alpha").closest("td")).not.toHaveAttribute("role");
+    });
+
+    it("labels every non-primary cell with its header and leaves default tables unlabelled", () => {
+      const { rerender } = render(<DataTable mobileCards columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(screen.getByText("Alpha").closest("td")).toHaveAttribute("data-label", "Name");
+      expect(screen.getByText("1").closest("td")).toHaveAttribute("data-label", "ID");
+      expect(screen.getByText("Alpha").closest("td")).toHaveClass("max-sm:order-first");
+      expect(screen.getByText("1").closest("td")).toHaveClass("max-sm:flex");
+      expect(screen.getByText("1").closest("tr")).toHaveClass("max-sm:border-line", "max-sm:bg-card");
+      rerender(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(screen.getByText("Alpha").closest("td")).not.toHaveAttribute("data-label");
+      expect(screen.getByText("Alpha").closest("tr")!.className).not.toContain("max-sm");
+    });
+
+    it("uses the column marked primary as the card title", () => {
+      const marked = columns.map((c) => ({ ...c, primary: c.key === "id" }));
+      render(<DataTable mobileCards columns={marked} rows={rows} rowKey={(r) => r.id} empty="No rows" />);
+      expect(screen.getByText("1").closest("td")).toHaveClass("max-sm:order-first");
+      expect(screen.getByText("Alpha").closest("td")).toHaveClass("max-sm:flex");
+    });
+
+    it("activates the row on click and on Enter/Space, but not from an inner link or portal", () => {
+      const onRowClick = vi.fn();
+      const linked: DataTableColumn<Row>[] = [
+        { key: "name", header: "Name", cell: (r) => <a href="#x">{r.name}</a> },
+        { key: "id", header: "ID", cell: (r) => r.id },
+      ];
+      render(<DataTable mobileCards columns={linked} rows={rows} rowKey={(r) => r.id} empty="No rows" onRowClick={onRowClick} />);
+      const row = screen.getByText("Alpha").closest("tr")!;
+      fireEvent.click(screen.getByText("1", { selector: "td" }));
+      expect(onRowClick).toHaveBeenLastCalledWith(rows[0]);
+      fireEvent.keyDown(row, { key: "Enter" });
+      fireEvent.keyDown(row, { key: " " });
+      expect(onRowClick).toHaveBeenCalledTimes(3);
+      fireEvent.click(screen.getByText("Alpha"));
+      fireEvent.keyDown(screen.getByText("Alpha"), { key: "Enter" });
+      expect(onRowClick).toHaveBeenCalledTimes(3);
+    });
+  });
 });

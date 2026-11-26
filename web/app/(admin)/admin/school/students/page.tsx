@@ -500,8 +500,8 @@ export default function SchoolStudentsPage() {
         ? t("sys_loading_data")
         : t("students_empty");
 
-  const filterPanelLabel = lang === "en" ? "Student filters" : "Filter siswa";
-  const rosterLabel = lang === "en" ? "School roster" : "Daftar siswa";
+  const filterPanelLabel = t("students_filter_panel_label");
+  const rosterLabel = t("students_roster_label");
   const filterCount = (statusFilter !== "all" ? 1 : 0) + (selectedSchoolId ? 1 : 0);
   const statusOptions = [
     { value: "all", label: t("accounts_status_all") },
@@ -581,9 +581,7 @@ export default function SchoolStudentsPage() {
                       />
                     ) : (
                       <p className="text-xs leading-5 text-ink-600">
-                        {lang === "en"
-                          ? "This roster is bound to your administrator account's school."
-                          : "Daftar siswa ini terikat ke sekolah pada akun admin Anda."}
+                        {t("students_roster_bound_note")}
                       </p>
                     )}
                   </div>
