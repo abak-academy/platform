@@ -3,9 +3,8 @@
 import Link from "next/link";
 import { Suspense, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ShoppingBag } from "lucide-react";
+import { Search, ShoppingBag } from "lucide-react";
 import { useProducts } from "@/lib/hooks/products";
-import { useProductGroupings } from "@/lib/hooks/product-groupings";
 import { useTranslation } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
 import {
@@ -14,20 +13,11 @@ import {
 } from "@/components/catalog/CategoryRail";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ProductCard } from "@/components/catalog/ProductCard";
 import type { Product } from "@/lib/types";
 
-const ALL_GROUPINGS = "all";
 const PRIORITY_CARDS = 4;
-const SKELETON_CARDS = 10;
+const SKELETON_CARDS = 8;
 const wrap = "mx-auto w-full max-w-public px-6";
 const CATEGORIES: CatalogCategory[] = [
   "book",
@@ -77,7 +67,7 @@ function CatalogGrid({
   return (
     <div
       data-reveal-grid
-      className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      className="grid grid-cols-2 gap-[18px] md:grid-cols-3 lg:grid-cols-4"
     >
       {products.map((p, i) => (
         <div key={p.id} data-tilt className="h-full rounded-lg">
@@ -92,7 +82,7 @@ function CatalogSkeleton() {
   return (
     <div
       data-testid="catalog-skeleton"
-      className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+      className="grid grid-cols-2 gap-[18px] md:grid-cols-3 lg:grid-cols-4"
     >
       {Array.from({ length: SKELETON_CARDS }).map((_, i) => (
         <div
@@ -120,89 +110,67 @@ function CatalogContent() {
     const q = searchParams.get("type") as CatalogCategory;
     return CATEGORIES.includes(q) ? q : "all";
   });
-  const [groupingId, setGroupingId] = useState(
-    searchParams.get("grouping") ?? ALL_GROUPINGS,
-  );
   const [search, setSearch] = useState("");
 
-  const type = category === "all" ? undefined : category;
-  const { data, isLoading, isError, error, refetch } = useProducts(
-    type,
-    groupingId === ALL_GROUPINGS ? undefined : groupingId,
-  );
-  const { data: groupings } = useProductGroupings();
+  const { data, isLoading, isError, error, refetch } = useProducts();
+  const shop = useMemo(() => data?.filter((p) => p.type !== "exam"), [data]);
 
-  function changeGrouping(value: string) {
-    setGroupingId(value);
+  const counts = useMemo(() => {
+    const c: Partial<Record<CatalogCategory, number>> = { all: shop?.length ?? 0 };
+    for (const k of CATEGORIES) c[k] = shop?.filter((p) => p.type === k).length ?? 0;
+    return c;
+  }, [shop]);
+
+  function changeCategory(value: CatalogCategory) {
+    setCategory(value);
     const params = new URLSearchParams(searchParams.toString());
-    if (value === ALL_GROUPINGS) params.delete("grouping");
-    else params.set("grouping", value);
+    if (value === "all") params.delete("type");
+    else params.set("type", value);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const shop = data?.filter((p) => p.type !== "exam");
-    if (!shop || q === "") return shop;
-    return shop.filter((p) => p.name.toLowerCase().includes(q));
-  }, [data, search]);
+    return shop?.filter(
+      (p) => (category === "all" || p.type === category) && (q === "" || p.name.toLowerCase().includes(q)),
+    );
+  }, [shop, category, search]);
 
-  const isFiltered =
-    category !== "all" || groupingId !== ALL_GROUPINGS || search.trim() !== "";
+  const isFiltered = category !== "all" || search.trim() !== "";
 
   return (
     <>
-        <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <CategoryRail value={category} onChange={changeCategory} counts={isLoading ? undefined : counts} />
+        <label className="flex h-[42px] w-[280px] max-w-full items-center gap-2 rounded-[var(--radius-pill)] border border-line bg-paper px-4 text-ink-600 focus-within:border-brand-600">
+          <Search className="size-4 shrink-0" aria-hidden="true" />
+          <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t("catalog_search_placeholder")}
             aria-label={t("catalog_search_placeholder")}
-            className="sm:max-w-xs"
+            className="min-w-0 flex-1 bg-transparent text-sm text-ink-900 outline-none placeholder:text-ink-600"
           />
-          {(groupings?.length ?? 0) > 0 && (
-            <Select value={groupingId} onValueChange={changeGrouping}>
-              <SelectTrigger
-                aria-label={t("catalog_grouping_label")}
-                className="sm:w-56"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_GROUPINGS}>
-                  {t("catalog_grouping_all")}
-                </SelectItem>
-                {groupings!.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
+        </label>
+      </div>
 
-        <div className="flex flex-col gap-4 md:flex-row md:gap-6">
-          <CategoryRail value={category} onChange={setCategory} />
-
-          <div className="min-h-[32rem] min-w-0 flex-1">
-            {isError ? (
-              <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
-                <p>
-                  {t("catalog_load_failed")} {(error as Error)?.message}
-                </p>
-                <button onClick={() => refetch()} className="mt-2 underline">
-                  {t("retry")}
-                </button>
-              </div>
-            ) : isLoading ? (
-              <CatalogSkeleton />
-            ) : (
-              <CatalogGrid products={filtered} isFiltered={isFiltered} />
-            )}
+      <div className="min-h-[32rem]">
+        {isError ? (
+          <div className="rounded-lg border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+            <p>
+              {t("catalog_load_failed")} {(error as Error)?.message}
+            </p>
+            <button onClick={() => refetch()} className="mt-2 underline">
+              {t("retry")}
+            </button>
           </div>
-        </div>
+        ) : isLoading ? (
+          <CatalogSkeleton />
+        ) : (
+          <CatalogGrid products={filtered} isFiltered={isFiltered} />
+        )}
+      </div>
     </>
   );
 }
@@ -210,7 +178,10 @@ function CatalogContent() {
 function CatalogFallback() {
   return (
     <>
-      <Skeleton className="mb-8 h-10 w-full sm:max-w-xs" />
+      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+        <Skeleton className="h-11 w-full max-w-[560px] rounded-[var(--radius-pill)]" />
+        <Skeleton className="h-[42px] w-[280px] max-w-full rounded-[var(--radius-pill)]" />
+      </div>
       <div className="min-h-[32rem]">
         <CatalogSkeleton />
       </div>
