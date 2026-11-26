@@ -114,6 +114,12 @@ func mapServiceError(c echo.Context, err error) error {
 		var incErr *service.GroupingIncompleteError
 		errors.As(err, &incErr)
 		return c.JSON(http.StatusUnprocessableEntity, map[string]any{"code": "validation_failed", "message": err.Error(), "missing": incErr.Missing})
+	case errors.Is(err, service.ErrTestimonialIncomplete):
+		var incErr *service.TestimonialIncompleteError
+		errors.As(err, &incErr)
+		return c.JSON(http.StatusUnprocessableEntity, map[string]any{"code": "validation_failed", "message": err.Error(), "missing": incErr.Missing})
+	case errors.Is(err, service.ErrTestimonialNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "testimonial_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrGroupingHasProducts):
 		status, apiErr = http.StatusConflict, APIError{Code: "grouping_has_products", Message: err.Error()}
 	case errors.Is(err, repository.ErrGroupingPrefixTaken):

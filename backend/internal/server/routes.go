@@ -39,6 +39,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 
 	v1.GET("/event-series", h.ListEventSeries)
 	v1.GET("/event-series/:slug", h.GetEventSeries)
+	v1.GET("/testimonials", h.ListTestimonials)
 
 	// Admin product routes
 	admin := v1.Group("/admin")
@@ -215,6 +216,14 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	adminProductGroupings.PATCH("/:id", h.AdminUpdateProductGrouping)
 	adminProductGroupings.DELETE("/:id", h.AdminDeleteProductGrouping)
 	adminProductGroupings.PUT("/:id/products", h.AdminSetGroupingProducts)
+
+	// Admin testimonial routes
+	adminTestimonials := admin.Group("/testimonials")
+	adminTestimonials.Use(handler.RBACMiddleware("testimonials:write"))
+	adminTestimonials.GET("", h.AdminListTestimonials)
+	adminTestimonials.POST("", h.AdminCreateTestimonial)
+	adminTestimonials.PATCH("/:id", h.AdminUpdateTestimonial)
+	adminTestimonials.DELETE("/:id", h.AdminDeleteTestimonial)
 
 	// Admin off-platform round results (event editions)
 	externalRounds := handler.RBACMiddleware("exam-results-external:write")

@@ -21,6 +21,7 @@ describe("admin navigation", () => {
   it("orders super-admin Akademik items by workflow", () => {
     expect(hrefs("super_admin", "nav_group_academic")).toEqual([
       "/admin/product-groupings",
+      "/admin/testimonials",
       "/admin/exam/packages",
       "/admin/exam/monitor",
       "/admin/exam/tests",
@@ -101,6 +102,15 @@ describe("admin navigation", () => {
       expect(hrefs(role, "nav_group_store")).not.toContain("/admin/product-groupings");
     }
     expect(NAV_CONFIG.admin_school.flatMap((g) => g.items.map((i) => i.href))).not.toContain("/admin/product-groupings");
+  });
+
+  it("lists Testimoni right after Event for super_admin only, labelled in both languages", () => {
+    expect(hrefs("super_admin", "nav_group_academic").slice(0, 2)).toEqual(["/admin/product-groupings", "/admin/testimonials"]);
+    for (const role of ADMIN_ROLES.filter((r) => r !== "super_admin")) {
+      expect(NAV_CONFIG[role].flatMap((g) => g.items.map((i) => i.href))).not.toContain("/admin/testimonials");
+    }
+    expect(DICT.id.admin_nav_testimonials).toBe("Testimoni");
+    expect(DICT.en.admin_nav_testimonials).toBe("Testimonials");
   });
 
   it("never renders a group with zero items and hides school reports", () => {
