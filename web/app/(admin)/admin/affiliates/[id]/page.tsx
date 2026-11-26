@@ -70,7 +70,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <AdminPageHeader
         title={d.name}
         description={`${d.email ?? "—"} · ${aff.code || "—"}`}

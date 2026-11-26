@@ -290,7 +290,7 @@ export default function QuestionBankPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("question_bank_title")}
         description={t("question_bank_subtitle")}

@@ -168,7 +168,7 @@ export default function TestsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("tests_page_title")}
         description={t("tests_page_description")}

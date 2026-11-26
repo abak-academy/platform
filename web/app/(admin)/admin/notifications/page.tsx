@@ -35,7 +35,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("notifications_page_title")}
         description={t("notifications_page_description")}

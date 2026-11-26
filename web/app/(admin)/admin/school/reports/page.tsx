@@ -189,7 +189,7 @@ export default function SchoolReportsPage() {
   // No exam selected — show empty state
   if (!selectedExamId) {
     return (
-      <div className="fade-in flex flex-col gap-5">
+      <div className="fade-in flex flex-col gap-4">
         <AdminPageHeader
             title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
@@ -228,7 +228,7 @@ export default function SchoolReportsPage() {
   // Loading state (first page only)
   if (query.isLoading && accumulated.length === 0) {
     return (
-      <div className="fade-in flex flex-col gap-5">
+      <div className="fade-in flex flex-col gap-4">
         <AdminPageHeader
             title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
@@ -270,7 +270,7 @@ export default function SchoolReportsPage() {
 
   if (query.error && accumulated.length === 0) {
     return (
-      <div className="fade-in flex flex-col gap-5">
+      <div className="fade-in flex flex-col gap-4">
         <AdminPageHeader
             title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
@@ -311,7 +311,7 @@ export default function SchoolReportsPage() {
   }
 
   return (
-    <div className="fade-in flex flex-col gap-5">
+    <div className="fade-in flex flex-col gap-4">
       <AdminPageHeader
         title={t("school_reports_title")}
         description={t("school_reports_subtitle")}

@@ -93,7 +93,7 @@ export default function AdminProfilePage() {
   }
 
   return (
-    <div className="fade-in flex flex-col gap-5">
+    <div className="fade-in flex flex-col gap-4">
       <AdminPageHeader title={t("profile_title")} />
 
       <Card className="p-6">

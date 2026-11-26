@@ -167,7 +167,7 @@ export default function CoursesPage() {
   });
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("courses_page_title")}
         description={t("courses_page_description")}

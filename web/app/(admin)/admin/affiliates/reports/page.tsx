@@ -68,7 +68,7 @@ function ReportsContent() {
   const changeTab = (value: string) => router.replace(value === "summary" ? pathname : `${pathname}?tab=${value}`, { scroll: false });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <AdminPageHeader icon={FileBarChart} title={t("admin_aff_rep_title")} description={t("admin_aff_rep_desc")} />
       {tab === "partner" ? <PartnerSummary /> : <Liability />}
       <Tabs value={tab} onValueChange={changeTab}>

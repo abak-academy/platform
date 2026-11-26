@@ -297,7 +297,7 @@ export default function AdminIndexPage() {
   );
 
   return (
-    <div className="fade-in flex flex-col gap-5">
+    <div className="fade-in flex flex-col gap-4">
       <PageHead
         title={`${greeting}, ${name.split(" ")[0]}`}
         sub={`${today} · ${t("admin_home_overview_suffix")}`}

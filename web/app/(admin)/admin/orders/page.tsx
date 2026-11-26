@@ -365,7 +365,7 @@ export default function OrdersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("admin_orders_page_title")}
         description={t("admin_orders_page_description")}

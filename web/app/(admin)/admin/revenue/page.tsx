@@ -128,7 +128,7 @@ export default function RevenuePage() {
 
   if (!hydrated) {
     return (
-      <div className="flex flex-col gap-5 fade-in">
+      <div className="flex flex-col gap-4 fade-in">
         <AdminPageHeader
             title={t("revenue_page_title")}
           description={t("revenue_page_description")}
@@ -141,7 +141,7 @@ export default function RevenuePage() {
   if (!canReadRevenue) return <NoAccess />;
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("revenue_page_title")}
         description={t("revenue_page_description")}

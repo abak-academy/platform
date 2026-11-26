@@ -128,7 +128,7 @@ export default function ExamPackagesPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("exam_packages_page_title")}
         description={t("exam_packages_page_description")}

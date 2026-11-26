@@ -122,7 +122,7 @@ export default function PromosPage() {
   }, [promos, toolbar]);
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("promos_page_title")}
         description={t("promos_page_description")}

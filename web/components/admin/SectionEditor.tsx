@@ -270,7 +270,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
   const sectionList = sections ?? [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <form onSubmit={handleAddSection} className="flex items-end gap-2">
         <div className="flex-1">
           <label htmlFor="new-section-title" className="mb-1 block text-sm font-medium">
@@ -291,7 +291,7 @@ export function SectionEditor({ courseId }: SectionEditorProps) {
       </form>
 
       {sectionList.length === 0 && (
-        <div className="rounded-2xl border border-line p-8 text-center text-ink-600">
+        <div className="rounded-[var(--radius-card)] border border-line p-8 text-center text-ink-600">
           Belum ada bab. Tambahkan bab pertama di atas.
         </div>
       )}

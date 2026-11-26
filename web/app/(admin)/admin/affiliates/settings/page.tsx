@@ -175,7 +175,7 @@ function SettingsContent() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <AdminPageHeader title={t("admin_aff_set_title")} description={t("admin_aff_set_desc")} />
 
       <ProgramSwitchCard
@@ -195,7 +195,7 @@ function SettingsContent() {
       </Tabs>
 
       {tab === "general" && (
-        <form onSubmit={save} className="space-y-6">
+        <form onSubmit={save} className="space-y-4">
           <BulkFormatGuide fields={guideFields} pitfallKeys={[]} />
           {GROUPS.map((group) => (
             <section key={group.title} className="md-card-outlined space-y-4 p-6">
@@ -203,7 +203,7 @@ function SettingsContent() {
                 <h2 className="font-semibold text-ink-900">{t(group.title)}</h2>
                 <p className="text-sm text-ink-600">{t(group.desc)}</p>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {group.fields.map(globalField)}
               </div>
             </section>
@@ -213,7 +213,7 @@ function SettingsContent() {
       )}
 
       {tab === "levels" && (
-        <form onSubmit={save} className="space-y-6">
+        <form onSubmit={save} className="space-y-4">
           <BulkFormatGuide fields={levelGuideFields} pitfallKeys={["admin_aff_set_level_hint"]} />
           <div className="grid gap-4 lg:grid-cols-3">
             {AFFILIATE_LEVELS.map((level) => (

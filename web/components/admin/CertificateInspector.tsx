@@ -43,7 +43,7 @@ const TOKEN_LABELS = {
 export function CertificateInspector({ field, onChange, onDelete, onReplaceImage }: Props) {
   const { t } = useTranslation();
   if (!field) {
-    return <div className="flex min-h-48 items-center justify-center rounded-xl border border-dashed border-line p-6 text-center text-sm text-ink-600">{t("certificate_studio_select_element")}</div>;
+    return <div className="flex min-h-48 items-center justify-center rounded-[var(--radius-card)] border border-dashed border-line p-6 text-center text-sm text-ink-600">{t("certificate_studio_select_element")}</div>;
   }
   if (field.kind === "image") {
     return (

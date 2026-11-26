@@ -263,7 +263,7 @@ export default function ProductGroupingsPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 fade-in">
       <AdminPageHeader
         title={t("grouping_page_title")}
         description={t("grouping_page_description")}

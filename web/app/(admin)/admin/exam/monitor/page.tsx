@@ -346,7 +346,7 @@ export default function ExamMonitorPage() {
 
   if (selectedExamId && monitorLoading) {
     detailSection = (
-      <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="flex flex-col gap-4 lg:flex-row">
         <div className="flex-1 space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-12 w-full" />
@@ -371,7 +371,7 @@ export default function ExamMonitorPage() {
     );
   } else if (selectedExamId) {
     detailSection = (
-      <div className="flex flex-col gap-6 lg:flex-row">
+      <div className="flex flex-col gap-4 lg:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div className="grid grid-cols-2 gap-3 min-[1200px]:grid-cols-4" data-testid="exam-monitor-kpis">
             <StatCard tone="sky" icon={Users} label={t("st_registered")} value={String(rows.length)} />
@@ -447,7 +447,7 @@ export default function ExamMonitorPage() {
   // ── Main content ──
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("exam_monitor_title")}
         description={t("exam_monitor_subtitle")}

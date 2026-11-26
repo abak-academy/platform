@@ -43,7 +43,7 @@ export default function SystemAuditPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 fade-in">
+      <div className="space-y-4 fade-in">
         <AdminPageHeader title={t("audit_title")} description={t("sys_loading")} />
         <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       </div>
@@ -56,7 +56,7 @@ export default function SystemAuditPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="space-y-6 fade-in">
+      <div className="space-y-4 fade-in">
         <AdminPageHeader
           title={t("audit_title")}
           description={t("sys_error_title")}
@@ -67,7 +67,7 @@ export default function SystemAuditPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 fade-in">
       <AdminPageHeader title={t("audit_title")} description={t("audit_subtitle")} />
 
       <div className="md-card-outlined md-card-flush">

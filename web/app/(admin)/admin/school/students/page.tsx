@@ -526,7 +526,7 @@ export default function SchoolStudentsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <PageHead
         title={t("school_students_title")}
         sub={[!canManageAllStudents && adminOwnSchool?.name, t("adm_accounts_count").replace("{n}", String(stats.total))].filter(Boolean).join(" · ")}

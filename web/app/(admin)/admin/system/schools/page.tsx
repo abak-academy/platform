@@ -387,7 +387,7 @@ export default function SystemSchoolsPage() {
   ];
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <PageHead
         title={t("schools_title")}
         sub={`${t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))} · ${stats.active.toLocaleString(numberLocale)} ${t("status_label_active")} · ${stats.students.toLocaleString(numberLocale)} ${t("schools_stat_students")}`}

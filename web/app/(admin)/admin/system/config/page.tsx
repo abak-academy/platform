@@ -219,7 +219,7 @@ export default function SystemConfigPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 fade-in">
+      <div className="space-y-4 fade-in">
         <AdminPageHeader
             title={t("config_title")}
           description={t("sys_loading")}
@@ -235,7 +235,7 @@ export default function SystemConfigPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="space-y-6 fade-in">
+      <div className="space-y-4 fade-in">
         <AdminPageHeader
             title={t("config_title")}
           description={t("sys_error_title")}
@@ -246,7 +246,7 @@ export default function SystemConfigPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 fade-in">
       <AdminPageHeader
         title={t("config_title")}
         description={t("config_subtitle")}

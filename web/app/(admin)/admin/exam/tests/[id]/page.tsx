@@ -400,7 +400,7 @@ export default function TestDetailPage() {
   const examCount = detail?.test.exam_count ?? 0;
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <div className="flex flex-col gap-1">
         <button
           type="button"
@@ -485,7 +485,7 @@ export default function TestDetailPage() {
             </TabsList>
 
             <TabsContent value="questions" className="pt-6">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(250px,1fr)]">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(250px,1fr)]">
                 <div className="min-w-0 space-y-4">
                   {creating && (
                     <QuestionEditor
@@ -547,7 +547,7 @@ export default function TestDetailPage() {
                   </SectionCard>
                 </div>
 
-                <aside className="min-w-0 space-y-6">
+                <aside className="min-w-0 space-y-4">
                   <section
                     data-testid="test-material-sidebar"
                     className="md-card-outlined min-w-0 space-y-3"
@@ -600,7 +600,7 @@ export default function TestDetailPage() {
             </TabsContent>
 
             <TabsContent value="material" className="pt-6">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
                 <SectionCard title={t("format_shared_material")} description={t("tests_material_card_desc")}>
                   <div className="space-y-2 border-t p-6">
                     <RichTextEditor
@@ -638,7 +638,7 @@ export default function TestDetailPage() {
             </TabsContent>
 
             <TabsContent value="info" className="pt-6">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 <SectionCard title={t("tests_info_identity_title")}>
                   <div className="space-y-5 border-t p-6">
                     <div className="grid gap-2">

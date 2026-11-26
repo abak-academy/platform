@@ -41,7 +41,7 @@ export default function ExamDashboardPage() {
     }).format(new Date(iso));
 
   return (
-    <div className="fade-in flex flex-col gap-5">
+    <div className="fade-in flex flex-col gap-4">
       <DashboardHero
         icon={ShieldAlert}
         badge={t("exam_home_badge")}
@@ -108,7 +108,7 @@ export default function ExamDashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <section className="md-card-outlined">
               <div className="mb-3.5 flex items-center justify-between gap-3">
                 <h2 className="type-h2">{t("admin_home_upcoming_exams")}</h2>

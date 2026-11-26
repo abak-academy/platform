@@ -149,7 +149,7 @@ export default function ProductsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         title={t("products_page_title")}
         description={t("products_page_description")}

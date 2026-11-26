@@ -184,7 +184,7 @@ export default function SystemAccountsPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 fade-in">
+      <div className="space-y-4 fade-in">
         <AdminPageHeader title={t("accounts_title")} description={t("sys_loading")} />
         <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
       </div>
@@ -197,7 +197,7 @@ export default function SystemAccountsPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="space-y-6 fade-in">
+      <div className="space-y-4 fade-in">
         <AdminPageHeader title={t("accounts_title")} description={t("sys_error_title")} />
         <div className="py-12 text-center text-ink-500">{msg}</div>
       </div>
@@ -205,7 +205,7 @@ export default function SystemAccountsPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 fade-in">
       <AdminPageHeader
         title={t("accounts_title")}
         description={t("accounts_subtitle")}

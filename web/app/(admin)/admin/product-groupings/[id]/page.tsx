@@ -529,7 +529,7 @@ export default function ProductGroupingDetailPage() {
   const editionTotal = editions.length;
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 fade-in">
       {!grouping && (
         <Link href="/admin/product-groupings" className="inline-flex w-fit items-center gap-1 type-label-sm text-ink-600 hover:text-ink-900">
           <ArrowLeft className="size-4" aria-hidden />
@@ -553,7 +553,7 @@ export default function ProductGroupingDetailPage() {
             description={`${grouping.products.filter((p) => p.type === "exam").length} edisi · ${grouping.is_visible ? "tampil di landing" : "disembunyikan dari landing"}`}
           />
 
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-4">
               <section className="md-card-outlined space-y-4 p-6" aria-label="Identitas">
                 <h2 className="type-h2">Identitas</h2>

@@ -155,7 +155,7 @@ export default function TestimonialsPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="space-y-4 fade-in">
       <AdminPageHeader
         title={t("admin_nav_testimonials")}
         description={t("adm_testi_desc")}

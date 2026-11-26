@@ -47,7 +47,7 @@ function UnitSalesDetail({ type, period }: { type: UnitSalesProductType; period:
     finally { setDownloading(false); }
   }
 
-  return <div className="flex flex-col gap-5 fade-in">
+  return <div className="flex flex-col gap-4 fade-in">
     <AdminPageHeader title={t(`admin_unit_${type}`)} description={t("admin_unit_subtitle")}
       actions={<p className="md-lchip">{periodLabel}</p>}
       back={{ href: `/admin/store?${unitPeriodSearch(period)}`, label: t("admin_unit_back") }} />

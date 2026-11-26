@@ -433,7 +433,7 @@ function ExamPackageDetail() {
   ];
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <AdminPageHeader
         back={{ href: "/admin/exam/packages", label: t("exam_packages_page_title") }}
         title={title}
@@ -785,7 +785,7 @@ function ExamPackageDetail() {
                 )}
                 {policyLocked && <p className="mb-3 text-sm text-ink-600">{t("exam_admin_policy_locked")}</p>}
                 {attachedIds.length === 0 && pendingSections.length === 0 ? (
-                  <div className="rounded-2xl border-2 border-dashed border-line p-6 text-center text-sm text-ink-600">
+                  <div className="rounded-[var(--radius-card)] border-2 border-dashed border-line p-6 text-center text-sm text-ink-600">
                     {t("exam_admin_sections_empty")}
                   </div>
                 ) : (
@@ -1096,7 +1096,7 @@ function ExamPackageDetail() {
             </div>
           )}
           {tab === "leaderboard" && (
-            <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4">
               {/* Analytics summary */}
               <div className="md-card-outlined">
                 <div className="mb-4 flex items-center gap-2">
@@ -1299,7 +1299,7 @@ function GradingEssayCard({
   t: ReturnType<typeof useTranslation>["t"];
 }) {
   return (
-    <li className="flex flex-col gap-3 rounded-2xl border border-line p-4">
+    <li className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line p-4">
       <div className="text-sm font-medium">
         {stripHtmlToPlainText(essay.body)}
       </div>

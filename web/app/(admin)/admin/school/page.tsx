@@ -42,7 +42,7 @@ export default function SchoolDashboardPage() {
     }).format(new Date(iso));
 
   return (
-    <div className="fade-in flex flex-col gap-5">
+    <div className="fade-in flex flex-col gap-4">
       <DashboardHero
         badge={t("school_home_badge")}
         name={name}
@@ -86,7 +86,7 @@ export default function SchoolDashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="md-card-outlined" data-testid="school-latest-bulk-order">
               <h2 className="type-h2 mb-3.5">{t("school_home_bulk_title")}</h2>
               {!data?.latest_bulk_order ? (

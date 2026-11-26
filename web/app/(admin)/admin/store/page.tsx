@@ -85,7 +85,7 @@ export default function StoreDashboardPage() {
   if (!canRead) return <NoAccess />;
 
   return (
-    <div className="flex flex-col gap-5 fade-in">
+    <div className="flex flex-col gap-4 fade-in">
       <DashboardHero icon={Store} badge={t("store_home_badge")} name={name} subtitle={t("store_subtitle")} className="" />
 
       {/* Work queue — the only band allowed to turn red, and only on real work. */}
