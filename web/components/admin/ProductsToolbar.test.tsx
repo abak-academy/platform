@@ -59,12 +59,12 @@ describe("ProductsToolbar", () => {
     expect(screen.queryByRole("button", { name: "Clear search" })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: "Rows per page" })).not.toBeInTheDocument();
   });
-  it.each([ ["Product type", ["All types", "Course", "Exam"]], ["Status", ["All", "Draft", "Published", "Hidden", "Archived"]] ])("offers the permitted %s chips and keeps the panel open after selection", (name, labels) => {
+  it.each([ ["Product type", ["All", "Course", "Exam"]], ["Status", ["All", "Draft", "Published", "Hidden", "Archived"]] ])("offers the permitted %s options and keeps the panel open after selection", async (name, labels) => {
     const onChange = renderToolbar();
     openPanel();
-    const group = screen.getByRole("group", { name: name as string });
-    expect(within(group).getAllByRole("button").map((o) => o.textContent)).toEqual(labels);
-    fireEvent.click(within(group).getByRole("button", { name: (labels as string[])[1] }));
+    const listbox = await openSelect(name as string);
+    expect(within(listbox).getAllByRole("option").map((o) => o.textContent)).toEqual(labels);
+    fireEvent.click(within(listbox).getByRole("option", { name: (labels as string[])[1] }));
     expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_PRODUCTS_QUERY, [name === "Status" ? "status" : "type"]: name === "Status" ? "draft" : "course" });
     expect(screen.getByRole("dialog", { name: "Filter products" })).toBeInTheDocument();
   });

@@ -172,7 +172,7 @@ export default function ProductsPage() {
 
       {!isLoading && !isError && (
         <div className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
-          <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} />
+          <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} count={filtered.length} />
           <DataTable
             surface="plain"
             rows={rows}

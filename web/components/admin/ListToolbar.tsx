@@ -108,6 +108,7 @@ export function FilterSelect({
   onChange,
   wide,
   placeholder,
+  allowAll = true,
 }: {
   label: string;
   value: string;
@@ -115,6 +116,8 @@ export function FilterSelect({
   onChange: (v: string) => void;
   wide?: boolean;
   placeholder?: string;
+  /** false for a mode switch, where "Semua" means nothing. */
+  allowAll?: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -125,7 +128,7 @@ export function FilterSelect({
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={ALL}>{t("list_toolbar_all")}</SelectItem>
+          {allowAll && <SelectItem value={ALL}>{t("list_toolbar_all")}</SelectItem>}
           {options.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
         </SelectContent>
       </Select>

@@ -906,7 +906,7 @@ describe("OrdersPage", () => {
     };
     render(<OrdersPage />);
     if (["status", "queue", "dates", "from", "to", "type", "courier", "all_types", "all_couriers"].includes(control)) openFilters();
-    if (control === "from" || control === "to") fireEvent.click(screen.getByTestId("orders-date-mode-range"));
+    if (control === "from" || control === "to") await selectOption("Tanggal", "Rentang");
     if (control === "limit20") await selectOption("Baris per halaman", "50");
     if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal bayar · terbaru");
     if (control === "all_types") await selectOption("Jenis produk", "Medali");
@@ -926,8 +926,8 @@ describe("OrdersPage", () => {
     if (control === "item_qty") await selectOption("Urutkan pesanan", "Jumlah barang · terbanyak");
     if (control === "order_at") await selectOption("Urutkan pesanan", "Tanggal pesanan · terbaru");
     if (control === "dir") await selectOption("Urutkan pesanan", "Tanggal pesanan · terlama");
-    if (control === "all_types") await selectOption("Jenis produk", "Semua jenis");
-    if (control === "all_couriers") await selectOption("Kurir", "Semua kurir");
+    if (control === "all_types") await selectOption("Jenis produk", "Semua");
+    if (control === "all_couriers") await selectOption("Kurir", "Semua");
     if (control.startsWith("limit")) await selectOption("Baris per halaman", control.slice(5));
     await waitFor(() => expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeDisabled());
     if (control === "status" || control === "queue") expect(screen.getByText("Menampilkan 1-3 dari 3")).toBeInTheDocument();
@@ -951,7 +951,7 @@ describe("OrdersPage", () => {
       vi.useRealTimers();
     }
     if (screen.queryByRole("dialog", { name: "Filter pesanan" })) {
-      fireEvent.click(screen.getByRole("button", { name: "Tampilkan pesanan" }));
+      fireEvent.click(screen.getByRole("button", { name: /^Tampilkan/ }));
     }
     fireEvent.click(screen.getByRole("button", { name: "Berikutnya" }));
     expect(screen.getByRole("button", { name: "Sebelumnya" })).toBeEnabled();

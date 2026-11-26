@@ -1,8 +1,7 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { ActiveChip, FilterChip, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
-import { Popover, PopoverTrigger, PopoverContent, PopoverClose } from "@/components/ui/popover";
+import { ActiveChip, FILTER_PANEL_CLASS, FilterGrid, FilterPanelFooter, FilterSelect, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { useTranslation } from "@/lib/i18n";
 import type { Product, ProductType, ProductStatus } from "@/lib/types";
 
@@ -57,10 +56,11 @@ export function applyProductsQuery(products: Product[], query: ProductsQuery): P
 const SORTS: ProductsSort[] = ["default", "name_asc", "name_desc", "price_asc", "price_desc", "stock_asc", "stock_desc"];
 const STATUSES: ProductStatus[] = ["draft", "published", "hidden", "archived"];
 
-export function ProductsToolbar({ value, onChange, types }: {
+export function ProductsToolbar({ value, onChange, types, count }: {
   value: ProductsQuery;
   onChange: (q: ProductsQuery) => void;
   types: ProductType[];
+  count?: number;
 }) {
   const { t } = useTranslation();
   const chips = [
@@ -77,27 +77,28 @@ export function ProductsToolbar({ value, onChange, types }: {
           <PopoverTrigger asChild>
             <ToolbarFilterButton label={t("products_filters")} count={chips.length} />
           </PopoverTrigger>
-          <PopoverContent align="end" className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto" aria-label={t("products_filter_products")}>
+          <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("products_filter_products")}>
             <div className="flex flex-col gap-3.5">
               <h2 className="sr-only">{t("products_filter_products")}</h2>
-              <div role="group" aria-label={t("products_type")}>
-                <span className="mb-2 block type-overline text-ink-600">{t("products_type")}</span>
-                <div className="flex flex-wrap gap-2">
-                  <FilterChip on={!value.type} onClick={() => onChange({ ...value, type: undefined })}>{t("products_all_types")}</FilterChip>
-                  {types.map((type) => <FilterChip key={type} on={value.type === type} onClick={() => onChange({ ...value, type })}>{t(`product_type_${type}`)}</FilterChip>)}
-                </div>
-              </div>
-              <div role="group" aria-label={t("th_status")}>
-                <span className="mb-2 block type-overline text-ink-600">{t("th_status")}</span>
-                <div className="flex flex-wrap gap-2">
-                  <FilterChip on={!value.status} onClick={() => onChange({ ...value, status: undefined })}>{t("tab_all")}</FilterChip>
-                  {STATUSES.map((status) => <FilterChip key={status} on={value.status === status} onClick={() => onChange({ ...value, status })}>{t(`products_status_${status}`)}</FilterChip>)}
-                </div>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
-                <Button variant="ghost" size="sm" onClick={() => onChange({ ...value, type: undefined, status: undefined })}>{t("products_reset_filters")}</Button>
-                <PopoverClose asChild><Button variant="secondary" size="sm">{t("products_show_products")}</Button></PopoverClose>
-              </div>
+              <FilterGrid>
+                <FilterSelect
+                  label={t("products_type")}
+                  value={value.type ?? ""}
+                  options={types.map((type) => ({ value: type, label: t(`product_type_${type}`) }))}
+                  onChange={(v) => onChange({ ...value, type: (v || undefined) as ProductType | undefined })}
+                />
+                <FilterSelect
+                  label={t("th_status")}
+                  value={value.status ?? ""}
+                  options={STATUSES.map((status) => ({ value: status, label: t(`products_status_${status}`) }))}
+                  onChange={(v) => onChange({ ...value, status: (v || undefined) as ProductStatus | undefined })}
+                />
+              </FilterGrid>
+              <FilterPanelFooter
+                onReset={() => onChange({ ...value, type: undefined, status: undefined })}
+                resetLabel={t("products_reset_filters")}
+                showLabel={count === undefined ? t("products_show_products") : t("list_toolbar_show_n").replace("{n}", String(count))}
+              />
             </div>
           </PopoverContent>
         </Popover>

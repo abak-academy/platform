@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ListToolbar, type ListToolbarProps, type ListToolbarValue } from "./ListToolbar";
+import { FilterSelect, ListToolbar, type ListToolbarProps, type ListToolbarValue } from "./ListToolbar";
 
 beforeAll(() => {
   globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
@@ -170,5 +170,19 @@ describe("ListToolbar — prototype chrome", () => {
   it("renders the sort as a pill trigger", () => {
     render(<Harness sorts={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />);
     expect(screen.getByRole("combobox", { name: "Urutkan" })).toHaveClass("rounded-full");
+  });
+});
+
+describe("FilterSelect allowAll", () => {
+  it("offers Semua by default and leaves it out for a mode switch", async () => {
+    const opts = [{ value: "a", label: "Satu" }, { value: "b", label: "Dua" }];
+    const { unmount } = render(<FilterSelect label="Jenis" value="a" options={opts} onChange={() => {}} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Jenis" }));
+    expect(await screen.findByRole("option", { name: "Semua" })).toBeInTheDocument();
+    unmount();
+    render(<FilterSelect label="Mode" value="a" options={opts} onChange={() => {}} allowAll={false} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Mode" }));
+    expect(await screen.findByRole("option", { name: "Dua" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Semua" })).toBeNull();
   });
 });
