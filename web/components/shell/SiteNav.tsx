@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowUpRight, Menu, X } from "lucide-react";
-import { AbakLogo } from "@/components/brand/AbakLogo";
+import { AbakWordmark } from "./AbakWordmark";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { useAuthStore } from "@/stores/auth";
@@ -162,16 +162,8 @@ export function SiteNav() {
             : "max-w-[1040px] border-line bg-paper/80 py-1.5 pl-[18px] pr-1.5 text-ink-900 shadow-[var(--shadow-pop)] backdrop-blur-xl backdrop-saturate-150",
         )}
       >
-        <Link href="/" aria-label={t("pub_nav_home")} className="flex shrink-0 items-center gap-2.5">
-          <AbakLogo size={34} />
-          <span aria-hidden className="hidden leading-none min-[421px]:block">
-            <b className={cn("block font-serif text-[20px] font-extrabold tracking-[-0.03em]", top ? "text-white" : "text-ink-900")}>
-              abak
-            </b>
-            <small className={cn("mt-1 block font-mono text-[8.5px] font-semibold uppercase tracking-[0.42em]", top ? "text-white/70" : "text-ink-600")}>
-              academy
-            </small>
-          </span>
+        <Link href="/" aria-label={t("pub_nav_home")} className="shrink-0">
+          <AbakWordmark light={top} hideTextOnPhone />
         </Link>
 
         <ul className="mx-auto hidden items-center gap-0.5 md:flex">

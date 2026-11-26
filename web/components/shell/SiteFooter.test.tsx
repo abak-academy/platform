@@ -26,6 +26,13 @@ describe("SiteFooter", () => {
     expect(screen.queryByText("pub_foot_link_terms")).not.toBeInTheDocument();
   });
 
+  it("shows the abak academy wordmark and a divider line above the columns", () => {
+    const { container } = render(<SiteFooter />);
+    const logo = container.querySelector("footer svg")!.closest("span")!.parentElement!;
+    expect(logo).toHaveTextContent(/abak\s*academy/i);
+    expect(container.querySelector("[data-footer-divider]")).toHaveClass("border-t");
+  });
+
   it("renders no social links or heading when every url is null", () => {
     render(<SiteFooter />);
     expect(screen.queryByRole("link", { name: "Instagram" })).not.toBeInTheDocument();
