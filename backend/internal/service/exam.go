@@ -1556,7 +1556,7 @@ func (s *Service) ListExams(ctx context.Context, filter repository.ExamFilter) (
 	return s.storeRepo.ListExams(ctx, filter)
 }
 
-func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([]model.RegistrationListItem, error) {
+func (s *Service) GetExamRegistrations(ctx context.Context, studentID, lang string) ([]model.RegistrationListItem, error) {
 	sid, err := uuid.Parse(studentID)
 	if err != nil {
 		return nil, fmt.Errorf("%w: invalid student id", ErrValidation)
@@ -1568,6 +1568,9 @@ func (s *Service) GetExamRegistrations(ctx context.Context, studentID string) ([
 	for i := range items {
 		raw := items[i].RawRules
 		items[i].NavigationPolicy, items[i].TimerMode = effectiveExamRules(raw.FormatVersion, raw.Mode, raw.NavigationPolicy, raw.TimerMode)
+	}
+	if err := s.attachExternalResults(ctx, items, lang); err != nil {
+		return nil, err
 	}
 	return items, nil
 }

@@ -383,6 +383,8 @@ type RegistrationListItem struct {
 	QuestionCount           int             `json:"question_count"`
 	SectionsDurationMinutes *int            `json:"sections_duration_minutes"`
 	RawRules                ExamRuleColumns `json:"-"`
+	// ExternalResults are the published uploaded-round results of this registration.
+	ExternalResults []StudentExternalResult `json:"external_results"`
 }
 
 // ExamRuleColumns carries the raw exam columns the service resolves into the
