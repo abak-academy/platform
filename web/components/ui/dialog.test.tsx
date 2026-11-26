@@ -31,6 +31,10 @@ describe("DialogContent", () => {
     expect(c).toContain("z-[var(--z-dialog)]");
   });
 
+  it("sets its own theme text colour, since the portal sits outside the themed shell", () => {
+    expect(open().className).toContain("text-foreground");
+  });
+
   it("close button is labelled Tutup", () => {
     open();
     expect(screen.getByRole("button", { name: "Tutup" })).toBeInTheDocument();
