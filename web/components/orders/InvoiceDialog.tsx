@@ -10,8 +10,9 @@ import { Dialog, DialogContent, DialogFooter, DialogTitle } from "@/components/u
 import { savePageAsPdf } from "@/lib/capture-pdf";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
-import { hasPhysicalItems } from "@/lib/shipping";
-import type { Order } from "@/lib/types";
+import { paymentMethodLabel } from "@/lib/payment-method";
+import { calculateTotalPhysicalWeight, hasPhysicalItems, isPhysicalType } from "@/lib/shipping";
+import type { Order, ProductType } from "@/lib/types";
 import { useAuthStore } from "@/stores/auth";
 
 const formatDate = (iso: string | undefined, lang: string) =>
@@ -34,7 +35,15 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
   const items = order.items ?? [];
   const physical = hasPhysicalItems(items);
   const addr = order.shipping_address ?? {};
-  const addressLine = physical ? [addr.penerima, addr.alamat, addr.kode_pos].filter(Boolean).join(" · ") : "";
+  const recipient = [addr.penerima, addr.telepon].filter(Boolean).join(" · ");
+  const address = [addr.alamat, addr.kode_pos].filter(Boolean).join(" ");
+  const courier = [order.selected_courier, order.selected_service].filter(Boolean).join(" · ");
+  const goods = items.filter((it) => isPhysicalType(it.product_type as ProductType));
+  const goodsQty = goods.reduce((n, it) => n + it.qty, 0);
+  const grams = calculateTotalPhysicalWeight(items);
+  const weight = grams
+    ? `${(grams / 1000).toLocaleString(lang === "id" ? "id-ID" : "en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg`
+    : "—";
   const paid = Boolean(order.paid_at);
 
   const handleDownload = async () => {
@@ -56,6 +65,13 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
       <span>{label}</span>
       <b className="font-semibold">{value}</b>
     </div>
+  );
+
+  const shipRow = (label: string, value: string) => (
+    <>
+      <dt className="text-ink-500">{label}</dt>
+      <dd>{value}</dd>
+    </>
   );
 
   return (
@@ -88,7 +104,6 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
                 <small className="text-[11px] text-ink-500">{t("invoice_bill_to")}</small>
                 <b className="text-[13.5px]">{user?.name ?? order.student_name}</b>
                 {user?.email && <span>{user.email}</span>}
-                {addressLine && <span className="text-ink-500">{addressLine}</span>}
               </div>
               <div className="flex flex-col items-end gap-2 text-right">
                 <span className="flex flex-col items-end">
@@ -134,9 +149,27 @@ export function InvoiceDialog({ order, open, onOpenChange }: InvoiceDialogProps)
               </div>
             </div>
 
-            <footer className="mt-auto border-t border-line pt-3 text-[11px] text-ink-500">
-              {t("invoice_payment")}: {order.payment_method || "—"}
-              {order.paid_at ? ` · ${formatDate(order.paid_at, lang)}` : ""}
+            {physical && (
+              <section data-testid="invoice-shipping" className="mt-5 ml-auto w-full max-w-[340px] rounded-md border border-line p-3.5">
+                <b className="text-[11px] font-bold uppercase tracking-[.06em] text-ink-500">{t("invoice_ship_title")}</b>
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                  {shipRow(t("invoice_ship_recipient"), recipient || "—")}
+                  {shipRow(t("invoice_ship_address"), address || "—")}
+                  {shipRow(t("invoice_ship_courier"), courier || "—")}
+                  {shipRow(t("invoice_ship_resi"), order.tracking_number || t("invoice_ship_resi_pending"))}
+                  {shipRow(t("invoice_ship_goods"), goods.map((it) => it.name).join(", "))}
+                  {shipRow(t("invoice_ship_qty"), String(goodsQty))}
+                  {shipRow(t("invoice_ship_weight"), weight)}
+                </dl>
+              </section>
+            )}
+
+            <footer className="mt-auto flex flex-col gap-1 border-t border-line pt-3 text-[11px] text-ink-500">
+              <span>
+                {t("invoice_payment_method")}: <b className="font-semibold text-ink-900">{paymentMethodLabel(order.payment_method, lang)}</b>
+                {order.paid_at ? ` · ${formatDate(order.paid_at, lang)}` : ""}
+              </span>
+              <span className="font-semibold text-ink-700">{t("invoice_proof")}</span>
             </footer>
           </article>
         </div>

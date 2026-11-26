@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { useOrder, useRetryPayment } from "@/lib/hooks/orders";
 import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
+import { paymentMethodLabel } from "@/lib/payment-method";
 import { payWithSnap } from "@/lib/snap";
 import { ApiError } from "@/lib/api";
 import { digitalConflictMessage } from "@/lib/digital-conflict";
@@ -138,10 +139,10 @@ function Timeline({ steps }: { steps: TimelineStep[] }) {
   );
 }
 
-function PaymentInfo({ order, t }: { order: Order; t: (key: any) => string }) {
+function PaymentInfo({ order, t, lang }: { order: Order; t: (key: any) => string; lang: string }) {
   const rows: { labelKey: string; value: string }[] = [];
   if (order.payment_method) {
-    rows.push({ labelKey: "order_payment_method", value: order.payment_method });
+    rows.push({ labelKey: "order_payment_method", value: paymentMethodLabel(order.payment_method, lang) });
   }
   if (order.gateway_ref) {
     rows.push({ labelKey: "order_gateway_ref", value: order.gateway_ref });
@@ -184,7 +185,7 @@ export default function OrderDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const { id } = use(params);
   const router = useRouter();
   const { data: order, isLoading, isError, error, refetch } = useOrder(id);
@@ -363,7 +364,7 @@ export default function OrderDetailPage({
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-500">
               {t("order_payment_info")}
             </h3>
-            <PaymentInfo order={order} t={t} />
+            <PaymentInfo order={order} t={t} lang={lang} />
           </div>
         </Card>
 

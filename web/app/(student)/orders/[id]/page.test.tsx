@@ -406,7 +406,7 @@ describe("OrderDetailPage layout and invoice", () => {
 
   it("renders no invoice_url row even when the order carries one", async () => {
     await renderOrder({ ...PENDING_ORDER, status: "paid", payment_method: "gopay", invoice_url: "https://inv.example/x" });
-    await screen.findByText("gopay");
+    await screen.findByText("GoPay");
     expect(document.querySelector('a[href="https://inv.example/x"]')).toBeNull();
     expect(screen.queryByText("Invoice")).toBeNull();
   });

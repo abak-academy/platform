@@ -514,6 +514,24 @@ test("7-9 order detail, invoice, pdf, print", async ({ page, context }) => {
   await page.waitForTimeout(500);
   await shot(page, "invoice-pending-1366-dark", false);
 
+  // physical order: shipping details, payment label, proof line, PDF
+  await page.goto(`/orders/${PROC_ID}`);
+  await page.getByRole("button", { name: "Lihat invoice" }).click();
+  const physPaper = page.locator(".invoice-paper");
+  await expect(physPaper).toContainText("Rincian pengiriman");
+  await expect(physPaper).toContainText(RESI);
+  await expect(physPaper).toContainText("JNE · REG");
+  await expect(page.getByTestId("invoice-shipping")).toContainText("Total berat0,80 kg");
+  await expect(page.getByTestId("invoice-shipping")).toContainText("Jumlah barang2");
+  await expect(physPaper).toContainText("Transfer bank (Virtual Account)");
+  await expect(physPaper).toContainText("bukti pemesanan dan/atau pembelian");
+  await page.evaluate(() => document.documentElement.setAttribute("data-theme", "light"));
+  await page.waitForTimeout(500);
+  await shot(page, "invoice-physical-1366", false);
+  const [physDl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Unduh PDF" }).click()]);
+  await physDl.saveAs(`${OUT}/invoice-physical.pdf`);
+  try { execFileSync("sips", ["-s", "format", "png", `${OUT}/invoice-physical.pdf`, "--out", `${OUT}/invoice-physical-pdf.png`]); } catch { /* */ }
+
   // 14: hidden for cancelled/expired
   for (const st of ["cancelled", "payment_expired"]) {
     await page.unroute("**/api/v1/**");
