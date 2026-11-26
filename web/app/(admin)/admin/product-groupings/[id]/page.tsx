@@ -602,9 +602,9 @@ export default function ProductGroupingDetailPage() {
                 </div>
               </section>
 
-              <section className="md-card-outlined space-y-4 p-6" aria-label="Narasi di landing page">
+              <section className="md-card-outlined space-y-4 p-6" aria-label={t("adm_event_narrative")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h2 className="type-h2">Narasi di landing page</h2>
+                  <h2 className="type-h2">{t("adm_event_narrative")}</h2>
                   <div role="tablist" aria-label="Bahasa narasi" className="inline-flex gap-1 rounded-full bg-surface-sunken p-1">
                     {(["id", "en"] as const).map((loc) => (
                       <button
@@ -657,9 +657,9 @@ export default function ProductGroupingDetailPage() {
                 </div>
               </section>
 
-              <section className="md-card-outlined space-y-3 p-6" aria-label="Jadwal event">
+              <section className="md-card-outlined space-y-3 p-6" aria-label={t("adm_event_schedule")}>
                 <div className="flex items-center justify-between gap-2">
-                  <h2 className="type-h2">Jadwal event</h2>
+                  <h2 className="type-h2">{t("adm_event_schedule")}</h2>
                   <Button
                     type="button"
                     size="sm"
@@ -848,8 +848,8 @@ export default function ProductGroupingDetailPage() {
                 </Field>
 
                 <label className="flex items-center justify-between gap-3 text-sm font-medium">
-                  Tampil di landing page
-                  <Switch checked={form.visible} onCheckedChange={toggleVisible} aria-label="Tampil di landing page" />
+                  {t("adm_show_on_landing_page")}
+                  <Switch checked={form.visible} onCheckedChange={toggleVisible} aria-label={t("adm_show_on_landing_page")} />
                 </label>
 
                 {missing.length > 0 && (

@@ -109,13 +109,13 @@ function EventCard({
       ref={setNodeRef}
       style={style}
       aria-label={grouping.name}
-      className={`md-card-outlined md-card-flush flex flex-col ${isDragging ? "opacity-70" : ""}`}
+      className={`md-card-outlined md-card-flush flex flex-col ${isDragging ? "shadow-lg ring-2 ring-brand-600" : ""}`}
     >
       <div
         className={`relative flex h-[120px] items-center justify-center bg-[radial-gradient(120%_110%_at_100%_0%,rgba(255,255,255,.7),transparent)] ${EVENT_TONE_CLASS[grouping.tone] ?? EVENT_TONE_CLASS.brand}`}
       >
         <Badge variant={grouping.is_visible ? "teal" : "mute"} className="absolute top-3 left-3 bg-white/70 backdrop-blur">
-          {grouping.is_visible ? "Tampil di landing" : "Disembunyikan"}
+          {t(grouping.is_visible ? "adm_on_landing" : "adm_hidden")}
         </Badge>
         <EventMark
           logoKey={grouping.logo_key}
@@ -157,7 +157,7 @@ function EventCard({
               <span className="min-w-0 flex-1 truncate">
                 <b>{next.label}</b> · {formatRange(next.starts_on, next.ends_on)}
               </span>
-              {next.state === "ongoing" && <Badge variant="live">Berlangsung</Badge>}
+              {next.state === "ongoing" && <Badge variant="live">{t("adm_ongoing")}</Badge>}
             </>
           ) : (
             <span className="text-ink-600">Jadwal belum diisi</span>
@@ -185,7 +185,7 @@ function EventCard({
             size="sm"
             checked={grouping.is_visible}
             disabled={togglePending}
-            aria-label={`Tampilkan ${grouping.name} di landing`}
+            aria-label={t("adm_show_on_landing_aria").replace("{name}", grouping.name)}
             onCheckedChange={() => onToggleVisible(grouping)}
           />
         </div>
@@ -267,7 +267,7 @@ export default function ProductGroupingsPage() {
       <AdminPageHeader
         title={t("grouping_page_title")}
         description={t("grouping_page_description")}
-        actions={<Button variant="secondary" onClick={() => setModalOpen(true)}>{t("grouping_create")}</Button>}
+        actions={<Button variant="dark" onClick={() => setModalOpen(true)}>{t("grouping_create")}</Button>}
       />
 
       {isLoading && (
@@ -298,7 +298,7 @@ export default function ProductGroupingsPage() {
           />
 
           {rows.length === 0 ? (
-            <EmptyState framed icon={Layers} title={t("empty_groupings")} text="Ubah kata kunci atau filter." />
+            <EmptyState framed icon={Layers} title={t("empty_groupings")} text={filtering ? t("adm_filter_hint") : undefined} />
           ) : (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={rows.map((g) => g.id)} strategy={rectSortingStrategy}>

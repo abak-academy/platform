@@ -6,7 +6,6 @@ import {
   Download,
   Loader2,
   Eye,
-  Inbox,
   AlertTriangle,
 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
@@ -196,6 +195,7 @@ export default function SchoolReportsPage() {
           description={t("school_reports_subtitle")}
           actions={
             <Button
+              variant="dark"
               size="sm"
               disabled={true}
             >

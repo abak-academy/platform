@@ -146,7 +146,7 @@ function AffiliatesContent() {
               <Download className="size-4" aria-hidden />
               {t("admin_aff_export_csv")}
             </Button>
-            <Button variant="secondary" onClick={() => setAdding(true)}>{addLabel}</Button>
+            <Button variant="dark" onClick={() => setAdding(true)}>{addLabel}</Button>
           </>
         }
       />

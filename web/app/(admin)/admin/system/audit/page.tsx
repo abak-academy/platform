@@ -78,7 +78,7 @@ export default function SystemAuditPage() {
             placeholder={t("audit_search_placeholder")}
             clearLabel={t("list_toolbar_clear_search")}
           />
-          <ToolbarCount>{entries.length} log</ToolbarCount>
+          <ToolbarCount>{t("adm_logs_count").replace("{n}", String(entries.length))}</ToolbarCount>
         </div>
         {entries.length === 0 ? (
           <EmptyState icon={ClipboardList} title={t("audit_empty")} />

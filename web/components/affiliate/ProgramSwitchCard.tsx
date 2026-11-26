@@ -51,7 +51,7 @@ export function ProgramSwitchCard({ enabled, missing, commissionUnset }: Props) 
         {blocked && <p className="text-sm text-warn">{t("admin_aff_prog_missing").replace("{fields}", missingLabels)}</p>}
         {!blocked && commissionUnset && <p className="text-sm text-warn">{t("admin_aff_prog_commission_unset")}</p>}
       </div>
-      <Switch checked={enabled} disabled={blocked} onCheckedChange={() => setConfirming(true)} aria-label={t(enabled ? "admin_aff_prog_turn_off" : "admin_aff_prog_turn_on")} />
+      <Switch checked={enabled} disabled={blocked} onCheckedChange={() => setConfirming(true)} aria-label={t("admin_aff_prog_title")} />
 
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="sm:max-w-md">

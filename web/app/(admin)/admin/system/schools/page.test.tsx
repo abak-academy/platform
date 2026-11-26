@@ -179,6 +179,14 @@ describe("SystemSchoolsPage", () => {
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
   });
 
+  it("gives the truncated address a title and shows it in full in the edit dialog", async () => {
+    renderPage(<SystemSchoolsPage />);
+
+    const address = await screen.findByTitle("Jl. Merdeka No.1");
+    fireEvent.click(address);
+    expect(await screen.findByDisplayValue("Jl. Merdeka No.1")).toBeInTheDocument();
+  });
+
   it("opens the edit dialog when a row is clicked", async () => {
     renderPage(<SystemSchoolsPage />);
 

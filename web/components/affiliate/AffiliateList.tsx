@@ -3,6 +3,7 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { Pagination } from "./Pagination";
 import { TableFooter } from "@/components/ui/table-footer";
 import { useTranslation } from "@/lib/i18n";
 
@@ -63,11 +64,9 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
               .replace("{from}", String(first))
               .replace("{to}", String(last))
               .replace("{total}", String(total))}
-            onPrev={onPageChange && pages > 1 ? () => onPageChange(page - 1) : undefined}
-            onNext={onPageChange && pages > 1 ? () => onPageChange(page + 1) : undefined}
-            hasPrev={page > 1}
-            hasNext={page < pages}
-          />
+          >
+            {onPageChange && <Pagination page={page} pages={pages} onPageChange={onPageChange} />}
+          </TableFooter>
         ) : null
       }
     />

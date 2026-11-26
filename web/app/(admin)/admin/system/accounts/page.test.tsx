@@ -152,7 +152,11 @@ describe("SystemAccountsPage", () => {
   it("shows the row count in the toolbar", async () => {
     render(<SystemAccountsPage />);
 
-    await waitFor(() => expect(screen.getByText(/^3 /)).toBeInTheDocument());
+    await waitFor(() => {
+      const count = screen.getByText(/^3 /);
+      expect(count).toHaveAttribute("aria-live", "polite");
+      expect(count.className).toContain("uppercase");
+    });
   });
 
   it("school picker is hidden in create dialog (default role is admin_store)", async () => {

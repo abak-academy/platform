@@ -518,7 +518,7 @@ export default function SchoolStudentsPage() {
     <div className="flex flex-col gap-5 fade-in">
       <PageHead
         title={t("school_students_title")}
-        sub={`${stats.total} ${lang === "en" ? "accounts" : "akun"}`}
+        sub={[!canManageAllStudents && adminOwnSchool?.name, t("adm_accounts_count").replace("{n}", String(stats.total))].filter(Boolean).join(" · ")}
         actions={
           <>
             <Button variant="outline" onClick={() => setBulkImportOpen(true)}>
@@ -526,6 +526,7 @@ export default function SchoolStudentsPage() {
               {t("bulk_register_title")}
             </Button>
             <Button
+              variant="dark"
               onClick={() => {
                 setRegisterSelectedSchool(selectedSchoolFilter);
                 setRegisterSchoolId(selectedSchoolId);
@@ -605,7 +606,7 @@ export default function SchoolStudentsPage() {
                 </div>
               </PopoverContent>
             </Popover>
-            <ToolbarCount>{stats.total} {lang === "en" ? "accounts" : "akun"}</ToolbarCount>
+            <ToolbarCount>{t("adm_accounts_count").replace("{n}", String(stats.total))}</ToolbarCount>
           </div>
           {filterCount > 0 && (
             <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("list_toolbar_active")}>

@@ -210,7 +210,7 @@ export default function SystemAccountsPage() {
         title={t("accounts_title")}
         description={t("accounts_subtitle")}
         actions={
-          <Button variant="secondary" onClick={() => setCreateOpen(true)}>
+          <Button variant="dark" onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
             {t("create")}
           </Button>

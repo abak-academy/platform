@@ -19,7 +19,7 @@ describe("PartnerSwitchCard", () => {
     expect(screen.getByText("Program Mitra")).toBeInTheDocument();
     expect(screen.getByText("Nonaktif")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("switch", { name: "Aktifkan program" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Program Mitra" }));
     expect(h.set).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
     expect(h.set).toHaveBeenCalledWith(true, expect.anything());
@@ -35,7 +35,8 @@ describe("PartnerSwitchCard", () => {
     h.status.data = { enabled: false, partner_enabled: true };
     render(<PartnerSwitchCard />);
     expect(screen.getByText("Aktif")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("switch", { name: "Nonaktifkan program" }));
+    expect(screen.getByRole("switch", { name: "Program Mitra" })).toBeChecked();
+    fireEvent.click(screen.getByRole("switch", { name: "Program Mitra" }));
     fireEvent.click(screen.getByRole("button", { name: "Konfirmasi" }));
     expect(h.set).toHaveBeenCalledWith(false, expect.anything());
   });

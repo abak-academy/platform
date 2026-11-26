@@ -288,6 +288,12 @@ describe("SchoolStudentsPage", () => {
     expect(screen.getAllByText("Nonaktif").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("names the admin_school user's own school in the page head", async () => {
+    render(<SchoolStudentsPage />);
+
+    expect(await screen.findByText(/^SMAN 1 Jakarta · \d+ akun$/)).toBeInTheDocument();
+  });
+
   it("shows stat cards with total, active, and deactivated counts", async () => {
     render(<SchoolStudentsPage />);
 

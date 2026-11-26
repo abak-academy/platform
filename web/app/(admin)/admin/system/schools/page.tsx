@@ -296,7 +296,7 @@ export default function SystemSchoolsPage() {
       key: "address",
       header: t("schools_field_alamat"),
       className: "max-w-xs truncate",
-      cell: (school) => school.alamat || "—",
+      cell: (school) => <span title={school.alamat || undefined}>{school.alamat || "—"}</span>,
     },
     {
       key: "type",
@@ -355,14 +355,14 @@ export default function SystemSchoolsPage() {
     <div className="flex flex-col gap-5 fade-in">
       <PageHead
         title={t("schools_title")}
-        sub={`${stats.total.toLocaleString(numberLocale)} ${lang === "en" ? "schools" : "sekolah"} · ${stats.active.toLocaleString(numberLocale)} ${t("status_label_active")} · ${stats.students.toLocaleString(numberLocale)} ${t("schools_stat_students")}`}
+        sub={`${t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))} · ${stats.active.toLocaleString(numberLocale)} ${t("status_label_active")} · ${stats.students.toLocaleString(numberLocale)} ${t("schools_stat_students")}`}
         actions={
           <>
             <Button variant="outline" onClick={() => setBulkOpen(true)}>
               <Upload className="size-4" />
               {t("bulk_school_import_button")}
             </Button>
-            <Button onClick={() => setCreateOpen(true)}>
+            <Button variant="dark" onClick={() => setCreateOpen(true)}>
               <Plus className="size-4" />
               {t("create")}
             </Button>
@@ -370,7 +370,7 @@ export default function SystemSchoolsPage() {
         }
       />
 
-      <section aria-label={lang === "en" ? "School list" : "Daftar sekolah"} className="md-card-flush">
+      <section aria-label={t("adm_school_list")} className="md-card-flush">
         <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
           <ToolbarSearch
             value={searchInput}
@@ -390,7 +390,7 @@ export default function SystemSchoolsPage() {
             </FilterChip>
           </div>
           <ToolbarCount>
-            {stats.total.toLocaleString(numberLocale)} {lang === "en" ? "schools" : "sekolah"}
+            {t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))}
           </ToolbarCount>
         </div>
 
@@ -406,7 +406,7 @@ export default function SystemSchoolsPage() {
             nextCursor ? (
               <div className="border-t border-line px-4 py-3 text-center">
                 <Button variant="outline" size="sm" onClick={handleLoadMore} disabled={isLoading}>
-                  {isLoading ? t("sys_loading") : lang === "en" ? "Load more" : "Muat lebih banyak"}
+                  {isLoading ? t("sys_loading") : t("adm_load_more")}
                 </Button>
               </div>
             ) : undefined
@@ -623,7 +623,9 @@ export default function SystemSchoolsPage() {
             </div>
             <div>
               <Label>{t("schools_field_alamat")}</Label>
-              <Input
+              <textarea
+                rows={3}
+                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                 value={editForm.alamat}
                 onChange={(e) =>
                   setEditForm((f) => ({ ...f, alamat: e.target.value }))}

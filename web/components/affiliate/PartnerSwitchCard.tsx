@@ -40,7 +40,7 @@ export function PartnerSwitchCard() {
         </div>
         <p className="text-sm text-ink-600">{t(enabled ? "admin_partner_prog_desc_on" : "admin_partner_prog_desc_off")}</p>
       </div>
-      <Switch checked={enabled} disabled={status.isLoading} onCheckedChange={() => setConfirming(true)} aria-label={t(enabled ? "admin_aff_prog_turn_off" : "admin_aff_prog_turn_on")} />
+      <Switch checked={enabled} disabled={status.isLoading} onCheckedChange={() => setConfirming(true)} aria-label={t("admin_partner_prog_title")} />
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

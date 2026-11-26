@@ -53,11 +53,12 @@ function TestimonialCard({
   onToggle: () => void;
   pending: boolean;
 }) {
+  const { t } = useTranslation();
   const src = fileUrl(item.photo_key);
   const chips = item.content.id?.achievements ?? [];
   const off = !item.is_visible || !item.has_consent;
   return (
-    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3.5 p-6 ${off ? "opacity-70" : ""}`}>
+    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3.5 p-6 ${off ? "border-dashed bg-surface-sunken" : ""}`}>
       <div className="flex items-center gap-3">
         <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-50 text-sm font-extrabold text-brand-800">
           {src ? <img src={src} alt={item.name} className="size-full object-cover" /> : item.name.slice(0, 1).toUpperCase()}
@@ -70,7 +71,7 @@ function TestimonialCard({
           size="sm"
           checked={item.is_visible}
           disabled={pending}
-          aria-label={`Tampilkan ${item.name} di landing`}
+          aria-label={t("adm_show_on_landing_aria").replace("{name}", item.name)}
           onCheckedChange={onToggle}
         />
       </div>
@@ -87,17 +88,17 @@ function TestimonialCard({
 
       <div className="flex flex-wrap gap-2">
         {item.has_consent
-          ? <Badge variant="teal"><Check className="size-3" aria-hidden />Ada persetujuan</Badge>
-          : <Badge variant="danger"><TriangleAlert className="size-3" aria-hidden />Belum ada persetujuan</Badge>}
-        <Badge variant={idComplete(item) ? "mute" : "danger"}>{idComplete(item) ? "ID lengkap" : "ID kosong"}</Badge>
-        <Badge variant={enComplete(item) ? "mute" : "gold"}>{enComplete(item) ? "EN lengkap" : "EN belum lengkap"}</Badge>
-        {!item.photo_key && <Badge variant="mute">Belum ada foto</Badge>}
+          ? <Badge variant="teal"><Check className="size-3" aria-hidden />{t("adm_testi_consent_yes")}</Badge>
+          : <Badge variant="danger"><TriangleAlert className="size-3" aria-hidden />{t("adm_testi_consent_no")}</Badge>}
+        <Badge variant={idComplete(item) ? "mute" : "danger"}>{t(idComplete(item) ? "adm_testi_id_ok" : "adm_testi_id_empty")}</Badge>
+        <Badge variant={enComplete(item) ? "mute" : "gold"}>{t(enComplete(item) ? "adm_testi_en_ok" : "adm_testi_en_missing")}</Badge>
+        {!item.photo_key && <Badge variant="mute">{t("adm_testi_no_photo")}</Badge>}
       </div>
 
       <div className="mt-auto flex items-center gap-2 border-t border-dashed border-line pt-3">
-        <Button size="sm" variant="outline" onClick={onEdit}>Edit</Button>
-        <Button size="sm" variant="ghost" onClick={onDelete}>Hapus</Button>
-        <span className="ml-auto text-xs text-ink-600">{item.is_visible ? "Tampil di landing" : "Draft"}</span>
+        <Button size="sm" variant="outline" onClick={onEdit}>{t("adm_edit")}</Button>
+        <Button size="sm" variant="ghost" onClick={onDelete}>{t("adm_delete")}</Button>
+        <span className="ml-auto text-xs text-ink-600">{t(item.is_visible ? "adm_on_landing" : "adm_draft")}</span>
       </div>
     </article>
   );
@@ -114,6 +115,7 @@ export default function TestimonialsPage() {
   const update = useUpdateTestimonial();
   const remove = useDeleteTestimonial();
 
+  const filtering = toolbar.q.trim() !== "" || Object.values(toolbar.filters).some(Boolean);
   const rows = useMemo(() => {
     const q = toolbar.q.trim().toLowerCase();
     return (data ?? []).filter(
@@ -155,10 +157,9 @@ export default function TestimonialsPage() {
   return (
     <div className="space-y-6 fade-in">
       <AdminPageHeader
-        icon={MessageSquareQuote}
         title={t("admin_nav_testimonials")}
-        description="Cerita peserta di landing page. Hanya yang punya persetujuan tertulis yang bisa tampil."
-        actions={<Button onClick={() => openEditor(null)}>Tambah testimoni</Button>}
+        description={t("adm_testi_desc")}
+        actions={<Button variant="dark" onClick={() => openEditor(null)}>{t("adm_testi_add")}</Button>}
       />
 
       {isLoading && (
@@ -185,7 +186,7 @@ export default function TestimonialsPage() {
             searchPlaceholder="Cari nama atau kutipan"
           />
           {rows.length === 0 ? (
-            <EmptyState framed icon={MessageSquareQuote} title="Belum ada testimoni." text="Ubah kata kunci atau filter." />
+            <EmptyState framed icon={MessageSquareQuote} title={t("adm_testi_empty")} text={filtering ? t("adm_filter_hint") : undefined} />
           ) : (
             <div className="grid grid-cols-[repeat(auto-fill,minmax(min(320px,100%),1fr))] gap-4">
               {rows.map((x) => (
@@ -215,7 +216,7 @@ export default function TestimonialsPage() {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleting(null)}>Batal</Button>
-            <Button variant="destructive" disabled={remove.isPending} onClick={handleDelete}>Hapus</Button>
+            <Button variant="destructive" disabled={remove.isPending} onClick={handleDelete}>{t("adm_delete")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
