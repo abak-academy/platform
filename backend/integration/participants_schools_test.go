@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -153,6 +154,41 @@ func TestNoSchoolStudentIsAFirstClassParticipant(t *testing.T) {
 			}
 		}
 		assert.True(t, found, "FR-8: a school-less student must appear on the roster after a grant")
+	})
+
+	t.Run("roster shows the event prefix on a granted exam and none on a plain one", func(t *testing.T) {
+		prefix := strings.ToUpper(strings.NewReplacer("0", "A", "1", "B", "2", "C", "3", "D", "4", "E", "5", "F", "6", "G", "7", "H", "8", "I", "9", "J").Replace(fmt.Sprintf("%d", time.Now().UnixNano())))[:6]
+		var groupingID, productID string
+		require.NoError(t, env.pool.QueryRow(context.Background(),
+			`INSERT INTO product_grouping (name, slug, participant_prefix) VALUES ($1, $1, $2) RETURNING id`,
+			"event-"+suffix, prefix).Scan(&groupingID))
+		require.NoError(t, env.pool.QueryRow(context.Background(),
+			`INSERT INTO product (type, name, price, status, grouping_id) VALUES ('exam', $1, 0, 'published', $2) RETURNING id`,
+			"Edisi "+suffix, groupingID).Scan(&productID))
+		eventExam := seedExam(t, env, "Ujian Event "+suffix, "score_only", nil)
+		plainExam := seedExam(t, env, "Ujian Biasa "+suffix, "score_only", nil)
+		_, err := env.pool.Exec(context.Background(), `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, eventExam)
+		require.NoError(t, err)
+
+		participantNo := func(examID string) (string, float64) {
+			grant := env.doJSON(t, http.MethodPost, "/api/v1/admin/exam-grants", map[string]any{
+				"exam_id": examID, "student_ids": []string{listedStudent},
+			}, superToken)
+			require.Equal(t, http.StatusCreated, grant.StatusCode)
+			resp := env.doJSON(t, http.MethodGet, "/api/v1/admin/exams/"+examID+"/registrations", nil, superToken)
+			body := decodeBody(t, resp)
+			require.Equal(t, http.StatusOK, resp.StatusCode, "body: %v", body)
+			rows := body["data"].([]any)
+			require.Len(t, rows, 1)
+			row := rows[0].(map[string]any)
+			return row["participant_no"].(string), row["participant_number"].(float64)
+		}
+		withPrefix, n1 := participantNo(eventExam)
+		plain, n2 := participantNo(plainExam)
+		assert.Regexp(t, "^"+prefix+`-\d{6}-\d{4,}-\d{6}$`, withPrefix)
+		assert.Regexp(t, `^\d{6}-\d{4,}-\d{6}$`, plain)
+		assert.Equal(t, float64(1), n1)
+		assert.Equal(t, float64(1), n2, "the stored number is the same either way")
 	})
 }
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -463,3 +464,59 @@ func TestAdminExamRegistrationCounts_ScopesLikeRoster(t *testing.T) {
 		t.Fatalf("unscoped counts: got %v", full)
 	}
 }
+
+func TestAdminExamRoster_ParticipantNoCarriesEventPrefixOnTheWire(t *testing.T) {
+	env := newTestEnvWithStore(t)
+	ctx := context.Background()
+	admin := seedUser(t, env.pool, service.RoleSuperAdmin, "Prefix Roster Admin")
+	token := mintTokenForEnv(t, env, admin.String(), service.RoleSuperAdmin)
+
+	prefixedExam := seedExam(t, env.pool, "Prefixed Roster Exam", false, "hidden", "classic")
+	plainExam := seedExam(t, env.pool, "Plain Roster Exam", false, "hidden", "classic")
+	prefix := strings.ToUpper(strings.NewReplacer("-", "", "0", "A", "1", "B", "2", "C", "3", "D", "4", "E", "5", "F", "6", "G", "7", "H", "8", "I", "9", "J").Replace(uuid.NewString()))[:6]
+	var groupingID, productID uuid.UUID
+	if err := env.pool.QueryRow(ctx,
+		`INSERT INTO product_grouping (name, slug, participant_prefix) VALUES ($1, $1, $2) RETURNING id`,
+		"roster-event-"+uuid.NewString(), prefix).Scan(&groupingID); err != nil {
+		t.Fatalf("insert grouping: %v", err)
+	}
+	if err := env.pool.QueryRow(ctx,
+		`INSERT INTO product (type, name, price, status, grouping_id) VALUES ('exam', $1, 0, 'published', $2) RETURNING id`,
+		"Roster Edition "+uuid.NewString(), groupingID).Scan(&productID); err != nil {
+		t.Fatalf("insert product: %v", err)
+	}
+	if _, err := env.pool.Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, prefixedExam); err != nil {
+		t.Fatalf("insert product_exam: %v", err)
+	}
+	for _, reg := range []uuid.UUID{
+		seedRegistration(t, env.pool, seedUser(t, env.pool, service.RoleStudent, "Prefixed Student"), prefixedExam),
+		seedRegistration(t, env.pool, seedUser(t, env.pool, service.RoleStudent, "Plain Student"), plainExam),
+	} {
+		if _, err := env.pool.Exec(ctx, `UPDATE exam_registration SET participant_number = 1 WHERE id = $1`, reg); err != nil {
+			t.Fatalf("set participant_number: %v", err)
+		}
+	}
+
+	check := func(t *testing.T, examID uuid.UUID, wantPrefix string) {
+		t.Helper()
+		rec := getRequest(t, env.e, "/api/v1/admin/exams/"+examID.String()+"/registrations", token)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("want 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+		data := decodeRosterData(t, rec.Body.Bytes())
+		if len(data) != 1 {
+			t.Fatalf("want 1 row, got %d", len(data))
+		}
+		got := data[0].(map[string]any)["participant_no"].(string)
+		if wantPrefix != "" && !strings.HasPrefix(got, wantPrefix+"-") {
+			t.Errorf("participant_no %q, want prefix %q", got, wantPrefix+"-")
+		}
+		if wantPrefix == "" && !regexpPlainNo.MatchString(got) {
+			t.Errorf("participant_no %q, want unprefixed YYMMDD-NNNN-NNNNNN", got)
+		}
+	}
+	t.Run("event exam", func(t *testing.T) { check(t, prefixedExam, prefix) })
+	t.Run("exam outside any event", func(t *testing.T) { check(t, plainExam, "") })
+}
+
+var regexpPlainNo = regexp.MustCompile(`^\d{6}-\d{4,}-\d{6,}$`)

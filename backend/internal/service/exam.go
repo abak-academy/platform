@@ -924,12 +924,41 @@ func formatExamNumber(n int) string {
 }
 
 // formatParticipantNo composes the FR-24 display string
-// "YYMMDD-<exam_number(pad4)>-<participant_number(pad6)>" from a date prefix
-// (already converted to the desired timezone by the caller), exam number, and
-// participant number. Shared by GetExamRegistration and AdminGetExamRoster —
-// keep byte-identical to preserve existing display output.
-func formatParticipantNo(prefix time.Time, examNumber, participantNumber int) string {
-	return fmt.Sprintf("%s-%s-%06d", prefix.Format("060102"), formatExamNumber(examNumber), participantNumber)
+// "[<PREFIX>-]YYMMDD-<exam_number(pad4)>-<participant_number(pad6)>" from the
+// event prefix ("" for none), a date (already converted to the desired
+// timezone by the caller), exam number, and participant number. Every
+// display surface goes through it.
+func formatParticipantNo(eventPrefix string, date time.Time, examNumber, participantNumber int) string {
+	s := fmt.Sprintf("%s-%s-%06d", date.Format("060102"), formatExamNumber(examNumber), participantNumber)
+	if eventPrefix == "" {
+		return s
+	}
+	return eventPrefix + "-" + s
+}
+
+var participantNoRe = regexp.MustCompile(`^(?:[A-Za-z]{2,6}-)?\d{6}-(\d{4,})-(\d{6,})$`)
+
+// parseParticipantNo extracts the exam number and participant number from a
+// card string with or without the event prefix; prefix and date are not checked.
+func parseParticipantNo(s string) (examNumber, participantNumber int, err error) {
+	m := participantNoRe.FindStringSubmatch(strings.TrimSpace(s))
+	if m == nil {
+		return 0, 0, fmt.Errorf("%w: unreadable participant number", ErrValidation)
+	}
+	if examNumber, err = strconv.Atoi(m[1]); err != nil {
+		return 0, 0, fmt.Errorf("%w: unreadable participant number", ErrValidation)
+	}
+	if participantNumber, err = strconv.Atoi(m[2]); err != nil {
+		return 0, 0, fmt.Errorf("%w: unreadable participant number", ErrValidation)
+	}
+	return examNumber, participantNumber, nil
+}
+
+func derefPrefix(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // CreateExam creates a standalone exam — no product is created here. Selling the
@@ -1629,7 +1658,7 @@ func (s *Service) GetExamRegistration(ctx context.Context, regID, studentID stri
 			if detail.Exam.ExamNumber != nil {
 				examNo = *detail.Exam.ExamNumber
 			}
-			detail.ParticipantNo = formatParticipantNo(prefix, examNo, *detail.ParticipantNumber)
+			detail.ParticipantNo = formatParticipantNo(derefPrefix(detail.EventPrefix), prefix, examNo, *detail.ParticipantNumber)
 		}
 		// Platform/Ruang is a single system-config value (one platform for all exams).
 		detail.Platform = examPlatformDefault
@@ -1697,7 +1726,7 @@ func formatExamRosterRows(rows []model.ExamRosterEntry) {
 		if rows[i].ExamNumber != nil {
 			examNo = *rows[i].ExamNumber
 		}
-		rows[i].ParticipantNo = formatParticipantNo(prefix, examNo, *rows[i].ParticipantNumber)
+		rows[i].ParticipantNo = formatParticipantNo(derefPrefix(rows[i].EventPrefix), prefix, examNo, *rows[i].ParticipantNumber)
 	}
 }
 
@@ -1957,7 +1986,7 @@ func (s *Service) GetCardPrintData(ctx context.Context, regID string) (*CardPrin
 		if detail.Exam.ExamNumber != nil {
 			examNo = *detail.Exam.ExamNumber
 		}
-		participantNo = formatParticipantNo(prefix, examNo, *detail.ParticipantNumber)
+		participantNo = formatParticipantNo(derefPrefix(detail.EventPrefix), prefix, examNo, *detail.ParticipantNumber)
 	}
 
 	return &CardPrintData{

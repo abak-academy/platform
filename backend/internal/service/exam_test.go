@@ -3089,10 +3089,46 @@ func TestGetCertificatePreviewPDF_Integration_UnknownExam_ReturnsErrExamNotFound
 
 func TestFormatParticipantNo_ComposesYYMMDDExamNumberParticipantNumber(t *testing.T) {
 	prefix := time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)
-	got := formatParticipantNo(prefix, 42, 5)
+	got := formatParticipantNo("", prefix, 42, 5)
 	want := "250620-0042-000005"
 	if got != want {
 		t.Errorf("formatParticipantNo = %q, want %q", got, want)
+	}
+	assert.Equal(t, "ESOL-250620-0042-000005", formatParticipantNo("ESOL", prefix, 42, 5))
+}
+
+func TestParseParticipantNo(t *testing.T) {
+	tests := []struct {
+		name, in            string
+		wantExam, wantParti int
+		wantErr             bool
+	}{
+		{"without prefix", "250620-0042-000005", 42, 5, false},
+		{"with prefix", "ESOL-250620-0042-000005", 42, 5, false},
+		{"lowercase prefix", "esol-250620-0042-000005", 42, 5, false},
+		{"other exam number is returned, not rejected", "ESOL-250620-0099-000123", 99, 123, false},
+		{"wide numbers", "250620-12345-1234567", 12345, 1234567, false},
+		{"surrounding spaces", "  ESOL-250620-0042-000005\t", 42, 5, false},
+		{"garbage", "not-a-number", 0, 0, true},
+		{"empty", "", 0, 0, true},
+		{"7-letter prefix", "ABCDEFG-250620-0042-000005", 0, 0, true},
+		{"1-letter prefix", "E-250620-0042-000005", 0, 0, true},
+		{"digits in prefix", "ES0L-250620-0042-000005", 0, 0, true},
+		{"short participant part", "250620-0042-00005", 0, 0, true},
+		{"short exam part", "250620-042-000005", 0, 0, true},
+		{"bad date width", "2506-0042-000005", 0, 0, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			exam, parti, err := parseParticipantNo(tc.in)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.wantExam, exam)
+			assert.Equal(t, tc.wantParti, parti)
+		})
 	}
 }
 

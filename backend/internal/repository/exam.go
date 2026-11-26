@@ -1850,6 +1850,27 @@ func (r *Repository) GetExamRegistrationsByStudent(ctx context.Context, studentI
 	return items, nil
 }
 
+// examEventPrefixSQL is the participant_prefix of the single event (grouping)
+// whose products sell the exam; NULL for no event, a prefix-less event, or
+// more than one distinct event. examIDExpr is a SQL expression for the exam id.
+func examEventPrefixSQL(examIDExpr string) string {
+	return `(SELECT CASE WHEN COUNT(DISTINCT p.grouping_id) = 1 THEN MAX(g.participant_prefix) END
+			FROM product_exam pe
+			JOIN product p ON p.id = pe.product_id
+			JOIN product_grouping g ON g.id = p.grouping_id
+			WHERE pe.exam_id = ` + examIDExpr + `)`
+}
+
+// GetExamEventPrefix returns the exam's event participant prefix (see
+// examEventPrefixSQL); nil when the exam has none.
+func (r *Repository) GetExamEventPrefix(ctx context.Context, examID uuid.UUID) (*string, error) {
+	var prefix *string
+	if err := r.pool.QueryRow(ctx, `SELECT `+examEventPrefixSQL("$1::uuid"), examID).Scan(&prefix); err != nil {
+		return nil, err
+	}
+	return prefix, nil
+}
+
 func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, studentID uuid.UUID) (*model.RegistrationDetail, error) {
 	var detail model.RegistrationDetail
 	var cardKey *string
@@ -1865,7 +1886,8 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 				SELECT string_agg(DISTINCT t.subject, ', ')
 				FROM exam_test et JOIN test t ON t.id = et.test_id
 				WHERE et.exam_id = e.id
-			), '') AS subject
+			), '') AS subject,
+			`+examEventPrefixSQL("e.id")+` AS event_prefix
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		WHERE reg.id = $1 AND reg.student_id = $2`,
@@ -1876,7 +1898,7 @@ func (r *Repository) GetExamRegistrationByID(ctx context.Context, regID, student
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.RawRules.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
-		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
+		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject, &detail.EventPrefix,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -1982,7 +2004,8 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 				SELECT string_agg(DISTINCT t.subject, ', ')
 				FROM exam_test et JOIN test t ON t.id = et.test_id
 				WHERE et.exam_id = e.id
-			), '') AS subject
+			), '') AS subject,
+			`+examEventPrefixSQL("e.id")+` AS event_prefix
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		WHERE reg.id = $1`,
@@ -1993,7 +2016,7 @@ func (r *Repository) GetRegistrationForPrint(ctx context.Context, regID uuid.UUI
 		&detail.Exam.ID, &detail.Exam.Title, &detail.Exam.ScheduledAt, &detail.Exam.ScheduledEndAt, &detail.Exam.RequiresCheckin,
 		&detail.Exam.CheckInWindowMinutes, &detail.Exam.RawRules.TimerMode, &detail.Exam.DurationMinutes,
 		&detail.Exam.ResultConfig, &detail.Exam.ExamNumber,
-		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject,
+		&detail.Exam.CardEnabled, &cardNotesRaw, &detail.Subject, &detail.EventPrefix,
 	)
 	if err != nil {
 		if isNotFound(err) {
@@ -2053,7 +2076,8 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 		`SELECT reg.id, reg.student_id, u.name, u.username, reg.participant_number,
 			reg.status, reg.checked_in_at, reg.created_at, e.scheduled_at, e.exam_number,
 			reg.token, u.email, u.phone, u.dob, u.jenjang, u.grade,
-			sc.name, p.name, c.name
+			sc.name, p.name, c.name,
+			`+examEventPrefixSQL("e.id")+` AS event_prefix
 		FROM exam_registration reg
 		JOIN exam e ON e.id = reg.exam_id
 		JOIN users u ON u.id = reg.student_id
@@ -2095,7 +2119,7 @@ func (r *Repository) ListExamRoster(ctx context.Context, examID uuid.UUID, schoo
 			&item.ParticipantNumber, &item.Status, &item.CheckedInAt, &item.RegisteredAt,
 			&item.ExamScheduledAt, &item.ExamNumber, &item.Token,
 			&item.StudentEmail, &item.StudentPhone, &item.StudentDOB, &item.StudentJenjang, &item.StudentGrade,
-			&item.SchoolName, &item.SchoolProvinsi, &item.SchoolKota,
+			&item.SchoolName, &item.SchoolProvinsi, &item.SchoolKota, &item.EventPrefix,
 		); err != nil {
 			return nil, "", err
 		}

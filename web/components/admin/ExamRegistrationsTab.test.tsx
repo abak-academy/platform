@@ -1292,6 +1292,20 @@ describe("ExamRegistrationsTab — participant roster (FR-32)", () => {
     ]);
   });
 
+  it("renders an event-prefixed participant number verbatim", () => {
+    rosterData = {
+      data: [{ ...rows[1], participant_no: "ESOL-250620-0042-000001" }, rows[0]],
+    };
+    render(<ExamRegistrationsTab examId="exam-1" examName="Tryout UTBK 2026" />, {
+      wrapper: wrapperFactory(),
+    });
+
+    expect(screen.getAllByTestId("roster-participant-no").map((c) => c.textContent)).toEqual([
+      "ESOL-250620-0042-000001",
+      "250620-0042-000002",
+    ]);
+  });
+
   it("requests descending sort from page one when the header is clicked", () => {
     const ascending = { data: [rows[1], rows[0], rows[2]], next_cursor: "asc-2" };
     const descending = { data: [rows[0], rows[1], rows[2]], next_cursor: "desc-2" };

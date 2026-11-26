@@ -135,6 +135,28 @@ describe("ExamCardPrintPage — Download PDF", () => {
 
   // C-01: grade arrives as a number (backend *int). The card must render it
   // without crashing — the pre-fix code called grade.trim() on a number.
+  it("shows the event-prefixed participant number from the API unchanged", async () => {
+    registrationState = {
+      data: { ...registration, participant_no: "ESOL-260601-0001-000005" },
+      isLoading: false,
+      isError: false,
+    };
+
+    render(<ExamCardPrintPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("ESOL-260601-0001-000005").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows the unprefixed participant number when the exam has no event", async () => {
+    render(<ExamCardPrintPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("260601-0001-000005").length).toBeGreaterThan(0);
+    });
+  });
+
   it("renders a numeric grade without crashing", async () => {
     profileState = { data: { name: "Saifullah Panca", grade: 10 }, isLoading: false };
 

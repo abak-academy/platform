@@ -145,6 +145,29 @@ describe("admin-exams grading hooks", () => {
     expect(result.current.data?.data).toEqual(rows);
   });
 
+  it("useExamRoster passes an event-prefixed participant_no through untouched", async () => {
+    const rows = [
+      {
+        registration_id: "r1",
+        student_id: "s1",
+        student_name: "Andi Saputra",
+        student_username: "andi123",
+        participant_number: 1,
+        participant_no: "ESOL-250620-0042-000001",
+        status: "registered",
+        checked_in_at: null,
+        token: "TOKEN-ANDI-001",
+      },
+    ] as ExamRosterEntry[];
+    mockAuthFetch.mockResolvedValueOnce({ data: rows });
+
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useExamRoster("e1", {}), { wrapper });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.data[0].participant_no).toBe("ESOL-250620-0042-000001");
+  });
+
   it("useExamRoster forwards the student-name search filter", async () => {
     mockAuthFetch.mockResolvedValueOnce({ data: [] });
 
