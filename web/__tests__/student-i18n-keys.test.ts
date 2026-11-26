@@ -9,9 +9,9 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   // Dashboard (page.tsx)
   { key: "hello", id: "Halo", en: "Hello" },
   { key: "dash_load_failed", id: "Gagal memuat dashboard.", en: "Failed to load dashboard." },
-  { key: "dash_open_catalog", id: "Buka katalog", en: "Open catalog" },
+  { key: "dash_open_catalog", id: "Buka toko", en: "Open shop" },
   { key: "dash_no_courses", id: "Belum ada kursus", en: "No courses yet" },
-  { key: "dash_no_courses_desc", id: "Mulai belajar dengan menjelajahi katalog kami.", en: "Start learning by exploring our catalog." },
+  { key: "dash_no_courses_desc", id: "Mulai belajar dengan menjelajahi toko kami.", en: "Start learning by exploring our shop." },
 
   // Catalog (catalog/page.tsx)
   { key: "catalog_tab_all", id: "Semua", en: "All" },
@@ -19,9 +19,9 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "catalog_tab_course", id: "Kursus", en: "Course" },
   { key: "catalog_tab_competition", id: "Kompetisi", en: "Competition" },
   { key: "catalog_empty", id: "Belum ada produk pada kategori ini.", en: "No products in this category yet." },
-  { key: "catalog_title", id: "Katalog", en: "Catalog" },
+  { key: "catalog_title", id: "Toko", en: "Shop" },
   { key: "catalog_subtitle", id: "Jelajahi buku, kursus, dan paket kompetisi.", en: "Browse books, courses, and competition packages." },
-  { key: "catalog_load_failed", id: "Gagal memuat katalog.", en: "Failed to load catalog." },
+  { key: "catalog_load_failed", id: "Gagal memuat toko.", en: "Failed to load the shop." },
 
   // Product detail (catalog/[id]/page.tsx)
   { key: "product_type_book", id: "Buku", en: "Book" },
@@ -30,7 +30,7 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "product_no_description", id: "Tidak ada deskripsi.", en: "No description available." },
   { key: "product_stock_label", id: "Stok", en: "Stock" },
   { key: "product_shipped_to_address", id: "dikirim ke alamat Anda", en: "shipped to your address" },
-  { key: "product_back_catalog", id: "Katalog", en: "Catalog" },
+  { key: "product_back_catalog", id: "Toko", en: "Shop" },
   { key: "product_add_cart", id: "Tambah ke Keranjang", en: "Add to Cart" },
   { key: "product_buy_now", id: "Beli Sekarang", en: "Buy Now" },
   { key: "product_load_failed", id: "Gagal memuat produk.", en: "Failed to load product." },
@@ -66,8 +66,8 @@ const NEW_KEYS: { key: string; id: string; en: string }[] = [
   { key: "cart_total", id: "Total", en: "Total" },
   { key: "cart_secure_payment", id: "Midtrans · pembayaran aman terenkripsi", en: "Midtrans · secure encrypted payment" },
   { key: "cart_empty_title", id: "Keranjang masih kosong", en: "Cart is still empty" },
-  { key: "cart_empty_desc", id: "Yuk jelajahi katalog dan tambahkan buku atau kursus favoritmu.", en: "Browse the catalog and add your favorite books or courses." },
-  { key: "cart_view_catalog", id: "Lihat Katalog", en: "View Catalog" },
+  { key: "cart_empty_desc", id: "Yuk jelajahi toko dan tambahkan buku atau kursus favoritmu.", en: "Browse the shop and add your favorite books or courses." },
+  { key: "cart_view_catalog", id: "Lihat Toko", en: "View Shop" },
 
   // Orders list (orders/page.tsx)
   { key: "orders_title", id: "Pesanan", en: "Orders" },
