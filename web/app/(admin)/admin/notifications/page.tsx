@@ -12,10 +12,9 @@ import { useAdminAnnouncements, type Announcement } from "@/lib/hooks/admin-anno
 
 type NotificationsTab = "inbox" | "announcements";
 
-const SHORT_DATE = new Intl.DateTimeFormat("id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
-
 export default function NotificationsPage() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const shortDate = new Intl.DateTimeFormat(lang === "en" ? "en-US" : "id-ID", { day: "numeric", month: "short", timeZone: "Asia/Jakarta" });
   const [tab, setTab] = useState<NotificationsTab>("announcements");
   const { data: announcements } = useAdminAnnouncements();
   const sent = (announcements ?? []).filter((a) => a.status === "sent");
@@ -76,7 +75,7 @@ export default function NotificationsPage() {
                         <b className="block font-[family-name:var(--font-display)] text-sm font-bold">{a.title}</b>
                         <p className="my-0.5 line-clamp-2 text-[13px] text-ink-600">{a.message}</p>
                         <small className="text-xs text-ink-600">
-                          {a.recipients in RECIPIENT_LABEL ? t(RECIPIENT_LABEL[a.recipients as keyof typeof RECIPIENT_LABEL]) : a.recipients} · {a.type in TYPE_LABEL ? t(TYPE_LABEL[a.type as keyof typeof TYPE_LABEL]) : a.type}{a.sent_at ? ` · ${SHORT_DATE.format(new Date(a.sent_at))}` : ""}
+                          {a.recipients in RECIPIENT_LABEL ? t(RECIPIENT_LABEL[a.recipients as keyof typeof RECIPIENT_LABEL]) : a.recipients} · {a.type in TYPE_LABEL ? t(TYPE_LABEL[a.type as keyof typeof TYPE_LABEL]) : a.type}{a.sent_at ? ` · ${shortDate.format(new Date(a.sent_at))}` : ""}
                         </small>
                       </div>
                     </div>

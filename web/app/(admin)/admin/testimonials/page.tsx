@@ -59,7 +59,7 @@ function TestimonialCard({
   const chips = item.content.id?.achievements ?? [];
   const off = !item.is_visible || !item.has_consent;
   return (
-    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3 p-6 ${off ? "opacity-75" : ""}`}>
+    <article aria-label={item.name} className={`md-card-outlined flex flex-col gap-3 p-6 ${off ? "border-dashed bg-surface-sunken" : ""}`}>
       <div className="flex items-center gap-2">
         <AbakAvatar name={item.name} size="md" src={src || undefined} />
         <div className="min-w-0 flex-1">

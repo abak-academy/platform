@@ -556,8 +556,8 @@ export default function ProductGroupingDetailPage() {
 
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-4">
-              <section className="md-card-outlined space-y-3.5 p-6" aria-label="Identitas">
-                <h2 className="type-h2">Identitas</h2>
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("product_grouping_section_identity")}>
+                <h2 className="type-h2">{t("product_grouping_section_identity")}</h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="event-name" label="Nama event">
                     <Input id="event-name" value={form.name} onChange={(e) => set({ name: e.target.value })} />
@@ -790,8 +790,8 @@ export default function ProductGroupingDetailPage() {
             </div>
 
             <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
-              <section className="md-card-outlined space-y-3.5 p-6" aria-label="Tampilan">
-                <h2 className="type-h2">Tampilan</h2>
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("product_grouping_section_display")}>
+                <h2 className="type-h2">{t("product_grouping_section_display")}</h2>
                 <div className="flex items-center gap-3 rounded-[18px] p-3.5 text-white" style={{ background: EVENT_ART_BG[form.tone] ?? EVENT_ART_BG.brand }}>
                   <EventMark logoKey={form.logoKey} tone={form.tone} illustration={form.illustration} className="size-14 bg-transparent !text-white" />
                   <b className="min-w-0 truncate" data-testid="event-preview">{form.shortName.trim() || form.name}</b>

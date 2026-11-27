@@ -42,6 +42,8 @@ describe("Button", () => {
   it("dark is the prototype .ab-btn.dark: brand fill with the brand shadow", () => {
     render(<Button variant="dark">dk</Button>);
     expect(cls("dk")).toContain("bg-brand-600");
+    expect(cls("dk")).toContain("text-on-brand");
+    expect(cls("dk")).not.toContain("text-white");
     expect(cls("dk")).toContain("shadow-[var(--shadow-brand)]");
   });
 

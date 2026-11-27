@@ -27,6 +27,12 @@ function actionLabel(action: string): string {
   return verb.replace(/_/g, " ");
 }
 
+function actionTone(action: string): string {
+  if (action.includes("delete") || action.includes("remove")) return "bg-danger-600 text-on-danger";
+  if (action.includes("change") || action.includes("update")) return "bg-brand-600 text-on-brand";
+  return "bg-teal-600 text-white";
+}
+
 function actionIcon(action: string): LucideIcon {
   if (action.includes("create") || action.includes("add")) return Plus;
   if (action.includes("delete") || action.includes("remove")) return Trash2;
@@ -44,15 +50,15 @@ export default function SystemAuditPage() {
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const [actor, setActor] = useState("");
-  const [sort, setSort] = useState("new");
 
   const { data: loaded = [], isLoading, error } = useAdminAuditLog(
     debouncedSearch.trim() ? { q: debouncedSearch } : undefined
   );
-  const entries = useMemo(() => {
-    const rows = actor ? loaded.filter((a) => (actor === "sys") === !a.actor_name) : loaded;
-    return sort === "old" ? [...rows].reverse() : rows;
-  }, [loaded, actor, sort]);
+  // Hook has no pagination: only the newest page is loaded, so the actor filter covers loaded rows only.
+  const entries = useMemo(
+    () => (actor ? loaded.filter((a) => (actor === "sys") === !a.actor_name) : loaded),
+    [loaded, actor]
+  );
   const actorOptions = [
     { value: "sys", label: t("audit_actor_system") },
     { value: "adm", label: t("audit_actor_admin") },
@@ -113,16 +119,17 @@ export default function SystemAuditPage() {
             </PopoverContent>
           </Popover>
           <ToolbarSort
-            value={sort}
-            onChange={setSort}
+            value="new"
+            onChange={() => {}}
             label={t("list_toolbar_sort")}
             options={[
               { value: "new", label: t("audit_sort_newest") },
-              { value: "old", label: t("audit_sort_oldest") },
+              { value: "old", label: t("audit_sort_oldest"), disabled: true },
             ]}
           />
-          <ToolbarCount>{t("adm_logs_count").replace("{n}", String(entries.length))}</ToolbarCount>
+          <ToolbarCount>{t("audit_count_latest").replace("{n}", String(entries.length))}</ToolbarCount>
         </div>
+        <p className="border-b border-line px-4 py-2 text-xs text-ink-600">{t("audit_sort_oldest_locked")}</p>
         {actor && (
           <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
             <ActiveChip
@@ -144,7 +151,7 @@ export default function SystemAuditPage() {
                   {i < entries.length - 1 && (
                     <span aria-hidden className="absolute top-[34px] bottom-0 left-[16px] w-0.5 bg-teal-600" />
                   )}
-                  <span className="z-10 grid size-[34px] place-items-center rounded-[12px] bg-teal-600 text-white">
+                  <span className={`z-10 grid size-[34px] place-items-center rounded-[12px] ${actionTone(a.action)}`}>
                     <Icon className="size-4" aria-hidden />
                   </span>
                   <div className="min-w-0">

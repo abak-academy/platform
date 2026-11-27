@@ -52,4 +52,30 @@ describe("SystemAuditPage", () => {
     expect(screen.getByText("System")).toBeInTheDocument();
     auditEntries = [];
   });
+
+  it("labels the count as latest-only and locks the oldest sort", () => {
+    auditEntries = [
+      { id: "1", action: "user.create", actor_name: "Ani", actor_email: null, target_type: "user", target_id: "u1", created_at: "2026-11-01T00:00:00Z" },
+    ];
+    render(<SystemAuditPage />);
+    expect(screen.getByText("audit_count_latest")).toBeInTheDocument();
+    expect(screen.getByText("audit_sort_oldest_locked")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox", { name: "list_toolbar_sort" }));
+    expect(screen.getByRole("option", { name: "audit_sort_oldest" })).toHaveAttribute("aria-disabled", "true");
+    auditEntries = [];
+  });
+
+  it("colours timeline nodes per action", () => {
+    auditEntries = [
+      { id: "1", action: "user.delete", actor_name: "A", actor_email: null, target_type: "user", target_id: "u1", created_at: "2026-11-01T00:00:00Z" },
+      { id: "2", action: "user.update", actor_name: "A", actor_email: null, target_type: "user", target_id: "u2", created_at: "2026-11-01T00:00:00Z" },
+      { id: "3", action: "user.create", actor_name: "A", actor_email: null, target_type: "user", target_id: "u3", created_at: "2026-11-01T00:00:00Z" },
+    ];
+    render(<SystemAuditPage />);
+    const node = (i: number) => screen.getAllByRole("listitem")[i].querySelector("span.z-10")!;
+    expect(node(0)).toHaveClass("bg-danger-600");
+    expect(node(1)).toHaveClass("bg-brand-600");
+    expect(node(2)).toHaveClass("bg-teal-600");
+    auditEntries = [];
+  });
 });

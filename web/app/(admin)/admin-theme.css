@@ -45,11 +45,13 @@
   font-family: var(--md-sys-typescale-body);
 }
 
-/* :where() keeps specificity at (0,0,1) so Tailwind mb-* / m-* utilities on headings win */
-:where(.admin-shell) h1, :where(.admin-shell) h2, :where(.admin-shell) h3,
-:where(.admin-shell) h4, :where(.admin-shell) h5, :where(.admin-shell) h6 {
-  font-family: var(--md-sys-typescale-display);
-  margin: 0;
+/* In @layer base so Tailwind's @layer utilities (mb-*, m-*) win; unlayered rules beat every layer */
+@layer base {
+  :where(.admin-shell) h1, :where(.admin-shell) h2, :where(.admin-shell) h3,
+  :where(.admin-shell) h4, :where(.admin-shell) h5, :where(.admin-shell) h6 {
+    font-family: var(--md-sys-typescale-display);
+    margin: 0;
+  }
 }
 
 /* Component classes. Values mirror the redesign prototype: .card, .ab-btn, .chip, .fchip, .lchip */

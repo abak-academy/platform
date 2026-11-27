@@ -164,7 +164,7 @@ export default function PromosPage() {
             const status = promoStatus(promo);
             const pct = promo.max_uses ? Math.min(100, Math.round((promo.used_count / promo.max_uses) * 100)) : null;
             return (
-              <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "opacity-65")}>
+              <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "border-dashed bg-surface-sunken")}>
                 <div className="flex items-center gap-2">
                   <code className="min-w-0 truncate rounded-[9px] bg-deep px-2.5 py-1.5 font-mono text-[13px] leading-4 font-bold tracking-[.06em] text-white">{promo.code}</code>
                   <span className="flex-1" />

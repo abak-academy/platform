@@ -85,13 +85,14 @@ export function AnnouncementComposer({
   }, [open, inline, announcement, resetKey]);
 
   const handleClose = () => (inline ? setResetKey((k) => k + 1) : onOpenChange(false));
+  const closeOnSuccess = { onSuccess: handleClose };
 
   const handleSaveDraft = () => {
     if (announcement) {
       updateMutation.mutate({
         id: announcement.id,
         input: { title, message, type, recipients },
-      });
+      }, closeOnSuccess);
     } else {
       createMutation.mutate({
         title,
@@ -99,9 +100,8 @@ export function AnnouncementComposer({
         type,
         recipients,
         status: "draft",
-      });
+      }, closeOnSuccess);
     }
-    handleClose();
   };
 
   const handleSchedule = () => {
@@ -110,7 +110,7 @@ export function AnnouncementComposer({
       updateMutation.mutate({
         id: announcement.id,
         input: { title, message, type, recipients, scheduled_at: scheduledAtISO },
-      });
+      }, closeOnSuccess);
     } else {
       createMutation.mutate({
         title,
@@ -119,9 +119,8 @@ export function AnnouncementComposer({
         recipients,
         status: "scheduled",
         scheduled_at: scheduledAtISO,
-      });
+      }, closeOnSuccess);
     }
-    handleClose();
   };
 
   const handleSendNow = () => {
@@ -129,7 +128,7 @@ export function AnnouncementComposer({
       updateMutation.mutate({
         id: announcement.id,
         input: { title, message, type, recipients },
-      });
+      }, closeOnSuccess);
     } else {
       createMutation.mutate({
         title,
@@ -137,9 +136,8 @@ export function AnnouncementComposer({
         type,
         recipients,
         status: "sent",
-      });
+      }, closeOnSuccess);
     }
-    handleClose();
   };
 
   const canSchedule = scheduledAt !== "";

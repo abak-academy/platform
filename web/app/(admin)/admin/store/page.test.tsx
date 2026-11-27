@@ -182,6 +182,11 @@ describe("admin_store dashboard", () => {
     expect(document.querySelector('a[href="/admin/orders?queue=ready_to_ship"]')).not.toBeNull();
   });
 
+  it("labels the promo-used KPI as all-time, not period-scoped", () => {
+    render(<StoreDashboardPage />);
+    expect(screen.getByText("Promo dipakai · total")).toBeInTheDocument();
+  });
+
   it("counts active and expiring-soon promos, ignoring expired and exhausted ones", () => {
     render(<StoreDashboardPage />);
     expect(screen.getByTestId("store-promos-active")).toHaveTextContent("2");
