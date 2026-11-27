@@ -206,7 +206,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                       disabled={pending}
                     />
                   )}
-                  {key === "password" && <p className="text-xs text-ink-500">{t("admin_aff_add_password_hint")}</p>}
+                  {key === "password" && <p className="text-xs text-ink-600">{t("admin_aff_add_password_hint")}</p>}
                 </div>
               ))
             ) : (
@@ -243,7 +243,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                       onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                     />
                     {file && <p className="text-sm text-ink-600">{file.name}</p>}
-                    <p className="text-xs text-ink-500">{t("admin_aff_add_bulk_hint")}</p>
+                    <p className="text-xs text-ink-600">{t("admin_aff_add_bulk_hint")}</p>
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="aff-add-default-password">{t("admin_aff_add_default_password")}</Label>
@@ -254,7 +254,7 @@ export function AddAffiliatorDialog({ open, onOpenChange }: { open: boolean; onO
                       onChange={(e) => setDefaultPassword(e.target.value)}
                       disabled={pending}
                     />
-                    <p className="text-xs text-ink-500">{t("admin_aff_add_default_password_hint")}</p>
+                    <p className="text-xs text-ink-600">{t("admin_aff_add_default_password_hint")}</p>
                   </div>
                   <Button type="button" className="rounded-full" onClick={onUpload} disabled={pending || !file}>
                     {t("bulk_register_upload")}

@@ -78,7 +78,7 @@ function SettingsContent() {
   }, [loaded]);
 
   if (!canManage) return <NoAccess />;
-  if (settings.isLoading || (!form && !settings.isError)) return <div className="text-sm text-ink-500">{t("aff_loading")}</div>;
+  if (settings.isLoading || (!form && !settings.isError)) return <div className="text-sm text-ink-600">{t("aff_loading")}</div>;
   if (settings.isError || !form) {
     return (
       <div role="alert" className="md-card-outlined space-y-3 p-6 text-sm text-ink-600">
@@ -128,10 +128,10 @@ function SettingsContent() {
     const help = GLOBAL_HELP[key];
     if (key === "launch_date") {
       return (
-        <div key={key} className="space-y-1.5">
-          <Label htmlFor={id}>{fieldLabel(key)}</Label>
+        <div key={key}>
+          <Label htmlFor={id} className="mb-[7px]">{fieldLabel(key)}</Label>
           <Input id={id} type="date" value={form.launchDate} onChange={(e) => setForm({ ...form, launchDate: e.target.value })} />
-          <p className="text-xs leading-relaxed text-ink-500">{t(hintKey(key))}</p>
+          <p className="mt-1.5 text-xs leading-relaxed text-ink-600">{t(hintKey(key))}</p>
         </div>
       );
     }
@@ -175,7 +175,7 @@ function SettingsContent() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-5">
       <AdminPageHeader title={t("admin_aff_set_title")} description={t("admin_aff_set_desc")} />
 
       <ProgramSwitchCard
@@ -195,15 +195,15 @@ function SettingsContent() {
       </Tabs>
 
       {tab === "general" && (
-        <form onSubmit={save} className="space-y-6">
+        <form onSubmit={save} className="space-y-4">
           <BulkFormatGuide fields={guideFields} pitfallKeys={[]} />
           {GROUPS.map((group) => (
             <section key={group.title} className="md-card-outlined space-y-4 p-6">
               <div>
-                <h2 className="font-semibold text-ink-900">{t(group.title)}</h2>
+                <h2 className="type-h2">{t(group.title)}</h2>
                 <p className="text-sm text-ink-600">{t(group.desc)}</p>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
                 {group.fields.map(globalField)}
               </div>
             </section>
@@ -213,16 +213,16 @@ function SettingsContent() {
       )}
 
       {tab === "levels" && (
-        <form onSubmit={save} className="space-y-6">
+        <form onSubmit={save} className="space-y-4">
           <BulkFormatGuide fields={levelGuideFields} pitfallKeys={["admin_aff_set_level_hint"]} />
           <div className="grid gap-4 lg:grid-cols-3">
             {AFFILIATE_LEVELS.map((level) => (
               <section key={level} className="md-card-outlined space-y-5 p-6">
-                <h2 className="type-h3 text-ink-900">{affLabel(t, level)}</h2>
+                <h2 className="type-h2">{affLabel(t, level)}</h2>
                 <div className="space-y-3">
                   <div>
                     <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_lvl_pct")}</h3>
-                    <p className="text-xs text-ink-500">{t("admin_aff_rule_hint")}</p>
+                    <p className="text-xs text-ink-600">{t("admin_aff_rule_hint")}</p>
                   </div>
                   <div className="space-y-3">
                     {COMMISSION_CATEGORIES.map((category) => (
@@ -274,8 +274,8 @@ function globalFallback(form: SettingsForm, key: (typeof LEVEL_FIELDS)[number]):
 function RuleFieldCompact({ id, label, rule, onChange }: { id: string; label: string; rule: RuleForm; onChange: (patch: Partial<RuleForm>) => void }) {
   const { t } = useTranslation();
   return (
-    <div className="space-y-1">
-      <Label htmlFor={id}>{label}</Label>
+    <div>
+      <Label htmlFor={id} className="mb-[7px]">{label}</Label>
       <div className="grid grid-cols-[8rem_minmax(0,1fr)] gap-2">
         <RuleTypeSelect label={`${label} ${t("admin_aff_rule_type")}`} value={rule.type} onChange={(type) => onChange({ type })} />
         <Input id={id} inputMode="decimal" value={rule.value} onChange={(e) => onChange({ value: e.target.value })} />

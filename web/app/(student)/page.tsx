@@ -23,8 +23,8 @@ import { ShopPicks } from "@/components/dashboard/ShopPicks";
 import { Landing } from "@/components/landing/Landing";
 import { greetingKey } from "./home-greeting";
 
-const ROW_A = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
-const ROW_B = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1200px]:grid-cols-[minmax(0,40fr)_minmax(0,60fr)]";
+const ROW_A = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1201px]:grid-cols-[minmax(0,65fr)_minmax(0,35fr)]";
+const ROW_B = "grid grid-cols-[minmax(0,1fr)] gap-4 min-[1201px]:grid-cols-[minmax(0,40fr)_minmax(0,60fr)]";
 
 function firstName(name?: string): string {
   if (!name) return "";
@@ -55,12 +55,13 @@ function Dashboard() {
     weekday: "long",
     day: "numeric",
     month: "long",
+    year: "numeric",
   }).format(now);
 
   return (
     <>
       {isError && (
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -79,6 +80,8 @@ function Dashboard() {
       ) : data ? (
         <div className="flex flex-col gap-5">
           <PageHead
+            size="home"
+            highlight={name}
             eyebrow={today}
             title={t("stu_home_greeting").replace("{greeting}", greeting).replace("{name}", name)}
             sub={t("stu_home_intro")}
@@ -96,7 +99,7 @@ function Dashboard() {
 
           <div className={ROW_A}>
             {eventSeries.isLoading || registrations.isLoading ? (
-              <Skeleton className="h-64 rounded-xl" data-testid="carousel-skeleton" />
+              <Skeleton className="h-64 rounded-[var(--radius-card)]" data-testid="carousel-skeleton" />
             ) : (
               <EventCarousel slides={eventSeries.isError ? [] : slides} />
             )}
@@ -119,15 +122,15 @@ function Dashboard() {
 
 function DashboardSkeleton() {
   return (
-    <div className="flex flex-col gap-5" data-testid="dashboard-skeleton">
+    <div className="flex flex-col gap-4" data-testid="dashboard-skeleton">
       <Skeleton className="h-16 w-72" />
       <div className={ROW_A}>
-        <Skeleton className="h-64 rounded-xl" />
-        <Skeleton className="h-64 rounded-xl" />
+        <Skeleton className="h-64 rounded-[var(--radius-card)]" />
+        <Skeleton className="h-64 rounded-[var(--radius-card)]" />
       </div>
       <div className={ROW_B}>
-        <Skeleton className="h-48 rounded-lg" />
-        <Skeleton className="h-48 rounded-lg" />
+        <Skeleton className="h-48 rounded-[var(--radius-card)]" />
+        <Skeleton className="h-48 rounded-[var(--radius-card)]" />
       </div>
     </div>
   );

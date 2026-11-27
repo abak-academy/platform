@@ -38,43 +38,49 @@ function renderList(props: Partial<Parameters<typeof CourierRateList>[0]> = {}) 
   );
 }
 
-async function openList() {
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { expanded: false }));
-  return user;
-}
+describe("CourierRateList keyboard", () => {
+  it("makes only the checked radio tabbable and moves selection with arrows", async () => {
+    const onSelect = vi.fn();
+    renderList({ selectedKey: "JNE::Reguler", onSelect });
+    const radios = screen.getAllByRole("radio");
+    expect(radios.filter((r) => r.tabIndex === 0)).toHaveLength(1);
+    expect(radios.find((r) => r.tabIndex === 0)).toHaveAttribute("aria-checked", "true");
+
+    radios.find((r) => r.tabIndex === 0)!.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ courier: "Tiki", service: "Reguler" });
+    await userEvent.keyboard("{ArrowUp}");
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect.mock.calls[1][0]).toMatchObject({ courier: "JNE", service: "Yakin Esok Sampai (YES)" });
+  });
+
+  it("tabs into the first radio when nothing is checked", () => {
+    renderList();
+    expect(screen.getAllByRole("radio").map((r) => r.tabIndex)).toEqual([0, -1, -1, -1, -1]);
+  });
+});
 
 describe("CourierRateList", () => {
-  // Nothing is chosen on the buyer's behalf: shipping is a real charge, so it
-  // stays a deliberate act. The control starts empty and says what it wants.
-  it("starts closed with a prompt and nothing selected", () => {
+  // Prototype `.choices`: every quoted rate is on screen at once, nothing pre-picked.
+  it("lists every option with nothing selected", () => {
     renderList();
-    expect(screen.getByText("Pilih jasa pengiriman")).toBeTruthy();
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
-  });
-
-  it("opens the full list of options", async () => {
-    renderList();
-    await openList();
     expect(screen.getAllByRole("radio")).toHaveLength(5);
+    expect(screen.getAllByRole("radio").filter((el) => el.getAttribute("aria-checked") === "true")).toHaveLength(0);
   });
 
-  it("separates the options by how soon they arrive", async () => {
+  it("says on each row how soon it arrives", () => {
     renderList();
-    await openList();
-    expect(screen.getByText("Sampai hari ini")).toBeTruthy();
-    expect(screen.getByText("Sampai besok")).toBeTruthy();
-    expect(screen.getByText("Beberapa hari")).toBeTruthy();
+    expect(within(screen.getByRole("radio", { name: /Same Day Service/ })).getByText("Sampai hari ini")).toBeTruthy();
+    expect(within(screen.getByRole("radio", { name: /YES/ })).getByText("Sampai besok")).toBeTruthy();
+    expect(within(screen.getByRole("radio", { name: /JNE · Reguler/ })).getByText("Beberapa hari · Rab, 29 Jul")).toBeTruthy();
   });
 
   // Within a band the spread can be several days, so ordering purely by price
   // would put a later delivery above an earlier one over a few thousand rupiah.
-  it("orders each band by arrival first, then price", async () => {
+  it("orders by arrival first, then price", () => {
     renderList();
-    await openList();
-    const services = screen
-      .getAllByRole("radio")
-      .map((el) => within(el).getByText(/·/).textContent ?? "");
+    const services = screen.getAllByRole("radio").map((el) => el.querySelector("b")?.textContent ?? "");
     expect(services[0]).toContain("Same Day Service");
     expect(services[1]).toContain("Besok Sampai Tujuan"); // 1 day, 14.000
     expect(services[2]).toContain("Yakin Esok Sampai"); // 1 day, 18.000
@@ -82,37 +88,19 @@ describe("CourierRateList", () => {
     expect(services[4]).toContain("Tiki · Reguler"); // 4 days — cheaper, but later
   });
 
-  // The band heading already says when it arrives, so repeating it on the row
-  // would answer the same question twice.
-  it("omits the date under the same-day heading and shows it elsewhere", async () => {
-    renderList();
-    await openList();
-    const sameDay = screen.getByRole("radio", { name: /Same Day Service/ });
-    expect(within(sameDay).queryByText(/Estimasi tiba/)).toBeNull();
-    expect(screen.getByText("Estimasi tiba Rab, 29 Jul")).toBeTruthy();
-  });
-
-  it("collapses to the chosen option once something is picked", () => {
-    renderList({ selectedKey: "JNE::Reguler" });
-    expect(screen.queryAllByRole("radio")).toHaveLength(0);
-    expect(screen.getByText(/JNE · Reguler/)).toBeTruthy();
-    expect(screen.getByText(/Beberapa hari · Rab, 29 Jul/)).toBeTruthy();
-  });
-
   // estimated_days is 0 both for same-day and for a duration the backend could
-  // not read, and only the first deserves a date.
-  it("shows no arrival date when the duration could not be read", async () => {
+  // not read, and only "a few days" rows carry a date.
+  it("shows no arrival date when the duration could not be read", () => {
     renderList({ rates: NO_DURATION });
-    await openList();
-    expect(screen.queryByText(/Estimasi tiba/)).toBeNull();
+    expect(screen.queryByText(/Jul/)).toBeNull();
   });
 
   // The rows were previously divs with tabIndex and a click handler, so they
   // took focus but could not be activated.
   it("selects a rate from the keyboard", async () => {
     const onSelect = vi.fn();
+    const user = userEvent.setup();
     renderList({ onSelect });
-    const user = await openList();
 
     await user.tab();
     await user.keyboard("{Enter}");
@@ -121,9 +109,8 @@ describe("CourierRateList", () => {
     expect(onSelect.mock.calls[0][0].service).toBe("Same Day Service");
   });
 
-  it("marks the chosen rate for assistive technology", async () => {
+  it("marks the chosen rate for assistive technology", () => {
     renderList({ selectedKey: "JNE::Reguler" });
-    await openList();
 
     const checked = screen
       .getAllByRole("radio")

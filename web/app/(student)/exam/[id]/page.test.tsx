@@ -612,11 +612,11 @@ describe("ExamDetailPage — briefing", () => {
     expect(screen.getByText("Jadwal akses")).toBeInTheDocument();
     expect(screen.getByText(/hanya membatasi mulai sesi baru/i)).toBeInTheDocument();
     expect(screen.getByText("Waktu pengerjaan")).toBeInTheDocument();
-    expect(screen.getByTestId("duration-panel")).toHaveTextContent("100menit total");
+    expect(screen.getByTestId("duration-panel")).toHaveTextContent("100 menit total");
     expect(screen.getAllByText("Timer per section").length).toBeGreaterThan(0);
     expect(screen.getByText("Section berurutan")).toBeInTheDocument();
 
-    const items = screen.getAllByRole("listitem");
+    const items = Array.from(document.querySelectorAll("ol > li"));
     expect(items[0]).toHaveTextContent("Penalaran Umum");
     expect(items[0]).toHaveTextContent("30 soal");
     expect(items[0]).toHaveTextContent("Satu soal per halaman");
@@ -639,10 +639,10 @@ describe("ExamDetailPage — briefing", () => {
     };
     render(<ExamDetailPage />);
 
-    expect(screen.getByTestId("duration-panel")).toHaveTextContent("120menit");
+    expect(screen.getByTestId("duration-panel")).toHaveTextContent("120 menit");
     expect(screen.getAllByText("Satu timer ujian").length).toBeGreaterThan(0);
     expect(screen.getByText("Bebas pindah section")).toBeInTheDocument();
-    expect(screen.getAllByText("Timer bersama").length).toBe(2);
+    expect(screen.getAllByText(/Timer bersama/).length).toBe(2);
     expect(screen.getByText("Percobaan tanpa batas")).toBeInTheDocument();
   });
 });

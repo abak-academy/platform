@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronRight, Loader2, Ticket, X } from "lucide-react";
+import { Loader2, Tag, X } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { formatRupiah } from "@/lib/format";
 import type { ActivePromoCode } from "@/lib/types";
@@ -186,24 +186,20 @@ export function PromoSheet({
   return (
     <>
       {applied ? (
-        <div className="mt-4 flex items-center gap-3 rounded-[13px] border border-success/30 bg-success-bg px-3.5 py-3">
-          <Ticket className="size-4 shrink-0 text-success" />
+        <div className="mb-3 flex items-center gap-3 rounded-[14px] border-[1.5px] border-dashed border-teal-700/40 bg-teal-50 px-3 py-2.5">
+          <Tag className="size-4 shrink-0 text-teal-700" />
           <div className="flex min-w-0 flex-1 flex-col">
-            <span
-              className={`truncate text-sm font-bold text-ink-900 ${
-                appliedCode ? "font-mono tracking-wide" : ""
-              }`}
-            >
+            <b className={`truncate text-[13px] text-ink-900 ${appliedCode ? "tracking-wide" : ""}`}>
               {appliedCode ?? t("promo_sheet_applied")}
-            </span>
-            <span className="text-xs font-semibold text-success">
+            </b>
+            <span className="text-xs font-semibold text-teal-700">
               {t("promo_applied_saving").replace("{v}", formatRupiah(discount))}
             </span>
           </div>
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="shrink-0 text-xs font-semibold text-ink-600 underline underline-offset-2 hover:text-ink-900"
+            className="shrink-0 text-xs font-semibold text-brand-ink underline-offset-2 hover:underline"
           >
             {t("promo_change")}
           </button>
@@ -211,38 +207,63 @@ export function PromoSheet({
             type="button"
             onClick={onClear}
             aria-label={t("promo_remove")}
-            className="shrink-0 rounded-md p-1 text-ink-500 transition-colors hover:bg-surface hover:text-ink-900"
+            className="shrink-0 rounded-full p-1 text-ink-600 transition-colors hover:bg-surface hover:text-ink-900"
           >
             <X className="size-4" />
           </button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="mt-4 flex w-full items-center gap-3 rounded-[13px] border border-line bg-surface-2 px-3.5 py-3 text-left transition-colors hover:border-brand-300 hover:bg-brand-50/60"
-        >
-          <Ticket className="size-4 shrink-0 text-brand-500" />
-          <span className="flex-1 whitespace-nowrap text-sm font-semibold text-ink-900">
-            {t("promo_sheet_trigger")}
-          </span>
-          {/* The count alone — spelling it out wrapped the label at 360px, and
-              the row already names what is being counted. */}
-          {usable.length > 0 && (
-            <span
-              aria-label={t("promo_sheet_trigger_count").replace("{n}", String(usable.length))}
-              className="flex size-5 shrink-0 items-center justify-center rounded-full bg-brand-500 text-[11px] font-semibold tabular-nums text-white"
-            >
-              {usable.length}
-            </span>
+        <>
+          <div className="mb-3">
+            <PromoInput
+              placeholder={t("cart_promo_placeholder" as any)}
+              applyLabel={t("cart_promo_apply" as any)}
+              onValidate={onApply}
+              onClear={onClear}
+              isValidating={isApplying}
+              applied={false}
+              discount={discount}
+              error={error}
+            />
+          </div>
+          {/* Prototype `.promo-avail`: the first two usable codes as one-tap
+              pills; the full list with locked offers stays behind "see all". */}
+          {promos.length > 0 && (
+            <div className="mb-3.5 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-mono text-[11px] font-semibold tracking-[0.12em] text-ink-600 uppercase">
+                  {t("cart_promo_available" as any)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOpen(true)}
+                  className="text-xs font-semibold text-brand-ink underline-offset-2 hover:underline"
+                >
+                  {t("cart_promo_see_all" as any)} ({promos.length})
+                </button>
+              </div>
+              {usable.slice(0, 2).map((promo) => (
+                <button
+                  key={promo.code}
+                  type="button"
+                  disabled={isApplying}
+                  onClick={() => onApply(promo.code)}
+                  className="flex items-center gap-2 rounded-[14px] border-[1.5px] border-dashed border-ember-600 bg-ember-50 px-3 py-2.5 text-left text-[13px] text-ember-700 disabled:opacity-60"
+                >
+                  <Tag className="size-4 shrink-0" aria-hidden />
+                  <b className="min-w-0 truncate">{promo.code}</b>
+                  <span className="min-w-0 truncate">
+                    −{promoValue(promo).text} ·{" "}
+                    {promo.min_order_amount
+                      ? t("promo_min_spend").replace("{v}", formatRupiah(promo.min_order_amount))
+                      : t("promo_no_minimum")}
+                  </span>
+                </button>
+              ))}
+            </div>
           )}
-          <ChevronRight className="size-4 shrink-0 text-ink-400" />
-        </button>
+        </>
       )}
-
-      {/* Only once the sheet is gone — while it is open the input owns the error,
-          and the buyer would otherwise read the same rejection twice. */}
-      {!applied && !open && error && <p className="mt-2 text-xs font-medium text-danger">{error}</p>}
 
       <Dialog open={open} onOpenChange={setOpen}>
         {/* A bottom sheet on a phone, a centred dialog on a desktop — the offers
@@ -255,15 +276,6 @@ export function PromoSheet({
             <DialogDescription className="text-xs text-ink-600">
               {t("promo_sheet_subtitle")}
             </DialogDescription>
-            <PromoInput
-              label={t("promo_sheet_manual_label")}
-              onValidate={onApply}
-              onClear={onClear}
-              isValidating={isApplying}
-              applied={applied}
-              discount={discount}
-              error={error}
-            />
           </DialogHeader>
 
           <div className="flex flex-col gap-5 overflow-y-auto px-5 py-5">

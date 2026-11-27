@@ -1,7 +1,10 @@
 "use client";
 
 import { useTranslation } from "@/lib/i18n";
+import { MapPin, Pencil } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 export interface SavedAddress {
   penerima: string;
@@ -11,6 +14,9 @@ export interface SavedAddress {
   kota_id: string;
   kecamatan_id: string;
   kode_pos: string;
+  provinsi?: string;
+  kota?: string;
+  kecamatan?: string;
 }
 
 export interface ShippingAddressSummaryProps {
@@ -20,6 +26,7 @@ export interface ShippingAddressSummaryProps {
   // column — and it is the mark that tells addresses apart once there are several.
   isPrimary?: boolean;
   onEdit: () => void;
+  children?: React.ReactNode;
 }
 
 export function isAddressComplete(a: SavedAddress): boolean {
@@ -28,39 +35,43 @@ export function isAddressComplete(a: SavedAddress): boolean {
   );
 }
 
-// The address states where the goods are going, so it reads before them. The
-// shipping choice that depends on it lives with the goods themselves, which
-// leaves this card with one job and one control.
-export function ShippingAddressSummary({ address, isPrimary = false, onEdit }: ShippingAddressSummaryProps) {
+// Prototype address card: `.block-head` + `.addr` box. Children (the courier
+// note) sit under the box, as in the prototype.
+export function ShippingAddressSummary({ address, isPrimary = false, onEdit, children }: ShippingAddressSummaryProps) {
   const { t } = useTranslation();
   const complete = isAddressComplete(address);
+  const region = [address.alamat, address.kecamatan, address.kota, address.provinsi].filter(Boolean).join(", ");
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[var(--radius-card)] border border-line bg-card p-6 shadow-card">
-      <div className="flex min-w-0 flex-col gap-1">
-        <h2 className="flex items-center gap-2 type-h2 text-ink-900">
-          {t("cart_address_heading" as any)}
-          {isPrimary && (
-            <span className="rounded bg-success-bg px-1.5 py-0.5 text-[10px] font-medium normal-case tracking-normal text-success">
-              {t("cart_address_primary_badge" as any)}
-            </span>
-          )}
-        </h2>
-        {complete ? (
-          <p className="text-sm text-ink-600">
-            <span className="font-semibold text-ink-900">{address.penerima}</span>
-            <span className="mx-1.5 text-ink-400">·</span>
-            {address.telepon}
-            <span className="mx-1.5 text-ink-400">·</span>
-            {address.alamat} · {address.kode_pos}
-          </p>
-        ) : (
-          <p className="text-sm text-ink-600">{t("cart_address_incomplete_profile" as any)}</p>
-        )}
+    <Card className="gap-0 p-6">
+      <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="type-h2 text-ink-900">{t("cart_address_heading" as any)}</h2>
+        <Button type="button" variant="ghost" size="sm" onClick={onEdit} className="gap-2 has-[>svg]:px-[13px]">
+          <Pencil />
+          {t("cart_address_change" as any)}
+        </Button>
       </div>
-      <Button type="button" variant="ghost" size="sm" onClick={onEdit} className="shrink-0">
-        {t("cart_address_change" as any)}
-      </Button>
-    </div>
+      {complete ? (
+        <div className="mb-3.5 flex gap-3 rounded-[16px] bg-surface-sunken p-3.5">
+          <MapPin className="size-5 shrink-0 text-ember-700" aria-hidden />
+          <div className="min-w-0">
+            <b className="font-bold text-ink-900">
+              <span>{address.penerima}</span> · {address.telepon}
+            </b>
+            {isPrimary && (
+              <Badge variant="teal" className="ml-1.5 align-middle">
+                {t("cart_address_primary_badge" as any)}
+              </Badge>
+            )}
+            <p className="mt-1 text-ink-600">
+              {region} {address.kode_pos}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-ink-600">{t("cart_address_incomplete_profile" as any)}</p>
+      )}
+      {children}
+    </Card>
   );
 }

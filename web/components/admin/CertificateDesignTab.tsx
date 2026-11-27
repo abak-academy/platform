@@ -62,7 +62,7 @@ export function CertificateDesignTab({ examId, exam, onSaved }: Props) {
   }, [data]);
 
   if (isLoading) return <div className="space-y-3"><Skeleton className="h-16" /><Skeleton className="h-[620px]" /></div>;
-  if (isError || !layout) return <div className="rounded-xl border border-destructive/20 bg-destructive/10 p-5 text-destructive">{t("certificate_studio_load_failed")}</div>;
+  if (isError || !layout) return <div className="rounded-[var(--radius-card)] border border-destructive/20 bg-destructive/10 p-6 text-destructive">{t("certificate_studio_load_failed")}</div>;
   const workingLayout = layout;
 
   const selected = workingLayout.fields.find((field) => field.id === selectedId) || null;

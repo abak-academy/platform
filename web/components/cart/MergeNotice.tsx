@@ -36,7 +36,7 @@ export function MergeNotice() {
   if (rows.length === 0) return null;
 
   return (
-    <div role="status" className="mb-6 rounded-lg border border-warn/30 bg-warn-bg px-5 py-4 text-sm text-ink-900">
+    <div role="status" className="mb-6 rounded-[var(--radius-card)] border border-warn/30 bg-warn-bg p-4 text-sm text-ink-900">
       <div className="flex items-start justify-between gap-3">
         <p className="font-semibold">{t("gcart_merge_title")}</p>
         <Button type="button" variant="ghost" size="sm" onClick={dismiss}>

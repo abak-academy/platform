@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { Hourglass } from "lucide-react";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -12,25 +12,24 @@ export interface PendingBannerProps {
   amount: number;
 }
 
+// Fixed text colours: the gold gradient stays the same in both themes (prototype .pending-banner).
 export function PendingBanner({ id, product, amount }: PendingBannerProps) {
   const { t } = useTranslation();
   return (
     <div
-      className="mb-8 flex items-center gap-4 rounded-lg border px-5 py-4"
-      style={{
-        borderColor: "var(--color-warn)",
-        background: "var(--color-warn-bg)",
-      }}
+      className="flex items-center gap-3.5 rounded-[22px] bg-[linear-gradient(100deg,var(--color-gold-600),#f3cd6b)] px-[18px] py-4 text-[#3d2b08] max-narrow:flex-wrap"
     >
-      <AlertCircle className="size-5 shrink-0 text-warn" />
-      <div className="flex-1 min-w-0">
-        <p className="font-semibold text-warn">{t("stu_home_pending_title")}</p>
-        <p className="truncate text-sm text-ink-600">
+      <span className="grid size-11 flex-none place-items-center rounded-[14px] bg-white/50">
+        <Hourglass className="size-5" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <b className="block font-[family-name:var(--font-display)] text-[15px] font-extrabold">{t("stu_home_pending_title")}</b>
+        <span className="block truncate text-[13px]">
           {product ? `${product} · ` : ""}
           {formatRupiah(amount)}
-        </p>
+        </span>
       </div>
-      <Button asChild size="sm">
+      <Button asChild variant="light" size="sm" className="px-[13px] text-[#14202b] max-narrow:w-full">
         <Link href={`/orders/${id}`}>{t("stu_home_pending_pay")}</Link>
       </Button>
     </div>

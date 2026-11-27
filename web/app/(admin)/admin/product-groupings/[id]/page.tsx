@@ -25,7 +25,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { Switch } from "@/components/ui/switch";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ExternalRoundsDialog } from "@/components/admin/ExternalRoundsDialog";
-import { EVENT_ILLUSTRATIONS, EVENT_TONES, EventMark } from "@/components/admin/EventMark";
+import { EVENT_ART_BG, EVENT_ILLUSTRATIONS, EVENT_TONES, EventMark } from "@/components/admin/EventMark";
+import { TabCount } from "@/components/ui/tabs";
 import { ProductLevelFields, gradeRangeInvalid, levelPayload } from "@/components/admin/ProductModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,9 +61,9 @@ import type {
 } from "@/lib/types";
 
 const FIELD =
-  "h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50";
+  "h-[var(--spacing-input)] w-full rounded-md border-[1.5px] border-line bg-surface px-[15px] text-[15px] outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-50";
 const AREA =
-  "w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-50";
+  "w-full rounded-md border-[1.5px] border-line bg-surface px-[15px] py-3 text-[15px] leading-[1.55] outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-50";
 
 const PREFIX_HINT =
   "Dipakai di depan nomor peserta, mis. ESOL-251012-0007-000123. Mengubahnya mengubah nomor di kartu yang dibuat berikutnya.";
@@ -529,7 +530,7 @@ export default function ProductGroupingDetailPage() {
   const editionTotal = editions.length;
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       {!grouping && (
         <Link href="/admin/product-groupings" className="inline-flex w-fit items-center gap-1 type-label-sm text-ink-600 hover:text-ink-900">
           <ArrowLeft className="size-4" aria-hidden />
@@ -553,10 +554,10 @@ export default function ProductGroupingDetailPage() {
             description={`${grouping.products.filter((p) => p.type === "exam").length} edisi · ${grouping.is_visible ? "tampil di landing" : "disembunyikan dari landing"}`}
           />
 
-          <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
             <div className="min-w-0 space-y-4">
-              <section className="md-card-outlined space-y-4 p-6" aria-label="Identitas">
-                <h2 className="type-h2">Identitas</h2>
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("product_grouping_section_identity")}>
+                <h2 className="type-h2">{t("product_grouping_section_identity")}</h2>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field id="event-name" label="Nama event">
                     <Input id="event-name" value={form.name} onChange={(e) => set({ name: e.target.value })} />
@@ -569,7 +570,7 @@ export default function ProductGroupingDetailPage() {
                     label="Prefiks nomor peserta"
                     hint={
                       <>
-                        <p className="text-xs text-ink-600">{PREFIX_HINT}</p>
+                        <p className="text-[12.5px] leading-[1.55] text-ink-600">{PREFIX_HINT}</p>
                         {prefixError && <p role="alert" className="text-sm text-destructive">{prefixError}</p>}
                       </>
                     }
@@ -602,10 +603,10 @@ export default function ProductGroupingDetailPage() {
                 </div>
               </section>
 
-              <section className="md-card-outlined space-y-4 p-6" aria-label={t("adm_event_narrative")}>
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("adm_event_narrative")}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 className="type-h2">{t("adm_event_narrative")}</h2>
-                  <div role="tablist" aria-label={t("adm_pg_narration_lang")} className="inline-flex gap-1 rounded-full bg-surface-sunken p-1">
+                  <div role="tablist" aria-label={t("adm_pg_narration_lang")} className="inline-flex gap-1 rounded-full border border-line bg-surface p-[5px]">
                     {(["id", "en"] as const).map((loc) => (
                       <button
                         key={loc}
@@ -613,10 +614,10 @@ export default function ProductGroupingDetailPage() {
                         role="tab"
                         aria-selected={tab === loc}
                         onClick={() => setTab(loc)}
-                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold ${tab === loc ? "bg-brand-600 text-on-brand" : "text-ink-700"}`}
+                        className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 font-[family-name:var(--font-display)] text-xs leading-[18px] font-bold ${tab === loc ? "bg-brand-600 text-on-brand" : "text-ink-600"}`}
                       >
                         {loc === "id" ? "Indonesia" : "English"}
-                        {loc === "en" && enGap && <span className="rounded-full bg-ember-600 px-1.5 text-xs text-on-ember">!</span>}
+                        {loc === "en" && enGap && <TabCount>!</TabCount>}
                       </button>
                     ))}
                   </div>
@@ -640,24 +641,24 @@ export default function ProductGroupingDetailPage() {
                   <Field id={`${tab}-tagline`} label={`Tagline (${tab.toUpperCase()})`}>
                     <Input id={`${tab}-tagline`} value={narrative.tagline} onChange={(e) => setNarrative(tab, { tagline: e.target.value })} />
                   </Field>
-                  <Field id={`${tab}-story`} label={`Cerita (${tab.toUpperCase()})`} hint={<p className="text-xs text-ink-600">Baris kosong memisahkan paragraf.</p>}>
+                  <Field id={`${tab}-story`} label={`Cerita (${tab.toUpperCase()})`} hint={<p className="text-[12.5px] leading-[1.55] text-ink-600">Baris kosong memisahkan paragraf.</p>}>
                     <textarea id={`${tab}-story`} rows={6} className={AREA} value={narrative.story} onChange={(e) => setNarrative(tab, { story: e.target.value })} />
                   </Field>
                   <div className="grid gap-4 sm:grid-cols-2">
-                    <Field id={`${tab}-rounds`} label={`Alur babak (${tab.toUpperCase()})`} hint={<p className="text-xs text-ink-600">Satu babak per baris.</p>}>
+                    <Field id={`${tab}-rounds`} label={`Alur babak (${tab.toUpperCase()})`} hint={<p className="text-[12.5px] leading-[1.55] text-ink-600">Satu babak per baris.</p>}>
                       <textarea id={`${tab}-rounds`} rows={4} className={AREA} value={narrative.rounds} onChange={(e) => setNarrative(tab, { rounds: e.target.value })} />
                     </Field>
-                    <Field id={`${tab}-categories`} label={`Kategori (${tab.toUpperCase()})`} hint={<p className="text-xs text-ink-600">Format &quot;Nama | keterangan&quot;, satu per baris.</p>}>
+                    <Field id={`${tab}-categories`} label={`Kategori (${tab.toUpperCase()})`} hint={<p className="text-[12.5px] leading-[1.55] text-ink-600">Format &quot;Nama | keterangan&quot;, satu per baris.</p>}>
                       <textarea id={`${tab}-categories`} rows={4} className={AREA} value={narrative.categories} onChange={(e) => setNarrative(tab, { categories: e.target.value })} />
                     </Field>
                   </div>
-                  <Field id={`${tab}-facts`} label={`Fakta singkat (${tab.toUpperCase()})`} hint={<p className="text-xs text-ink-600">Format &quot;Label | nilai&quot;, satu per baris.</p>}>
+                  <Field id={`${tab}-facts`} label={`Fakta singkat (${tab.toUpperCase()})`} hint={<p className="text-[12.5px] leading-[1.55] text-ink-600">Format &quot;Label | nilai&quot;, satu per baris.</p>}>
                     <textarea id={`${tab}-facts`} rows={4} className={AREA} value={narrative.facts} onChange={(e) => setNarrative(tab, { facts: e.target.value })} />
                   </Field>
                 </div>
               </section>
 
-              <section className="md-card-outlined space-y-3 p-6" aria-label={t("adm_event_schedule")}>
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("adm_event_schedule")}>
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="type-h2">{t("adm_event_schedule")}</h2>
                   <Button
@@ -670,7 +671,7 @@ export default function ProductGroupingDetailPage() {
                     Tambah jadwal
                   </Button>
                 </div>
-                <p className="text-sm text-ink-600">Tahapan seperti pendaftaran, technical meeting, dan tiap babak. Tampil sebagai timeline di landing page.</p>
+                <p className="text-[13px] leading-[1.55] text-ink-600">Tahapan seperti pendaftaran, technical meeting, dan tiap babak. Tampil sebagai timeline di landing page.</p>
                 {form.schedule.length === 0 && <p className="text-sm text-ink-600">Belum ada jadwal.</p>}
                 <ul className="space-y-3">
                   {form.schedule.map((r, i) => {
@@ -692,7 +693,7 @@ export default function ProductGroupingDetailPage() {
                 </ul>
               </section>
 
-              <section className="md-card-outlined space-y-4 p-6" aria-label={t("grouping_members_title")}>
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("grouping_members_title")}>
                 <h2 className="type-h2">{t("grouping_members_title")}</h2>
 
                 {members.length === 0 && <p className="text-sm text-muted-foreground">{t("grouping_members_empty")}</p>}
@@ -789,10 +790,10 @@ export default function ProductGroupingDetailPage() {
             </div>
 
             <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
-              <section className="md-card-outlined space-y-4 p-6" aria-label="Tampilan">
-                <h2 className="type-h2">Tampilan</h2>
-                <div className="flex items-center gap-3 rounded-xl bg-surface-sunken p-3">
-                  <EventMark logoKey={form.logoKey} tone={form.tone} illustration={form.illustration} className="size-12" />
+              <section className="md-card-outlined space-y-3.5 p-6" aria-label={t("product_grouping_section_display")}>
+                <h2 className="type-h2">{t("product_grouping_section_display")}</h2>
+                <div className="flex items-center gap-3 rounded-[18px] p-3.5 text-white" style={{ background: EVENT_ART_BG[form.tone] ?? EVENT_ART_BG.brand }}>
+                  <EventMark logoKey={form.logoKey} tone={form.tone} illustration={form.illustration} className="size-14 bg-transparent !text-white" />
                   <b className="min-w-0 truncate" data-testid="event-preview">{form.shortName.trim() || form.name}</b>
                 </div>
 
@@ -820,7 +821,7 @@ export default function ProductGroupingDetailPage() {
                     </div>
                     <input ref={logoInput} type="file" accept="image/png,image/svg+xml,image/jpeg,image/webp" hidden aria-label="File logo" data-testid="event-logo-input" onChange={handleLogo} />
                   </div>
-                  <p className="text-xs text-ink-600">PNG/SVG transparan. Tanpa logo, ilustrasi yang dipakai.</p>
+                  <p className="text-[12.5px] leading-[1.55] text-ink-600">PNG/SVG transparan. Tanpa logo, ilustrasi yang dipakai.</p>
                 </div>
 
                 <Field id="event-tone" label="Warna">
@@ -847,7 +848,7 @@ export default function ProductGroupingDetailPage() {
                   </select>
                 </Field>
 
-                <label className="flex items-center justify-between gap-3 text-sm font-medium">
+                <label className="flex items-center justify-between gap-3 py-1 text-sm">
                   {t("adm_show_on_landing_page")}
                   <Switch checked={form.visible} onCheckedChange={toggleVisible} aria-label={t("adm_show_on_landing_page")} />
                 </label>

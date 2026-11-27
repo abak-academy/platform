@@ -82,8 +82,9 @@ async function choose(name: string, option: string) {
   fireEvent.click(within(listbox).getByRole("option", { name: option }));
   await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
 }
-function pick(group: string, chip: string) {
-  fireEvent.click(within(screen.getByRole("group", { name: group })).getByRole("button", { name: chip }));
+async function pick(group: string, option: string) {
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: group }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("option", { name: option }));
 }
 function openFilters() {
   fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
@@ -145,9 +146,9 @@ describe("ProductsPage", () => {
   it("filters rows by type in the Filters panel", async () => {
     render(<ProductsPage />);
     openFilters();
-    pick("Jenis produk", "Kursus");
+    await pick("Jenis produk", "Kursus");
     expect(rowNames()).toEqual(["Kursus Fisika"]);
-    pick("Jenis produk", "Semua jenis");
+    await pick("Jenis produk", "Semua");
     expect(rowNames()).toEqual(sampleProducts.map((p) => p.name));
   });
 
@@ -158,9 +159,9 @@ describe("ProductsPage", () => {
 
     await waitFor(() => expect(screen.getByText("Buku Matematika")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /buat produk/i }));
+    fireEvent.click(screen.getByRole("button", { name: /tambah produk/i }));
 
-    expect(screen.getByRole("dialog", { name: /buat produk/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /tambah produk/i })).toBeInTheDocument();
 
     const nameInput = within(screen.getByRole("dialog")).getByLabelText(/nama/i);
     fireEvent.input(nameInput, { target: { value: "Buku Baru" } });
@@ -190,10 +191,10 @@ describe("ProductsPage", () => {
 
     const row = screen.getByText("Buku Matematika").closest("tr");
     expect(row).toBeTruthy();
-    const editButton = within(row!).getByRole("button", { name: /^edit$/i });
+    const editButton = within(row!).getByRole("button", { name: /^ubah$/i });
     fireEvent.click(editButton);
 
-    expect(screen.getByRole("dialog", { name: /edit produk/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /ubah produk/i })).toBeInTheDocument();
     expect(screen.getByDisplayValue("Buku Matematika")).toBeInTheDocument();
 
     const nameInput = within(screen.getByRole("dialog")).getByLabelText(/nama/i);
@@ -263,7 +264,8 @@ describe("ProductsPage", () => {
     mockRole = "admin_exam";
     render(<ProductsPage />);
     openFilters();
-    expect(within(screen.getByRole("group", { name: "Jenis produk" })).getAllByRole("button").map((o) => o.textContent)).toEqual(["Semua jenis", "Kursus", "Ujian"]);
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Jenis produk" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    expect(within(await screen.findByRole("listbox")).getAllByRole("option").map((o) => o.textContent)).toEqual(["Semua", "Kursus", "Ujian"]);
   });
 
   it("shows a store admin every product", async () => {
@@ -378,8 +380,8 @@ describe("ProductsPage", () => {
     if (field === "search") fireEvent.change(screen.getByRole("searchbox"), { target: { value: "Produk" } });
     if (field === "type" || field === "status") {
       openFilters();
-      pick(field === "type" ? "Jenis produk" : "Status", field === "type" ? "Kursus" : "Draf");
-      fireEvent.click(screen.getByRole("button", { name: "Tampilkan produk" }));
+      await pick(field === "type" ? "Jenis produk" : "Status", field === "type" ? "Kursus" : "Draf");
+      fireEvent.click(screen.getByRole("button", { name: /^Tampilkan \d+ hasil$/ }));
     }
     if (field === "sort") await choose("Urutkan produk", "Nama Z-A");
     if (field === "limit") await choose("Baris per halaman", "50");
@@ -407,8 +409,8 @@ describe("ProductsPage", () => {
   it("uses the existing empty state when filters match nothing", async () => {
     render(<ProductsPage />);
     openFilters();
-    pick("Status", "Diarsipkan");
-    fireEvent.click(screen.getByRole("button", { name: "Tampilkan produk" }));
+    await pick("Status", "Diarsipkan");
+    fireEvent.click(screen.getByRole("button", { name: /^Tampilkan \d+ hasil$/ }));
     expect(screen.getByText("Tidak ada produk.")).toBeInTheDocument();
     expect(screen.getByText("Menampilkan 0-0 dari 0")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Berikutnya" })).toBeDisabled();

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Package, Plus, Trash2 } from "lucide-react";
+import { Info, Package, Plus, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import {
   useAdminProducts,
@@ -26,13 +26,10 @@ import type { Product, ProductType, AdminCreateProductInput, AdminUpdateProductI
 import { useResolvedRole } from "@/lib/hooks/use-capability";
 import { writableProductTypes } from "@/lib/product-types";
 
-const TYPE_TONE: Record<ProductType, "ember" | "gold" | "teal" | "sky" | "mute"> = {
-  book: "gold", merchandise: "ember", medal: "gold", course: "teal", exam: "sky",
+const THUMB_TONE: Record<ProductType, string> = {
+  book: "bg-gold-50 text-gold-700", merchandise: "bg-ember-50 text-ember-700", medal: "bg-gold-50 text-gold-700",
+  course: "bg-teal-50 text-teal-700", exam: "bg-sky-50 text-sky-700",
 };
-
-function formatStock(product: Product): string | number {
-  return productStock(product) ?? "-";
-}
 
 export default function ProductsPage() {
   const { t } = useTranslation();
@@ -172,7 +169,7 @@ export default function ProductsPage() {
 
       {!isLoading && !isError && (
         <div className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
-          <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} />
+          <ProductsToolbar value={query} onChange={changeQuery} types={writableTypes} count={filtered.length} />
           <DataTable
             surface="plain"
             rows={rows}
@@ -185,14 +182,18 @@ export default function ProductsPage() {
                 strong: true,
                 cell: (product) => (
                   <TableItem
-                    thumb={<span className="grid size-[38px] place-items-center rounded-xl bg-ember-50 text-ember-700"><Package className="size-[18px]" aria-hidden /></span>}
+                    thumb={<span className={`grid size-[38px] place-items-center rounded-[12px] ${THUMB_TONE[product.type]}`}><Package className="size-4" aria-hidden /></span>}
                     title={product.name}
                   />
                 ),
               },
-              { key: "type", header: t("th_type"), cell: (product) => <Badge variant={TYPE_TONE[product.type]}>{filterLabel(product.type)}</Badge> },
+              { key: "type", header: t("th_type"), cell: (product) => <Badge variant="mute">{filterLabel(product.type)}</Badge> },
               { key: "price", header: t("th_price"), align: "right", className: "tabular-nums", cell: (product) => formatRupiah(product.price) },
-              { key: "stock", header: t("th_stock"), cell: (product) => formatStock(product) },
+              { key: "stock", header: t("th_stock"), cell: (product) => {
+                const stock = productStock(product);
+                if (stock === undefined) return <span className="text-ink-600">-</span>;
+                return <span className={`font-[family-name:var(--font-display)] text-[15px] font-extrabold tabular-nums ${stock === 0 ? "text-danger-600" : stock < 5 ? "text-gold-700" : "text-ink-900"}`}>{stock}</span>;
+              } },
               {
                 key: "status",
                 header: t("th_status"),
@@ -201,7 +202,6 @@ export default function ProductsPage() {
                   return (
                     <span className="inline-flex items-center gap-2">
                       <Switch
-                        size="sm"
                         checked={status === "published"}
                         disabled={status === "published" || publish.isPending}
                         aria-label={`${t("action_publish")} ${product.name}`}
@@ -216,7 +216,7 @@ export default function ProductsPage() {
             rowActions={(product) => (
               <div className="flex items-center justify-end gap-1.5">
                 <Button size="sm" variant="outline" onClick={() => openEdit(product)}>
-                  {t("action_edit")}
+                  {t("products_action_change")}
                 </Button>
                 <Button
                   size="icon-sm"
@@ -248,6 +248,11 @@ export default function ProductsPage() {
           />
         </div>
       )}
+
+      <p className="flex items-center gap-1.5 text-[13px] leading-[1.55] text-ink-600">
+        <Info aria-hidden className="size-4 shrink-0" />
+        <span>{t("products_footer_note")}</span>
+      </p>
 
       <ProductModal
         open={modalOpen}

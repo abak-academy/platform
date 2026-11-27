@@ -38,7 +38,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
   if (!canManage) return <NoAccess />;
   const back = { href: "/admin/affiliates", label: t("admin_aff_back") };
 
-  if (query.isLoading) return <div className="text-sm text-ink-500">{t("aff_loading")}</div>;
+  if (query.isLoading) return <div className="text-sm text-ink-600">{t("aff_loading")}</div>;
   if (query.isError || !query.data) {
     if (query.error instanceof ApiError && query.error.status === 404) {
       return (
@@ -70,7 +70,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
   ];
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-5">
       <AdminPageHeader
         title={d.name}
         description={`${d.email ?? "—"} · ${aff.code || "—"}`}
@@ -85,7 +85,7 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
       />
 
       {inV1 && (
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-3">
           <StatCard label={t("admin_aff_detail_balance")} value={formatRupiah(d.saldo)} icon={Banknote} tone="brand" />
           <StatCard label={t("admin_aff_detail_bindings")} value={`${d.bindings.active} / ${d.bindings.ended}`} icon={Link2} tone="sky" />
           <StatCard label={t("admin_aff_detail_commissions")} value={formatRupiah(d.commissions.total_amount)} icon={HandCoins} tone="teal" />
@@ -94,15 +94,15 @@ function DetailRoute({ params }: { params: Promise<{ id: string }> }) {
 
       <PartnerProgramPanel id={aff.id} programs={aff.programs} />
 
-      <section className="space-y-2">
-        <h2 className="type-h3 text-ink-900">{t("admin_aff_actions")}</h2>
+      <section>
+        <h2 className="type-h2 mb-3">{t("admin_aff_actions")}</h2>
         <AffiliateAdminActions id={aff.id} currentStatus={aff.status} currentLevel={aff.level} affiliate={inV1} programs={aff.programs} />
       </section>
 
       {inV1 && (
         <>
-          <section className="space-y-2">
-            <h2 className="type-h3 text-ink-900">{t("admin_aff_sec_bindings")}</h2>
+          <section>
+            <h2 className="type-h2 mb-3">{t("admin_aff_sec_bindings")}</h2>
             <DataTable columns={bindingColumns} rows={d.bindings.data} rowKey={(r) => r.binding_id} empty={t("aff_students_empty")} />
           </section>
           <section>

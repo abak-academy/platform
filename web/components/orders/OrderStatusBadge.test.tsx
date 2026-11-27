@@ -19,7 +19,7 @@ describe("OrderStatusBadge", () => {
 
   it("allows an operator label while preserving the status styling", () => {
     render(<OrderStatusBadge status="shipped" label="Dalam pengiriman" />);
-    expect(screen.getByText("Dalam pengiriman")).toHaveClass("text-brand-700", "bg-brand-50");
+    expect(screen.getByText("Dalam pengiriman")).toHaveClass("bg-ember-50", "text-ember-700");
     expect(screen.queryByText("Dikirim")).not.toBeInTheDocument();
   });
 });

@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ListToolbar, type ListToolbarProps, type ListToolbarValue } from "./ListToolbar";
+import { FilterSelect, ListToolbar, type ListToolbarProps, type ListToolbarValue } from "./ListToolbar";
 
 beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
   Element.prototype.hasPointerCapture = vi.fn(() => false);
   Element.prototype.releasePointerCapture = vi.fn();
   Element.prototype.scrollIntoView = vi.fn();
@@ -31,8 +32,10 @@ function Harness({ initial, onChange, ...rest }: { initial?: ListToolbarValue; o
 }
 
 const openPanel = () => fireEvent.click(screen.getByRole("button", { name: /^Filter/ }));
-const pick = (group: string, name: string) =>
-  fireEvent.click(within(screen.getByRole("group", { name: group })).getByRole("button", { name }));
+const pick = async (field: string, name: string) => {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+};
 
 describe("ListToolbar", () => {
   it("shows the result count with its unit", () => {
@@ -78,20 +81,21 @@ describe("ListToolbar", () => {
     expect(onChange).toHaveBeenLastCalledWith({ q: "", filters: {}, sort: undefined });
   });
 
-  it("picking a chip updates the filter and keeps the panel open", () => {
+  it("picking a dropdown option updates the filter and keeps the panel open", async () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
     openPanel();
-    pick("Status", "Terbit");
+    await pick("Status", "Terbit");
     expect(onChange).toHaveBeenLastCalledWith({ q: "", filters: { status: "live" }, sort: undefined });
     expect(screen.getByRole("button", { name: "Tampilkan 12 hasil" })).toBeInTheDocument();
-    expect(within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Terbit" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Status" })).toHaveTextContent("Terbit");
+    expect(within(screen.getByRole("group", { name: "Filter aktif" })).getByText("Status: Terbit")).toBeInTheDocument();
   });
 
-  it("picking Semua removes that filter", () => {
+  it("picking Semua removes that filter", async () => {
     render(<Harness initial={{ q: "", filters: { status: "live" } }} />);
     openPanel();
-    pick("Status", "Semua");
+    await pick("Status", "Semua");
     expect(screen.queryByRole("group", { name: "Filter aktif" })).not.toBeInTheDocument();
   });
 
@@ -144,24 +148,48 @@ describe("ListToolbar — prototype chrome", () => {
 
   it("uses a 42px pill search, a 42px filter button with a count pill and a mono count", () => {
     render(<Harness initial={{ q: "", filters: { status: "live" } }} />);
-    expect(screen.getByRole("searchbox")).toHaveClass("h-[var(--spacing-control-md)]", "rounded-full");
+    expect(screen.getByRole("searchbox").parentElement).toHaveClass("h-[var(--spacing-control-md)]", "rounded-full");
     const filter = screen.getByRole("button", { name: "Filter (1)" });
     expect(filter).toHaveClass("rounded-[var(--radius-pill)]");
     expect(within(filter).getByText("1")).toHaveClass("bg-brand-600", "rounded-full");
     expect(screen.getByText("12 pesanan")).toHaveClass("font-mono", "text-xs", "uppercase");
   });
 
-  it("renders panel options as md-fchip and active filters as md-lchip", () => {
+  it("lays the panel filters out as a 1-col / 2-col grid of dropdowns, with a dark result button", () => {
     const { container } = render(<Harness initial={{ q: "", filters: { status: "live" } }} />);
     expect(container.querySelector(".md-lchip")).not.toBeNull();
     openPanel();
-    const on = within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Terbit" });
-    expect(on).toHaveClass("md-fchip", "on");
-    expect(within(screen.getByRole("group", { name: "Status" })).getByRole("button", { name: "Draf" })).not.toHaveClass("on");
+    const status = screen.getByRole("combobox", { name: "Status" });
+    expect(status).toHaveTextContent("Terbit");
+    expect(screen.getByRole("combobox", { name: "Jenis" })).toHaveTextContent("Semua");
+    expect(status.closest(".grid")).toHaveClass("grid-cols-1", "sm:grid-cols-2", "gap-3");
+    expect(document.querySelector(".md-fchip")).toBeNull();
+    expect(screen.getByRole("button", { name: "Tampilkan 12 hasil" })).toHaveClass("bg-brand-600");
   });
 
   it("renders the sort as a pill trigger", () => {
     render(<Harness sorts={[{ value: "a", label: "A" }, { value: "b", label: "B" }]} />);
     expect(screen.getByRole("combobox", { name: "Urutkan" })).toHaveClass("rounded-full");
+  });
+});
+
+describe("FilterSelect allowAll", () => {
+  it("offers Semua by default and leaves it out for a mode switch", async () => {
+    const opts = [{ value: "a", label: "Satu" }, { value: "b", label: "Dua" }];
+    const { unmount } = render(<FilterSelect label="Jenis" value="a" options={opts} onChange={() => {}} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Jenis" }));
+    expect(await screen.findByRole("option", { name: "Semua" })).toBeInTheDocument();
+    unmount();
+    render(<FilterSelect label="Mode" value="a" options={opts} onChange={() => {}} allowAll={false} />);
+    await userEvent.click(screen.getByRole("combobox", { name: "Mode" }));
+    expect(await screen.findByRole("option", { name: "Dua" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "Semua" })).toBeNull();
+  });
+});
+
+describe("FilterSelect disabled", () => {
+  it("disables the trigger", () => {
+    render(<FilterSelect label="Topik" value="" options={[]} onChange={() => {}} disabled />);
+    expect(screen.getByRole("combobox", { name: "Topik" })).toBeDisabled();
   });
 });

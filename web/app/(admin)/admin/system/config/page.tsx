@@ -37,22 +37,23 @@ interface ToggleProps {
 
 function Toggle({ checked, onChange, label, description }: ToggleProps) {
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-line py-3 last:border-b-0">
-      <div className="space-y-0.5">
-        <div className="text-sm font-bold text-ink-900">{label}</div>
-        {description && (
-          <div className="text-xs text-ink-600">{description}</div>
-        )}
-      </div>
+    <div className="flex items-center gap-3 border-b border-line py-3 text-sm">
       <Switch checked={checked} onCheckedChange={onChange} aria-label={label} />
+      <div className="min-w-0 flex-1">
+        <b className="font-bold text-ink-900">{label}</b>
+        {description && <small className="block text-[11.67px] text-ink-600">{description}</small>}
+      </div>
     </div>
   );
 }
 
+// The prototype's .ab-label.
+const FIELD_LABEL = "mb-[7px] font-[family-name:var(--font-display)] text-[13px] leading-[1.4] font-bold";
+
 // A quiet small-caps label that turns a flat field list into readable groups.
 function Eyebrow({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-ink-400">
+    <div className="mb-3 font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">
       {children}
     </div>
   );
@@ -219,12 +220,12 @@ export default function SystemConfigPage() {
 
   if (isLoading) {
     return (
-      <div className="space-y-6 fade-in">
+      <div className="flex flex-col gap-5 fade-in">
         <AdminPageHeader
             title={t("config_title")}
           description={t("sys_loading")}
         />
-        <div className="py-12 text-center text-ink-500">{t("sys_loading_data")}</div>
+        <div className="py-12 text-center text-ink-600">{t("sys_loading_data")}</div>
       </div>
     );
   }
@@ -235,25 +236,25 @@ export default function SystemConfigPage() {
         ? t("sys_error_forbidden")
         : t("sys_error_load");
     return (
-      <div className="space-y-6 fade-in">
+      <div className="flex flex-col gap-5 fade-in">
         <AdminPageHeader
             title={t("config_title")}
           description={t("sys_error_title")}
         />
-        <div className="py-12 text-center text-ink-500">{msg}</div>
+        <div className="py-12 text-center text-ink-600">{msg}</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("config_title")}
         description={t("config_subtitle")}
       />
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList className="mb-6 h-auto">
+      <Tabs value={tab} onValueChange={setTab} className="gap-5">
+        <TabsList className="h-auto">
           <TabsTrigger value="general">
             <Settings className="mr-1 size-4" />
             {t("config_tab_general")}
@@ -277,9 +278,9 @@ export default function SystemConfigPage() {
             <div className="space-y-8">
               <div>
                 <Eyebrow>{t("config_group_identity")}</Eyebrow>
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   <div>
-                    <Label>{t("config_general_app_name")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_app_name")}</Label>
                     <Input
                       value={appFields.app_name}
                       onChange={(e) =>
@@ -288,7 +289,7 @@ export default function SystemConfigPage() {
                     />
                   </div>
                   <div>
-                    <Label>{t("config_general_logo_url")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_logo_url")}</Label>
                     <Input
                       value={appFields.app_logo_url}
                       onChange={(e) =>
@@ -304,11 +305,11 @@ export default function SystemConfigPage() {
 
               <div>
                 <Eyebrow>{t("config_group_contact")}</Eyebrow>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3.5 sm:grid-cols-2">
                   <div>
-                    <Label>{t("config_general_contact_email")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_contact_email")}</Label>
                     <div className="flex items-center gap-2">
-                      <Mail className="size-4 shrink-0 text-ink-400" />
+                      <Mail className="size-4 shrink-0 text-ink-600" />
                       <Input
                         type="email"
                         value={appFields.app_contact_email}
@@ -322,7 +323,7 @@ export default function SystemConfigPage() {
                     </div>
                   </div>
                   <div>
-                    <Label>{t("config_general_contact_phone")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_contact_phone")}</Label>
                     <Input
                       value={appFields.app_contact_phone}
                       onChange={(e) =>
@@ -334,7 +335,7 @@ export default function SystemConfigPage() {
                     />
                   </div>
                   <div>
-                    <Label>{t("config_general_help_url")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_help_url")}</Label>
                     <Input
                       value={appFields.app_help_url}
                       onChange={(e) =>
@@ -346,7 +347,7 @@ export default function SystemConfigPage() {
                     />
                   </div>
                   <div>
-                    <Label>{t("config_general_social_handle")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_social_handle")}</Label>
                     <Input
                       value={appFields.app_social_handle}
                       onChange={(e) =>
@@ -362,9 +363,9 @@ export default function SystemConfigPage() {
 
               <div>
                 <Eyebrow>{t("config_group_address")}</Eyebrow>
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   <div>
-                    <Label>{t("config_general_address")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_general_address")}</Label>
                     <Input
                       value={appFields.app_address}
                       onChange={(e) =>
@@ -375,9 +376,9 @@ export default function SystemConfigPage() {
                       }
                     />
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-3.5 sm:grid-cols-2">
                     <div>
-                      <Label>{t("students_field_provinsi")}</Label>
+                      <Label className={FIELD_LABEL}>{t("students_field_provinsi")}</Label>
                       <Select
                         value={appFields.app_province_id}
                         onValueChange={(v) =>
@@ -402,7 +403,7 @@ export default function SystemConfigPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label>{t("students_field_kota")}</Label>
+                      <Label className={FIELD_LABEL}>{t("students_field_kota")}</Label>
                       <Select
                         value={appFields.app_city_id}
                         onValueChange={(v) =>
@@ -427,7 +428,7 @@ export default function SystemConfigPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label>{t("students_field_kecamatan")}</Label>
+                      <Label className={FIELD_LABEL}>{t("students_field_kecamatan")}</Label>
                       <Select
                         value={appFields.app_district_id}
                         onValueChange={(v) =>
@@ -451,7 +452,7 @@ export default function SystemConfigPage() {
                       </Select>
                     </div>
                     <div>
-                      <Label>{t("students_field_kode_pos")}</Label>
+                      <Label className={FIELD_LABEL}>{t("students_field_kode_pos")}</Label>
                       <Input
                         value={appFields.app_kode_pos}
                         onChange={(e) =>
@@ -464,7 +465,7 @@ export default function SystemConfigPage() {
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-ink-500">
+                  <p className="text-xs text-ink-600">
                     {t("config_address_shipping_hint")}
                   </p>
                 </div>
@@ -513,9 +514,9 @@ export default function SystemConfigPage() {
             <div className="space-y-8">
               <div>
                 <Eyebrow>{t("config_group_payment")}</Eyebrow>
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   <div>
-                    <Label>{t("config_payment_server_key")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_payment_server_key")}</Label>
                     <Input
                       type="password"
                       value={paymentFields.midtrans_server_key}
@@ -532,13 +533,13 @@ export default function SystemConfigPage() {
                       }
                     />
                     {paymentFields.midtrans_server_key === "***" && (
-                      <div className="mt-1 text-xs text-ink-500">
+                      <div className="mt-1 text-xs text-ink-600">
                         {t("config_payment_mask_hint")}
                       </div>
                     )}
                   </div>
                   <div>
-                    <Label>{t("config_payment_client_key")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_payment_client_key")}</Label>
                     <Input
                       type="password"
                       value={paymentFields.midtrans_client_key}
@@ -555,13 +556,13 @@ export default function SystemConfigPage() {
                       }
                     />
                     {paymentFields.midtrans_client_key === "***" && (
-                      <div className="mt-1 text-xs text-ink-500">
+                      <div className="mt-1 text-xs text-ink-600">
                         {t("config_payment_mask_hint")}
                       </div>
                     )}
                   </div>
                   <div>
-                    <Label>{t("config_payment_env")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_payment_env")}</Label>
                     <Select
                       value={paymentFields.midtrans_env}
                       onValueChange={(v) =>
@@ -600,9 +601,9 @@ export default function SystemConfigPage() {
             <div className="space-y-8">
               <div>
                 <Eyebrow>{t("config_group_shipping")}</Eyebrow>
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   <div>
-                    <Label>{t("config_shipping_biteship_key")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_shipping_biteship_key")}</Label>
                     <Input
                       type="password"
                       value={shippingFields.biteship_api_key}
@@ -619,13 +620,13 @@ export default function SystemConfigPage() {
                       }
                     />
                     {shippingFields.biteship_api_key === "***" && (
-                      <div className="mt-1 text-xs text-ink-500">
+                      <div className="mt-1 text-xs text-ink-600">
                         {t("config_payment_mask_hint")}
                       </div>
                     )}
                   </div>
                   <div>
-                    <Label>{t("config_shipping_webhook_secret")}</Label>
+                    <Label className={FIELD_LABEL}>{t("config_shipping_webhook_secret")}</Label>
                     <Input
                       type="password"
                       value={shippingFields.biteship_webhook_secret}
@@ -642,14 +643,14 @@ export default function SystemConfigPage() {
                       }
                     />
                     {shippingFields.biteship_webhook_secret === "***" && (
-                      <div className="mt-1 text-xs text-ink-500">
+                      <div className="mt-1 text-xs text-ink-600">
                         {t("config_payment_mask_hint")}
                       </div>
                     )}
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="grid gap-3.5 sm:grid-cols-2">
                     <div>
-                      <Label htmlFor="app_latitude">{t("config_shipping_latitude")}</Label>
+                      <Label className={FIELD_LABEL} htmlFor="app_latitude">{t("config_shipping_latitude")}</Label>
                       <Input
                         id="app_latitude"
                         value={shippingFields.app_latitude}
@@ -662,7 +663,7 @@ export default function SystemConfigPage() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="app_longitude">{t("config_shipping_longitude")}</Label>
+                      <Label className={FIELD_LABEL} htmlFor="app_longitude">{t("config_shipping_longitude")}</Label>
                       <Input
                         id="app_longitude"
                         value={shippingFields.app_longitude}
@@ -675,7 +676,7 @@ export default function SystemConfigPage() {
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-ink-500">
+                  <p className="text-xs text-ink-600">
                     {t("config_shipping_coordinate_hint")}
                   </p>
                 </div>
@@ -687,11 +688,11 @@ export default function SystemConfigPage() {
                     <h2 className="text-base font-bold text-ink-900">
                       {t("config_couriers_section")}
                     </h2>
-                    <p className="mt-1 text-sm text-ink-500">
+                    <p className="mt-1 text-sm text-ink-600">
                       {t("config_couriers_hint")}
                     </p>
                   </div>
-                  <p className="text-sm text-ink-500">
+                  <p className="text-sm text-ink-600">
                     {t("config_couriers_summary").split("{enabled}")[0]}
                     <span className="font-bold text-brand-600">{enabledServices.size}</span>
                     {t("config_couriers_summary").split("{enabled}")[1]
@@ -699,7 +700,7 @@ export default function SystemConfigPage() {
                   </p>
                 </div>
                 <div className="border-y border-line">
-                  <div className="hidden grid-cols-[9.5rem_1fr] gap-4 border-b border-line py-2 text-[11px] font-semibold uppercase tracking-wider text-ink-400 sm:grid">
+                  <div className="hidden grid-cols-[9.5rem_1fr] gap-4 border-b border-line py-2 font-mono text-[10.5px] font-semibold tracking-[.1em] text-ink-600 uppercase sm:grid">
                     <span>{t("config_couriers_col_courier")}</span>
                     <span>{t("config_couriers_col_services")}</span>
                   </div>
@@ -720,8 +721,8 @@ export default function SystemConfigPage() {
                             </div>
                             <div>
                               <div className="text-xs font-semibold leading-tight text-ink-900">{courier.name}</div>
-                              <div className="text-[11px] leading-tight text-ink-500">
-                                <span className={enabled > 0 ? "font-medium text-brand-600" : "text-ink-500"}>{enabled}</span>
+                              <div className="text-[11px] leading-tight text-ink-600">
+                                <span className={enabled > 0 ? "font-medium text-brand-600" : "text-ink-600"}>{enabled}</span>
                                 {" / "}{courier.services.length} {t("config_couriers_active_suffix")}
                               </div>
                             </div>
@@ -747,7 +748,7 @@ export default function SystemConfigPage() {
                                   }
                                   className={cn(
                                     "inline-flex h-6 min-w-[4.25rem] items-center justify-between gap-1.5 rounded-md border px-2 text-[11px] leading-none transition-colors duration-200 motion-reduce:transition-none",
-                                    checked ? "border-brand-600/40 bg-brand-50 text-ink-900" : "border-line bg-white text-ink-500"
+                                    checked ? "border-brand-600/40 bg-brand-50 text-ink-900" : "border-line bg-white text-ink-600"
                                   )}
                                 >
                                   <span>{label}</span>
@@ -781,7 +782,7 @@ export default function SystemConfigPage() {
                 </p>
               )}
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-ink-500">{t("config_couriers_footer_hint")}</p>
+                <p className="text-xs text-ink-600">{t("config_couriers_footer_hint")}</p>
                 <Button
                   onClick={handleSaveShipping}
                   disabled={updateConfig.isPending || enabledServices.size === 0}

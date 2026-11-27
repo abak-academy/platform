@@ -159,7 +159,7 @@ export function PromoModal({ open, onOpenChange, promo, onSubmit, isPending }: P
       <DialogContent className="sm:max-w-[480px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? "Edit kode promo" : "Buat kode promo"}</DialogTitle>
+            <DialogTitle>{isEdit ? "Ubah promo" : "Buat promo"}</DialogTitle>
             <DialogDescription>
               {isEdit
                 ? "Perbarui batas penggunaan dan tanggal kadaluarsa kode promo."

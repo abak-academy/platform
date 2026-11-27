@@ -1,17 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { ActiveChip, FilterChip, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
-import { Popover, PopoverTrigger, PopoverContent, PopoverClose } from "@/components/ui/popover";
+import { ActiveChip, FILTER_PANEL_CLASS, FilterGrid, FilterPanelFooter, FilterSelect, ToolbarFilterButton, ToolbarSearch, ToolbarSort } from "@/components/admin/ListToolbar";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useTranslation } from "@/lib/i18n";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { AdminOrderFilterStatus, AdminOrderQueue, AdminOrderQuery, OrderBucketCounts, ProductType, AdminOrderSort } from "@/lib/types";
@@ -157,6 +149,10 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
     }
   };
 
+  // A deep-linked value (paid, in_transit...) has no entry in the offered list; keep it so the trigger can show it.
+  const statusOptions = [...FILTER_OPTIONS.filter((f) => f !== "all"), ...(selected !== "all" && !FILTER_OPTIONS.includes(selected) ? [selected] : [])]
+    .map((f) => ({ value: f, label: filterLabel(f) }));
+
   const chips = [
     ...(selected !== "all" ? [{ key: "status", label: `${t("th_status")}: ${filterLabel(selected)}`, clear: () => onChange({ ...value, status: "all", queue: undefined }) }] : []),
     ...(value.type ? [{ key: "type", label: `${t("orders_product_type")}: ${t(`product_type_${value.type}`)}`, clear: () => onChange({ ...value, type: undefined }) }] : []),
@@ -177,112 +173,85 @@ export function OrdersToolbar({ value, onChange, couriers = [] }: OrdersToolbarP
           <PopoverTrigger asChild>
             <ToolbarFilterButton label={t("orders_filters")} count={chips.length} />
           </PopoverTrigger>
-          <PopoverContent align="end" className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(24rem,calc(100vw-2rem))] overflow-y-auto" aria-label={t("orders_filter_orders")}>
-            <div className="flex flex-col gap-3">
+          <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("orders_filter_orders")}>
+            <div className="flex flex-col gap-3.5">
               <h2 className="sr-only">{t("orders_filter_orders")}</h2>
-              <span className="block type-overline text-ink-600">{t("th_status")}</span>
-              <Select
-                value={selected}
-                onValueChange={(v) => selectFilter(v as FilterOption)}
-              >
-                <SelectTrigger className="w-full" aria-label={t("th_status")} data-testid="orders-status-filter">
-                  <SelectValue>{filterLabel(selected)}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {FILTER_OPTIONS.map((f) => (
-                    <SelectItem key={f} value={f}>{filterLabel(f)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <span className="block type-overline text-ink-600">{t("orders_product_type")}</span>
-              <Select value={value.type ?? "all"} onValueChange={(v) => onChange({ ...value, type: v === "all" ? undefined : v as ProductType })}>
-                <SelectTrigger className="w-full" aria-label={t("orders_product_type")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("orders_all_types")}</SelectItem>
-                  {(["book", "merchandise", "medal", "course", "exam"] as const).map((type) => (
-                    <SelectItem key={type} value={type}>{t(`product_type_${type}`)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <span className="block type-overline text-ink-600">{t("orders_courier")}</span>
-              <Select value={value.courier ?? "all"} onValueChange={(v) => onChange({ ...value, courier: v === "all" ? undefined : v })}>
-                <SelectTrigger className="w-full" aria-label={t("orders_courier")}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{t("orders_all_couriers")}</SelectItem>
-                  {couriers.map((code) => <SelectItem key={code} value={code}>{code.toUpperCase()}</SelectItem>)}
-                </SelectContent>
-              </Select>
-
-              <span className="block type-overline text-ink-600">{t("orders_date_single")}</span>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex w-full items-center gap-1" role="group" aria-label={t("orders_date_single")}>
-                  {(["single", "range"] as const).map((m) => (
-                    <FilterChip
-                      key={m}
-                      on={dateMode === m}
-                      data-testid={`orders-date-mode-${m}`}
-                      onClick={() => switchMode(m)}
-                    >
-                      {t(m === "single" ? "orders_date_mode_single" : "orders_date_mode_range")}
-                    </FilterChip>
-                  ))}
+              <FilterGrid>
+                <div data-testid="orders-status-filter" className="contents">
+                  <FilterSelect
+                    label={t("th_status")}
+                    value={selected === "all" ? "" : selected}
+                    options={statusOptions}
+                    onChange={(v) => selectFilter((v || "all") as FilterOption)}
+                  />
                 </div>
-
-                {dateMode === "single" ? (
-                  <>
-                    <label htmlFor="orders-date-single" className="sr-only">
-                      {t("orders_date_single")}
-                    </label>
-                    <Input
-                      id="orders-date-single"
-                      type="date"
-                      value={value.from ?? ""}
-                      onChange={(e) => setSingleDate(e.target.value)}
-                      className="min-w-0 flex-1"
-                    />
-                  </>
-                ) : (
-                  <>
-                    <label htmlFor="orders-date-from" className="sr-only">
-                      {t("orders_date_from")}
-                    </label>
-                    <Input
-                      id="orders-date-from"
-                      type="date"
-                      value={value.from ?? ""}
-                      onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
-                      className="min-w-0 flex-1"
-                    />
-                    <span aria-hidden className="text-ink-600">
-                      –
-                    </span>
-                    <label htmlFor="orders-date-to" className="sr-only">
-                      {t("orders_date_to")}
-                    </label>
-                    <Input
-                      id="orders-date-to"
-                      type="date"
-                      value={value.to ?? ""}
-                      onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
-                      className="min-w-0 flex-1"
-                    />
-                  </>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
-                <Button variant="ghost" size="sm" onClick={() => onChange({ ...value, status: "all", queue: undefined, type: undefined, courier: undefined, from: undefined, to: undefined })}>
-                  {t("orders_reset_filters")}
-                </Button>
-                <PopoverClose asChild>
-                  <Button variant="secondary" size="sm">{t("orders_show_orders")}</Button>
-                </PopoverClose>
-              </div>
+                <FilterSelect
+                  label={t("orders_product_type")}
+                  value={value.type ?? ""}
+                  options={(["book", "merchandise", "medal", "course", "exam"] as const).map((type) => ({ value: type, label: t(`product_type_${type}`) }))}
+                  onChange={(v) => onChange({ ...value, type: (v || undefined) as ProductType | undefined })}
+                />
+                <FilterSelect
+                  label={t("orders_courier")}
+                  value={value.courier ?? ""}
+                  options={couriers.map((code) => ({ value: code, label: code.toUpperCase() }))}
+                  onChange={(v) => onChange({ ...value, courier: v || undefined })}
+                />
+                <FilterSelect
+                  label={t("orders_date_single")}
+                  value={dateMode}
+                  allowAll={false}
+                  options={(["single", "range"] as const).map((m) => ({ value: m, label: t(m === "single" ? "orders_date_mode_single" : "orders_date_mode_range") }))}
+                  onChange={(v) => v && switchMode(v as DateMode)}
+                />
+                <div className="flex min-w-0 items-center gap-2 sm:col-span-2">
+                  {dateMode === "single" ? (
+                    <>
+                      <label htmlFor="orders-date-single" className="sr-only">
+                        {t("orders_date_single")}
+                      </label>
+                      <Input
+                        id="orders-date-single"
+                        type="date"
+                        value={value.from ?? ""}
+                        onChange={(e) => setSingleDate(e.target.value)}
+                        className="min-w-0 flex-1"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <label htmlFor="orders-date-from" className="sr-only">
+                        {t("orders_date_from")}
+                      </label>
+                      <Input
+                        id="orders-date-from"
+                        type="date"
+                        value={value.from ?? ""}
+                        onChange={(e) => onChange({ ...value, from: e.target.value || undefined })}
+                        className="min-w-0 flex-1"
+                      />
+                      <span aria-hidden className="text-ink-600">
+                        –
+                      </span>
+                      <label htmlFor="orders-date-to" className="sr-only">
+                        {t("orders_date_to")}
+                      </label>
+                      <Input
+                        id="orders-date-to"
+                        type="date"
+                        value={value.to ?? ""}
+                        onChange={(e) => onChange({ ...value, to: e.target.value || undefined })}
+                        className="min-w-0 flex-1"
+                      />
+                    </>
+                  )}
+                </div>
+              </FilterGrid>
+              <FilterPanelFooter
+                onReset={() => onChange({ ...value, status: "all", queue: undefined, type: undefined, courier: undefined, from: undefined, to: undefined })}
+                resetLabel={t("orders_reset_filters")}
+                showLabel={t("orders_show_orders")}
+              />
             </div>
           </PopoverContent>
         </Popover>

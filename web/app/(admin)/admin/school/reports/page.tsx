@@ -186,6 +186,26 @@ export default function SchoolReportsPage() {
     },
   ];
 
+  const pickers = (
+    <div className="flex flex-wrap items-end gap-2.5">
+      {isSuperAdmin && (
+        <SchoolFilterPicker
+          value={selectedSchoolId}
+          onChange={setSelectedSchoolId}
+          label={t("select_school")}
+          allLabel={t("select_school")}
+        />
+      )}
+      <ExamPicker
+        examProducts={examProducts}
+        selectedExamId={selectedExamId}
+        onSelect={setSelectedExamId}
+        examsLoading={examsLoading}
+        label={t("school_reports_select_exam")}
+      />
+    </div>
+  );
+
   // No exam selected — show empty state
   if (!selectedExamId) {
     return (
@@ -194,32 +214,13 @@ export default function SchoolReportsPage() {
             title={t("school_reports_title")}
           description={t("school_reports_subtitle")}
           actions={
-            <Button
-              variant="dark"
-              size="sm"
-              disabled={true}
-            >
-              <Download className="mr-1 size-4" />
+            <Button variant="outline" disabled={true}>
+              <Download className="size-4" />
               {t("school_reports_export")}
             </Button>
           }
         />
-        {isSuperAdmin && (
-          <SchoolFilterPicker
-            value={selectedSchoolId}
-            onChange={setSelectedSchoolId}
-            label={t("select_school")}
-            allLabel={t("select_school")}
-            
-          />
-        )}
-        <ExamPicker
-          examProducts={examProducts}
-          selectedExamId={selectedExamId}
-          onSelect={setSelectedExamId}
-          examsLoading={examsLoading}
-          label={t("school_reports_select_exam")}
-        />
+        {pickers}
         <EmptyState framed icon={FileText} title={t("school_reports_no_exam")} />
       </div>
     );
@@ -234,35 +235,20 @@ export default function SchoolReportsPage() {
           description={t("school_reports_subtitle")}
           actions={
             <Button
-              size="sm"
+              variant="outline"
               onClick={handleExport}
               disabled={exporting || !selectedExamId}
             >
               {exporting ? (
-                <Loader2 className="mr-1 size-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Download className="mr-1 size-4" />
+                <Download className="size-4" />
               )}
               {exporting ? t("school_reports_export_loading") : t("school_reports_export")}
             </Button>
           }
         />
-        {isSuperAdmin && (
-          <SchoolFilterPicker
-            value={selectedSchoolId}
-            onChange={setSelectedSchoolId}
-            label={t("select_school")}
-            allLabel={t("select_school")}
-            
-          />
-        )}
-        <ExamPicker
-          examProducts={examProducts}
-          selectedExamId={selectedExamId}
-          onSelect={setSelectedExamId}
-          examsLoading={examsLoading}
-          label={t("school_reports_select_exam")}
-        />
+        {pickers}
         <EmptyState framed icon={Loader2} title={t("sys_loading_data")} />
       </div>
     );
@@ -276,35 +262,20 @@ export default function SchoolReportsPage() {
           description={t("school_reports_subtitle")}
           actions={
             <Button
-              size="sm"
+              variant="outline"
               onClick={handleExport}
               disabled={exporting || !selectedExamId}
             >
               {exporting ? (
-                <Loader2 className="mr-1 size-4 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
               ) : (
-                <Download className="mr-1 size-4" />
+                <Download className="size-4" />
               )}
               {exporting ? t("school_reports_export_loading") : t("school_reports_export")}
             </Button>
           }
         />
-        {isSuperAdmin && (
-          <SchoolFilterPicker
-            value={selectedSchoolId}
-            onChange={setSelectedSchoolId}
-            label={t("select_school")}
-            allLabel={t("select_school")}
-            
-          />
-        )}
-        <ExamPicker
-          examProducts={examProducts}
-          selectedExamId={selectedExamId}
-          onSelect={setSelectedExamId}
-          examsLoading={examsLoading}
-          label={t("school_reports_select_exam")}
-        />
+        {pickers}
         <EmptyState framed icon={AlertTriangle} title={t("sys_error_load")} />
       </div>
     );
@@ -317,68 +288,54 @@ export default function SchoolReportsPage() {
         description={t("school_reports_subtitle")}
         actions={
           <Button
-            size="sm"
+            variant="outline"
             onClick={handleExport}
             disabled={exporting || !selectedExamId}
           >
             {exporting ? (
-              <Loader2 className="mr-1 size-4 animate-spin" />
+              <Loader2 className="size-4 animate-spin" />
             ) : (
-              <Download className="mr-1 size-4" />
+              <Download className="size-4" />
             )}
             {exporting ? t("school_reports_export_loading") : t("school_reports_export")}
           </Button>
         }
       />
 
-      {isSuperAdmin && (
-        <SchoolFilterPicker
-          value={selectedSchoolId}
-          onChange={setSelectedSchoolId}
-          label={t("select_school")}
-          allLabel={t("select_school")}
-          
+      {pickers}
+
+      <section className="md-card-flush">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
+          <ToolbarSearch
+            value={search}
+            onChange={setSearch}
+            placeholder={t("students_search_placeholder")}
+            clearLabel={t("list_toolbar_clear_search")}
+          />
+        </div>
+        <DataTable
+          surface="plain"
+          data-testid="school-reports-table"
+          columns={reportColumns}
+          rows={accumulated}
+          rowKey={(row) => row.session_id}
+          empty={t("school_reports_empty")}
+          footer={
+            nextCursor && (
+              <div className="border-t border-line px-4 py-3 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLoadMore}
+                  disabled={query.isFetching}
+                >
+                  {query.isFetching ? t("sys_loading") : t("load_more")}
+                </Button>
+              </div>
+            )
+          }
         />
-      )}
-
-      <ExamPicker
-        examProducts={examProducts}
-        selectedExamId={selectedExamId}
-        onSelect={setSelectedExamId}
-        examsLoading={examsLoading}
-        label={t("school_reports_select_exam")}
-      />
-
-      {/* Search */}
-      <ToolbarSearch
-        value={search}
-        onChange={setSearch}
-        placeholder={t("students_search_placeholder")}
-        clearLabel={t("list_toolbar_clear_search")}
-      />
-
-      {/* Results Table */}
-      <DataTable
-        data-testid="school-reports-table"
-        columns={reportColumns}
-        rows={accumulated}
-        rowKey={(row) => row.session_id}
-        empty={t("school_reports_empty")}
-        footer={
-          nextCursor && (
-            <div className="border-t border-line px-4 py-3 text-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleLoadMore}
-                disabled={query.isFetching}
-              >
-                {query.isFetching ? t("sys_loading") : t("load_more")}
-              </Button>
-            </div>
-          )
-        }
-      />
+      </section>
 
       {/* Drill-down dialog */}
       <Dialog
@@ -431,17 +388,17 @@ function ExamPicker({
   if (examsLoading) {
     return (
       <div>
-        <p className="type-label-sm text-ink-600">{label}</p>
-        <div className="mt-1 h-[46px] w-[240px] animate-pulse rounded-[14px] bg-surface-sunken" />
+        <p className="font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{label}</p>
+        <div className="mt-1.5 h-[42px] w-[240px] animate-pulse rounded-[14px] bg-surface-sunken" />
       </div>
     );
   }
 
   return (
     <div>
-      <p className="type-label-sm text-ink-600">{label}</p>
+      <p className="font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{label}</p>
       <Select value={selectedExamId} onValueChange={onSelect}>
-        <SelectTrigger className="mt-1 w-[240px]">
+        <SelectTrigger size="pill" className="mt-1.5 h-[var(--spacing-control-md)] w-[240px]">
           <SelectValue placeholder={label} />
         </SelectTrigger>
         <SelectContent>
@@ -476,24 +433,24 @@ function ResultDetailContent({
       <div className="grid grid-cols-4 gap-2 text-center text-xs">
         <div className="rounded-lg bg-surface-2 p-2">
           <div className="text-lg font-bold text-ink-900">{detail.score}</div>
-          <div className="text-ink-500">{t("school_reports_detail_score")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_score")}</div>
         </div>
         <div className="rounded-lg bg-success-bg p-2">
           <div className="text-lg font-bold text-success">{detail.correct_count}</div>
-          <div className="text-ink-500">{t("school_reports_detail_correct")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_correct")}</div>
         </div>
         <div className="rounded-lg bg-danger-bg p-2">
           <div className="text-lg font-bold text-danger">{detail.wrong_count}</div>
-          <div className="text-ink-500">{t("school_reports_detail_wrong")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_wrong")}</div>
         </div>
         <div className="rounded-lg bg-surface-2 p-2">
           <div className="text-lg font-bold text-ink-900">{detail.empty_count}</div>
-          <div className="text-ink-500">{t("school_reports_detail_empty")}</div>
+          <div className="text-ink-600">{t("school_reports_detail_empty")}</div>
         </div>
       </div>
 
       {/* Submitted date */}
-      <div className="text-xs text-ink-500">
+      <div className="text-xs text-ink-600">
         {t("school_reports_col_submitted")}:{" "}
         {new Date(detail.submitted_at).toLocaleString(dateLocale, {
           day: "2-digit",
@@ -548,7 +505,7 @@ function ResultDetailContent({
                   {formatChoiceAnswer(p.correct_answer, p.format) || "—"}
                 </p>
                 {p.explanation && (
-                  <p className="mt-1 text-ink-500 italic">{p.explanation}</p>
+                  <p className="mt-1 text-ink-600 italic">{p.explanation}</p>
                 )}
               </div>
             ))}

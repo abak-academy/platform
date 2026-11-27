@@ -2,62 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import { Receipt, ShoppingBag, Wallet } from "lucide-react";
+import { BookOpen, PlayCircle, Trophy, Wallet } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { NoAccess } from "@/components/admin/NoAccess";
 import { StatCard } from "@/components/admin/StatCard";
 import { TopProductsTable } from "@/components/admin/TopProductsTable";
-import { FilterChip } from "@/components/admin/ListToolbar";
-import { Input } from "@/components/ui/input";
+import { PeriodBar, presetRange, type PeriodPreset } from "@/components/admin/PeriodBar";
+import { DataTable } from "@/components/ui/data-table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminRevenue, type RevenueRange } from "@/lib/hooks/admin-revenue";
 import { hasCapability, useResolvedRole } from "@/lib/hooks/use-capability";
 import { formatRupiah } from "@/lib/format";
-import type { AdminRevenue, RevenueByTypeItem } from "@/lib/types";
-
-const PRESETS = [
-  { id: "7d", labelKey: "revenue_period_7d" },
-  { id: "30d", labelKey: "revenue_period_30d" },
-  { id: "this_month", labelKey: "revenue_period_this_month" },
-  { id: "all", labelKey: "revenue_period_all" },
-] as const;
-
-type Preset = (typeof PRESETS)[number]["id"];
-
-// The server buckets in Asia/Jakarta, and Indonesia spans three zones
-// (WIB/WITA/WIT), so a Bali or Papua admin's browser-local date is the wrong
-// answer here just as UTC is. Only an explicit timezone is safe. en-CA formats
-// as YYYY-MM-DD directly. Mirrors jakartaDateString in
-// web/components/admin/PeriodBar.tsx — keep the two in step.
-function jakartaDateString(d: Date): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jakarta" }).format(d);
-}
-
-// Jakarta has no DST, so a calendar day is always exactly 86400000ms.
-function isoDaysAgo(days: number): string {
-  return jakartaDateString(new Date(Date.now() - days * 86400000));
-}
-
-function firstOfThisMonth(): string {
-  return jakartaDateString(new Date()).slice(0, 7) + "-01";
-}
-
-// 30d sends nothing on purpose: the server default is already now-30d..now, so
-// an explicit range would only add a client/server "today" mismatch.
-function presetRange(preset: Preset): RevenueRange {
-  switch (preset) {
-    // `to` on the server is exclusive (today+1), so an N-day window ending
-    // today starts at today-(N-1) — days-1, not days. today-7 spanned 8.
-    case "7d":
-      return { from: isoDaysAgo(6) };
-    case "this_month":
-      return { from: firstOfThisMonth() };
-    case "all":
-      return { from: "2000-01-01" };
-    default:
-      return {};
-  }
-}
+import type { AdminRevenue, ProductType, RevenueByTypeItem } from "@/lib/types";
 
 function averageOrderValue(revenue: AdminRevenue): number {
   if (!revenue.order_count) return 0;
@@ -77,8 +33,8 @@ function maxTypeTotal(revenue?: AdminRevenue): number {
 
 function StatsSkeleton() {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {Array.from({ length: 3 }).map((_, i) => (
+    <div className="grid grid-cols-2 gap-3 min-[1201px]:grid-cols-4">
+      {Array.from({ length: 4 }).map((_, i) => (
         <Skeleton key={i} className="h-28 w-full" />
       ))}
     </div>
@@ -87,10 +43,10 @@ function StatsSkeleton() {
 
 export default function RevenuePage() {
   const { t, lang } = useTranslation();
-  const [preset, setPreset] = useState<Preset | null>("30d");
+  const [preset, setPreset] = useState<PeriodPreset>("30d");
   const [custom, setCustom] = useState<RevenueRange>({});
 
-  const range = preset ? presetRange(preset) : custom;
+  const range: RevenueRange = preset === "all_time" ? { from: "2000-01-01" } : preset === "custom" ? custom : presetRange(preset);
   const { data: revenue, isLoading, isError, error } = useAdminRevenue(range);
 
   // The role is undefined for one render while the auth store rehydrates, so
@@ -110,20 +66,15 @@ export default function RevenuePage() {
 
   const entries = typeEntries(revenue);
   const max = maxTypeTotal(revenue);
+  const typeSum = entries.reduce((sum, [, item]) => sum + item.total, 0);
+  const share = (types: string[]) =>
+    typeSum > 0 ? Math.round((entries.filter(([type]) => types.includes(type)).reduce((sum, [, item]) => sum + item.total, 0) / typeSum) * 100) : 0;
+  const typeLabel = (type: string) =>
+    (["book", "merchandise", "medal", "course", "exam"] as const).includes(type as ProductType) ? t(`product_type_${type as ProductType}`) : type;
 
   function errorMessage(error: unknown): string {
     if (error instanceof Error) return error.message;
     return t("error_generic");
-  }
-
-  function pickPreset(next: Preset) {
-    setPreset(next);
-    setCustom({});
-  }
-
-  function pickCustom(next: RevenueRange) {
-    setPreset(null);
-    setCustom(next);
   }
 
   if (!hydrated) {
@@ -147,59 +98,17 @@ export default function RevenuePage() {
         description={t("revenue_page_description")}
       />
 
-      <div className="md-card-outlined">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="flex flex-wrap gap-2">
-            {PRESETS.map((p) => {
-              const active = preset === p.id;
-              return (
-                <FilterChip key={p.id} on={active} onClick={() => pickPreset(p.id)}>
-                  {t(p.labelKey)}
-                </FilterChip>
-              );
-            })}
-          </div>
-
-          {/* One inline row, same baseline as the presets. Stacked uppercase
-              labels made this group taller than the chips beside it, so the
-              two never lined up. The dash carries the "range" meaning the
-              labels were carrying. */}
-          <div className="flex items-center gap-2">
-            <label htmlFor="revenue-date-from" className="sr-only">
-              {t("orders_date_from")}
-            </label>
-            <Input
-              id="revenue-date-from"
-              type="date"
-              value={custom.from ?? ""}
-              onChange={(e) => pickCustom({ ...custom, from: e.target.value || undefined })}
-              className="w-auto"
-            />
-            <span aria-hidden className="text-ink-600">
-              –
-            </span>
-            <label htmlFor="revenue-date-to" className="sr-only">
-              {t("orders_date_to")}
-            </label>
-            <Input
-              id="revenue-date-to"
-              type="date"
-              value={custom.to ?? ""}
-              onChange={(e) => pickCustom({ ...custom, to: e.target.value || undefined })}
-              className="w-auto"
-            />
-          </div>
-        </div>
-
-        {revenue && (
-          <p
-            className="type-label-sm mt-4 text-ink-600 tabular-nums"
-            data-testid="revenue-period-label"
-          >
-            {formatDate(revenue.from)} – {formatDate(revenue.to)}
-          </p>
-        )}
-      </div>
+      <PeriodBar
+        preset={preset}
+        range={custom}
+        allowAllTime
+        onChange={(next, nextRange) => {
+          setPreset(next);
+          setCustom(nextRange);
+        }}
+        resolvedFrom={revenue ? formatDate(revenue.from) : undefined}
+        resolvedTo={revenue ? formatDate(revenue.to) : undefined}
+      />
 
       {isLoading && <StatsSkeleton />}
 
@@ -211,57 +120,52 @@ export default function RevenuePage() {
 
       {!isLoading && !isError && revenue && (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" data-testid="revenue-stats">
+          <div className="grid grid-cols-2 gap-3 min-[681px]:grid-cols-3 min-[1201px]:grid-cols-4" data-testid="revenue-stats">
             <StatCard
               label={t("revenue_total")}
               value={formatRupiah(revenue.total)}
-              tone="ember" icon={Wallet}
+              tone="teal" icon={Wallet}
+              trend={t("revenue_total_sub").replace("{n}", String(revenue.order_count)).replace("{aov}", formatRupiah(averageOrderValue(revenue)))}
             />
-            <div data-testid="stat-order-count">
-              <StatCard
-                label={t("orders")}
-                value={String(revenue.order_count)}
-                tone="teal" icon={ShoppingBag}
-              />
-            </div>
-            <StatCard
-              label={t("revenue_avg_order")}
-              value={formatRupiah(averageOrderValue(revenue))}
-              tone="sky" icon={Receipt}
-            />
+            <StatCard label={t("revenue_share_exam")} value={`${share(["exam"])}%`} tone="ember" icon={Trophy} />
+            <StatCard label={t("revenue_share_course")} value={`${share(["course"])}%`} tone="sky" icon={PlayCircle} />
+            <StatCard label={t("revenue_share_physical")} value={`${share(["book", "merchandise", "medal"])}%`} tone="gold" icon={BookOpen} />
           </div>
 
-          <div className="md-card-outlined">
-            <h3 className="type-h2 mb-4">{t("revenue_by_type")}</h3>
-            <div>
-              {entries.length === 0 ? (
-                <div className="text-sm text-ink-600">{t("revenue_no_data")}</div>
-              ) : (
-                <div className="space-y-4">
-                  {entries.map(([type, item]) => {
-                    const pct = max > 0 ? (item.total / max) * 100 : 0;
-                    return (
-                      <div key={type} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="capitalize font-medium">{type}</span>
-                          <span className="text-ink-600">
-                            {formatRupiah(item.total)} · {item.count} {t("revenue_order_label")}
-                          </span>
-                        </div>
-                        <div className="h-3 w-full overflow-hidden rounded-full bg-surface-sunken">
-                          <div
-                            className="h-full rounded-full bg-ember-600"
-                            style={{ width: `${pct}%` }}
-                            data-testid={`bar-${type}`}
-                          />
-                        </div>
+          <section className="md-card-outlined flex flex-col gap-3.5">
+            <h2 className="type-h2">{t("revenue_by_type")}</h2>
+            {entries.length === 0 ? (
+              <div className="text-sm text-ink-600">{t("revenue_no_data")}</div>
+            ) : (
+              <>
+                <div aria-hidden className="flex h-[220px] items-end gap-3 pt-[34px]">
+                  {entries.map(([type, item]) => (
+                    <div key={type} className="flex h-full flex-1 flex-col items-center justify-end gap-2">
+                      <div
+                        data-testid={`bar-${type}`}
+                        className={`relative w-full max-w-[46px] rounded-[12px_12px_6px_6px] ${item.total === max ? "bg-[repeating-linear-gradient(135deg,var(--color-ember-500)_0_6px,var(--color-ember-600)_6px_11px)]" : "bg-brand-600"}`}
+                        style={{ height: `${max > 0 ? (item.total / (max * 1.15)) * 100 : 0}%` }}
+                      >
+                        {item.total === max && <span className="absolute bottom-[calc(100%+6px)] left-1/2 -translate-x-1/2 rounded-full bg-deep px-[9px] py-[5px] font-[family-name:var(--font-display)] text-[11px] font-bold whitespace-nowrap text-white">{formatRupiah(item.total)}</span>}
                       </div>
-                    );
-                  })}
+                      <span className={`text-xs ${item.total === max ? "font-bold text-ink-900" : "text-ink-600"}`}>{typeLabel(type)}</span>
+                    </div>
+                  ))}
                 </div>
-              )}
-            </div>
-          </div>
+                <DataTable
+                  surface="plain"
+                  rows={entries}
+                  empty={t("revenue_no_data")}
+                  rowKey={([type]) => type}
+                  columns={[
+                    { key: "type", header: t("th_type"), cell: ([type]) => typeLabel(type) },
+                    { key: "count", header: t("revenue_order_label"), align: "right", className: "tabular-nums", cell: ([, item]) => item.count },
+                    { key: "total", header: t("revenue_total"), align: "right", strong: true, className: "tabular-nums", cell: ([, item]) => formatRupiah(item.total) },
+                  ]}
+                />
+              </>
+            )}
+          </section>
 
           <div className="md-card-outlined">
             <h3 className="type-h2 mb-4">{t("revenue_top_products")}</h3>

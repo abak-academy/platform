@@ -70,7 +70,7 @@ describe("UnitSalesBlock", () => {
     const range = preset === "7d" ? explicitUnitRange("7d", {}) : preset === "custom" ? { from: "2026-01-01", to: "2026-01-31" } : {};
     search = unitPeriodSearch({ preset: preset as PeriodPreset, range });
     render(<UnitSalesBlock />);
-    expect(screen.getByRole("button", { name: preset === "7d" ? "7 hari" : preset === "custom" ? "Custom" : "Semua waktu" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: preset === "7d" ? "7 hari" : preset === "custom" ? "Kustom" : "Semua waktu" })).toHaveAttribute("aria-pressed", "true");
     for (const link of screen.getAllByRole("link")) expect(link.getAttribute("href")).toContain(`?${search}`);
     expect(useSales.mock.lastCall![0]).toEqual(range);
   });
@@ -78,7 +78,7 @@ describe("UnitSalesBlock", () => {
   it("shows a preset whose URL dates are not that preset's current window as Custom", () => {
     search = "preset=30d&from=2026-01-01&to=2026-01-31";
     render(<UnitSalesBlock />);
-    expect(screen.getByRole("button", { name: "Custom" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Kustom" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "30 hari" })).toHaveAttribute("aria-pressed", "false");
     expect(useSales.mock.lastCall![0]).toEqual({ from: "2026-01-01", to: "2026-01-31" });
   });
@@ -135,7 +135,7 @@ describe("UnitSalesBlock", () => {
     expect(initial.from).toBeTruthy(); expect(initial.to).toBeTruthy();
     await user.click(screen.getByRole("button", { name: /semua waktu/i }));
     expect(useSales.mock.lastCall![0]).toEqual({});
-    await user.click(screen.getByRole("button", { name: /custom/i }));
+    await user.click(screen.getByRole("button", { name: /kustom/i }));
     fireEvent.change(screen.getByLabelText("Dari tanggal"), { target: { value: "2026-01-01" } });
     fireEvent.change(screen.getByLabelText("Sampai tanggal"), { target: { value: "2026-01-31" } });
     expect(useSales.mock.lastCall![0]).toEqual({ from: "2026-01-01", to: "2026-01-31" });
@@ -143,7 +143,7 @@ describe("UnitSalesBlock", () => {
 
   it("keeps the last applied period while custom dates are cleared or reversed", () => {
     render(<UnitSalesBlock />);
-    fireEvent.click(screen.getByRole("button", { name: /custom/i }));
+    fireEvent.click(screen.getByRole("button", { name: /kustom/i }));
     fireEvent.change(screen.getByLabelText("Dari tanggal"), { target: { value: "" } });
     const openEnded = useSales.mock.lastCall![0];
     const appliedHref = screen.getByRole("link", { name: "Lihat produk: Buku" }).getAttribute("href");

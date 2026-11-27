@@ -2,7 +2,7 @@
 
 import { useParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, Award, ChevronDown, Clock, Crown, EyeOff, Lightbulb, Lock } from "lucide-react";
+import { AlertCircle, Award, Check, ChevronDown, Clock, Crown, EyeOff, Lightbulb, Lock, X } from "lucide-react";
 
 import { useSessionResult } from "@/lib/hooks/exam";
 import { useTranslation, DICT } from "@/lib/i18n";
@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHead } from "@/components/shell/PageHead";
+import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RichContent } from "@/components/admin/RichContent";
@@ -48,7 +50,7 @@ export default function SessionResultPage() {
   if (isError) {
     return (
       <>
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -136,14 +138,14 @@ export default function SessionResultPage() {
         title={t("result_page_title")}
         actions={
           <>
-            <Button asChild variant="outline">
+            <Button asChild variant="outline" className={BTN}>
               <a href={`/exam/sessions/${sessionId}/leaderboard`}>
                 <Crown />
                 {t("view_leaderboard")}
               </a>
             </Button>
             {result.certificate_url && (
-              <Button asChild variant="secondary">
+              <Button asChild variant="secondary" className={cn(BTN, "border-[1.5px] border-transparent")}>
                 <a href={result.certificate_url} target="_blank" rel="noreferrer">
                   <Award />
                   {t("certificate")}
@@ -154,16 +156,16 @@ export default function SessionResultPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+      <div className="grid gap-4 min-[1025px]:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <section
           data-testid="score-hero"
-          className="grid items-center gap-5 rounded-[30px] bg-[radial-gradient(120%_140%_at_100%_0%,#4cc3b2,var(--color-teal-600)_50%,#0f4d46)] p-[30px] text-white max-narrow:p-6 sm:grid-cols-[1fr_auto]"
+          className="grid items-center gap-5 rounded-[30px] bg-[radial-gradient(120%_140%_at_100%_0%,#4cc3b2,var(--color-teal-600)_50%,#0f4d46)] p-[30px] text-white narrow:grid-cols-[1fr_auto]"
         >
           <div>
-            <p className="font-mono text-[11.5px] font-semibold tracking-[0.14em] uppercase opacity-90">
+            <p className="font-mono text-[11.5px] leading-[1.4] font-semibold tracking-[0.14em] text-white/85 uppercase">
               {t("result_your_score")}
             </p>
-            <h2 className="mt-2 text-[30px] leading-[1.1] font-extrabold [font-family:var(--font-display)]">
+            <h2 className="mt-2.5 text-[30px] leading-[1.1] font-extrabold tracking-[-0.02em] [font-family:var(--font-display)]">
               {t("result_rank")} <span>#{result.rank}</span>
             </h2>
             <div className="mt-3.5 flex gap-[22px]">
@@ -175,8 +177,8 @@ export default function SessionResultPage() {
                 ] as const
               ).map(([n, key]) => (
                 <div key={key}>
-                  <b className="block text-[26px] font-extrabold [font-family:var(--font-display)]">{n}</b>
-                  <span className="text-xs opacity-85">{t(key)}</span>
+                  <b className="block text-[26px] leading-[normal] font-extrabold [font-family:var(--font-display)]">{n}</b>
+                  <span className="text-xs leading-[1.55] opacity-85">{t(key)}</span>
                 </div>
               ))}
             </div>
@@ -191,18 +193,19 @@ export default function SessionResultPage() {
           >
             {hasRing && <span aria-hidden className="absolute inset-3 rounded-full bg-teal-600" />}
             <b className="relative text-[46px] leading-none font-extrabold [font-family:var(--font-display)]">{result.score}</b>
+            <span aria-hidden className="relative -mt-[30px] text-xs leading-[1.55]">{t("score").toLowerCase()}</span>
           </div>
         </section>
 
         {sections.length > 0 && (
           <Card className="gap-0 p-6">
-            <h2 className="mb-3.5 type-h2 text-ink-900">{t("result_by_topic")}</h2>
-            <div className="space-y-3.5">
+            <h2 className="mb-3 type-h2 text-ink-900">{t("result_by_topic")}</h2>
+            <div className="mb-3.5 space-y-3.5">
               {sections.map((row) => {
                 const rowPct = row.max > 0 ? Math.min(100, Math.max(0, (row.earned / row.max) * 100)) : 0;
                 return (
                   <div key={row.test_id}>
-                    <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+                    <div className="mb-1.5 flex items-center justify-between gap-2 text-sm leading-[1.55]">
                       <span className="flex items-center gap-2 text-ink-900">
                         {row.title}
                         {row.section_type && (
@@ -220,6 +223,9 @@ export default function SessionResultPage() {
                 );
               })}
             </div>
+            <Button asChild variant="outline" className={cn(BTN, "mt-auto w-full")}>
+              <Link href="/catalog">{t("result_strengthen_cta")}</Link>
+            </Button>
           </Card>
         )}
       </div>
@@ -238,6 +244,9 @@ export default function SessionResultPage() {
   );
 }
 
+// Prototype .ab-btn: 18px side padding with or without an icon.
+const BTN = "px-[18px] has-[>svg]:px-[18px]";
+
 function NonResultCard({
   icon,
   title,
@@ -249,13 +258,13 @@ function NonResultCard({
 }) {
   const { t } = useTranslation();
   return (
+    <Card className="gap-0 p-6">
     <EmptyState
-      framed
       icon={icon}
       title={title}
       action={
         certificateUrl && (
-          <Button variant="outline" asChild>
+          <Button variant="outline" asChild className={BTN}>
             <a href={certificateUrl} target="_blank" rel="noreferrer">
               <Award />
               {t("certificate")}
@@ -264,6 +273,7 @@ function NonResultCard({
         )
       }
     />
+    </Card>
   );
 }
 
@@ -277,12 +287,12 @@ function PembahasanItem({
   t: (key: I18nKey) => string;
 }) {
   return (
-    <details className="group rounded-[var(--radius-card)] border border-line bg-card shadow-card">
+    <details open={index === 0} className="group rounded-[var(--radius-card)] border border-line bg-card shadow-card">
       <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 [&::-webkit-details-marker]:hidden">
-        <span className="shrink-0 type-label text-ink-900">{index + 1}.</span>
-        <span className="min-w-0 flex-1 text-sm font-medium text-ink-900">
-          <RichContent html={item.body} />
+        <span className="shrink-0 font-[family-name:var(--font-display)] text-[13px] leading-[normal] font-bold text-ink-600">
+          {t("question")} <b className="text-[22px] font-black text-ink-900">{index + 1}</b>
         </span>
+        <span className="min-w-0 flex-1 truncate text-ink-600">{item.test_title}</span>
         {item.your_answer ? (
           <Badge variant={item.is_correct ? "teal" : "danger"}>
             {item.is_correct ? t("result_correct") : t("result_incorrect")}
@@ -290,9 +300,12 @@ function PembahasanItem({
         ) : (
           <Badge variant="mute">{t("result_empty")}</Badge>
         )}
-        <ChevronDown className="size-4 shrink-0 text-ink-600 transition-transform group-open:rotate-180" aria-hidden />
+        <ChevronDown className="size-4 shrink-0 text-ink-900 transition-transform group-open:rotate-180" aria-hidden />
       </summary>
-      <div className="flex flex-col gap-3.5 px-5 pb-5 text-sm">
+      <div className="flex flex-col gap-3.5 px-5 pb-5">
+        <div className="text-lg leading-[1.65] text-ink-900">
+          <RichContent html={item.body} />
+        </div>
         <AnswerRow
           label={t("result_your_answer")}
           value={formatChoiceAnswer(item.your_answer, item.format) || "—"}
@@ -306,9 +319,12 @@ function PembahasanItem({
           />
         )}
         {item.explanation && (
-          <div className="flex gap-3 rounded-2xl bg-gold-50 p-4">
+          <div className="flex gap-3 rounded-2xl bg-gold-50 p-4 text-sm leading-[1.55]">
             <Lightbulb className="mt-0.5 size-4 shrink-0 text-gold-700" aria-hidden />
-            <p className="whitespace-pre-wrap text-ink-700">{item.explanation}</p>
+            <div>
+              <b className="font-bold text-ink-900">{t("result_pembahasan")}</b>
+              <p className="mt-0.5 whitespace-pre-wrap text-ink-700">{item.explanation}</p>
+            </div>
           </div>
         )}
       </div>
@@ -319,12 +335,19 @@ function PembahasanItem({
 function AnswerRow({ label, value, tone }: { label: string; value: string; tone: "right" | "wrong" }) {
   return (
     <p
-      className={`flex min-h-12 items-center gap-3 rounded-[18px] border-[1.5px] px-4 py-2 ${
+      className={`flex min-h-14 items-center gap-3.5 rounded-[18px] border-[1.5px] py-2 pr-[18px] pl-2 text-[15.5px] ${
         tone === "right" ? "border-teal-600 bg-teal-50" : "border-danger bg-danger-50"
       }`}
     >
-      <span className="text-xs text-ink-600">{label}:</span>
-      <span className="font-bold text-ink-900">{value}</span>
+      <span
+        className={`grid size-[38px] shrink-0 place-items-center rounded-[12px] font-[family-name:var(--font-display)] text-sm font-extrabold ${
+          tone === "right" ? "bg-teal-700 text-surface" : "bg-danger-600 text-surface"
+        }`}
+      >
+        {tone === "right" ? <Check className="size-4" aria-hidden /> : <X className="size-4" aria-hidden />}
+      </span>
+      <span className="min-w-0 flex-1 font-bold [overflow-wrap:anywhere] text-ink-900">{value}</span>
+      <small className="text-[11px] text-ink-600">{label}</small>
     </p>
   );
 }

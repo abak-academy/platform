@@ -11,6 +11,7 @@ import { PayoutProofDialog } from "@/components/affiliate/PayoutProofDialog";
 import { ReasonDialog } from "@/components/affiliate/ReasonDialog";
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import { TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
@@ -69,7 +70,7 @@ function PayoutsContent() {
       key: "who",
       header: t("admin_aff_col_affiliator"),
       cell: (r) => (
-        <TableItem title={r.affiliator_name} sub={r.affiliator_code} />
+        <TableItem thumb={<AbakAvatar name={r.affiliator_name} size="xs" ring={false} />} title={r.affiliator_name} sub={r.affiliator_code} />
       ),
     },
     { key: "requested", header: t("aff_col_requested"), cell: (r) => formatAffDate(r.requested_at) },
@@ -78,11 +79,11 @@ function PayoutsContent() {
       key: "bank",
       header: t("admin_aff_pay_col_bank"),
       cell: (r) => (
-        <div className="text-xs">
+        <div>
           <div>
             {r.bank_name} · {r.bank_account_number}
           </div>
-          <div className="text-ink-500">{r.bank_account_holder}</div>
+          <small className="block text-xs text-ink-600">{r.bank_account_holder}</small>
         </div>
       ),
     },
@@ -90,8 +91,9 @@ function PayoutsContent() {
     {
       key: "actions",
       header: t("admin_aff_col_actions"),
+      align: "right",
       cell: (r) => (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex justify-end gap-2">
           {r.status === "requested" && (
             <Button
               size="sm"
@@ -118,7 +120,7 @@ function PayoutsContent() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
       <AdminPageHeader
         title={t("admin_aff_pay_title")}
         description={t("admin_aff_pay_desc")}
@@ -129,15 +131,18 @@ function PayoutsContent() {
           </Button>
         }
       />
-      <ListToolbar
-        params={params}
-        onChange={update}
-        onReset={reset}
-        searchPlaceholder={t("admin_aff_search_queue")}
-        filters={[{ key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
-        dateLabel={t("admin_aff_date_requested")}
-      />
       <AffiliateList
+        toolbar={
+          <ListToolbar
+            embedded
+            params={params}
+            onChange={update}
+            onReset={reset}
+            searchPlaceholder={t("admin_aff_search_queue")}
+            filters={[{ key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) }]}
+            dateLabel={t("admin_aff_date_requested")}
+          />
+        }
         query={query}
         columns={columns}
         rowKey={(r) => r.id}

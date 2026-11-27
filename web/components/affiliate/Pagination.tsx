@@ -34,7 +34,7 @@ export function Pagination({ page, pages, onPageChange }: PaginationProps) {
       </Button>
       {pageItems(page, pages).map((item, i) =>
         item === "gap" ? (
-          <span key={`gap-${i}`} aria-hidden className="px-1 text-ink-400">
+          <span key={`gap-${i}`} aria-hidden className="px-1 text-ink-600">
             …
           </span>
         ) : (

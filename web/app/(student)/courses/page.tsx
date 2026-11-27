@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, BookOpen } from "lucide-react";
+import { AlertCircle, BookOpen, Plus } from "lucide-react";
 import { useMyCourses } from "@/lib/hooks/courses";
 import { useTranslation } from "@/lib/i18n";
 import { Card } from "@/components/ui/card";
@@ -27,17 +27,26 @@ export default function CoursesPage() {
   return (
     <>
       <PageHead
-        title={t("nav_courses")}
-        sub={t("course_subtitle")}
+        title={t("course_page_title")}
+        sub={
+          isLoading
+            ? undefined
+            : sessions?.length
+              ? t("course_active_count").replace("{n}", String(sessions.length))
+              : t("dash_no_courses")
+        }
         actions={
           <Button asChild variant="dark">
-            <Link href="/catalog">{t("stu_home_learn_add")}</Link>
+            <Link href="/catalog">
+              <Plus aria-hidden />
+              {t("course_add")}
+            </Link>
           </Button>
         }
       />
 
       {isError && (
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -73,17 +82,18 @@ export default function CoursesPage() {
 function EmptyCourses() {
   const { t } = useTranslation();
   return (
-    <EmptyState
-      framed
-      icon={BookOpen}
-      title={t("dash_no_courses")}
-      text={t("dash_no_courses_desc")}
-      action={
-        <Button asChild>
-          <Link href="/catalog">{t("dash_open_catalog")}</Link>
-        </Button>
-      }
-    />
+    <Card className="gap-0 p-6">
+      <EmptyState
+        icon={BookOpen}
+        title={t("dash_no_courses")}
+        text={t("dash_no_courses_desc")}
+        action={
+          <Button asChild>
+            <Link href="/catalog">{t("course_browse_catalog")}</Link>
+          </Button>
+        }
+      />
+    </Card>
   );
 }
 

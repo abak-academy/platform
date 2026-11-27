@@ -45,10 +45,13 @@
   font-family: var(--md-sys-typescale-body);
 }
 
-.admin-shell h1, .admin-shell h2, .admin-shell h3,
-.admin-shell h4, .admin-shell h5, .admin-shell h6 {
-  font-family: var(--md-sys-typescale-display);
-  margin: 0;
+/* In @layer base so Tailwind's @layer utilities (mb-*, m-*) win; unlayered rules beat every layer */
+@layer base {
+  :where(.admin-shell) h1, :where(.admin-shell) h2, :where(.admin-shell) h3,
+  :where(.admin-shell) h4, :where(.admin-shell) h5, :where(.admin-shell) h6 {
+    font-family: var(--md-sys-typescale-display);
+    margin: 0;
+  }
 }
 
 /* Component classes. Values mirror the redesign prototype: .card, .ab-btn, .chip, .fchip, .lchip */
@@ -262,4 +265,17 @@
   color: var(--md-sys-color-on-surface);
   border: 1px solid var(--md-sys-color-outline-variant);
   box-shadow: var(--md-sys-elevation-1);
+}
+
+/* Filter popover becomes a bottom sheet on phones (prototype .fpop-panel); the popper wrapper is transformed, so it is the wrapper that must move. */
+@media (max-width: 679px) {
+  [data-radix-popper-content-wrapper]:has(> .fpop-sheet) {
+    transform: none !important;
+    top: auto !important;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    min-width: 0 !important;
+  }
+  .fpop-sheet { width: 100% !important; }
 }

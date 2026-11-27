@@ -1,6 +1,7 @@
 "use client";
 
 import { MoreHorizontal, Package, PackageX } from "lucide-react";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -160,14 +161,14 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
   return (
     <tr
       onClick={onOpen}
-      className="cursor-pointer border-t border-line align-top text-[13.5px] text-ink-700 transition-colors hover:bg-brand-50"
+      className="cursor-pointer border-t border-line align-middle text-[13.5px] text-ink-700 transition-colors hover:bg-brand-50"
     >
       {selection && (
         <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" className="size-4 accent-brand-700" aria-label={`${t("labels_select_order")} ${orderNumber(order)}`} checked={selection.checked} disabled={selection.disabled} onChange={selection.onChange} />
+          <input type="checkbox" className="m-0 size-4 align-middle accent-brand-700" aria-label={`${t("labels_select_order")} ${orderNumber(order)}`} checked={selection.checked} disabled={selection.disabled} onChange={selection.onChange} />
         </td>
       )}
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 whitespace-nowrap">
         <button
           type="button"
           onClick={(e) => {
@@ -180,7 +181,7 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
           {orderNumber(order)}
         </button>
         {hasPlacedAt && (
-          <div className="mt-1 text-[13px] text-ink-600">
+          <div className="text-xs text-ink-600">
             {dateFormatter.format(placedAt)} ·{" "}
             <span
               data-testid="row-age"
@@ -201,18 +202,23 @@ export function OrderRow({ order, onOpen, onTrack, primaryAction, menuActions, s
           buyers of the same name apart. Either may be missing, so the line
           collapses rather than printing a stray separator. */}
       <td className="hidden max-w-[16rem] px-4 py-3 md:table-cell">
-        <div className="truncate text-[13.5px] font-bold text-ink-900">{buyerLabel(order)}</div>
-        {buyerContext && (
-          <div className="mt-1 truncate text-[13px] text-ink-600" title={buyerContext}>
-            {buyerContext}
+        <div className="flex min-w-0 items-center gap-2.5">
+          <AbakAvatar name={buyerLabel(order)} size={24} />
+          <div className="min-w-0">
+            <div className="truncate text-[13.5px] font-bold text-ink-900">{buyerLabel(order)}</div>
+            {buyerContext && (
+              <div className="truncate text-xs text-ink-600" title={buyerContext}>
+                {buyerContext}
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </td>
 
-      <td className="hidden max-w-xs px-4 py-3 md:table-cell">
+      <td className="hidden max-w-[14rem] px-4 py-3 md:table-cell">
         <div className="truncate text-[13.5px]">{items[0]?.name ?? "—"}</div>
         {extraItems > 0 && (
-          <div className="mt-1 text-[13px] text-ink-600">+{extraItems} lainnya</div>
+          <div className="text-xs text-ink-600">+{extraItems} lainnya</div>
         )}
       </td>
 

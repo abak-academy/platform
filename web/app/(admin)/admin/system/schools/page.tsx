@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   Plus,
   MoreHorizontal,
@@ -12,11 +12,22 @@ import {
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "@/lib/i18n";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DataTable, TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { PageHead } from "@/components/shell/PageHead";
-import { ToolbarSearch, ToolbarCount, FilterChip } from "@/components/admin/ListToolbar";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+  ToolbarSort,
+} from "@/components/admin/ListToolbar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -81,6 +92,8 @@ export default function SystemSchoolsPage() {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput).trim();
   const [statusFilter, setStatusFilter] = useState<SchoolStatus | "all">("all");
+  const [provinceFilter, setProvinceFilter] = useState("");
+  const [sort, setSort] = useState("default");
   const [createOpen, setCreateOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<School | null>(null);
@@ -145,7 +158,34 @@ export default function SystemSchoolsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data]);
 
-  const rows = schools;
+  // Province filter and sorts only see loaded rows; sort is locked until every page is in.
+  const partial = !!nextCursor;
+  const clientFiltered = !!provinceFilter;
+  const loadedOnly = partial && (clientFiltered || sort !== "default");
+  const rows = useMemo(() => {
+    const filtered = provinceFilter ? schools.filter((s) => s.provinsi_id === provinceFilter) : schools;
+    if (sort === "students") return [...filtered].sort((a, b) => (b.student_count ?? 0) - (a.student_count ?? 0));
+    if (sort === "name") return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
+    return filtered;
+  }, [schools, provinceFilter, sort]);
+
+  const statusOptions = [
+    { value: "active", label: t("status_label_active") },
+    { value: "deactivated", label: t("status_label_inactive") },
+  ];
+  const provinceOptions = (provinces ?? []).map((p) => ({ value: String(p.id), label: p.name }));
+  const activeChips = [
+    ...(statusFilter !== "all"
+      ? [{ key: "status", label: `${t("accounts_th_status")}: ${statusOptions.find((o) => o.value === statusFilter)?.label}`, clear: () => setStatusFilter("all") }]
+      : []),
+    ...(provinceFilter
+      ? [{ key: "prov", label: `${t("schools_filter_province")}: ${provinceOptions.find((o) => o.value === provinceFilter)?.label ?? provinceFilter}`, clear: () => setProvinceFilter("") }]
+      : []),
+  ];
+  const resetFilters = () => {
+    setStatusFilter("all");
+    setProvinceFilter("");
+  };
   function resetPagination() {
     setSchools([]);
     setFetchCursor(undefined);
@@ -266,17 +306,25 @@ export default function SystemSchoolsPage() {
       ? t("sys_error_load")
       : isLoading
         ? t("sys_loading_data")
-        : t("sys_no_schools_found");
+        : partial && clientFiltered
+          ? (
+            <div className="flex flex-col items-center gap-2 py-6">
+              <p>{t("filter_empty_loaded")}</p>
+              <Button variant="outline" size="sm" onClick={handleLoadMore}>{t("adm_load_more")}</Button>
+            </div>
+          )
+          : t("sys_no_schools_found");
 
   const columns: DataTableColumn<School>[] = [
     {
       key: "school",
       header: t("schools_field_name"),
+      nowrap: true,
       cell: (school) => (
         <TableItem
           thumb={
-            <span className="grid size-[38px] place-items-center rounded-xl bg-sky-50 text-sky-700">
-              <SchoolIcon className="size-5" aria-hidden />
+            <span className="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-sky-50 text-sky-700">
+              <SchoolIcon className="size-4" aria-hidden />
             </span>
           }
           title={school.name}
@@ -287,7 +335,7 @@ export default function SystemSchoolsPage() {
     {
       key: "npsn",
       header: t("schools_field_npsn"),
-      className: "font-mono text-xs",
+      align: "right",
       cell: (school) => school.npsn || "—",
     },
     {
@@ -299,6 +347,7 @@ export default function SystemSchoolsPage() {
     {
       key: "type",
       header: t("schools_field_school_types"),
+      nowrap: true,
       cell: (school) =>
         school.school_types?.length ? (
           <span>{school.school_types.join(" / ")}</span>
@@ -329,7 +378,7 @@ export default function SystemSchoolsPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-xs" className="rounded-full">
-              <MoreHorizontal className="size-4 text-ink-500" />
+              <MoreHorizontal className="size-4 text-ink-600" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -376,21 +425,55 @@ export default function SystemSchoolsPage() {
             placeholder={t("schools_search_placeholder")}
             clearLabel={t("list_toolbar_clear_search")}
           />
-          <div className="flex flex-wrap gap-2">
-            <FilterChip on={statusFilter === "all"} onClick={() => setStatusFilter("all")}>
-              {t("tab_all")}
-            </FilterChip>
-            <FilterChip on={statusFilter === "active"} onClick={() => setStatusFilter("active")}>
-              {t("status_label_active")}
-            </FilterChip>
-            <FilterChip on={statusFilter === "deactivated"} onClick={() => setStatusFilter("deactivated")}>
-              {t("status_label_inactive")}
-            </FilterChip>
-          </div>
+          <Popover>
+            <PopoverTrigger asChild>
+              <ToolbarFilterButton label={t("list_toolbar_filter")} count={activeChips.length} />
+            </PopoverTrigger>
+            <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
+              <div className="flex flex-col gap-3.5">
+                <FilterGrid>
+                  <FilterSelect
+                    label={t("accounts_th_status")}
+                    value={statusFilter === "all" ? "" : statusFilter}
+                    options={statusOptions}
+                    onChange={(v) => setStatusFilter((v || "all") as SchoolStatus | "all")}
+                  />
+                  <FilterSelect label={t("schools_filter_province")} value={provinceFilter} options={provinceOptions} onChange={setProvinceFilter} />
+                </FilterGrid>
+                <FilterPanelFooter
+                  onReset={resetFilters}
+                  showLabel={t("list_toolbar_show_n").replace("{n}", `${rows.length}${loadedOnly ? "+" : ""}`)}
+                />
+              </div>
+            </PopoverContent>
+          </Popover>
+          <ToolbarSort
+            value={sort}
+            onChange={setSort}
+            label={t("list_toolbar_sort")}
+            options={[
+              { value: "default", label: t("filter_sort_default") },
+              { value: "students", label: t("filter_sort_students"), disabled: partial },
+              { value: "name", label: t("filter_sort_name"), disabled: partial },
+            ]}
+          />
           <ToolbarCount>
-            {t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))}
+            {loadedOnly
+              ? t("adm_schools_count").replace("{n}", `${rows.length}+`)
+              : t("adm_schools_count").replace("{n}", stats.total.toLocaleString(numberLocale))}
           </ToolbarCount>
         </div>
+        {partial && (
+          <p className="border-b border-line px-4 py-2 text-xs text-ink-600">{t("filter_sort_locked")}</p>
+        )}
+        {activeChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
+            {activeChips.map((c) => (
+              <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+            ))}
+            <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
+          </div>
+        )}
 
         <DataTable
           columns={columns}

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -30,17 +31,17 @@ export function PartnerSwitchCard() {
     });
 
   return (
-    <section className="md-card-outlined flex flex-wrap items-center justify-between gap-4 p-6">
-      <div className="space-y-1">
+    <section className="md-card-outlined flex items-center gap-3 p-6">
+      <Switch checked={enabled} disabled={status.isLoading} onCheckedChange={() => setConfirming(true)} aria-label={t("admin_partner_prog_title")} />
+      <div className="min-w-0 flex-1 space-y-1">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold text-ink-900">{t("admin_partner_prog_title")}</h2>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${enabled ? "bg-teal-50 text-teal-700" : "bg-danger-50 text-danger-600"}`}>
+          <h2 className="text-sm font-bold text-ink-900">{t("admin_partner_prog_title")}</h2>
+          <Badge variant={enabled ? "teal" : "danger"}>
             {t(enabled ? "admin_aff_prog_on" : "admin_aff_prog_off")}
-          </span>
+          </Badge>
         </div>
         <p className="text-sm text-ink-600">{t(enabled ? "admin_partner_prog_desc_on" : "admin_partner_prog_desc_off")}</p>
       </div>
-      <Switch checked={enabled} disabled={status.isLoading} onCheckedChange={() => setConfirming(true)} aria-label={t("admin_partner_prog_title")} />
       <Dialog open={confirming} onOpenChange={setConfirming}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>

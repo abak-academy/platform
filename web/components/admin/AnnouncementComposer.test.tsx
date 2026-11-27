@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AnnouncementComposer } from "./AnnouncementComposer";
 
 const mockCreateMutate = vi.fn();
 const mockUpdateMutate = vi.fn();
+const pendingState = { create: false };
 
 vi.mock("@/lib/hooks/admin-announcements", () => ({
-  useCreateAnnouncement: () => ({ mutate: mockCreateMutate, isPending: false }),
+  useCreateAnnouncement: () => ({ mutate: mockCreateMutate, isPending: pendingState.create }),
   useUpdateAnnouncement: () => ({ mutate: mockUpdateMutate, isPending: false }),
 }));
 
@@ -32,6 +33,9 @@ const draftAnnouncement = {
 describe("AnnouncementComposer", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const succeed = (_input: unknown, opts?: { onSuccess?: () => void }) => opts?.onSuccess?.();
+    mockCreateMutate.mockImplementation(succeed);
+    mockUpdateMutate.mockImplementation(succeed);
   });
 
   it("renders dialog with form fields when open", () => {
@@ -41,6 +45,29 @@ describe("AnnouncementComposer", () => {
     expect(screen.getByText(/notification_type/i)).toBeInTheDocument();
     expect(screen.getByText(/notification_recipients/i)).toBeInTheDocument();
     expect(screen.getByText(/notification_scheduled_at/i)).toBeInTheDocument();
+  });
+
+  it("renders inline as a page card and clears the form after sending", () => {
+    const onOpenChange = vi.fn();
+    render(<AnnouncementComposer inline open onOpenChange={onOpenChange} />);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "notification_compose_title" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "cancel" })).not.toBeInTheDocument();
+    const title = screen.getByPlaceholderText(/notification_title/i) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: "Libur" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    expect(mockCreateMutate).toHaveBeenCalledWith(expect.objectContaining({ title: "Libur", status: "sent" }), expect.anything());
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(title.value).toBe("");
+  });
+
+  it("disables draft, schedule and send while a request is in flight", () => {
+    pendingState.create = true;
+    render(<AnnouncementComposer inline open onOpenChange={vi.fn()} />);
+    const actions = screen.getAllByRole("button").filter((el) => /save|notification_schedule|send/.test(el.textContent ?? ""));
+    expect(actions).toHaveLength(3);
+    for (const b of actions) expect(b).toBeDisabled();
+    pendingState.create = false;
   });
 
   it("does not render when closed", () => {
@@ -67,7 +94,7 @@ describe("AnnouncementComposer", () => {
       type: "announcement",
       recipients: "all",
       status: "draft",
-    });
+    }, expect.anything());
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -94,7 +121,7 @@ describe("AnnouncementComposer", () => {
       recipients: "all",
       status: "scheduled",
       scheduled_at: expect.stringContaining("2026"),
-    });
+    }, expect.anything());
   });
 
   it("calls create mutation with status=sent on Send Now", () => {
@@ -116,7 +143,7 @@ describe("AnnouncementComposer", () => {
       type: "announcement",
       recipients: "all",
       status: "sent",
-    });
+    }, expect.anything());
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
@@ -151,7 +178,19 @@ describe("AnnouncementComposer", () => {
         type: "announcement",
         recipients: "students",
       },
-    });
+    }, expect.anything());
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps the typed text inline when the server rejects, clears it only on success", () => {
+    mockCreateMutate.mockImplementation(() => {});
+    render(<AnnouncementComposer inline open onOpenChange={vi.fn()} />);
+    const title = screen.getByPlaceholderText(/notification_title/i) as HTMLInputElement;
+    fireEvent.change(title, { target: { value: "Libur" } });
+    fireEvent.click(screen.getByRole("button", { name: /send/i }));
+    expect(title.value).toBe("Libur");
+    const { onSuccess } = mockCreateMutate.mock.calls[0][1];
+    act(() => onSuccess());
+    expect(title.value).toBe("");
   });
 });

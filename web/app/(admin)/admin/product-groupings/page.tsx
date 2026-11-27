@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, CalendarDays, GripVertical, Layers, Pencil } from "lucide-react";
+import { ArrowDown, ArrowUp, CalendarDays, GripVertical, Layers, Pencil, Plus } from "lucide-react";
 import {
   DndContext,
   KeyboardSensor,
@@ -23,7 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { EVENT_TONE_CLASS, EventMark } from "@/components/admin/EventMark";
+import { EVENT_ART_BG, EventMark } from "@/components/admin/EventMark";
 import { ListToolbar, type ListToolbarValue } from "@/components/admin/ListToolbar";
 import { ProductGroupingModal } from "@/components/admin/ProductGroupingModal";
 import { Badge } from "@/components/ui/badge";
@@ -112,9 +112,10 @@ function EventCard({
       className={`md-card-outlined md-card-flush flex flex-col ${isDragging ? "shadow-lg ring-2 ring-brand-600" : ""}`}
     >
       <div
-        className={`relative flex h-[120px] items-center justify-center bg-[radial-gradient(120%_110%_at_100%_0%,rgba(255,255,255,.7),transparent)] ${EVENT_TONE_CLASS[grouping.tone] ?? EVENT_TONE_CLASS.brand}`}
+        className="relative flex h-[120px] items-center justify-center"
+        style={{ background: EVENT_ART_BG[grouping.tone] ?? EVENT_ART_BG.brand }}
       >
-        <Badge variant={grouping.is_visible ? "teal" : "mute"} className="absolute top-3 left-3 bg-white/70 backdrop-blur">
+        <Badge variant="mute" className="absolute top-3 left-3 !bg-white/85 !text-ink-900 backdrop-blur-[8px]">
           {t(grouping.is_visible ? "adm_on_landing" : "adm_hidden")}
         </Badge>
         <EventMark
@@ -122,7 +123,7 @@ function EventCard({
           logoUrl={grouping.logo_url}
           tone={grouping.tone}
           illustration={grouping.illustration}
-          className="size-[90px] bg-transparent"
+          className="size-[90px] bg-transparent !text-white drop-shadow-[0_10px_14px_rgba(0,0,0,.2)]"
         />
         {reorder && (
           <div className="absolute top-2 right-2 flex items-center rounded-full bg-white/70 backdrop-blur">
@@ -146,25 +147,25 @@ function EventCard({
       </div>
 
       <div className="flex flex-1 flex-col gap-2 px-[18px] pt-4 pb-[18px]">
-        <p className="font-mono text-[11px] font-semibold tracking-[.1em] text-ink-600 uppercase">{levels || "—"}</p>
-        <h3 className="truncate text-[19px] font-extrabold tracking-tight text-ink-900">{grouping.name}</h3>
-        <p className="line-clamp-2 text-sm text-ink-700">{content?.tagline}</p>
+        <p className="font-mono text-[11px] leading-[1.4] font-semibold tracking-[.12em] text-ink-600 uppercase">{levels || "—"}</p>
+        <h3 className="truncate text-[19px] leading-[1.35] font-bold tracking-[-0.02em] text-ink-900">{grouping.name}</h3>
+        <p className="line-clamp-4 flex-1 text-[13px] leading-[1.55] text-ink-600">{content?.tagline}</p>
 
-        <div className="flex items-center gap-2 text-sm">
-          <CalendarDays className="size-4 shrink-0 text-ink-600" aria-hidden />
+        <div className={`flex items-center gap-2 rounded-[12px] px-2.5 py-2 text-[12.5px] leading-[1.55] ${next?.state === "ongoing" ? "bg-ember-50" : "bg-surface-sunken"}`}>
+          <CalendarDays className="size-4 shrink-0 text-brand-600" aria-hidden />
           {next ? (
             <>
               <span className="min-w-0 flex-1 truncate">
-                <b>{next.label}</b> · {formatRange(next.starts_on, next.ends_on)}
+                <b className="font-[family-name:var(--font-display)]">{next.label}</b> · {formatRange(next.starts_on, next.ends_on)}
               </span>
-              {next.state === "ongoing" && <Badge variant="live">{t("adm_ongoing")}</Badge>}
+              {next.state === "ongoing" && <Badge variant="live" className="ml-auto h-5 text-[10.5px]">{t("adm_ongoing")}</Badge>}
             </>
           ) : (
             <span className="text-ink-600">{t("adm_pg_no_schedule")}</span>
           )}
         </div>
 
-        <div className="mt-auto flex flex-wrap gap-x-3.5 gap-y-1 border-t border-dashed border-line py-2 text-[12.5px] text-ink-700 tabular-nums">
+        <div className="flex flex-wrap gap-x-3.5 gap-y-1 border-t border-dashed border-line py-2 text-[12.5px] text-ink-600 tabular-nums [&_b]:font-[family-name:var(--font-display)] [&_b]:text-ink-900">
           <span>
             <b>{grouping.edition_count ?? 0}</b> edisi
           </span>
@@ -263,11 +264,16 @@ export default function ProductGroupingsPage() {
   }
 
   return (
-    <div className="space-y-6 fade-in">
+    <div className="flex flex-col gap-5 fade-in">
       <AdminPageHeader
         title={t("grouping_page_title")}
         description={t("grouping_page_description")}
-        actions={<Button variant="dark" onClick={() => setModalOpen(true)}>{t("grouping_create")}</Button>}
+        actions={
+          <Button variant="dark" onClick={() => setModalOpen(true)}>
+            <Plus aria-hidden />
+            {t("grouping_create")}
+          </Button>
+        }
       />
 
       {isLoading && (

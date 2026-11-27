@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHead } from "@/components/shell/PageHead";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 export default function SessionLeaderboardPage() {
   const { t } = useTranslation();
@@ -56,7 +57,9 @@ export default function SessionLeaderboardPage() {
     error.code === "leaderboard_not_available"
   ) {
     return (
-      <EmptyState framed icon={Medal} title={t("result_leaderboard_not_available")} />
+      <Card className="gap-0 p-6">
+        <EmptyState icon={Medal} title={t("result_leaderboard_not_available")} />
+      </Card>
     );
   }
 
@@ -65,7 +68,7 @@ export default function SessionLeaderboardPage() {
   if (isError) {
     return (
       <>
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -125,21 +128,23 @@ export default function SessionLeaderboardPage() {
     <>
       {head}
 
-      <section className="mx-auto grid w-full max-w-[720px] grid-cols-3 items-end gap-3.5 max-narrow:gap-2" data-testid="podium">
+      <section className="mx-auto mt-2.5 grid w-full max-w-[720px] grid-cols-3 items-end gap-3.5 max-narrow:gap-2" data-testid="podium">
         {podium.map((i) => {
           const entry = top[i];
           const tier = POD[i];
           return (
             <div key={entry.session_id} className="flex min-w-0 flex-col items-center gap-1.5 text-center">
-              <Initial name={entry.student_name} className={i === 0 ? "size-[84px] ring-4 ring-gold-600" : "size-16"} />
-              <b className="max-w-full truncate type-label text-ink-900">{entry.student_name}</b>
+              <AbakAvatar name={entry.student_name} size={i === 0 ? 84 : 64} ring={i === 0 ? "0 0 0 4px var(--color-gold-600)" : true} />
+              <b className="max-w-full truncate font-[family-name:var(--font-display)] text-[15px] leading-[normal] font-extrabold text-ink-900">
+                {entry.student_name}
+              </b>
               <div
                 className={`flex w-full flex-col items-center gap-1.5 rounded-[22px_22px_8px_8px] pt-4 ${tier.bar}`}
               >
-                <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1.5 text-[11px] font-extrabold ${tier.medal}`}>
+                <span className={`grid h-6 min-w-6 place-items-center rounded-full px-1.5 font-[family-name:var(--font-display)] text-[11px] leading-[normal] font-extrabold ${tier.medal}`}>
                   {entry.rank}
                 </span>
-                <b className="text-[30px] leading-none font-extrabold max-narrow:text-[22px] [font-family:var(--font-display)]">{entry.score}</b>
+                <b className="text-[30px] leading-[normal] font-extrabold max-narrow:text-[22px] [font-family:var(--font-display)]">{entry.score}</b>
               </div>
             </div>
           );
@@ -152,14 +157,17 @@ export default function SessionLeaderboardPage() {
             {rest.map((entry) => (
               <li
                 key={entry.session_id}
-                className="flex items-center gap-3 rounded-[14px] px-3 py-2.5 [&+&]:border-t [&+&]:border-line"
+                aria-current={entry.session_id === sessionId ? "true" : undefined}
+                className={`flex items-center gap-3 rounded-[14px] px-3 py-2.5 [&+&]:border-t [&+&]:border-line ${
+                  entry.session_id === sessionId ? "border-0! bg-brand-50 text-brand-ink" : "text-ink-900"
+                }`}
               >
-                <span className="w-[34px] text-center text-sm font-extrabold text-ink-600 [font-family:var(--font-display)]">
+                <span className="w-[34px] text-center text-sm leading-[normal] font-extrabold text-ink-600 [font-family:var(--font-display)]">
                   {entry.rank}
                 </span>
-                <Initial name={entry.student_name} className="size-[30px] text-xs" />
-                <span className="min-w-0 flex-1 truncate font-bold text-ink-900">{entry.student_name}</span>
-                <b className="font-extrabold text-ink-900 tabular-nums [font-family:var(--font-display)]">{entry.score}</b>
+                <AbakAvatar name={entry.student_name} size="sm" />
+                <b className="min-w-0 flex-1 truncate font-bold [font-family:var(--font-display)]">{entry.student_name}</b>
+                <b className="font-bold tabular-nums [font-family:var(--font-display)]">{entry.score}</b>
               </li>
             ))}
           </ol>
@@ -172,6 +180,7 @@ export default function SessionLeaderboardPage() {
           <Button
             type="button"
             variant="outline"
+            className="px-[18px]"
             onClick={() => setCursor(data.next_cursor)}
             disabled={isFetching}
           >
@@ -188,14 +197,3 @@ const POD = [
   { bar: "h-[130px] border-t-4 border-line-strong bg-mute-50 text-ink-900", medal: "bg-surface text-ink-900 ring-2 ring-line-strong" },
   { bar: "h-[104px] border-t-4 border-ember-600 bg-ember-50 text-ink-900", medal: "bg-surface text-ink-900 ring-2 ring-ember-600" },
 ] as const;
-
-function Initial({ name, className }: { name: string; className?: string }) {
-  return (
-    <span
-      aria-hidden
-      className={`grid shrink-0 place-items-center rounded-full bg-brand-100 font-extrabold text-brand-800 ring-2 ring-surface ${className ?? ""}`}
-    >
-      {name.trim().charAt(0).toUpperCase()}
-    </span>
-  );
-}

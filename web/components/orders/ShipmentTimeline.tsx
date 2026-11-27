@@ -28,7 +28,7 @@ export function ShipmentTimeline({ events }: ShipmentTimelineProps) {
   );
 
   return (
-    <div className="mt-3 flex flex-col gap-2 rounded-2xl bg-surface-sunken p-3.5">
+    <div className="mt-3 flex flex-col gap-2 rounded-lg bg-surface-sunken p-3.5">
       <h4 className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-ink-600">
         {t("order_shipment_timeline_heading")}
       </h4>

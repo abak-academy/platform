@@ -10,7 +10,6 @@ import { AbakWordmark } from "./AbakWordmark";
 import { SidebarUserMenu } from "./SidebarUserMenu";
 import {
   NAV_CONFIG,
-  ADMIN_ROLES,
   type UserRole,
   type NavItem,
   type NavGroup,
@@ -47,10 +46,15 @@ function useReducedMotion() {
   return reduced;
 }
 
-function CountPill({ n }: { n?: number }) {
+function CountPill({ n, group }: { n?: number; group?: boolean }) {
   if (!n || n <= 0) return null;
   return (
-    <span className="ml-auto min-w-5 rounded-full bg-ember-600 px-1.5 text-center type-label-xs text-on-ember">
+    <span
+      className={cn(
+        "ml-auto rounded-full bg-ember-600 text-center font-extrabold text-on-ember",
+        group ? "h-5 min-w-5 px-1.5 text-[10.5px] leading-5" : "h-[22px] min-w-[22px] px-[7px] text-[11px] leading-[22px]"
+      )}
+    >
       {n}
     </span>
   );
@@ -93,7 +97,7 @@ function NavItemLink({ item, active, count, nested, animate }: { item: NavItem; 
       title={t(item.labelKey)}
       aria-current={active ? "page" : undefined}
       className={cn(
-        "flex items-center gap-[11px] rounded-md px-2.5 type-label",
+        "flex items-center gap-[11px] rounded-md px-2.5 type-label outline-none focus-visible:ring-2 focus-visible:ring-brand-600",
         animate && "transition-[background-color,transform] duration-300 ease-spring",
         nested ? "h-[38px] text-[13.5px]" : "h-11",
         active
@@ -143,7 +147,7 @@ function GroupSection({
         aria-expanded={open}
         aria-controls={panelId}
         onClick={onToggle}
-        className="flex h-11 w-full items-center gap-[11px] rounded-md px-2.5 text-left type-label text-[13.5px] font-extrabold text-ink-900 hover:bg-surface-sunken"
+        className="flex h-11 w-full items-center gap-[11px] rounded-md px-2.5 text-left type-label text-[13.5px] font-extrabold text-ink-900 outline-none hover:bg-surface-sunken focus-visible:ring-2 focus-visible:ring-brand-600"
       >
         {Icon && (
           <IconTile active={false} animate={animate} group={hasActive ? "has-active" : "idle"}>
@@ -151,7 +155,7 @@ function GroupSection({
           </IconTile>
         )}
         <span className="truncate">{t(key)}</span>
-        {!open && <CountPill n={sum} />}
+        {!open && <CountPill n={sum} group />}
         <ChevronDown
           className={cn(
             "size-4 shrink-0 text-ink-600",
@@ -190,7 +194,6 @@ function GroupSection({
 
 export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
   const pathname = usePathname();
-  const { t } = useTranslation();
   const me = useMe({ enabled: role === "affiliator" });
   const programStates = me.data?.affiliator_programs;
   const groups = useMemo(
@@ -210,9 +213,6 @@ export function AppSidebar({ role, counts, subtitle }: AppSidebarProps) {
         <Link href="/" aria-label="Abak Academy">
           <AbakWordmark size={36} />
         </Link>
-        <span className="mt-1.5 text-[11px] font-medium text-ink-600">
-          {ADMIN_ROLES.includes(role) ? t("admin_panel") : t("app_tag")}
-        </span>
       </div>
 
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ShoppingCart, X } from "lucide-react";
+import { ChevronLeft, ShieldCheck, ShoppingCart, Truck, X } from "lucide-react";
 import { useCart, useRemoveCartItem, useUpdateCartItemQty, useValidatePromo, useShippingRates, usePatchCart, useActivePromoCodes } from "@/lib/hooks/orders";
 import { useProfile, useUpdateProfile } from "@/lib/hooks/students";
 import { useCitiesByProvince, useDistrictsByCity, useProvinces } from "@/lib/hooks/regions";
@@ -20,6 +20,7 @@ import { ShippingAddressSummary, isAddressComplete } from "@/components/cart/Shi
 import { CourierRateList, courierRateKey } from "@/components/cart/CourierRateList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHead } from "@/components/shell/PageHead";
@@ -339,31 +340,14 @@ function ServerCart() {
       ) : items.length === 0 ? (
         <EmptyCart />
       ) : (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
-          <section className="flex flex-col gap-4">
-            {hasPhysical &&
-              (addressFormOpen ? (
-                <ShippingAddressForm
-                  profile={profile}
-                  initialAddress={shippingAddress}
-                  onAddressChange={handleAddressChange}
-                  onSave={handleSaveAddress}
-                  isSaving={shippingRates.isPending || patchCart.isPending}
-                />
-              ) : (
-                <ShippingAddressSummary
-                  address={shippingAddress as any}
-                  isPrimary={isPrimaryAddress}
-                  onEdit={() => setAddressFormOpen(true)}
-                />
-              ))}
-
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start">
+          <section className="flex min-w-0 flex-col gap-4">
             <Card className="gap-0 p-6">
+              <h2 className="mb-3 type-h2 text-ink-900">{t("cart_items_heading" as any)}</h2>
               {items.map((it) => (
                 <CartLineItem
                   key={it.id}
                   item={it}
-                  flat
                   onRemove={() => {
                     if (!cart) return;
                     removeItem.mutate({ orderId: cart.id, itemId: it.id });
@@ -376,63 +360,85 @@ function ServerCart() {
                   updatingQty={updateQty.isPending}
                 />
               ))}
-              <Button asChild variant="ghost" size="sm" className="mt-3 w-fit">
+              <Button asChild variant="ghost" size="sm" className="w-fit gap-2 has-[>svg]:px-[13px]">
                 <Link href="/catalog">
                   <ChevronLeft /> {t("cart_continue")}
                 </Link>
               </Button>
             </Card>
 
-            {hasPhysical && (addressReady || shippingRates.data) && (
-              /* Note beside the shipping choice, both under the goods they
-                 apply to. The note is for the courier, so it belongs here and
-                 not in the address card. */
-              <Card className="gap-4 p-6">
-                <div className="flex flex-col gap-2">
-                  <label htmlFor="cart-courier-note" className="type-label-sm text-ink-900">
-                    {t("cart_courier_note_label")}
-                  </label>
-                  <textarea
-                    id="cart-courier-note"
-                    value={courierNote}
-                    onChange={(e) => setCourierNote(e.target.value)}
-                    onBlur={handleNoteBlur}
-                    rows={3}
-                    maxLength={200}
-                    placeholder={t("cart_courier_note_placeholder")}
-                    className="w-full resize-none rounded-[14px] border-[1.5px] border-line bg-surface px-3.5 py-3 text-[15px] text-ink-900 outline-none placeholder:text-ink-600 hover:border-line-strong focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50"
-                  />
-                </div>
+            {hasPhysical &&
+              (addressFormOpen ? (
+                <ShippingAddressForm
+                  profile={profile}
+                  initialAddress={shippingAddress}
+                  onAddressChange={handleAddressChange}
+                  onSave={handleSaveAddress}
+                  isSaving={shippingRates.isPending || patchCart.isPending}
+                />
+              ) : (
+                <ShippingAddressSummary
+                  address={addressSnapshot as any}
+                  isPrimary={isPrimaryAddress}
+                  onEdit={() => setAddressFormOpen(true)}
+                >
+                  {addressReady && (
+                    /* The note is for the courier but rides with the address, as in
+                       the prototype; it is saved with the chosen rate. */
+                    <div className="flex flex-col gap-[7px]">
+                      <label htmlFor="cart-courier-note" className="type-label-sm text-ink-900">
+                        {t("cart_courier_note_label")}
+                      </label>
+                      <Input
+                        id="cart-courier-note"
+                        value={courierNote}
+                        onChange={(e) => setCourierNote(e.target.value)}
+                        onBlur={handleNoteBlur}
+                        maxLength={200}
+                        placeholder={t("cart_courier_note_placeholder")}
+                        className="rounded-[14px] px-[15px] py-0"
+                      />
+                    </div>
+                  )}
+                </ShippingAddressSummary>
+              ))}
 
-                <div className="flex flex-col gap-2">
-                  {shippingRates.data ? (
-                    <CourierRateList
-                      rates={shippingRates.data}
-                      selectedKey={selectedRateKey}
-                      onSelect={handleSelectCourier}
-                      isLoading={false}
-                      isError={shippingRates.isError}
-                    />
-                  ) : (
-                    <>
-                      <span className="type-h2 text-ink-900">{t("cart_shipping_options")}</span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleCheckShipping}
-                        disabled={shippingRates.isPending}
-                        className="w-full"
-                      >
-                        {t("cart_check_shipping_cost")}
-                      </Button>
-                    </>
+            {hasPhysical && (
+              <Card className="gap-0 p-6">
+                <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="type-h2 text-ink-900">{t("cart_shipping_options")}</h2>
+                  {addressReady && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleCheckShipping}
+                      disabled={shippingRates.isPending}
+                      className="gap-2 border has-[>svg]:px-[13px]"
+                    >
+                      <Truck />
+                      {t("cart_check_shipping_cost")}
+                    </Button>
                   )}
                 </div>
+                {shippingRates.data || shippingRates.isPending ? (
+                  <CourierRateList
+                    rates={shippingRates.data}
+                    selectedKey={selectedRateKey}
+                    onSelect={handleSelectCourier}
+                    isLoading={shippingRates.isPending}
+                    isError={shippingRates.isError}
+                  />
+                ) : (
+                  <p className="text-ink-600">
+                    {t(addressReady ? ("cart_rates_hint" as any) : ("cart_rates_need_address" as any))}
+                  </p>
+                )}
               </Card>
             )}
 
             {hasPhysical && shippingRates.isError && (
-              <div className="rounded-[var(--radius-card)] border border-danger/30 bg-danger-bg px-5 py-4 text-sm text-danger">
+              <div className="rounded-[var(--radius-card)] border border-danger/30 bg-danger-bg p-4 text-sm text-danger">
                 {t(shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_route_unserved"
                   ? "cart_shipping_route_unserved"
                   : shippingRates.error instanceof ApiError && shippingRates.error.code === "shipping_temporarily_unavailable"
@@ -442,18 +448,16 @@ function ServerCart() {
             )}
 
             {hasPhysical && shippingClearedNotice && (
-              <div className="rounded-[var(--radius-card)] border border-warn/30 bg-warn-bg px-5 py-4 text-sm text-warn">
+              <div className="rounded-[var(--radius-card)] border border-warn/30 bg-warn-bg p-4 text-sm text-warn">
                 {t("cart_shipping_address_changed" as any)}
               </div>
             )}
           </section>
 
-          <aside className="lg:sticky lg:top-6">
+          <aside className="min-w-0 lg:sticky lg:top-6">
             <Card className="gap-0 p-6">
-              <h2 className="mb-3.5 type-h2 text-ink-900">{t("cart_order_summary")}</h2>
+              <h2 className="mb-3 type-h2 text-ink-900">{t("cart_order_summary")}</h2>
 
-              {/* One row, not a wall of codes: the offers live behind it and
-                  the manual code box lives with them. */}
               <PromoSheet
                 promos={activePromos ?? []}
                 subtotal={subtotal}
@@ -466,15 +470,26 @@ function ServerCart() {
                 onClear={handleClearPromo}
               />
 
-              <div className="mt-4 space-y-2 text-sm">
+              {/* Prototype `.sumbox`. */}
+              <div className="mt-1.5 flex flex-col gap-2 text-[14px] leading-[1.55]">
                 <Row label={t("cart_subtotal")} value={formatRupiah(subtotal)} />
-                {discount > 0 && <Row label={t("cart_discount")} value={`−${formatRupiah(discount)}`} tone="text-success" />}
-                {(cart?.shipping_cost ?? 0) > 0 && <Row label={t("order_shipping")} value={formatRupiah(cart?.shipping_cost ?? 0)} />}
-              </div>
-
-              <div className="mt-3 flex items-center justify-between border-t border-dashed border-line pt-3 text-[19px] font-extrabold text-ink-900 [font-family:var(--font-display)]">
-                <span>{t("cart_total")}</span>
-                <span>{formatRupiah(total)}</span>
+                {discount > 0 && (
+                  <Row
+                    label={appliedPromoCode ? `${t("cart_discount")} ${appliedPromoCode}` : t("cart_discount")}
+                    value={`−${formatRupiah(discount)}`}
+                    tone="text-teal-700"
+                  />
+                )}
+                {hasPhysical && (
+                  <Row
+                    label={t("order_shipping")}
+                    value={(cart?.shipping_cost ?? 0) > 0 ? formatRupiah(cart?.shipping_cost ?? 0) : "—"}
+                  />
+                )}
+                <div className="flex items-center justify-between border-t border-dashed border-line pt-3 font-[family-name:var(--font-display)] text-[19px] leading-normal font-extrabold text-ink-900">
+                  <span>{t("cart_total")}</span>
+                  <span>{formatRupiah(total)}</span>
+                </div>
               </div>
 
               {cart?.affiliate_code_eligible && (
@@ -493,9 +508,12 @@ function ServerCart() {
                 orderId={cart?.id}
                 affiliateCode={cart?.affiliate_code_eligible ? referralCode : undefined}
                 disabled={(hasPhysical && shippingRates.isError) || patchCart.isPending || removeItem.isPending || updateQty.isPending}
+                icon={ShieldCheck}
+                className="text-[15px] font-bold tracking-[-0.005em] has-[>svg]:px-6"
+                label={t("cart_pay_amount" as any).replace("{v}", formatRupiah(total))}
               />
 
-              <p className="mt-3 text-center text-xs text-ink-600">
+              <p className="text-center text-[13px] text-ink-600">
                 {t("cart_secure_payment")}
               </p>
             </Card>
@@ -513,9 +531,9 @@ export default function CartPage() {
 
 function Row({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-ink-600">{label}</span>
-      <span className={`font-semibold ${tone ?? "text-ink-900"}`}>{value}</span>
+    <div className={`flex items-center justify-between ${tone ?? "text-ink-900"}`}>
+      <span>{label}</span>
+      <b className="font-bold">{value}</b>
     </div>
   );
 }
@@ -544,9 +562,8 @@ function ErrorState({ message, onRetry }: { message: string; onRetry: () => void
 function EmptyCart() {
   const { t } = useTranslation();
   return (
-    <div className="mx-auto w-full max-w-[820px]">
+    <div>
       <EmptyState
-        framed
         icon={ShoppingCart}
         title={t("cart_empty_title")}
         text={t("cart_empty_desc")}

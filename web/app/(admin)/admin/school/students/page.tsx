@@ -20,14 +20,23 @@ import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { formatGrade, GRADE_GROUPS, gradeOptionsForJenjang } from "@/lib/grade";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { DataTable, TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PageHead } from "@/components/shell/PageHead";
 import { StatCard } from "@/components/admin/StatCard";
-import { ToolbarSearch, ToolbarFilterButton, ToolbarCount, FilterChip, ActiveChip } from "@/components/admin/ListToolbar";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+} from "@/components/admin/ListToolbar";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -52,7 +61,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { BulkImportModal } from "@/components/admin/BulkImportModal";
 import { SchoolPicker } from "@/components/SchoolPicker";
@@ -74,6 +82,7 @@ import type {
   StudentCredentials,
   SchoolOption,
 } from "@/lib/types";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 
 // Search is sent to the server (q param), so it must be debounced the same
 // way the schools page debounces school search — otherwise every keystroke
@@ -109,15 +118,6 @@ function compactStudentRegistration(
   return payload;
 }
 
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((n) => n[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-}
-
 export default function SchoolStudentsPage() {
   const { t, lang } = useTranslation();
 
@@ -134,6 +134,7 @@ export default function SchoolStudentsPage() {
   const [searchInput, setSearchInput] = useState("");
   const debouncedSearch = useDebouncedValue(searchInput).trim();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [jenjangFilter, setJenjangFilter] = useState("");
 
   // Cursor pagination
   const [accumulated, setAccumulated] = useState<AdminStudent[]>([]);
@@ -148,7 +149,7 @@ export default function SchoolStudentsPage() {
   const [stats, setStats] = useState({ total: 0, active: 0, deactivated: 0 });
 
   // Guard: reset pagination on filter change
-  const filterKey = `${statusFilter}:${debouncedSearch}:${selectedSchoolId}`;
+  const filterKey = `${statusFilter}:${debouncedSearch}:${selectedSchoolId}:${jenjangFilter}`;
   const pageFilterKeyRef = useRef(filterKey);
 
   useEffect(() => {
@@ -163,6 +164,7 @@ export default function SchoolStudentsPage() {
   const query = useAdminStudents({
     status: statusFilter === "all" ? undefined : statusFilter,
     q: debouncedSearch || undefined,
+    jenjang: jenjangFilter || undefined,
     cursor: activeCursor,
     limit: 20,
     ...(canManageAllStudents && selectedSchoolId ? { schoolId: selectedSchoolId } : {}),
@@ -404,45 +406,35 @@ export default function SchoolStudentsPage() {
       key: "name",
       header: t("students_field_name"),
       cell: (s) => (
-        <div className="flex items-center gap-3">
-          <Avatar size="sm">
-            <AvatarFallback className="bg-brand-50 text-brand-700 text-xs">
-              {initials(s.name)}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <div className="font-medium text-ink-900">{s.name}</div>
-            <div className="mt-1 font-mono text-xs text-brand-700">
-              {s.username ? `@${s.username}` : "—"}
-            </div>
-          </div>
-        </div>
+        <TableItem
+          thumb={<AbakAvatar name={s.name} size="xs" ring={false} />}
+          title={s.name}
+          sub={s.username ? `@${s.username}` : "—"}
+        />
       ),
     },
     {
       key: "email",
       header: t("email"),
-      className: "text-xs text-ink-600",
       cell: (s) => s.email || "—",
     },
     {
       key: "school",
       header: t("students_field_school"),
-      className: "text-xs",
       cell: (s) => (
         <div>
           {s.school_name ? (
-            <span className="text-ink-600">{s.school_name}</span>
+            <span>{s.school_name}</span>
           ) : s.unlisted_school_name ? (
             <span className="text-warn" title={t("students_school_unconfirmed")}>
               {s.unlisted_school_name}
             </span>
           ) : (
-            <span className="text-ink-400">{t("students_school_none")}</span>
+            <span className="text-ink-600">{t("students_school_none")}</span>
           )}
-          <div className="mt-1 text-[11px] text-ink-400">
+          <small className="block text-xs text-ink-600">
             {t("students_field_grade")} {s.grade != null ? formatGrade(s.grade) : "—"}
-          </div>
+          </small>
         </div>
       ),
     },
@@ -463,7 +455,7 @@ export default function SchoolStudentsPage() {
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon-xs" className="rounded-full">
-              <MoreHorizontal className="size-4 text-ink-500" />
+              <MoreHorizontal className="size-4 text-ink-600" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -502,14 +494,14 @@ export default function SchoolStudentsPage() {
 
   const filterPanelLabel = t("students_filter_panel_label");
   const rosterLabel = t("students_roster_label");
-  const filterCount = (statusFilter !== "all" ? 1 : 0) + (selectedSchoolId ? 1 : 0);
+  const filterCount = (statusFilter !== "all" ? 1 : 0) + (selectedSchoolId ? 1 : 0) + (jenjangFilter ? 1 : 0);
   const statusOptions = [
-    { value: "all", label: t("accounts_status_all") },
     { value: "active", label: t("status_label_active") },
     { value: "deactivated", label: t("status_label_inactive") },
   ];
   const resetFilters = () => {
     setStatusFilter("all");
+    setJenjangFilter("");
     setSelectedSchoolFilter(null);
     setSelectedSchoolId("");
   };
@@ -560,47 +552,42 @@ export default function SchoolStudentsPage() {
               <PopoverTrigger asChild>
                 <ToolbarFilterButton label={filterPanelLabel} count={filterCount} />
               </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                role="region"
-                aria-label={filterPanelLabel}
-                className="admin-shell max-h-[var(--radix-popover-content-available-height)] w-[min(460px,92vw)] overflow-y-auto"
-              >
+              <PopoverContent align="end" role="region" aria-label={filterPanelLabel} className={FILTER_PANEL_CLASS}>
                 <div className="flex flex-col gap-3.5">
-                  <div>
-                    <span className="mb-2 block type-overline text-ink-600">{t("select_school")}</span>
-                    {canManageAllStudents ? (
-                      <SchoolPicker
-                        id="student-school-filter"
-                        value={selectedSchoolId}
-                        selectedSchool={selectedSchoolFilter}
-                        onChange={(school) => {
-                          setSelectedSchoolFilter(school);
-                          setSelectedSchoolId(school?.id ?? "");
-                        }}
-                      />
-                    ) : (
-                      <p className="text-xs leading-5 text-ink-600">
-                        {t("students_roster_bound_note")}
-                      </p>
-                    )}
-                  </div>
-                  <div role="group" aria-label={t("accounts_th_status")}>
-                    <span className="mb-2 block type-overline text-ink-600">{t("accounts_th_status")}</span>
-                    <div className="flex flex-wrap gap-2">
-                      {statusOptions.map((o) => (
-                        <FilterChip key={o.value} on={statusFilter === o.value} onClick={() => setStatusFilter(o.value)}>
-                          {o.label}
-                        </FilterChip>
-                      ))}
+                  <FilterGrid>
+                    <FilterSelect
+                      label={t("accounts_th_status")}
+                      value={statusFilter === "all" ? "" : statusFilter}
+                      options={statusOptions}
+                      onChange={(v) => setStatusFilter(v || "all")}
+                    />
+                    <FilterSelect
+                      label={t("students_filter_jenjang")}
+                      value={jenjangFilter}
+                      options={JENJANG_OPTIONS.map((j) => ({ value: j, label: j }))}
+                      onChange={setJenjangFilter}
+                    />
+                    <div className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+                      <span className="font-mono text-[11px] font-semibold tracking-[.06em] text-ink-600 uppercase">{t("select_school")}</span>
+                      {canManageAllStudents ? (
+                        <SchoolPicker
+                          id="student-school-filter"
+                          value={selectedSchoolId}
+                          selectedSchool={selectedSchoolFilter}
+                          onChange={(school) => {
+                            setSelectedSchoolFilter(school);
+                            setSelectedSchoolId(school?.id ?? "");
+                          }}
+                        />
+                      ) : (
+                        <p className="text-xs leading-5 text-ink-600">{t("students_roster_bound_note")}</p>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line pt-3">
-                    <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_reset")}</Button>
-                    <PopoverClose asChild>
-                      <Button variant="secondary" size="sm">{t("list_toolbar_show_n").replace("{n}", String(stats.total))}</Button>
-                    </PopoverClose>
-                  </div>
+                  </FilterGrid>
+                  <FilterPanelFooter
+                    onReset={resetFilters}
+                    showLabel={t("list_toolbar_show_n").replace("{n}", String(stats.total))}
+                  />
                 </div>
               </PopoverContent>
             </Popover>
@@ -616,6 +603,13 @@ export default function SchoolStudentsPage() {
                     setSelectedSchoolFilter(null);
                     setSelectedSchoolId("");
                   }}
+                />
+              )}
+              {jenjangFilter && (
+                <ActiveChip
+                  label={`${t("students_filter_jenjang")}: ${jenjangFilter}`}
+                  removeLabel={`${t("list_toolbar_remove")}: ${t("students_filter_jenjang")}`}
+                  onRemove={() => setJenjangFilter("")}
                 />
               )}
               {statusFilter !== "all" && (
@@ -832,7 +826,7 @@ export default function SchoolStudentsPage() {
                         type="button"
                         onClick={() => setShowRegisterPassword((p) => !p)}
                         aria-label={showRegisterPassword ? t("auth_hide_password") : t("auth_show_password")}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-600 transition-colors hover:text-ink-900"
                       >
                         {showRegisterPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
@@ -883,7 +877,7 @@ export default function SchoolStudentsPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {jenjangOptions.length === 0 ? (
-                          <div className="px-2 py-3 text-center text-xs text-ink-500">
+                          <div className="px-2 py-3 text-center text-xs text-ink-600">
                             {t("students_field_jenjang_empty")}
                           </div>
                         ) : (
@@ -1213,7 +1207,7 @@ export default function SchoolStudentsPage() {
                   type="button"
                   onClick={() => setShowNewPassword((p) => !p)}
                   aria-label={showNewPassword ? t("auth_hide_password") : t("auth_show_password")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-600 transition-colors hover:text-ink-900"
                 >
                   {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -1237,7 +1231,7 @@ export default function SchoolStudentsPage() {
                   type="button"
                   onClick={() => setShowConfirmPassword((p) => !p)}
                   aria-label={showConfirmPassword ? t("auth_hide_password") : t("auth_show_password")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-400 transition-colors hover:text-ink-600"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-600 transition-colors hover:text-ink-900"
                 >
                   {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -1289,7 +1283,7 @@ function RegisterSection({
     >
       <div className="flex items-center gap-2">
         <Icon className="size-4 text-brand-600" />
-        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-500">
+        <h4 className="text-[11px] font-semibold uppercase tracking-wide text-ink-600">
           {label}
         </h4>
       </div>
@@ -1315,7 +1309,7 @@ function FormField({
         {label} {required && <span className="text-danger">*</span>}
       </Label>
       {children}
-      {hint && <p className="text-xs text-ink-500">{hint}</p>}
+      {hint && <p className="text-xs text-ink-600">{hint}</p>}
     </div>
   );
 }

@@ -1,24 +1,25 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
 import type { OrderStatus } from "@/lib/types";
+
+type Tone = "mute" | "gold" | "teal" | "sky" | "ember" | "danger";
 
 interface StatusMeta {
   label: string;
-  tone: string;
-  bg: string;
+  tone: Tone;
 }
 
+// Prototype ORDER_STATUS tones ('' → mute, info → sky).
 const STATUS_META: Record<OrderStatus, StatusMeta> = {
-  cart: { label: "Keranjang", tone: "text-ink-600", bg: "bg-line-2" },
-  payment_pending: { label: "Menunggu Pembayaran", tone: "text-warn", bg: "bg-warn-bg" },
-  paid: { label: "Dibayar", tone: "text-success", bg: "bg-success-bg" },
-  processing: { label: "Diproses", tone: "text-info", bg: "bg-info-bg" },
-  shipped: { label: "Dikirim", tone: "text-brand-700", bg: "bg-brand-50" },
-  completed: { label: "Selesai", tone: "text-success", bg: "bg-success-bg" },
-  payment_expired: { label: "Kadaluarsa", tone: "text-danger", bg: "bg-danger-bg" },
-  cancelled: { label: "Dibatalkan", tone: "text-ink-500", bg: "bg-line-2" },
+  cart: { label: "Keranjang", tone: "mute" },
+  payment_pending: { label: "Menunggu Pembayaran", tone: "gold" },
+  paid: { label: "Dibayar", tone: "teal" },
+  processing: { label: "Diproses", tone: "sky" },
+  shipped: { label: "Dikirim", tone: "ember" },
+  completed: { label: "Selesai", tone: "teal" },
+  payment_expired: { label: "Kadaluarsa", tone: "danger" },
+  cancelled: { label: "Dibatalkan", tone: "mute" },
 };
 
 export interface OrderStatusBadgeProps {
@@ -30,7 +31,7 @@ export interface OrderStatusBadgeProps {
 export function OrderStatusBadge({ status, className, label }: OrderStatusBadgeProps) {
   const meta = STATUS_META[status] ?? STATUS_META.cart;
   return (
-    <Badge variant="outline" className={cn("border-transparent", meta.bg, meta.tone, className)}>
+    <Badge variant={meta.tone} className={className}>
       {label ?? meta.label}
     </Badge>
   );

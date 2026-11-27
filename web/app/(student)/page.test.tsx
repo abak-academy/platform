@@ -162,7 +162,8 @@ describe("DashboardPage", () => {
 
   it("greets by first name", async () => {
     renderPage();
-    expect(await screen.findByRole("heading", { level: 1, name: /^Selamat (pagi|siang|sore|malam), Budi$/ })).toBeInTheDocument();
+    const h1 = await screen.findByRole("heading", { level: 1, name: /^Selamat (pagi|siang|sore|malam), Budi$/ });
+    expect(h1.querySelector("span.text-ember-700")).toHaveTextContent(/^Budi$/);
   });
 
   it("renders sections in order: greeting, pending, shipping, carousel, events, learning, study, shop", async () => {

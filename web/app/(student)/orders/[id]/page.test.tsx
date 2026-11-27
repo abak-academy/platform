@@ -12,9 +12,9 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }));
 
-const { toastError, toastInfo } = vi.hoisted(() => ({ toastError: vi.fn(), toastInfo: vi.fn() }));
+const { toastError, toastInfo, toastSuccess } = vi.hoisted(() => ({ toastError: vi.fn(), toastInfo: vi.fn(), toastSuccess: vi.fn() }));
 vi.mock("sonner", () => ({
-  toast: { error: toastError, info: toastInfo, success: vi.fn() },
+  toast: { error: toastError, info: toastInfo, success: toastSuccess },
 }));
 
 const authFetch = vi.fn();
@@ -72,6 +72,44 @@ beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   open = vi.fn();
   vi.stubGlobal("open", open);
+});
+
+describe("OrderDetailPage tracking copy", () => {
+  async function renderWithTracking() {
+    authFetch.mockResolvedValue({ ...PENDING_ORDER, status: "shipped", tracking_number: "JNE123" });
+    await act(async () => {
+      render(
+        <QueryClientProvider client={client}>
+          <Suspense fallback={null}>
+            <OrderDetailPage params={Promise.resolve({ id: ORDER_ID })} />
+          </Suspense>
+        </QueryClientProvider>,
+      );
+    });
+    return screen.findByRole("button", { name: /salin/i });
+  }
+
+  it("toasts success only after the clipboard write resolves", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    await userEvent.click(await renderWithTracking());
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith("Nomor resi disalin"));
+    expect(writeText).toHaveBeenCalledWith("JNE123");
+  });
+
+  it("toasts an error when the write rejects or the clipboard is missing", async () => {
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+    await userEvent.click(await renderWithTracking());
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Gagal menyalin resi"));
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("toasts an error when navigator.clipboard is undefined", async () => {
+    vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
+    await userEvent.click(await renderWithTracking());
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith("Gagal menyalin resi"));
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
 });
 
 describe("OrderDetailPage retry payment", () => {

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { createPortal } from "react-dom";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { DataTable, type DataTableColumn } from "./data-table";
+import { DataTable, TableItem, type DataTableColumn } from "./data-table";
 
 interface Row {
   id: string;
@@ -231,5 +231,17 @@ describe("DataTable", () => {
       fireEvent.keyDown(screen.getByText("Alpha"), { key: "Enter" });
       expect(onRowClick).toHaveBeenCalledTimes(3);
     });
+  });
+
+  it("th uses normal leading, the scroll box is positioned, avatars lose their ring", () => {
+    const { container } = render(<DataTable columns={columns} rows={rows} rowKey={(r) => r.id} empty="x" rowActions={() => null} />);
+    expect(screen.getByText("Name")).toHaveClass("leading-normal");
+    expect(container.querySelector("table")!.parentElement).toHaveClass("relative", "overflow-x-auto");
+    expect(container.querySelector("table")!.className).toContain("[&_[data-slot=abak-avatar]]:shadow-none!");
+  });
+
+  it("TableItem subline uses 1.55 leading", () => {
+    render(<TableItem title="T" sub="S" />);
+    expect(screen.getByText("S")).toHaveClass("leading-[1.55]");
   });
 });

@@ -66,7 +66,7 @@ export function OverridesPanel() {
       cell: (o) => (
         <div>
           <div className="font-medium text-ink-900">{o.product_name ?? o.product_id}</div>
-          {o.product_type && <div className="text-xs text-ink-500">{affLabel(t, o.product_type)}</div>}
+          {o.product_type && <div className="text-xs text-ink-600">{affLabel(t, o.product_type)}</div>}
         </div>
       ),
     },
@@ -103,7 +103,7 @@ export function OverridesPanel() {
           <div className="space-y-1.5">
             <Label htmlFor="ovr-value">{t("admin_aff_ovr_pct")}</Label>
             <Input id="ovr-value" inputMode="decimal" value={ruleValue} onChange={(e) => setRuleValue(e.target.value)} aria-describedby="ovr-value-hint" />
-            <p id="ovr-value-hint" className="text-xs leading-relaxed text-ink-500">
+            <p id="ovr-value-hint" className="text-xs leading-relaxed text-ink-600">
               {t("admin_aff_rule_hint")}
             </p>
           </div>

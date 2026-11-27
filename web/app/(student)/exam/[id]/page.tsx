@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertCircle, Download, Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Download, Eye, EyeOff, Ticket } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -132,7 +132,7 @@ export default function ExamDetailPage() {
   if (isError) {
     return (
       <>
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -224,21 +224,16 @@ export default function ExamDetailPage() {
           </Button>
         </dd>
       </dl>
-      {exam.card_enabled && (
-        <div>
-          <Button type="button" size="sm" onClick={handleDownload}>
-            <Download className="size-4" />
-            {t("competition_detail_download_card")}
-          </Button>
-        </div>
-      )}
     </Card>
   );
 
   const checkIn = showCheckInForm ? (
-    <Card className="gap-0 p-6">
+    <Card className="gap-0 border-2 border-gold-600 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="type-h2 text-ink-900">{t("exam_checkin_title")}</h2>
+        <h2 className="flex items-center gap-2 type-h2 text-ink-900">
+          <Ticket className="size-5" aria-hidden />
+          {t("exam_checkin_title")}
+        </h2>
         <Badge variant="gold">{t("exam_required_badge")}</Badge>
       </div>
 
@@ -281,6 +276,14 @@ export default function ExamDetailPage() {
       status={briefingStatus}
       afterHowTo={afterHowTo}
       checkIn={checkIn}
+      actions={
+        exam.card_enabled && (
+          <Button type="button" variant="outline" className="px-[18px] has-[>svg]:px-[18px]" onClick={handleDownload}>
+            <Download />
+            {t("competition_detail_download_card")}
+          </Button>
+        )
+      }
       gate={
         showStartGate
           ? {

@@ -99,6 +99,11 @@ vi.mock("@/lib/i18n", () => ({
         promo_applied_saving: "You save {v}",
         promo_change: "Change",
         promo_remove: "Remove promo",
+        cart_pay_amount: "Bayar {v}",
+        cart_promo_placeholder: "Masukkan kode promo",
+        cart_promo_apply: "Pakai",
+        cart_promo_available: "Available promos",
+        cart_promo_see_all: "See all",
         cart_shipping_address_changed: "Shipping selection cleared because the address changed",
       };
       return dict[key] || key;
@@ -422,16 +427,8 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
-    await waitFor(() => {
-      // The picker starts collapsed with a prompt — shipping is a real charge and
-      // nothing is chosen on the buyer's behalf — so open it before the options
-      // exist. Query by role rather than free text: each row renders a
-      // decorative carrier monogram with the same letters (aria-hidden, so
-      // assistive tech still hears the courier once).
-      expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { expanded: false }));
+    // Every rate is listed as a radio card; nothing is chosen on the buyer's behalf.
+    await screen.findByRole("radio", { name: /jne/i });
 
     const jneOption = screen.getByRole("radio", { name: /jne/i });
     await user.click(jneOption);
@@ -469,7 +466,14 @@ describe("CartPage with Shipping", () => {
         shipping_cost: 0,
         total: 100000,
         items: [physicalItem],
-      } as Order,
+        // The note field sits in the saved-address card, as in the prototype.
+        shipping_address: {
+          penerima: "Sabian Isaac",
+          telepon: "082113092527",
+          alamat: "Jl. Kencana Selatan 2 No. 56",
+          provinsi_id: "prov1", kota_id: "city1", kecamatan_id: "dist1", kode_pos: "17151",
+        },
+      } as unknown as Order,
       isLoading: false,
       isError: false,
       refetch: vi.fn(),
@@ -495,7 +499,6 @@ describe("CartPage with Shipping", () => {
     });
     await user.type(screen.getByLabelText(/note for the courier/i), "Titip di satpam");
 
-    await user.click(screen.getByRole("button", { expanded: false }));
     await user.click(screen.getByRole("radio", { name: /jne/i }));
 
     await waitFor(() => {
@@ -545,10 +548,7 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
-    await waitFor(() => {
-      expect(screen.getByRole("button", { expanded: false })).toBeInTheDocument();
-    });
-    await user.click(screen.getByRole("button", { expanded: false }));
+    await screen.findByRole("radio", { name: /jne/i });
     await user.click(screen.getByRole("radio", { name: /jne/i }));
 
     await waitFor(() => {
@@ -643,7 +643,6 @@ describe("CartPage with Shipping", () => {
 
     renderWithQueryClient(<CartPage />);
 
-    await user.click(await screen.findByRole("button", { expanded: false }));
 
     const options = await screen.findAllByRole("radio", { name: /jne/i });
     expect(options).toHaveLength(2);
@@ -670,14 +669,11 @@ describe("CartPage with Shipping", () => {
       expect.objectContaining({ service: "REG" })
     );
 
-    // Choosing collapses the list to the chosen option, so the summary is what
-    // proves the right same-carrier service stuck. Asserting aria-checked on the
-    // rows would inspect nodes that are no longer mounted.
+    // The list stays open; the checked row proves the right same-carrier service stuck.
     await waitFor(() => {
-      expect(screen.queryAllByRole("radio")).toHaveLength(0);
+      expect(screen.getByRole("radio", { name: /YES/i })).toHaveAttribute("aria-checked", "true");
     });
-    expect(screen.getByRole("button", { name: /YES/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /REG/i })).toBeNull();
+    expect(screen.getByRole("radio", { name: /REG/i })).toHaveAttribute("aria-checked", "false");
   });
   // The buyer's profile carries no postal code, so they type that last field by
   // hand — the sequence that produced the white screen on staging.
@@ -1004,12 +1000,10 @@ describe("CartPage with Shipping", () => {
   // separate from the address/courier patches, and the displayed discount is
   // always the server's, never an optimistic client value.
   describe("promo apply/clear", () => {
-    // The promo controls live behind the sheet now — every apply path starts by
-    // opening it, whether the buyer types a code or picks a listed voucher.
-    // Matched loosely because the trigger's name absorbs the "N ready" badge
-    // whenever the cart qualifies for something.
+    // The code field and the first usable codes sit inline (prototype `.promo`);
+    // the full list, locked offers included, lives behind "See all".
     const openPromoSheet = async (user: ReturnType<typeof userEvent.setup>) => {
-      await user.click(await screen.findByRole("button", { name: /Use a promo/ }));
+      await user.click(await screen.findByRole("button", { name: /See all/ }));
     };
 
     const digitalOnlyCart = (overrides: Partial<Order> = {}): Order =>
@@ -1042,7 +1036,6 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "HEMAT10");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -1068,7 +1061,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await user.click(await screen.findByRole("button", { expanded: false }));
+      await screen.findAllByRole("radio", { name: /jne/i });
       await user.click(screen.getByRole("radio", { name: /jne/i }));
 
       await waitFor(() => {
@@ -1117,7 +1110,6 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "EXPIRED");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -1165,10 +1157,9 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await openPromoSheet(user);
-      // The voucher card carries the code and its own apply control.
+      // The pill carries the code and applies it in one tap.
       expect(screen.getByText("HEMAT10")).toBeInTheDocument();
-      await user.click(screen.getByRole("button", { name: "Use" }));
+      await user.click(screen.getByRole("button", { name: /HEMAT10/ }));
 
       await waitFor(() => {
         expect(validatePromoMutate).toHaveBeenCalledWith(
@@ -1187,7 +1178,6 @@ describe("CartPage with Shipping", () => {
       // voucher did not invent a second mechanism.
       patchCartMutate.mockClear();
       validatePromoMutate.mockClear();
-      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "HEMAT10");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -1263,8 +1253,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await openPromoSheet(user);
-      expect(screen.getByText("No promos for this cart yet.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /See all/ })).toBeNull();
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "MANUAL5");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -1299,7 +1288,6 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      await openPromoSheet(user);
       await user.type(screen.getByPlaceholderText("Masukkan kode promo"), "MANUAL5");
       await user.click(screen.getByRole("button", { name: "Pakai" }));
 
@@ -1450,8 +1438,7 @@ describe("CartPage with Shipping", () => {
       await waitFor(() => {
         expect(screen.getByRole("button", { name: "Change address" })).toBeInTheDocument();
       });
-      await user.click(screen.getByRole("button", { expanded: false }));
-      expect(screen.getByRole("radio", { name: /jne/i })).toBeInTheDocument();
+        expect(screen.getByRole("radio", { name: /jne/i })).toBeInTheDocument();
       expect(screen.queryByText("Shipping selection cleared because the address changed")).not.toBeInTheDocument();
     });
 
@@ -1494,7 +1481,7 @@ describe("CartPage with Shipping", () => {
       renderWithQueryClient(<CartPage />);
       expect(await screen.findByText(message)).toBeInTheDocument();
       expect(screen.queryByText("raw provider text")).toBeNull();
-      expect(screen.getByRole("button", { name: /^Bayar$/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /^Bayar/i })).toBeDisabled();
     });
 
     it("keeps checkout enabled while no cart mutation is pending", async () => {
@@ -1503,7 +1490,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      const checkoutButton = await screen.findByRole("button", { name: /^Bayar$/i });
+      const checkoutButton = await screen.findByRole("button", { name: /^Bayar/i });
       expect(checkoutButton).not.toBeDisabled();
     });
 
@@ -1517,7 +1504,7 @@ describe("CartPage with Shipping", () => {
 
       renderWithQueryClient(<CartPage />);
 
-      const checkoutButton = await screen.findByRole("button", { name: /^Bayar$/i });
+      const checkoutButton = await screen.findByRole("button", { name: /^Bayar/i });
       expect(checkoutButton).toBeDisabled();
     });
 

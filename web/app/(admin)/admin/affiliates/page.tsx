@@ -16,6 +16,7 @@ import { inAffiliate, ProgramBadges } from "@/components/affiliate/ProgramBadges
 import { StatusBadge } from "@/components/affiliate/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import { TableItem, type DataTableColumn } from "@/components/ui/data-table";
 import { ApiError } from "@/lib/api";
 import { affLabel, formatAffDate } from "@/lib/affiliate-labels";
@@ -99,13 +100,13 @@ function AffiliatesContent() {
       key: "who",
       header: whoHeader,
       cell: (r) => (
-        <TableItem title={r.name} sub={r.email ?? "—"} />
+        <TableItem thumb={<AbakAvatar name={r.name} size="xs" ring={false} />} title={r.name} sub={r.email ?? "—"} />
       ),
     },
     { key: "programs", header: t("admin_aff_col_programs"), cell: (r) => <ProgramBadges programs={r.programs} /> },
-    { key: "code", header: t("admin_aff_col_code"), cell: (r) => (r.code ? <code className="rounded-md bg-surface-sunken px-2 py-0.5 font-mono text-[11.5px] text-ink-900">{r.code}</code> : "—") },
+    { key: "code", header: t("admin_aff_col_code"), cell: (r) => (r.code ? <code className="rounded-[9px] bg-brand-900 px-2 py-[3px] font-mono text-[11.5px] font-bold tracking-[.06em] text-white">{r.code}</code> : "—") },
     { key: "status", header: t("aff_col_status"), cell: (r) => <StatusBadge status={r.status} /> },
-    { key: "level", header: t("admin_aff_col_level"), cell: (r) => (inAffiliate(r.programs) ? <LevelBadge level={r.level} /> : <span className="text-ink-400">—</span>) },
+    { key: "level", header: t("admin_aff_col_level"), cell: (r) => (inAffiliate(r.programs) ? <LevelBadge level={r.level} /> : <span className="text-ink-600">—</span>) },
     { key: "joined", header: t("admin_aff_col_joined"), cell: (r) => formatAffDate(r.created_at) },
     {
       key: "actions",
@@ -136,7 +137,7 @@ function AffiliatesContent() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-5">
       <AdminPageHeader
         title={t("admin_aff_title")}
         description={t("admin_aff_desc")}
@@ -158,17 +159,20 @@ function AffiliatesContent() {
         </TabsList>
       </Tabs>
       <AddAffiliatorDialog open={adding} onOpenChange={setAdding} />
-      <ListToolbar
-        params={params}
-        onChange={update}
-        onReset={reset}
-        searchPlaceholder={t("admin_aff_search_placeholder")}
-        filters={[
-          { key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) },
-          { key: "type", label: t("admin_aff_col_level"), options: LEVELS.map((v) => ({ value: v, label: affLabel(t, v) })) },
-        ]}
-      />
       <AffiliateList
+        toolbar={
+          <ListToolbar
+            embedded
+            params={params}
+            onChange={update}
+            onReset={reset}
+            searchPlaceholder={t("admin_aff_search_placeholder")}
+            filters={[
+              { key: "status", label: t("aff_col_status"), options: STATUSES.map((v) => ({ value: v, label: affLabel(t, v) })) },
+              { key: "type", label: t("admin_aff_col_level"), options: LEVELS.map((v) => ({ value: v, label: affLabel(t, v) })) },
+            ]}
+          />
+        }
         query={query}
         columns={columns}
         rowKey={(r) => r.id}

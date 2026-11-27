@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Lock, Loader2 } from "lucide-react";
+import { Lock, Loader2, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useQueryClient, type QueryKey } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { ApiError } from "@/lib/api";
 import { digitalConflictMessage } from "@/lib/digital-conflict";
 import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export interface SnapCheckoutProps {
   orderId?: string;
@@ -18,9 +19,12 @@ export interface SnapCheckoutProps {
   invalidateKey?: QueryKey;
   disabled?: boolean;
   affiliateCode?: string;
+  label?: string;
+  icon?: LucideIcon;
+  className?: string;
 }
 
-export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, disabled, affiliateCode }: SnapCheckoutProps) {
+export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, disabled, affiliateCode, label, icon: Icon = Lock, className }: SnapCheckoutProps) {
   const router = useRouter();
   const qc = useQueryClient();
   const checkout = useCheckout(basePath, affiliateCode);
@@ -104,7 +108,7 @@ export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, dis
     <>
       <Button
         type="button"
-        className="mt-4 w-full"
+        className={cn("mt-4 w-full", className)}
         size="lg"
         onClick={handleCheckout}
         disabled={!orderId || checkout.isPending || paying || disabled}
@@ -112,9 +116,9 @@ export function SnapCheckout({ orderId, basePath = "/orders", invalidateKey, dis
         {checkout.isPending || paying ? (
           <Loader2 className="size-4 animate-spin" />
         ) : (
-          <Lock className="size-4" />
+          <Icon className="size-4" />
         )}
-        {t("payment_pay")}
+        {label ?? t("payment_pay")}
       </Button>
       {conflict && (
         <p role="alert" className="mt-3 text-sm text-danger">

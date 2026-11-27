@@ -18,8 +18,8 @@ export default function ExamPreviewPage() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-3xl">
-        <Skeleton className="mb-6 h-8 w-2/3" />
+      <div className="flex flex-col gap-5">
+        <Skeleton className="h-8 w-2/3" />
         <Skeleton className="h-64 w-full rounded-lg" />
       </div>
     );
@@ -27,7 +27,7 @@ export default function ExamPreviewPage() {
 
   if (isError || !data) {
     return (
-      <div className="mx-auto max-w-3xl">
+      <div className="flex flex-col gap-5">
         <Card className="border-danger/30 bg-danger-bg px-5 py-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />

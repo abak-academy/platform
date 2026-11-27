@@ -22,9 +22,14 @@ function openPanel() {
   fireEvent.click(screen.getByRole("button", { name: /^Filters?(?: \(|$)/ }));
 }
 
+async function chooseDateMode(mode: "1 Tanggal" | "Rentang") {
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Tanggal" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+  fireEvent.click(await screen.findByRole("option", { name: mode }));
+}
+
 async function openStatusMenu() {
   openPanel();
-  fireEvent.pointerDown(screen.getByTestId("orders-status-filter"), {
+  fireEvent.pointerDown(screen.getByRole("combobox", { name: "Status" }), {
     button: 0,
     ctrlKey: false,
     pointerType: "mouse",
@@ -88,7 +93,7 @@ describe("OrdersToolbar date mode", () => {
     renderToolbar({ status: "all" }, onChange);
 
     openPanel();
-    expect(screen.getByTestId("orders-date-mode-single")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Tanggal" })).toHaveTextContent("1 Tanggal");
 
     fireEvent.change(document.getElementById("orders-date-single")!, { target: { value: "2026-08-02" } });
 
@@ -110,12 +115,12 @@ describe("OrdersToolbar date mode", () => {
     );
   });
 
-  it("range mode exposes both bounds independently", () => {
+  it("range mode exposes both bounds independently", async () => {
     const onChange = vi.fn();
     renderToolbar({ status: "all" }, onChange);
 
     openPanel();
-    fireEvent.click(screen.getByTestId("orders-date-mode-range"));
+    await chooseDateMode("Rentang");
 
     fireEvent.change(document.getElementById("orders-date-from")!, { target: { value: "2026-08-01" } });
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ from: "2026-08-01" }));
@@ -126,15 +131,15 @@ describe("OrdersToolbar date mode", () => {
 
   // An open-ended range has no single day, so switching back must not leave a
   // `to` behind that the single input cannot show.
-  it("collapses a range to its start date when switching back to single", () => {
+  it("collapses a range to its start date when switching back to single", async () => {
     const onChange = vi.fn();
     renderToolbar({ status: "all", from: "2026-08-01", to: "2026-08-31" }, onChange);
 
     openPanel();
     // A two-date value opens in range mode rather than silently collapsing.
-    expect(screen.getByTestId("orders-date-mode-range")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("combobox", { name: "Tanggal" })).toHaveTextContent("Rentang");
 
-    fireEvent.click(screen.getByTestId("orders-date-mode-single"));
+    await chooseDateMode("1 Tanggal");
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ from: "2026-08-01", to: "2026-08-01" }),
     );
@@ -176,7 +181,7 @@ describe("OrdersToolbar product, courier and sort", () => {
 });
 
 it.each([
-  ["book", "Buku"], ["merchandise", "Merchandise"], ["medal", "Medali"], ["course", "Kursus"], ["exam", "Ujian"], [undefined, "Semua jenis"],
+  ["book", "Buku"], ["merchandise", "Merchandise"], ["medal", "Medali"], ["course", "Kursus"], ["exam", "Ujian"], [undefined, "Semua"],
 ] as const)("product option %s sends the product type", async (type, label) => {
   const { onChange } = renderToolbar({ status: "all", type: "medal" });
   openPanel();
@@ -192,8 +197,8 @@ it.each(["jne", "jnt", undefined])("courier %s sends the original code", async (
   openPanel();
   fireEvent.pointerDown(screen.getByRole("combobox", { name: "Kurir" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
   const listbox = await screen.findByRole("listbox");
-  expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(["Semua kurir", "JNE", "JNT"]);
-  fireEvent.click(screen.getByRole("option", { name: courier?.toUpperCase() ?? "Semua kurir" }));
+  expect(within(listbox).getAllByRole("option").map((option) => option.textContent)).toEqual(["Semua", "JNE", "JNT"]);
+  fireEvent.click(screen.getByRole("option", { name: courier?.toUpperCase() ?? "Semua" }));
   expect(onChange).toHaveBeenCalledWith({ status: "all", courier });
 });
 
@@ -226,8 +231,8 @@ it.each(["id", "en"] as const)("has translated panel actions and six combined so
   fireEvent.keyDown(listbox, { key: "Escape" });
   fireEvent.click(screen.getByRole("button", { name: lang === "id" ? "Filter" : "Filters" }));
   expect(screen.getByRole("dialog", { name: lang === "id" ? "Filter pesanan" : "Filter orders" })).toBeInTheDocument();
-  expect(screen.getByRole("combobox", { name: lang === "id" ? "Jenis produk" : "Product type" })).toHaveTextContent(lang === "id" ? "Semua jenis" : "All types");
-  expect(screen.getByRole("combobox", { name: lang === "id" ? "Kurir" : "Courier" })).toHaveTextContent(lang === "id" ? "Semua kurir" : "All couriers");
+  expect(screen.getByRole("combobox", { name: lang === "id" ? "Jenis produk" : "Product type" })).toHaveTextContent(lang === "id" ? "Semua" : "All");
+  expect(screen.getByRole("combobox", { name: lang === "id" ? "Kurir" : "Courier" })).toHaveTextContent(lang === "id" ? "Semua" : "All");
   expect(screen.getByRole("button", { name: lang === "id" ? "Reset filter" : "Reset filters" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: lang === "id" ? "Tampilkan pesanan" : "Show orders" })).toBeInTheDocument();
 });

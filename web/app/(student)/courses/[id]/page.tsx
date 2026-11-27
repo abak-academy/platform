@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { AlertCircle, Check, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { AlertCircle, CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useCourse, useCompleteLesson } from "@/lib/hooks/courses";
@@ -11,9 +12,10 @@ import type { Lesson } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PageHead } from "@/components/shell/PageHead";
+import { AbakAvatar } from "@/components/ui/abak-avatar";
 import { LessonList } from "@/components/courses/LessonList";
 import { VideoPlayer } from "@/components/courses/VideoPlayer";
+import { subjectSpot } from "@/components/courses/CourseCard";
 
 type SectionWithLessons = NonNullable<
   ReturnType<typeof useCourse>["data"]
@@ -88,7 +90,7 @@ export default function CourseDetailPage() {
   if (isError) {
     return (
       <>
-        <Card className="gap-0 border-danger/30 bg-danger-bg px-5 py-4">
+        <Card className="gap-0 border-danger/30 bg-danger-bg p-4">
           <div className="flex items-center gap-3">
             <AlertCircle className="size-5 text-danger" />
             <div className="flex-1 text-sm text-ink-700">
@@ -123,69 +125,92 @@ export default function CourseDetailPage() {
   }
 
   const sections = course.sections ?? [];
-  const activeSection = sections.find((s) =>
-    s.lessons?.some((l) => l.id === activeId)
-  );
+  const activeIdx = activeLesson ? flatLessons.indexOf(activeLesson) : -1;
+  const prevLesson = activeIdx > 0 ? flatLessons[activeIdx - 1] : undefined;
+  const minutes =
+    typeof activeLesson?.duration_seconds === "number" && activeLesson.duration_seconds > 0
+      ? Math.round(activeLesson.duration_seconds / 60)
+      : undefined;
 
+  // Prototype .learn: main column + 330px curriculum, stacked at <=1024.
   return (
-    <>
-      <PageHead
-        back={{ href: "/courses", label: t("course_back") }}
-        title={course.title}
-        sub={course.instructor_name ? `${t("course_instructor")}: ${course.instructor_name}` : undefined}
-      />
+    <div className="grid grid-cols-1 items-start gap-5 min-[1025px]:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="flex min-w-0 flex-col gap-4">
+        <Link
+          href="/courses"
+          className="mb-1 inline-flex items-center gap-1 font-[family-name:var(--font-display)] text-[13px] leading-[normal] font-semibold text-ink-600 hover:text-ink-900"
+        >
+          <ChevronLeft className="size-4" aria-hidden />
+          {course.title}
+        </Link>
 
-      <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
-        <div className="flex min-w-0 flex-col gap-4">
-          <VideoPlayer
-            videoRef={activeLesson?.video_url}
-            title={activeLesson?.title}
-          />
+        <VideoPlayer
+          videoRef={activeLesson?.video_url}
+          title={activeLesson?.title}
+          spot={subjectSpot(course.subject)}
+        />
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              {activeSection && (
-                <div className="font-mono text-[10.5px] font-semibold tracking-[0.1em] text-ink-600 uppercase">
-                  {activeSection.title}
-                </div>
-              )}
-              <h2 className="mt-1 text-[26px] leading-tight font-extrabold tracking-[-0.03em] text-ink-900 [font-family:var(--font-display)]">
-                {activeLesson?.title ?? t("course_select_lesson")}
-              </h2>
-              {typeof activeLesson?.duration_seconds === "number" &&
-                activeLesson.duration_seconds > 0 && (
-                  <p className="mt-1 text-xs text-ink-600">
-                    {t("course_duration").replace("{n}", String(Math.round(activeLesson.duration_seconds / 60)))}
-                  </p>
-                )}
-            </div>
-            <Button
-              type="button"
-              variant={activeLesson?.completed ? "outline" : "default"}
-              disabled={!activeLesson || completeLesson.isPending}
-              onClick={handleToggleComplete}
-              className="shrink-0"
-            >
-              {completeLesson.isPending ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : activeLesson?.completed ? (
-                <Check className="size-4" />
-              ) : null}
-              {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
-            </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1 max-narrow:basis-full">
+            {activeLesson && (
+              <span className="font-mono text-[10.5px] leading-[1.4] font-semibold tracking-[0.12em] text-ink-600 uppercase">
+                {t("course_lesson_of").replace("{x}", String(activeIdx + 1)).replace("{y}", String(totalCount))}
+                {minutes !== undefined && ` · ${t("course_minutes").replace("{n}", String(minutes))}`}
+              </span>
+            )}
+            <h1 className="mt-0.5 font-[family-name:var(--font-display)] text-[26px] leading-[normal] font-extrabold tracking-[-0.02em] text-ink-900">
+              {activeLesson?.title ?? t("course_select_lesson")}
+            </h1>
           </div>
+          {prevLesson && (
+            <Button type="button" variant="outline" onClick={() => setActiveLessonId(prevLesson.id)}>
+              <ChevronLeft aria-hidden />
+              {t("course_prev")}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant={activeLesson?.completed ? "outline" : "default"}
+            disabled={!activeLesson || completeLesson.isPending}
+            onClick={handleToggleComplete}
+            className="shrink-0"
+          >
+            {completeLesson.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : activeLesson?.completed ? (
+              <CheckCircle2 className="size-4" />
+            ) : null}
+            {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
+          </Button>
         </div>
 
-        <LessonList
-          sections={sections}
-          activeLessonId={activeId}
-          onSelectLesson={setActiveLessonId}
-          doneCount={doneCount}
-          totalCount={totalCount}
-          progressPct={progressPct}
-        />
+        {course.instructor_name && (
+          <Card className="gap-0 p-6">
+            <div className="flex items-center gap-3">
+              <AbakAvatar name={course.instructor_name} size="md" />
+              <div>
+                <b className="block text-[14px] text-ink-900">{course.instructor_name}</b>
+                <small className="block text-[12px] text-ink-600">
+                  {course.subject
+                    ? t("course_teacher_of").replace("{subject}", course.subject)
+                    : t("course_instructor")}
+                </small>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
-    </>
+
+      <LessonList
+        title={course.title}
+        sections={sections}
+        activeLessonId={activeId}
+        onSelectLesson={setActiveLessonId}
+        doneCount={doneCount}
+        totalCount={totalCount}
+        progressPct={progressPct}
+      />
+    </div>
   );
 }
 
@@ -194,7 +219,7 @@ function CourseDetailSkeleton() {
     <>
       <Skeleton className="h-4 w-32" />
       <Skeleton className="h-8 w-2/3" />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+      <div className="grid grid-cols-1 gap-5 min-[1025px]:grid-cols-[minmax(0,1fr)_330px]">
         <div>
           <Skeleton className="h-0 w-full pb-[56.25%]" />
           <Skeleton className="mt-4 h-24 w-full" />

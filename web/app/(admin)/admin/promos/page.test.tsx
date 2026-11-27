@@ -97,12 +97,12 @@ describe("PromosPage", () => {
       expect(screen.getByText("CASHBACK20K")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("10%")).toBeInTheDocument();
+    expect(screen.getByText("DISKON10").closest("article")).toHaveTextContent("10% diskon");
     expect(screen.getByText("Rp20.000")).toBeInTheDocument();
-    expect(screen.getByText("12 / 100")).toBeInTheDocument();
-    expect(screen.getByText("5 / 50")).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === "12 / 100" && el.tagName === "SPAN")).toBeInTheDocument();
+    expect(screen.getByText((_, el) => el?.textContent === "5 / 50" && el.tagName === "SPAN")).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(2);
-    expect(screen.getByText("12 / 100").closest("article")).toHaveTextContent("Aktif");
+    expect(screen.getByText("DISKON10").closest("article")).toHaveTextContent("Aktif");
     expect(screen.getAllByRole("progressbar")).toHaveLength(2);
   });
 
@@ -121,7 +121,7 @@ describe("PromosPage", () => {
 
     await waitFor(() => expect(screen.getByText("DISKON10")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /buat kode promo/i }));
+    fireEvent.click(screen.getByRole("button", { name: /buat promo/i }));
     fireEvent.click(screen.getByTestId("modal-save"));
 
     await waitFor(() => {

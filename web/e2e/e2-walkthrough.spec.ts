@@ -60,13 +60,13 @@ test.describe("bank-soal walkthrough batch — full flow", () => {
     await loginRealAdmin(context, request);
     await page.goto("/admin/exam/questions");
 
-    // list filter (first select on the page)
-    const filterValues = await page
-      .locator("select")
-      .first()
-      .locator("option")
-      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value));
-    expect(filterValues).toEqual(["all", "mcq", "multi_answer", "essay", "multi_blank", "true_false"]);
+    // list filter (Format combobox inside the Filter popover)
+    await page.getByRole("button", { name: /^filter/i }).click();
+    await page.getByRole("combobox", { name: "Format", exact: true }).click();
+    const filterLabels = await page.getByRole("option").allTextContents();
+    expect(filterLabels).toEqual(["Semua", "Pilihan ganda", "Jawaban ganda", "Esai", "Isian rumpang", "Benar/Salah"]);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
 
     await page.getByRole("button", { name: "Buat", exact: true }).click();
     const pickerValues = await page

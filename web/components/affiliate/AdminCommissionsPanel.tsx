@@ -63,7 +63,7 @@ export function AdminCommissionsPanel({ affiliatorId, from = "", to = "" }: Admi
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="font-semibold text-ink-900">{t("admin_aff_rep_orders")}</h3>
+        <h2 className="type-h2">{t("admin_aff_rep_orders")}</h2>
         <Button variant="outline" size="sm" onClick={exportCsv}>
           <Download className="size-4" aria-hidden />
           {t("admin_aff_export_csv")}

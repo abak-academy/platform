@@ -141,7 +141,7 @@ function SectionCard({
 } & React.ComponentProps<"section">) {
   return (
     <section className="md-card-flush min-w-0" {...rest}>
-      <div className="flex flex-wrap items-center justify-between gap-3 px-6 py-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-6 pt-6 pb-3.5">
         <div className="min-w-0">
           <h2 className="type-h2 text-ink-900">{title}</h2>
           {description && <p className="mt-1 text-sm text-ink-600">{description}</p>}
@@ -179,7 +179,7 @@ function QuestionRow({
     <tr data-question-row className="border-t border-line align-top">
       <td className="w-24 px-4 py-3">
         <div className="flex items-center gap-2">
-          <span className="grid size-[26px] place-items-center rounded-[9px] bg-surface-sunken text-xs font-extrabold text-ink-900">
+          <span className="grid size-[26px] place-items-center rounded-[8px] bg-surface-sunken font-[family-name:var(--font-display)] text-xs font-extrabold text-ink-900">
             {index + 1}
           </span>
           <div className="flex flex-col text-ink-600">
@@ -205,7 +205,7 @@ function QuestionRow({
         </div>
       </td>
       <td className="min-w-[210px] max-w-[410px] px-4 py-3">
-        <p className="line-clamp-2 text-sm text-ink-900 [overflow-wrap:anywhere]">{stripHtmlToPlainText(q.body)}</p>
+        <p className="line-clamp-2 text-sm leading-[1.55] text-ink-900 [overflow-wrap:anywhere]">{stripHtmlToPlainText(q.body)}</p>
       </td>
       <td className="px-4 py-3">
         <Badge variant={FORMAT_BADGE_VARIANT[q.format]}>
@@ -228,7 +228,7 @@ function QuestionRow({
             size="icon-sm"
             variant="ghost"
             onClick={() => onPreview(index)}
-            className="rounded-full"
+            className="rounded-full border-[1.5px] border-line bg-surface hover:border-ink-900 hover:bg-surface"
             aria-label={t("tests_preview_question")}
             title={t("tests_preview_question")}
           >
@@ -241,7 +241,7 @@ function QuestionRow({
             onClick={() => onDetach(q.id)}
             aria-label={t("tests_detach_question")}
             title={t("tests_detach_question")}
-            className="rounded-full text-danger-600 hover:text-danger-600"
+            className="rounded-full border-[1.5px] border-line bg-surface text-danger-600 hover:border-ink-900 hover:bg-surface hover:text-danger-600"
           >
             <Unlink className="size-3.5" />
           </Button>
@@ -401,13 +401,13 @@ export default function TestDetailPage() {
 
   return (
     <div className="flex flex-col gap-5 fade-in">
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-6">
         <button
           type="button"
           data-testid="tests-back-link"
           onClick={handleBack}
           aria-label={t("tests_page_title")}
-          className="inline-flex w-fit items-center gap-1 type-label-sm text-ink-600 hover:text-ink-900"
+          className="inline-flex w-fit items-center gap-1 font-[family-name:var(--font-display)] text-[13px] leading-4 font-semibold text-ink-600 hover:text-ink-900"
         >
           <ChevronLeft className="size-4" />
           {t("tests_page_title")}
@@ -466,8 +466,8 @@ export default function TestDetailPage() {
             <span role="status">{t(dirty ? "tests_save_status_dirty" : "tests_save_status_saved")}</span>
           </div>
 
-          <div className="flex items-start gap-3 rounded-2xl bg-gold-50 px-4 py-3.5 text-sm text-ink-700">
-            <BookOpen className="mt-0.5 size-4 shrink-0 text-gold-700" />
+          <div className="flex items-center gap-2 rounded-[14px] bg-gold-50 px-3.5 py-2.5 text-[13px] text-gold-700">
+            <BookOpen className="size-4 shrink-0" />
             <p>{t("tests_shared_notice")}</p>
           </div>
 
@@ -485,7 +485,7 @@ export default function TestDetailPage() {
             </TabsList>
 
             <TabsContent value="questions" className="pt-6">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.8fr)_minmax(250px,1fr)]">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.8fr)_minmax(250px,1fr)]">
                 <div className="min-w-0 space-y-4">
                   {creating && (
                     <QuestionEditor
@@ -500,12 +500,12 @@ export default function TestDetailPage() {
                     description={t("tests_arrangement_desc")}
                     actions={
                       <div className="flex flex-wrap items-center gap-2">
-                        <Button type="button" variant="outline" onClick={() => setCreating(true)} disabled={creating}>
-                          <Plus className="mr-1 size-4" />
+                        <Button type="button" variant="outline" size="sm" onClick={() => setCreating(true)} disabled={creating}>
+                          <Plus />
                           {t("tests_new_question")}
                         </Button>
-                        <Button type="button" onClick={() => setPickerOpen(true)}>
-                          <Plus className="mr-1 size-4" />
+                        <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+                          <Plus />
                           {t("tests_from_bank")}
                         </Button>
                       </div>
@@ -547,7 +547,7 @@ export default function TestDetailPage() {
                   </SectionCard>
                 </div>
 
-                <aside className="min-w-0 space-y-6">
+                <aside className="min-w-0 space-y-4">
                   <section
                     data-testid="test-material-sidebar"
                     className="md-card-outlined min-w-0 space-y-3"
@@ -582,14 +582,14 @@ export default function TestDetailPage() {
                     <h2 className="type-h2 text-ink-900">{t("tests_display_title")}</h2>
                     <p className="text-sm text-ink-600">{t("tests_display_desc")}</p>
                     {ownMaterialCount > 0 ? (
-                      <div className="rounded-2xl bg-gold-50 p-3.5 text-sm text-gold-700">
+                      <div className="rounded-[16px] bg-gold-50 p-3.5 text-sm text-gold-700">
                         <p className="font-semibold">
                           {t("tests_display_own_material").replace("{n}", String(ownMaterialCount))}
                         </p>
                         <p>{t("tests_display_own_material_body")}</p>
                       </div>
                     ) : (
-                      <div className="rounded-2xl bg-teal-50 p-3.5 text-sm text-teal-700">
+                      <div className="rounded-[16px] bg-teal-50 p-3.5 text-sm text-teal-700">
                         {t("tests_display_ok")}
                       </div>
                     )}
@@ -600,7 +600,7 @@ export default function TestDetailPage() {
             </TabsContent>
 
             <TabsContent value="material" className="pt-6">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
                 <SectionCard title={t("format_shared_material")} description={t("tests_material_card_desc")}>
                   <div className="space-y-2 border-t p-6">
                     <RichTextEditor
@@ -626,7 +626,7 @@ export default function TestDetailPage() {
                       />
                     </div>
                   </SectionCard>
-                  <div className="flex items-start gap-3 rounded-2xl bg-brand-50 p-4 text-sm text-brand-ink">
+                  <div className="flex items-start gap-3 rounded-[16px] bg-brand-50 p-4 text-sm text-brand-ink">
                     <Info className="mt-0.5 size-4 shrink-0" />
                     <div>
                       <p className="font-semibold">{t("tests_ownership_title")}</p>
@@ -638,7 +638,7 @@ export default function TestDetailPage() {
             </TabsContent>
 
             <TabsContent value="info" className="pt-6">
-              <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
                 <SectionCard title={t("tests_info_identity_title")}>
                   <div className="space-y-5 border-t p-6">
                     <div className="grid gap-2">

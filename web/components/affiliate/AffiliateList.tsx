@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -25,14 +26,26 @@ interface AffiliateListProps<T> {
   // True while a search or filter is active, so an empty result reads as
   // "nothing matches" instead of "nothing yet".
   filtered?: boolean;
+  // Rendered inside the table card above the rows, like the prototype's .lbar.
+  toolbar?: ReactNode;
 }
 
-export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChange, empty, filtered }: AffiliateListProps<T>) {
+export function AffiliateList<T>(props: AffiliateListProps<T>) {
+  if (!props.toolbar) return <AffiliateListBody {...props} />;
+  return (
+    <section className="min-w-0 overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface shadow-card">
+      {props.toolbar}
+      <AffiliateListBody {...props} embedded />
+    </section>
+  );
+}
+
+function AffiliateListBody<T>({ query, columns, rowKey, page = 1, onPageChange, empty, filtered, embedded }: AffiliateListProps<T> & { embedded?: boolean }) {
   const { t } = useTranslation();
 
   if (query.isError) {
     return (
-      <div role="alert" className="md-card-outlined space-y-3 p-6 text-sm text-ink-600">
+      <div role="alert" className={embedded ? "space-y-3 p-6 text-sm text-ink-600" : "md-card-outlined space-y-3 p-6 text-sm text-ink-600"}>
         <p>{t("aff_error")}</p>
         <Button variant="outline" size="sm" onClick={() => query.refetch()}>
           {t("aff_retry")}
@@ -56,6 +69,7 @@ export function AffiliateList<T>({ query, columns, rowKey, page = 1, onPageChang
       columns={columns}
       rows={data}
       rowKey={rowKey}
+      surface={embedded ? "plain" : "card"}
       empty={filtered ? t("aff_no_match") : (empty ?? t("aff_empty"))}
       footer={
         total > 0 && data.length > 0 ? (

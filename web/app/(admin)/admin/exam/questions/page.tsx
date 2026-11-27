@@ -11,7 +11,17 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ToolbarCount, ToolbarSearch } from "@/components/admin/ListToolbar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  ActiveChip,
+  FILTER_PANEL_CLASS,
+  FilterGrid,
+  FilterPanelFooter,
+  FilterSelect,
+  ToolbarCount,
+  ToolbarFilterButton,
+  ToolbarSearch,
+} from "@/components/admin/ListToolbar";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -24,15 +34,11 @@ import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import { QuestionImportModal } from "@/components/admin/QuestionImportModal";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-import { FORMAT_BADGE_VARIANT } from "@/lib/question-tone";
 import { ApiError } from "@/lib/api";
 import { stripHtmlToPlainText } from "@/lib/rich-text";
 import type { BankQuestionListItem, QuestionFormat } from "@/lib/types";
 
 const PAGE_SIZE = 25;
-
-const FILTER_SELECT =
-  "h-[var(--spacing-control-md)] rounded-full border-[1.5px] border-line bg-surface px-3.5 text-[13px] font-bold text-ink-900 outline-none focus-visible:border-brand-600 focus-visible:ring-4 focus-visible:ring-brand-50 disabled:opacity-45";
 
 const DIFFICULTY_TEXT: Record<string, string> = {
   easy: "text-teal-700",
@@ -44,8 +50,7 @@ const DIFFICULTY_TEXT: Record<string, string> = {
 // multi_blank) and are dropped from the filter too — legacy questions in
 // those formats still appear under "Semua" and in search, and their row
 // badges still render via FORMAT_LABELS below, which stays complete.
-const ALL_FORMATS: Array<QuestionFormat | "all"> = [
-  "all",
+const ALL_FORMATS: QuestionFormat[] = [
   "mcq",
   "multi_answer",
   "essay",
@@ -69,6 +74,8 @@ const DIFFICULTY_LABELS: Record<string, "diff_easy" | "diff_medium" | "diff_hard
   medium: "diff_medium",
   hard: "diff_hard",
 };
+
+const ROW_ICON_BTN = "border-[1.5px] border-line bg-surface text-ink-700 hover:border-ink-900 hover:bg-surface";
 
 export default function QuestionBankPage() {
   const { t } = useTranslation();
@@ -116,6 +123,20 @@ export default function QuestionBankPage() {
   const total = bank.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const topicOptions = topics.data?.data ?? [];
+  const formatOptions = ALL_FORMATS.map((f) => ({ value: f, label: t(FORMAT_LABELS[f] as Parameters<typeof t>[0]) }));
+  const topicSelectOptions = topicOptions.map((topic) => ({ value: topic.id, label: topic.name }));
+  const activeChips = [
+    ...(format !== "all"
+      ? [{ key: "format", label: `${t("format")}: ${formatOptions.find((o) => o.value === format)?.label ?? format}`, clear: () => setFormat("all") }]
+      : []),
+    ...(topicId
+      ? [{ key: "topic", label: `${t("topic")}: ${topicSelectOptions.find((o) => o.value === topicId)?.label ?? topicId}`, clear: () => setTopicId("") }]
+      : []),
+  ];
+  const resetFilters = () => {
+    setFormat("all");
+    setTopicId("");
+  };
 
   function openCreate() {
     setEditorItem(null);
@@ -200,7 +221,7 @@ export default function QuestionBankPage() {
       key: "format",
       header: t("format"),
       cell: (item) => (
-        <Badge variant={FORMAT_BADGE_VARIANT[item.question.format]}>
+        <Badge variant={item.question.format === "essay" ? "ember" : "mute"}>
           {t(FORMAT_LABELS[item.question.format] as Parameters<typeof t>[0])}
         </Badge>
       ),
@@ -213,7 +234,7 @@ export default function QuestionBankPage() {
           ? DIFFICULTY_LABELS[item.question.difficulty]
           : undefined;
         return difficultyKey ? (
-          <span className={cn("text-xs font-bold", DIFFICULTY_TEXT[item.question.difficulty ?? ""])}>
+          <span className={cn("font-[family-name:var(--font-display)] text-xs font-bold", DIFFICULTY_TEXT[item.question.difficulty ?? ""])}>
             {t(difficultyKey)}
           </span>
         ) : (
@@ -225,7 +246,7 @@ export default function QuestionBankPage() {
       key: "used_in",
       header: t("used_in"),
       align: "right",
-      cell: (item) => item.attached_count,
+      cell: (item) => t("tests_count").replace("{n}", String(item.attached_count)),
     },
     {
       key: "points",
@@ -239,13 +260,14 @@ export default function QuestionBankPage() {
     },
     {
       key: "actions",
-      header: t("th_actions"),
+      header: <span className="inline-block size-px overflow-hidden whitespace-nowrap [clip-path:inset(50%)]">{t("th_actions")}</span>,
       align: "right",
       cell: (item) => (
         <div className="flex items-center justify-end gap-1">
           <Button
             variant="ghost"
             size="icon-sm"
+            className={ROW_ICON_BTN}
             aria-label={t("action_view")}
             onClick={() => handleRowClick(item)}
           >
@@ -254,6 +276,7 @@ export default function QuestionBankPage() {
           <Button
             variant="ghost"
             size="icon-sm"
+            className={ROW_ICON_BTN}
             aria-label={t("action_delete")}
             title={item.in_live_exam ? t("question_in_published_exam_reason") : undefined}
             disabled={item.in_live_exam}
@@ -294,34 +317,38 @@ export default function QuestionBankPage() {
       <div className="md-card-flush">
           <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
             <ToolbarSearch value={search} onChange={setSearch} placeholder={t("search")} clearLabel={t("list_toolbar_clear_search")} />
-            <select
-              data-slot="select"
-              value={format}
-              onChange={(e) => setFormat(e.target.value as QuestionFormat | "all")}
-              className={FILTER_SELECT}
-            >
-              {ALL_FORMATS.map((f) => (
-                <option key={f} value={f}>
-                  {t(FORMAT_LABELS[f] as Parameters<typeof t>[0])}
-                </option>
-              ))}
-            </select>
-            <select
-              data-slot="select"
-              value={topicId}
-              onChange={(e) => setTopicId(e.target.value)}
-              disabled={topics.isLoading}
-              className={FILTER_SELECT}
-            >
-              <option value="">{t("all_topics")}</option>
-              {topicOptions.map((topic) => (
-                <option key={topic.id} value={topic.id}>
-                  {topic.name}
-                </option>
-              ))}
-            </select>
+            <Popover>
+              <PopoverTrigger asChild>
+                <ToolbarFilterButton label={t("list_toolbar_filter")} count={activeChips.length} />
+              </PopoverTrigger>
+              <PopoverContent align="end" className={FILTER_PANEL_CLASS} aria-label={t("list_toolbar_filter")}>
+                <div className="flex flex-col gap-3.5">
+                  <FilterGrid>
+                    <FilterSelect
+                      label={t("format")}
+                      value={format === "all" ? "" : format}
+                      options={formatOptions}
+                      onChange={(v) => setFormat((v || "all") as QuestionFormat | "all")}
+                    />
+                    <FilterSelect label={t("topic")} value={topicId} options={topicSelectOptions} onChange={setTopicId} disabled={topics.isLoading} />
+                  </FilterGrid>
+                  <FilterPanelFooter
+                    onReset={resetFilters}
+                    showLabel={t("list_toolbar_show_n").replace("{n}", String(total))}
+                  />
+                </div>
+              </PopoverContent>
+            </Popover>
             <ToolbarCount>{total} {t("question")}</ToolbarCount>
           </div>
+          {activeChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 border-b border-line px-4 py-2.5" role="group" aria-label={t("list_toolbar_active")}>
+              {activeChips.map((c) => (
+                <ActiveChip key={c.key} label={c.label} removeLabel={`${t("list_toolbar_remove")}: ${c.label}`} onRemove={c.clear} />
+              ))}
+              <Button variant="ghost" size="sm" onClick={resetFilters}>{t("list_toolbar_clear_all")}</Button>
+            </div>
+          )}
           {bank.isLoading && !bank.data ? (
             <div className="space-y-2 p-4">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -349,7 +376,7 @@ export default function QuestionBankPage() {
                       .replace("{pages}", String(pageCount))
                       .replace("{total}", String(total))}
                   </span>
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-1">
                     <Button
                       variant="outline"
                       size="sm"

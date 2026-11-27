@@ -440,7 +440,7 @@ function ResultDetailPanel({
               const isOpen = openTopics[topic.id] ?? false;
               const breakdown = detail.breakdown?.find((b) => b.test_id === topic.id || b.title === topic.title);
               return (
-                <div key={topic.id} className="overflow-hidden rounded-2xl border border-line bg-surface">
+                <div key={topic.id} className="overflow-hidden rounded-[var(--radius-card)] border border-line bg-surface">
                   <button
                     type="button"
                     className="flex w-full items-center justify-between gap-3 bg-surface-sunken px-4 py-3 text-left text-sm"

@@ -68,7 +68,7 @@ describe("RevenueMixCard", () => {
 
   it("renders the title and the changed sub-copy", () => {
     render(mix(1, 1));
-    expect(screen.getByText("Digital vs Fisik")).toBeTruthy();
+    expect(screen.getByText("Digital vs fisik")).toBeTruthy();
     expect(
       screen.getByText("Komposisi pendapatan periode ini. Fisik = buku, merchandise, medali."),
     ).toBeTruthy();

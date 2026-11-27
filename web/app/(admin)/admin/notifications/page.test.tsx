@@ -16,7 +16,16 @@ vi.mock("@/components/admin/AnnouncementTable", () => ({
 }));
 
 vi.mock("@/components/admin/AnnouncementComposer", () => ({
-  AnnouncementComposer: () => <div data-testid="announcement-composer" />,
+  AnnouncementComposer: ({ inline }: { inline?: boolean }) => <div data-testid={inline ? "announcement-composer-inline" : "announcement-composer"} />,
+  RECIPIENT_LABEL: { all: "notification_all_users" },
+  TYPE_LABEL: { announcement: "notification_announcement" },
+}));
+
+vi.mock("@/lib/hooks/admin-announcements", () => ({
+  useAdminAnnouncements: () => ({ data: [
+    { id: "a1", title: "Libur sekolah", message: "Isi pengumuman", type: "announcement", recipients: "all", status: "sent", sent_at: "2026-11-20T08:00:00+07:00" },
+    { id: "a2", title: "Draf rahasia", message: "x", type: "announcement", recipients: "all", status: "draft", sent_at: null },
+  ] }),
 }));
 
 describe("NotificationsPage", () => {
@@ -32,29 +41,20 @@ describe("NotificationsPage", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
-  it("renders the purchase notification feed section on the default tab", () => {
+  it("opens on Pengumuman with the inline composer, the sent list, and the table", () => {
     render(<NotificationsPage />);
-    expect(screen.getByTestId("purchase-feed")).toHaveTextContent("Notifikasi Pembelian");
-  });
-
-  it("renders the announcement table section once its tab is selected", () => {
-    render(<NotificationsPage />);
-
-    expect(screen.queryByTestId("announcement-table")).not.toBeInTheDocument();
-
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Pengumuman" }));
-
+    expect(screen.getByTestId("announcement-composer-inline")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Terkirim" })).toBeInTheDocument();
+    expect(screen.getByText("Libur sekolah")).toBeInTheDocument();
+    expect(screen.queryByText("Draf rahasia")).not.toBeInTheDocument();
     expect(screen.getByTestId("announcement-table")).toBeInTheDocument();
+    expect(screen.queryByTestId("purchase-feed")).not.toBeInTheDocument();
   });
 
-  it("offers the header create action only on the announcements tab", () => {
+  it("keeps the purchase notification feed on its own tab", () => {
     render(<NotificationsPage />);
-
-    expect(screen.queryAllByRole("button", { name: /buat/i })).toHaveLength(0);
-
-    fireEvent.mouseDown(screen.getByRole("tab", { name: "Pengumuman" }));
-
-    expect(screen.getAllByRole("button", { name: /buat/i }).length).toBeGreaterThan(0);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Kotak masuk" }));
+    expect(screen.getByTestId("purchase-feed")).toHaveTextContent("Notifikasi Pembelian");
   });
 
   it("renders the announcement composer", () => {

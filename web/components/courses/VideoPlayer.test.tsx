@@ -124,6 +124,17 @@ describe("VideoPlayer", () => {
     expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
   });
 
+  it("keeps a full-width bottom scrim under the control pill, beside the shield", () => {
+    const { container } = render(
+      <VideoPlayer videoRef="https://www.youtube.com/watch?v=abc123" title="L1" />,
+    );
+    const scrim = container.querySelector('[data-testid="video-scrim"]') as HTMLElement;
+    expect(scrim.className).toContain("inset-x-0");
+    expect(scrim.className).toContain("bottom-0");
+    expect(scrim.className).toContain("from-black/90");
+    expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
+  });
+
   it("exposes no link to youtube.com anywhere in the tree", () => {
     const { container } = render(
       <VideoPlayer videoRef="https://www.youtube.com/watch?v=abc123" title="L1" />,
@@ -455,10 +466,9 @@ describe("VideoPlayer", () => {
   // of it, or the scrim turns light and the controls on it vanish.
   it("keeps the video chrome dark in both themes", () => {
     const { container } = render(<VideoPlayer videoRef="abc123" title="L1" />);
-    const bar = container.querySelector('[data-testid="video-shield"]')!
-      .parentElement!.querySelector(".bg-gradient-to-t")!;
+    const bar = container.querySelector('[data-testid="video-controls"]')!;
 
-    expect(bar.className).toContain("from-black/90");
+    expect(bar.className).toContain("bg-[rgba(10,24,32,0.55)]");
     expect(bar.className).not.toContain("ink-900");
   });
 

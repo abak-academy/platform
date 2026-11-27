@@ -24,6 +24,15 @@ describe("CartLineItem", () => {
     expect(screen.getByText("Produk digital dibeli 1× per akun.")).toBeTruthy();
   });
 
+  it("shows the unit price only when qty > 1", () => {
+    const { rerender } = render(
+      <CartLineItem item={{ ...base, product_type: "book", qty: 3, jumlah: 30000 } as any} onRemove={() => {}} onQtyChange={() => {}} />,
+    );
+    expect(screen.getByText(/× Rp\s?10\.000/)).toBeTruthy();
+    rerender(<CartLineItem item={{ ...base, product_type: "book" } as any} onRemove={() => {}} onQtyChange={() => {}} />);
+    expect(screen.queryByText(/×/)).toBeNull();
+  });
+
   it("keeps the stepper for physical products", () => {
     render(
       <CartLineItem

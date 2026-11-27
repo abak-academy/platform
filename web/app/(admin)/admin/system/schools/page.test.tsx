@@ -1,9 +1,22 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import SystemSchoolsPage from "./page";
 import type { School } from "@/lib/types";
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+async function pick(field: string, name: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+}
 
 function renderPage(ui: React.ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -250,16 +263,14 @@ describe("SystemSchoolsPage", () => {
     expect(screen.getAllByText(/500/).length).toBeGreaterThanOrEqual(1);
   });
 
-  it("renders filter chips", async () => {
+  it("puts Status and Provinsi dropdowns in the Filter popover instead of chips", async () => {
     renderPage(<SystemSchoolsPage />);
+    await screen.findByText("SMAN 1 Jakarta");
 
-    await waitFor(() => {
-      expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument();
-    });
-
-    expect(screen.getByRole("button", { name: /^semua$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^aktif$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^nonaktif$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^aktif$/i })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    expect(screen.getByRole("combobox", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Provinsi" })).toBeInTheDocument();
   });
 
   it("opens create dialog and calls create mutation on save", async () => {
@@ -515,12 +526,58 @@ describe("SystemSchoolsPage", () => {
 
     await waitFor(() => expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: /^aktif$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Status", "Aktif");
 
     await waitFor(() => {
       const last = useAdminSchoolsCalls.at(-1) as { status?: string } | undefined;
       expect(last?.status).toBe("active");
     });
+    expect(within(screen.getByRole("group", { name: "Filter aktif" })).getByText("Status: Aktif")).toBeInTheDocument();
+
+    await pick("Status", "Semua");
+    await waitFor(() => {
+      const last = useAdminSchoolsCalls.at(-1) as { status?: string } | undefined;
+      expect(last?.status).toBeUndefined();
+    });
+    expect(screen.queryByRole("group", { name: "Filter aktif" })).not.toBeInTheDocument();
+  });
+
+  it("filters the loaded rows by Provinsi and shows a chip", async () => {
+    schoolsState = {
+      ...schoolsState,
+      data: paginatedResponse([...sampleSchools, { id: "s3", name: "SMAN 3 Bandung", provinsi_id: "32", status: "active" }]),
+    };
+    renderPage(<SystemSchoolsPage />);
+    await screen.findByText("SMAN 3 Bandung");
+
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Provinsi", "JAWA BARAT");
+
+    expect(screen.getByText("SMAN 3 Bandung")).toBeInTheDocument();
+    expect(screen.queryByText("SMAN 1 Jakarta")).not.toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Filter aktif" })).getByText("Provinsi: JAWA BARAT")).toBeInTheDocument();
+
+    await pick("Provinsi", "Semua");
+    expect(screen.getByText("SMAN 1 Jakarta")).toBeInTheDocument();
+  });
+
+  it("sorts the loaded rows by most students", async () => {
+    schoolsState = {
+      ...schoolsState,
+      data: paginatedResponse([
+        { id: "a", name: "Kecil", status: "active", student_count: 1 },
+        { id: "b", name: "Besar", status: "active", student_count: 99 },
+      ]),
+    };
+    renderPage(<SystemSchoolsPage />);
+    await screen.findByText("Kecil");
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Siswa terbanyak" }));
+
+    const names = screen.getAllByRole("row").slice(1).map((r) => r.textContent ?? "");
+    expect(names[0]).toContain("Besar");
   });
 
   it("debounces search input before sending it as the q param", async () => {
@@ -620,7 +677,8 @@ describe("SystemSchoolsPage", () => {
       expect(last?.cursor).toBe("cursor-next");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /^aktif$/i }));
+    await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+    await pick("Status", "Aktif");
 
     await waitFor(() => {
       const last = useAdminSchoolsCalls.at(-1) as { cursor?: string; status?: string } | undefined;
@@ -692,6 +750,37 @@ describe("SystemSchoolsPage", () => {
     await waitFor(() => {
       const last = useAdminSchoolsCalls.at(-1) as { cursor?: string } | undefined;
       expect(last?.cursor).toBeUndefined();
+    });
+  });
+
+  describe("loaded-rows-only province filter and sort", () => {
+    it("shows a '+' loaded count, a loaded-only empty state with load more, and locks sort when more pages exist", async () => {
+      schoolsState = { ...schoolsState, data: { ...paginatedResponse(sampleSchools, "c2"), total: 80 } };
+      renderPage(<SystemSchoolsPage />);
+      await screen.findByText("SMAN 1 Jakarta");
+      expect(screen.getByText("80 sekolah")).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: /^Filter/ }));
+      await pick("Provinsi", "JAWA BARAT");
+
+      expect(screen.getByText("0+ sekolah")).toBeInTheDocument();
+      expect(screen.getByText(/Tidak ada yang cocok di data yang sudah dimuat/)).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "Muat lebih banyak" }).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Urutan lain aktif setelah semua data dimuat/)).toBeInTheDocument();
+
+      await userEvent.keyboard("{Escape}");
+      await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+      expect(await screen.findByRole("option", { name: "Nama A–Z" })).toHaveAttribute("aria-disabled", "true");
+    });
+
+    it("keeps the server total and an enabled sort when everything is loaded", async () => {
+      renderPage(<SystemSchoolsPage />);
+      await screen.findByText("SMAN 1 Jakarta");
+      expect(screen.getByText("2 sekolah")).toBeInTheDocument();
+      expect(screen.queryByText(/Urutan lain aktif/)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("combobox", { name: "Urutkan" }));
+      expect(await screen.findByRole("option", { name: "Nama A–Z" })).not.toHaveAttribute("aria-disabled", "true");
     });
   });
 });

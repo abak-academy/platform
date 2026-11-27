@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useAdminCourse, useUpdateCourse } from "@/lib/hooks/admin-courses";
 import { useTranslation } from "@/lib/i18n";
@@ -71,7 +72,7 @@ export default function CourseBuilderPage() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         <AdminPageHeader back={{ href: "/admin/courses", label: t("course_back") }} title={t("courses_edit")} />
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-48 w-full" />
@@ -82,7 +83,7 @@ export default function CourseBuilderPage() {
 
   if (isError || !course) {
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-4">
         <AdminPageHeader back={{ href: "/admin/courses", label: t("course_back") }} title={t("courses_edit")} />
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
           {t("courses_load_failed")}: {errorMessage(error)}
@@ -103,64 +104,73 @@ export default function CourseBuilderPage() {
         }
       />
 
-      <form onSubmit={handleSaveMetadata} className="md-card-outlined">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="type-h2">{t("course_metadata")}</h2>
-          <Button type="submit" disabled={!dirty || !title.trim() || update.isPending}>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex min-w-0 flex-col gap-4">
+          <form id="course-meta" onSubmit={handleSaveMetadata} className="md-card-outlined flex flex-col gap-3.5">
+            <h2 className="type-h2">{t("course_metadata")}</h2>
+            <div className="grid gap-3.5 md:grid-cols-2">
+              <div className="grid gap-2 md:col-span-2">
+                <Label htmlFor="course-title">{t("th_title")}</Label>
+                <Input
+                  id="course-title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder={t("course_title_placeholder")}
+                  disabled={update.isPending}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="course-level">{t("th_level")}</Label>
+                <Input
+                  id="course-level"
+                  value={level}
+                  onChange={(e) => setLevel(e.target.value)}
+                  placeholder={t("course_level_placeholder")}
+                  disabled={update.isPending}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="course-subject">{t("subject")}</Label>
+                <Input
+                  id="course-subject"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder={t("course_subject_placeholder")}
+                  disabled={update.isPending}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="course-instructor">{t("th_instructor")}</Label>
+                <Input
+                  id="course-instructor"
+                  value={instructorName}
+                  onChange={(e) => setInstructorName(e.target.value)}
+                  placeholder={t("course_instructor_placeholder")}
+                  disabled={update.isPending}
+                />
+              </div>
+            </div>
+          </form>
+
+          <div className="md-card-outlined flex flex-col gap-3.5">
+            <h2 className="type-h2">{t("course_curriculum")}</h2>
+            <SectionEditor courseId={courseId} />
+          </div>
+        </div>
+
+        <aside className="md-card-outlined flex flex-col gap-3.5">
+          <h2 className="type-h2">{t("course_publish_title")}</h2>
+          <p className="text-[13px] leading-[1.55] text-ink-600">
+            {t("course_publish_note")}{" "}
+            <Link href="/admin/products" className="font-semibold text-brand-ink hover:underline">{t("admin_nav_products")}</Link>
+          </p>
+          <Button type="submit" form="course-meta" className="w-full" disabled={!dirty || !title.trim() || update.isPending}>
             {update.isPending ? t("saving") : t("course_save_metadata")}
           </Button>
-        </div>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2">
-            <Label htmlFor="course-title">{t("th_title")}</Label>
-            <Input
-              id="course-title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={t("course_title_placeholder")}
-              disabled={update.isPending}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="course-level">{t("th_level")}</Label>
-            <Input
-              id="course-level"
-              value={level}
-              onChange={(e) => setLevel(e.target.value)}
-              placeholder={t("course_level_placeholder")}
-              disabled={update.isPending}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="course-subject">{t("subject")}</Label>
-            <Input
-              id="course-subject"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder={t("course_subject_placeholder")}
-              disabled={update.isPending}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="course-instructor">{t("th_instructor")}</Label>
-            <Input
-              id="course-instructor"
-              value={instructorName}
-              onChange={(e) => setInstructorName(e.target.value)}
-              placeholder={t("course_instructor_placeholder")}
-              disabled={update.isPending}
-            />
-          </div>
-        </div>
-      </form>
-
-      <div className="md-card-outlined">
-        <h2 className="mb-4 type-h2">{t("course_curriculum")}</h2>
-        <SectionEditor courseId={courseId} />
+        </aside>
       </div>
     </div>
   );

@@ -18,3 +18,12 @@ describe("public shell css", () => {
     expect(css).toMatch(/\[data-tilt\]\.pm-tilting\s*\{/);
   });
 });
+
+describe("base body", () => {
+  it("uses the prototype ink, canvas and line height so unstyled text is not pure black", () => {
+    const body = css.match(/\nbody \{([^}]*)\}/)![1];
+    expect(body).toContain("color: var(--color-ink-900)");
+    expect(body).toContain("background: var(--color-paper)");
+    expect(body).toContain("line-height: 1.55");
+  });
+});

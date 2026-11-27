@@ -30,6 +30,18 @@ export const EVENT_TONE_CLASS: Record<EventTone, string> = {
   navy: "bg-brand-100 text-brand-800",
 };
 
+const grad = (b: string, a: string) => `radial-gradient(120% 110% at 100% 0%, ${b}, ${a})`;
+
+export const EVENT_ART_BG: Record<EventTone, string> = {
+  brand: grad("#6e7cee", "#3d4ddb"),
+  ember: grad("#f59a6b", "#e2683c"),
+  teal: grad("#4cc3b2", "#1e978a"),
+  gold: grad("#f5c868", "#e3a131"),
+  sky: grad("#6fa2f2", "#2f6fde"),
+  berry: grad("#ec7ea4", "#c23b6b"),
+  navy: grad("#3c5390", "#22315b"),
+};
+
 export function EventMark({
   logoKey,
   logoUrl,

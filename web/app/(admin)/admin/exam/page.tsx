@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Activity, Library, ClipboardList, Calendar, BookOpen, AlertTriangle, ShieldAlert,
+  Activity, Library, ClipboardList, Calendar, BookOpen, AlertTriangle, ShieldAlert, Trophy,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useMe } from "@/lib/hooks/auth";
@@ -13,6 +13,7 @@ import { DashboardHero } from "@/components/admin/DashboardHero";
 import { QuickActionTiles, type QuickAction } from "@/components/admin/QuickActionTiles";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useTranslation } from "@/lib/i18n";
 import type { UserRole } from "@/lib/nav-config";
 
@@ -108,18 +109,21 @@ export default function ExamDashboardPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <section className="md-card-outlined">
               <div className="mb-3.5 flex items-center justify-between gap-3">
                 <h2 className="type-h2">{t("admin_home_upcoming_exams")}</h2>
               </div>
               {!data?.upcoming_exams.length ? (
-                <div className="py-10 text-center text-ink-600">{t("admin_home_upcoming_empty")}</div>
+                <EmptyState icon={Calendar} title={t("admin_home_upcoming_empty")} />
               ) : (
                 <div className="flex flex-col">
                   {data.upcoming_exams.map((exam) => (
-                    <div key={exam.id} className="flex items-center justify-between gap-3 rounded-2xl p-2.5 hover:bg-brand-50">
-                      <div className="min-w-0">
+                    <div key={exam.id} className="flex items-center gap-3 rounded-[16px] p-2.5 hover:bg-brand-50">
+                      <span className="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-brand-100 text-brand-800">
+                        <Trophy className="size-4" aria-hidden />
+                      </span>
+                      <div className="min-w-0 grow">
                         <b className="block font-[family-name:var(--font-display)] text-sm font-bold text-ink-900">{exam.title}</b>
                         <small className="text-xs text-ink-600">{formatDateTime(exam.scheduled_at)}</small>
                       </div>
@@ -137,12 +141,12 @@ export default function ExamDashboardPage() {
                 <h2 className="type-h2">{t("exam_home_violations")}</h2>
               </div>
               {!data?.recent_violations.length ? (
-                <div className="py-10 text-center text-ink-600">{t("exam_home_violations_empty")}</div>
+                <EmptyState icon={ShieldAlert} title={t("exam_home_violations_empty")} />
               ) : (
                 <div className="flex flex-col">
                   {data.recent_violations.map((v) => (
-                    <div key={v.session_id + v.occurred_at} className="flex items-center gap-3 rounded-2xl p-2.5 hover:bg-brand-50">
-                      <div className="grid size-[38px] shrink-0 place-items-center rounded-xl bg-danger-50 text-danger-600">
+                    <div key={v.session_id + v.occurred_at} className="flex items-center gap-3 rounded-[16px] p-2.5 hover:bg-brand-50">
+                      <div className="grid size-[38px] shrink-0 place-items-center rounded-[12px] bg-danger-50 text-danger-600">
                         <AlertTriangle size={16} />
                       </div>
                       <div className="min-w-0">

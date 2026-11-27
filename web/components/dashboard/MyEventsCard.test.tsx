@@ -280,3 +280,29 @@ describe("MyEventsCard external results", () => {
     expect(screen.queryByRole("button", { name: "Lihat hasil" })).not.toBeInTheDocument();
   });
 });
+
+describe("MyEventsCard button mapping (prototype evListRow)", () => {
+  it("draws Detail and Mulai as outline pills", () => {
+    renderCard([reg(), reg({ id: "r2", scheduled_at: iso(-HOUR), scheduled_end_at: iso(HOUR) })]);
+    expect(screen.getByRole("link", { name: "Detail" })).toHaveAttribute("data-variant", "outline");
+    expect(screen.getByRole("link", { name: "Mulai" })).toHaveAttribute("data-variant", "outline");
+  });
+
+  it("draws Lihat hasil as the filled ember pill", async () => {
+    answerResult(fullResult);
+    renderCard([submitted()]);
+    expect(await screen.findByRole("link", { name: "Lihat hasil" })).toHaveAttribute("data-variant", "default");
+  });
+
+  it("draws the external Lihat hasil as the filled ember pill", () => {
+    renderCard([reg({ external_results: [round()] })]);
+    expect(screen.getByRole("button", { name: "Lihat hasil" })).toHaveAttribute("data-variant", "default");
+  });
+
+  it("draws Menunggu hasil and Terlewat as mute chips, not buttons", async () => {
+    answerResult({ state: "grading", result_release_at: iso(HOUR) } as SessionResult);
+    renderCard([submitted(), reg({ id: "r-exp", scheduled_at: iso(-30 * HOUR), scheduled_end_at: iso(-28 * HOUR) })]);
+    expect(await screen.findByText("Menunggu hasil")).toHaveAttribute("data-variant", "mute");
+    expect(screen.getByText("Terlewat")).toHaveAttribute("data-variant", "mute");
+  });
+});

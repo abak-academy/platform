@@ -39,10 +39,12 @@ describe("Button", () => {
     expect(cls("line")).toContain("border-white");
   });
 
-  it("dark is an ink fill", () => {
+  it("dark is the prototype .ab-btn.dark: brand fill with the brand shadow", () => {
     render(<Button variant="dark">dk</Button>);
-    expect(cls("dk")).toContain("bg-ink-900");
-    expect(cls("dk")).toContain("text-surface");
+    expect(cls("dk")).toContain("bg-brand-600");
+    expect(cls("dk")).toContain("text-on-brand");
+    expect(cls("dk")).not.toContain("text-white");
+    expect(cls("dk")).toContain("shadow-[var(--shadow-brand)]");
   });
 
   it("sizes map to the control heights", () => {
@@ -62,5 +64,16 @@ describe("Button", () => {
     render(<Button>Go</Button>);
     expect(cls("Go")).toContain("focus-visible:outline-brand-600");
     expect(cls("Go")).toContain("disabled:opacity-45");
+  });
+
+  it("keeps 18px padding with an icon and a transparent border so outline and filled match", () => {
+    render(<><Button>md</Button><Button size="sm">sm</Button><Button size="lg">lg</Button></>);
+    expect(cls("md")).toContain("px-[18px]");
+    expect(cls("md")).not.toContain("has-[>svg]");
+    expect(cls("md")).toContain("border-transparent");
+    expect(cls("sm")).toContain("px-[13px]");
+    expect(cls("sm")).toContain("gap-1.5");
+    expect(cls("lg")).toContain("px-6");
+    expect(cls("lg")).toContain("text-[15px]");
   });
 });

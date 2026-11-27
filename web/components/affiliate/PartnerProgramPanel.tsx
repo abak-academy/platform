@@ -46,15 +46,15 @@ export function PartnerProgramPanel({ id, programs }: { id: string; programs?: A
   return (
     <section className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="font-semibold text-ink-900">{t("admin_aff_col_programs")}</h2>
+        <h2 className="type-h2">{t("admin_aff_col_programs")}</h2>
         <ProgramBadges programs={programs} />
       </div>
 
       {inPartner(programs) && (
-        <div className="md-card-outlined space-y-3 p-4">
+        <div className="md-card-outlined space-y-3">
           <div>
             <h3 className="text-sm font-semibold text-ink-900">{t("admin_aff_schools_title")}</h3>
-            <p className="text-xs text-ink-500">{t("admin_aff_schools_desc")}</p>
+            <p className="text-xs text-ink-600">{t("admin_aff_schools_desc")}</p>
           </div>
           {schoolIds.length === 0 ? (
             <p className="text-sm text-ink-600">{t("admin_aff_schools_empty")}</p>

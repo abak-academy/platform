@@ -22,7 +22,7 @@ async function mockBackendForFakeSession(page: Page) {
 // pushed the dialog past the viewport (see ProductModal.tsx's own comment).
 async function openProductCreateModal(page: Page) {
   await page.goto("/admin/products");
-  await page.getByRole("button", { name: "Buat produk", exact: true }).click();
+  await page.getByRole("button", { name: "Tambah produk", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.locator("#product-type").selectOption("book");
   await page.locator("#product-name").fill("E2E Test Book");

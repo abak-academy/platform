@@ -34,6 +34,8 @@ import {
   Languages,
   Moon,
   Globe,
+  Handshake,
+  Shield,
 } from "lucide-react";
 
 export type UserRole =
@@ -98,7 +100,7 @@ const STUDENT_NAV: RoleNavConfig = [
   },
 ];
 
-const academicItems = (...items: NavItem[]): NavGroup => ({ titleKey: "nav_group_academic", items });
+const academicItems = (...items: NavItem[]): NavGroup => ({ titleKey: "nav_group_academic", icon: GraduationCap, items });
 const PACKAGES: NavItem = { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar };
 const MONITOR: NavItem = { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart };
 const TESTS: NavItem = { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList };
@@ -119,13 +121,13 @@ const home = (href: string): NavGroup => ({
 export const CONTENT_MANAGER_NAV: RoleNavConfig = [
   home("/admin/store"),
   academicItems(EVENT, ANNOUNCEMENTS),
-  { titleKey: "nav_group_store", items: [ORDERS, PRODUCTS, COURSES, PROMOS] },
+  { titleKey: "nav_group_store", icon: Store, items: [ORDERS, PRODUCTS, COURSES, PROMOS] },
 ];
 
 export const ADMIN_EXAM_NAV: RoleNavConfig = [
   home("/admin/exam"),
   academicItems(EVENT, PACKAGES, MONITOR, TESTS, QUESTIONS, STUDENTS),
-  { titleKey: "nav_group_store", items: [PRODUCTS, COURSES] },
+  { titleKey: "nav_group_store", icon: Store, items: [PRODUCTS, COURSES] },
 ];
 
 export const ADMIN_SCHOOL_NAV: RoleNavConfig = [
@@ -148,6 +150,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   ),
   {
     titleKey: "nav_group_store",
+    icon: Store,
     items: [
       ORDERS,
       PRODUCTS,
@@ -159,6 +162,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   },
   {
     titleKey: "nav_group_affiliate",
+    icon: Handshake,
     items: [
       { labelKey: "admin_aff_nav_list", href: "/admin/affiliates", icon: HandCoins, exact: true },
       { labelKey: "admin_aff_nav_payouts", href: "/admin/affiliates/payouts", icon: Wallet },
@@ -168,6 +172,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
   },
   {
     titleKey: "system",
+    icon: Shield,
     items: [
       { labelKey: "accounts", href: "/admin/system/accounts", icon: Users },
       { labelKey: "config", href: "/admin/system/config", icon: Settings },
@@ -182,6 +187,7 @@ const AFFILIATOR_NAV: RoleNavConfig = [
   {
     program: "affiliate",
     titleKey: "aff_nav_group_affiliator",
+    icon: Handshake,
     items: [
       { labelKey: "aff_nav_dashboard", href: "/affiliate/overview", icon: LayoutDashboard, exact: true },
       { labelKey: "aff_nav_students", href: "/affiliate/students", icon: Users },
@@ -194,6 +200,7 @@ const AFFILIATOR_NAV: RoleNavConfig = [
   {
     program: "partner",
     titleKey: "aff_nav_group_partner",
+    icon: Building,
     items: [
       { labelKey: "partner_nav_dashboard", href: "/affiliate/partner", icon: LayoutDashboard, exact: true },
       { labelKey: "partner_nav_schools", href: "/affiliate/partner/schools", icon: School },

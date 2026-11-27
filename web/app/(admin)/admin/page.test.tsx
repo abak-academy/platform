@@ -159,8 +159,8 @@ describe("AdminIndexPage — v2 dashboard", () => {
     expect(screen.getByText("Periode").compareDocumentPosition(kpi) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(kpi.compareDocumentPosition(screen.getByText("Tren pendapatan & pesanan")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     order(
-      "Tren pendapatan & pesanan", "Aktivitas siswa", "Digital vs Fisik", "Ujian mendatang",
-      "Aktivitas pembelian", "Produk terlaris", "Akses Cepat",
+      "Tren pendapatan & pesanan", "Aktivitas siswa", "Digital vs fisik", "Ujian mendatang",
+      "Aktivitas pembelian", "Produk terlaris", "Aksi cepat",
     );
   });
 
@@ -326,10 +326,10 @@ describe("AdminIndexPage — v2 dashboard", () => {
 
   it("renders the D8 quick actions", () => {
     render(<AdminIndexPage />);
-    const card = screen.getByText("Akses Cepat").closest("[data-slot=card]") as HTMLElement;
+    const card = screen.getByText("Aksi cepat").closest("[data-slot=card]") as HTMLElement;
     const hrefs = within(card).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")]);
     expect(hrefs).toEqual([
-      ["Tambah Produk", "/admin/products"],
+      ["Tambah produk", "/admin/products"],
       ["Buat ujian", "/admin/exam/packages"],
       ["Kirim pengumuman", "/admin/notifications"],
       ["Buat promo", "/admin/promos"],

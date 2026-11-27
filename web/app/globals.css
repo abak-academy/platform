@@ -142,6 +142,9 @@
 body {
   font-family: var(--font-sans);
   font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-ink-900);
+  background: var(--color-paper);
 }
 
 :root {
@@ -535,6 +538,9 @@ html[data-theme="dark"] {
 
 /* Student home carousel: same blue in both themes (prototype .dash-hero). */
 .dash-hero-bg { background: radial-gradient(120% 140% at 100% 0%, #6e7cee, #3d4ddb 50%, #1a2168); }
+@keyframes float { 50% { transform: translateY(-12px) rotate(calc(var(--r, 0deg) * -1)); } }
+.dh-art > svg { width: 100%; height: auto; filter: drop-shadow(0 16px 24px rgba(0, 0, 0, .25)); animation: float 6s ease-in-out infinite; --r: 3deg; }
+.dh-floater { position: absolute; font: 800 64px/1 var(--font-display), sans-serif; color: rgba(255, 255, 255, .28); opacity: .9; transform: rotate(var(--r)); animation: float 7s ease-in-out infinite; }
 
 @media print {
   body:has(.invoice-paper) { background: none; }

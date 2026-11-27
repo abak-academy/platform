@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor, within, fireEvent, act } from "@testing-library/react";
 import { toast } from "sonner";
 import SchoolStudentsPage from "./page";
@@ -198,6 +199,18 @@ const paginatedResponse = (students: AdminStudent[], next_cursor?: string): Stud
   active: students.filter((s) => s.status === "active").length,
   deactivated: students.filter((s) => s.status === "deactivated").length,
 });
+
+beforeAll(() => {
+  globalThis.ResizeObserver ??= class { observe() {} unobserve() {} disconnect() {} };
+  Element.prototype.hasPointerCapture = vi.fn(() => false);
+  Element.prototype.releasePointerCapture = vi.fn();
+  Element.prototype.scrollIntoView = vi.fn();
+});
+
+async function pick(field: string, name: string) {
+  await userEvent.click(screen.getByRole("combobox", { name: field }));
+  await userEvent.click(await screen.findByRole("option", { name }));
+}
 
 const openFilters = () => fireEvent.click(screen.getByRole("button", { name: /filter siswa/i }));
 
@@ -725,19 +738,38 @@ describe("SchoolStudentsPage", () => {
     openFilters();
     const filters = screen.getByRole("region", { name: "Filter siswa" });
     expect(within(filters).getByTestId("school-picker-student-school-filter")).toBeInTheDocument();
-    expect(within(filters).getByRole("button", { name: "Aktif" })).toBeInTheDocument();
-    expect(within(filters).getByRole("button", { name: "Nonaktif" })).toBeInTheDocument();
+    expect(within(filters).getByRole("combobox", { name: "Status" })).toBeInTheDocument();
+    expect(within(filters).getByRole("combobox", { name: "Jenjang" })).toBeInTheDocument();
+    expect(within(filters).queryByRole("button", { name: "Aktif" })).not.toBeInTheDocument();
   });
 
-  it("sends the status chip to the server and shows it as an active chip", async () => {
+  it("sends the status dropdown to the server, shows an active chip, and Semua clears it", async () => {
     render(<SchoolStudentsPage />);
     await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
 
     openFilters();
-    fireEvent.click(within(screen.getByRole("region", { name: "Filter siswa" })).getByRole("button", { name: "Nonaktif" }));
+    await pick("Status", "Nonaktif");
 
     expect(useAdminStudentsCalls.at(-1)).toEqual(expect.objectContaining({ status: "deactivated" }));
     expect(screen.getByRole("group", { name: /filter aktif|active/i })).toHaveTextContent("Nonaktif");
+
+    await pick("Status", "Semua");
+    expect(useAdminStudentsCalls.at(-1)).toEqual(expect.objectContaining({ status: undefined }));
+    expect(screen.queryByRole("group", { name: /filter aktif|active/i })).not.toBeInTheDocument();
+  });
+
+  it("sends the Jenjang dropdown to the server and shows an active chip", async () => {
+    render(<SchoolStudentsPage />);
+    await waitFor(() => expect(screen.getByText("Budi Santoso")).toBeInTheDocument());
+
+    openFilters();
+    await pick("Jenjang", "SMP");
+
+    expect(useAdminStudentsCalls.at(-1)).toEqual(expect.objectContaining({ jenjang: "SMP" }));
+    expect(screen.getByRole("group", { name: /filter aktif|active/i })).toHaveTextContent("Jenjang: SMP");
+
+    await pick("Jenjang", "Semua");
+    expect(useAdminStudentsCalls.at(-1)).toEqual(expect.objectContaining({ jenjang: undefined }));
   });
 
   it("renders the three counts as stat tiles above the roster", async () => {

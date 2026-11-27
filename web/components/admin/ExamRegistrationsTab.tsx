@@ -553,7 +553,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
   // ── Main roster + action modal ──────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <ExamRosterSection
         examId={examId}
         action={
@@ -821,7 +821,7 @@ export function ExamRegistrationsTab({ examId, examName }: ExamRegistrationsTabP
                     </Button>
 
                     {previewResult && (
-                      <div className="md-card-outlined space-y-4 p-5">
+                      <div className="md-card-outlined space-y-4 p-6">
                         <h4 className="type-h3 text-ink-900">
                           {t("bulk_exam_order_preview_title")}
                         </h4>

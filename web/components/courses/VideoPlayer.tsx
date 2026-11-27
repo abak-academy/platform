@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Maximize, Pause, PlayCircle, Play, Volume2, VolumeX } from "lucide-react";
+import type { EventIllustration } from "@/lib/types";
+import { Spot } from "@/components/dashboard/Spot";
 
 interface VideoPlayerProps {
   videoRef?: string;
   title?: string;
+  spot?: EventIllustration;
   /** Test seam: render the no-JS-API fallback without stubbing the network. */
   forceFallback?: boolean;
 }
@@ -101,7 +104,7 @@ function formatTime(seconds: number): string {
 function PlayerNotice({ title, message }: { title?: string; message: string }) {
   return (
     <div
-      className="overflow-hidden rounded-lg border border-line bg-black"
+      className="overflow-hidden rounded-[30px] bg-black"
       style={{ aspectRatio: "16 / 9" }}
     >
       {/* Same reason as the gate and the control scrim: this card stands in for
@@ -122,7 +125,7 @@ function PlayerNotice({ title, message }: { title?: string; message: string }) {
   );
 }
 
-export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps) {
+export function VideoPlayer({ videoRef, title, spot, forceFallback }: VideoPlayerProps) {
   const id = toYoutubeId(videoRef);
 
   const wrapperEl = useRef<HTMLDivElement | null>(null);
@@ -349,7 +352,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   if (fallback) {
     return (
       <div
-        className="overflow-hidden rounded-lg border border-line bg-black"
+        className="overflow-hidden rounded-[30px] bg-black"
         style={{ aspectRatio: "16 / 9" }}
       >
         <iframe
@@ -366,7 +369,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
   return (
     <div
       ref={wrapperEl}
-      className="relative overflow-hidden rounded-lg border border-line bg-black"
+      className="relative overflow-hidden rounded-[30px] bg-black"
       style={{ aspectRatio: "16 / 9" }}
     >
       {/* The IFrame API writes width/height ATTRIBUTES on the iframe it
@@ -404,10 +407,15 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
           // html[data-theme="dark"] (ink-900 becomes #eeeffc), which would turn
           // this panel white and hide the white icon on it. A video surface is
           // dark in both themes.
-          className="absolute inset-0 z-30 flex size-full flex-col items-center justify-center gap-3 bg-black text-white disabled:cursor-progress"
+          className="absolute inset-0 z-30 grid size-full place-items-center bg-black bg-[radial-gradient(120%_120%_at_100%_0%,#3c5390,#22315b_50%,#16223f)] text-white disabled:cursor-progress"
         >
-          <PlayCircle size={56} strokeWidth={1.5} className="text-white" />
-          {title && <span className="px-6 text-center text-sm font-medium">{title}</span>}
+          <Spot illustration={spot} className="absolute top-[10%] right-[6%] h-auto w-[30%] opacity-90" />
+          <span className="relative z-[1] grid size-[84px] place-items-center rounded-full bg-white text-[#14202b] shadow-pop">
+            <Play className="ml-1 size-[30px]" />
+          </span>
+          {title && (
+            <span className="absolute top-[18px] left-[22px] font-[family-name:var(--font-display)] text-[15px] leading-[normal] font-extrabold">{title}</span>
+          )}
         </button>
       )}
 
@@ -416,14 +424,15 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
           html[data-theme="dark"] (ink-900 becomes #eeeffc) — which turned the
           scrim light and the white controls on it invisible. Video chrome is
           dark in both themes. */}
-      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-3 bg-gradient-to-t from-black/90 to-transparent px-3 pb-2 pt-6">
+      <div data-testid="video-scrim" aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-24 bg-gradient-to-t from-black/90 to-transparent" />
+      <div data-testid="video-controls" className="absolute inset-x-4 bottom-4 z-20 flex items-center gap-3 rounded-full bg-[rgba(10,24,32,0.55)] px-4 py-[9px] text-xs text-white backdrop-blur-[12px]">
         <button
           type="button"
           onClick={togglePlay}
           aria-label={playing ? "Jeda" : "Putar"}
           className="shrink-0 text-white"
         >
-          {playing ? <Pause className="size-5" /> : <Play className="size-5" />}
+          {playing ? <Pause className="size-4" /> : <Play className="size-4" />}
         </button>
 
         <span className="shrink-0 font-mono text-[11px] text-white/80">
@@ -457,7 +466,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
           aria-label={muted ? "Bunyikan" : "Bisukan"}
           className="shrink-0 text-white"
         >
-          {muted ? <VolumeX className="size-5" /> : <Volume2 className="size-5" />}
+          {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
         </button>
 
         <input
@@ -477,7 +486,7 @@ export function VideoPlayer({ videoRef, title, forceFallback }: VideoPlayerProps
           aria-label="Layar penuh"
           className="shrink-0 text-white"
         >
-          <Maximize className="size-5" />
+          <Maximize className="size-4" />
         </button>
       </div>
     </div>
