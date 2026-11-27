@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import CourseDetailPage from "./page";
 
 const mutate = vi.fn();
@@ -28,7 +28,9 @@ function setCourse(lessons: ReturnType<typeof lesson>[]) {
 // Runs the mutation's onSuccess like react-query would after a 200.
 function succeedNextMutation() {
   const [, opts] = mutate.mock.calls.at(-1)!;
-  opts.onSuccess();
+  act(() => {
+    opts.onSuccess();
+  });
 }
 
 describe("CourseDetailPage mark complete", () => {
@@ -73,5 +75,34 @@ describe("CourseDetailPage mark complete", () => {
     succeedNextMutation();
     expect(toastSuccess).toHaveBeenCalledWith("Pelajaran dibatalkan.");
     expect(screen.getByTestId("player")).toHaveTextContent("Materi l1");
+  });
+
+  it("skips a lesson that is already done and lands on the next open one", async () => {
+    setCourse([lesson("l1"), lesson("l2", true), lesson("l3")]);
+    render(<CourseDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Tandai selesai & lanjut" }));
+    succeedNextMutation();
+    expect(await screen.findByText("Materi l3", { selector: "[data-testid=player]" })).toBeInTheDocument();
+  });
+
+  it("completing lesson 2 of 3 while lesson 3 is already done ends the course instead of advancing", () => {
+    setCourse([lesson("l1", true), lesson("l2"), lesson("l3", true)]);
+    render(<CourseDetailPage />);
+    // Nothing open follows lesson 2, so the label stays plain.
+    expect(screen.queryByRole("button", { name: "Tandai selesai & lanjut" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Tandai selesai" }));
+    succeedNextMutation();
+    expect(toastSuccess).toHaveBeenCalledWith("Selamat! Kursus selesai.");
+    expect(screen.getByTestId("player")).toHaveTextContent("Materi l2");
+  });
+
+  it("does not jump if the student picked another lesson while the save was in flight", () => {
+    setCourse([lesson("l1"), lesson("l2"), lesson("l3")]);
+    render(<CourseDetailPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Tandai selesai & lanjut" }));
+    fireEvent.click(screen.getByText("Materi l3"));
+    expect(screen.getByTestId("player")).toHaveTextContent("Materi l3");
+    succeedNextMutation();
+    expect(screen.getByTestId("player")).toHaveTextContent("Materi l3");
   });
 });
