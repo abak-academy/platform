@@ -38,11 +38,31 @@ describe("AbakAvatar", () => {
     expect(el.style.backgroundSize).toBe("700% 500%");
     expect(el.style.boxShadow).toContain("6px");
   });
+  it("an explicit index overrides the name-derived sprite", () => {
+    const derived = avatarIndex("Budi");
+    const chosen = derived === 9 ? 10 : 9;
+    const { container } = render(<AbakAvatar name="Budi" index={chosen} />);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.getAttribute("data-avatar-index")).toBe(String(chosen));
+    expect(el.style.backgroundPosition).toBe(avatarPosition(chosen));
+  });
+  it("index 0 is honoured, null falls back to the name", () => {
+    const zero = render(<AbakAvatar name="Budi" index={0} />).container.firstElementChild as HTMLElement;
+    expect(zero.getAttribute("data-avatar-index")).toBe("0");
+    const nul = render(<AbakAvatar name="Budi" index={null} />).container.firstElementChild as HTMLElement;
+    expect(nul.getAttribute("data-avatar-index")).toBe(String(avatarIndex("Budi")));
+  });
   it("src overrides the sprite", () => {
     const { container } = render(<AbakAvatar name="Budi" src="/p.jpg" size={34} ring={false} />);
     const el = container.firstElementChild as HTMLElement;
     expect(el.style.backgroundImage).toContain("/p.jpg");
     expect(el.style.backgroundSize).toBe("cover");
     expect(el.style.width).toBe("34px");
+  });
+  it("a chosen sprite wins over src", () => {
+    const { container } = render(<AbakAvatar name="Budi" index={3} src="/p.jpg" />);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.getAttribute("data-avatar-index")).toBe("3");
+    expect(el.style.backgroundImage).not.toContain("/p.jpg");
   });
 });

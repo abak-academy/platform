@@ -168,6 +168,15 @@ func (f *fakeRepo) UpdateUserPhoto(_ context.Context, userID, photoURL string) e
 	return nil
 }
 
+func (f *fakeRepo) UpdateUserAvatarIndex(_ context.Context, userID string, avatarIndex *int) error {
+	u, ok := f.byID[userID]
+	if !ok {
+		return fmt.Errorf("not found")
+	}
+	u.AvatarIndex = avatarIndex
+	return nil
+}
+
 func (f *fakeRepo) ActivateUser(_ context.Context, userID string) (bool, error) {
 	u, ok := f.byID[userID]
 	if !ok {

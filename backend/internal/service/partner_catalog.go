@@ -126,7 +126,7 @@ func (s *Service) ValidatePartnerPromo(ctx context.Context, partnerID, code stri
 }
 
 func evaluatePartnerPromo(promo model.PromoCode, partnerID string, groups []promoSeatGroup, distinctStudents int, now time.Time) (PartnerPromoResult, error) {
-	if promo.Code == "" || promo.Partner == nil || distinctStudents < 1 || len(groups) == 0 {
+	if promo.Code == "" || !promo.IsActive || promo.Partner == nil || distinctStudents < 1 || len(groups) == 0 {
 		return PartnerPromoResult{}, ErrInvalidPromo
 	}
 	if len(promo.Partner.IDs) > 0 && !slices.Contains(promo.Partner.IDs, partnerID) {

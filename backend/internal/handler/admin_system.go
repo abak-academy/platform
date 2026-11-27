@@ -119,32 +119,32 @@ func (h *Handler) AdminResetAccountPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "password reset triggered"})
 }
 
-// AdminListAuditLog returns audit log entries with optional filters, cursor-paginated.
+const maxAuditPage = 10000
+
+// AdminListAuditLog returns audit log entries with optional filters, page-paginated.
 func (h *Handler) AdminListAuditLog(c echo.Context) error {
 	actorID := c.QueryParam("actor_id")
 	from := c.QueryParam("from")
 	to := c.QueryParam("to")
 	targetType := c.QueryParam("target_type")
 	q := c.QueryParam("q")
-	cursor := c.QueryParam("cursor")
-
-	limit := 20
-	if l := c.QueryParam("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 {
-			limit = n
-			if limit > 100 {
-				limit = 100
-			}
+	page := 1
+	if p := c.QueryParam("page"); p != "" {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 1 || n > maxAuditPage {
+			return badRequest(c, "page must be a positive integer")
 		}
+		page = n
 	}
+	limit := parseLimit(c.QueryParam("limit"), 20, 100)
 
-	entries, nextCursor, err := h.svc.ListAuditLog(c.Request().Context(), service.AuditLogFilter{
+	entries, total, err := h.svc.ListAuditLog(c.Request().Context(), service.AuditLogFilter{
 		ActorID:    actorID,
 		From:       from,
 		To:         to,
 		TargetType: targetType,
 		Q:          q,
-		Cursor:     cursor,
+		Page:       page,
 		Limit:      limit,
 	})
 	if err != nil {
@@ -152,8 +152,10 @@ func (h *Handler) AdminListAuditLog(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
-		"data":        entries,
-		"next_cursor": nextCursor,
+		"data":     entries,
+		"total":    total,
+		"page":     page,
+		"per_page": limit,
 	})
 }
 

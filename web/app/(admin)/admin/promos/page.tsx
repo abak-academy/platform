@@ -28,7 +28,8 @@ function discountLabel(promo: PromoCode): string {
   return "-";
 }
 
-function promoStatus(promo: PromoCode): "active" | "expired" | "exhausted" {
+function promoStatus(promo: PromoCode): "active" | "inactive" | "expired" | "exhausted" {
+  if (promo.is_active === false) return "inactive";
   if (promo.expires_at && new Date(promo.expires_at).getTime() <= Date.now()) return "expired";
   if (promo.max_uses != null && promo.used_count >= promo.max_uses) return "exhausted";
   return "active";
@@ -95,6 +96,25 @@ export default function PromosPage() {
     }
   }
 
+  // PUT replaces max_uses, expires_at and the two flags, so the toggle resends them as they are.
+  async function handleToggleActive(promo: PromoCode) {
+    try {
+      await update.mutateAsync({
+        id: promo.id,
+        input: {
+          max_uses: promo.max_uses ?? undefined,
+          expires_at: promo.expires_at ?? undefined,
+          is_public: promo.is_public ?? false,
+          affiliator_only: promo.affiliator_only ?? false,
+          is_active: promo.is_active === false,
+        },
+      });
+      toast.success(t("changes_saved"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm(t("promo_confirm_delete"))) return;
     try {
@@ -134,7 +154,7 @@ export default function PromosPage() {
           filters={[{
             key: "status",
             label: t("th_status"),
-            options: (["active", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}`) })),
+            options: (["active", "inactive", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}`) })),
           }]}
           sorts={[{ value: "used", label: t("promos_sort_used") }, { value: "ending", label: t("promos_sort_ending") }]}
         />
@@ -162,6 +182,7 @@ export default function PromosPage() {
         <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(255px,1fr))]">
           {shown.map((promo) => {
             const status = promoStatus(promo);
+            const toggleLabel = t(promo.is_active === false ? "promo_activate" : "promo_deactivate");
             const pct = promo.max_uses ? Math.min(100, Math.round((promo.used_count / promo.max_uses) * 100)) : null;
             return (
               <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "border-dashed bg-surface-sunken")}>
@@ -189,6 +210,15 @@ export default function PromosPage() {
                 </div>
                 <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="w-full justify-start">{t(`promos_status_${status}`)}</Badge>
                 <div className="mt-auto flex items-center justify-end gap-1.5 border-t border-line pt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleToggleActive(promo)}
+                    disabled={update.isPending}
+                    aria-label={`${toggleLabel} ${promo.code}`}
+                  >
+                    {toggleLabel}
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
                     {t("action_edit")}
                   </Button>

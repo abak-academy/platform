@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useUpdateOwnPhoto } from "./profile";
+import { useUpdateOwnAvatar, useUpdateOwnPhoto } from "./profile";
 import type { User } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
@@ -65,6 +65,30 @@ describe("useUpdateOwnPhoto", () => {
 
     expect(mockSetSession).toHaveBeenCalledWith("test-token-123", "refresh-abc", updatedUser);
     expect(spy).toHaveBeenCalledWith({ queryKey: ["auth", "me"] });
+  });
+});
+
+describe("useUpdateOwnAvatar", () => {
+  beforeEach(() => {
+    mockAuthFetch.mockReset();
+    mockSetSession.mockClear();
+  });
+
+  it.each([[6], [null]])("PATCHes /auth/avatar with avatar_index %s and stores the returned user", async (idx) => {
+    const updatedUser: User = { id: "u1", name: "Budi Santoso", avatar_index: idx };
+    mockAuthFetch.mockResolvedValueOnce(updatedUser);
+    const { wrapper } = wrapperFactory();
+    const { result } = renderHook(() => useUpdateOwnAvatar(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync(idx);
+    });
+
+    expect(mockAuthFetch).toHaveBeenCalledWith("/auth/avatar", {
+      method: "PATCH",
+      body: JSON.stringify({ avatar_index: idx }),
+    });
+    expect(mockSetSession).toHaveBeenCalledWith("test-token-123", "refresh-abc", updatedUser);
   });
 });
 

@@ -72,6 +72,8 @@ func (h *Handler) AdminUpdatePromoCode(c echo.Context) error {
 		ExpiresAt      *time.Time `json:"expires_at"`
 		IsPublic       bool       `json:"is_public"`
 		AffiliatorOnly bool       `json:"affiliator_only"`
+		// IsActive left out keeps the promo as it is.
+		IsActive *bool `json:"is_active"`
 		// PartnerVoucher left out keeps the Mitra voucher setting as it is.
 		PartnerVoucher *service.PartnerVoucherInput `json:"partner_voucher"`
 	}
@@ -79,7 +81,7 @@ func (h *Handler) AdminUpdatePromoCode(c echo.Context) error {
 		return badRequest(c, "invalid request body")
 	}
 
-	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic, req.AffiliatorOnly, req.PartnerVoucher)
+	err := h.svc.AdminUpdatePromoCode(c.Request().Context(), id, req.MaxUses, req.ExpiresAt, req.IsPublic, req.AffiliatorOnly, req.PartnerVoucher, req.IsActive)
 	if err != nil {
 		return mapServiceError(c, err)
 	}

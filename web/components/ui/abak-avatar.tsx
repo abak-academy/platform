@@ -36,18 +36,23 @@ export type AbakAvatarSize = keyof typeof SIZES | number;
 
 export function AbakAvatar({
   name,
+  index,
   size = 36,
   src,
   ring = true,
   className,
 }: {
   name: string;
+  // chosen sprite; wins over src. null/undefined shows src, else a name-derived sprite
+  index?: number | null;
   size?: AbakAvatarSize;
   src?: string | null;
   // true = prototype ring, false = none, string = custom box-shadow
   ring?: boolean | string;
   className?: string;
 }) {
+  const spriteIndex = index ?? avatarIndex(name);
+  const photo = index == null ? src : null;
   const px = typeof size === "number" ? size : SIZES[size];
   const shadow =
     typeof ring === "string"
@@ -61,15 +66,15 @@ export function AbakAvatar({
     <span
       aria-hidden="true"
       data-slot="abak-avatar"
-      data-avatar-index={src ? undefined : avatarIndex(name)}
+      data-avatar-index={photo ? undefined : spriteIndex}
       className={cn("inline-block shrink-0 rounded-full bg-surface-sunken", className)}
       style={{
         width: px,
         height: px,
         boxShadow: shadow,
-        backgroundImage: src ? `url("${src}")` : "url(/avatars/sprite.webp)",
-        backgroundSize: src ? "cover" : "700% 500%",
-        backgroundPosition: src ? "center" : avatarPosition(avatarIndex(name)),
+        backgroundImage: photo ? `url("${photo}")` : "url(/avatars/sprite.webp)",
+        backgroundSize: photo ? "cover" : "700% 500%",
+        backgroundPosition: photo ? "center" : avatarPosition(spriteIndex),
       }}
     />
   );

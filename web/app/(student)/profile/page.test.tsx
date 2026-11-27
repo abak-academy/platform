@@ -57,6 +57,10 @@ let schoolsData: Array<{
   school_types?: string[];
 }> = [];
 
+vi.mock("@/lib/hooks/profile", () => ({
+  useUpdateOwnAvatar: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 vi.mock("@/lib/hooks/students", () => ({
   useDashboard: () => ({ data: null, isLoading: false, isError: false, refetch: vi.fn() }),
   useProfile: () => profileState,

@@ -273,6 +273,24 @@ func TestAdminListAuditLog_InvalidActorID_400(t *testing.T) {
 	}
 }
 
+func TestAdminListAuditLog_InvalidPage_400(t *testing.T) {
+	for _, page := range []string{"0", "-1", "abc", "10001", "9223372036854775807"} {
+		t.Run(page, func(t *testing.T) {
+			env := newAdminSystemEnv(t)
+			req := httptest.NewRequest(http.MethodGet, "/admin/system/audit?page="+page, nil)
+			rec := httptest.NewRecorder()
+			c := env.e.NewContext(req, rec)
+
+			if err := env.h.AdminListAuditLog(c); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 // --- AdminUpdateSystemConfig ---
 
 func TestAdminUpdateSystemConfig_UnknownKey_400(t *testing.T) {

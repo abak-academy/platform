@@ -312,6 +312,7 @@ func (h *Handler) Me(c echo.Context) error {
 		"auth_provider":      user.AuthProvider,
 		"status":             user.Status,
 		"photo_url":          derefStr(user.PhotoURL),
+		"avatar_index":       user.AvatarIndex,
 		"password_temporary": user.PasswordTemporary,
 	}
 	if user.Role == service.RoleAffiliator {
@@ -335,6 +336,7 @@ func userPayload(user *model.User) map[string]any {
 		"school_id":          user.SchoolID,
 		"grade":              user.Grade,
 		"photo_url":          derefStr(user.PhotoURL),
+		"avatar_index":       user.AvatarIndex,
 		"password_temporary": user.PasswordTemporary,
 	}
 }

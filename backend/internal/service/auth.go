@@ -44,6 +44,7 @@ type UserRepository interface {
 	UpdatePasswordHash(ctx context.Context, userID, hash string) error
 	UpdateUserProfile(ctx context.Context, userID string, name, email, username, phone, address, targetExam *string, grade *int, dob *time.Time, applySchool bool, schoolID *string, unlistedSchoolName *string, jenjang *string, provinsiID, kotaID, kecamatanID, kodePos *string) error
 	UpdateUserPhoto(ctx context.Context, userID, photoURL string) error
+	UpdateUserAvatarIndex(ctx context.Context, userID string, avatarIndex *int) error
 	ActivateUser(ctx context.Context, userID string) (bool, error)
 	TombstoneUser(ctx context.Context, userID string) error
 }

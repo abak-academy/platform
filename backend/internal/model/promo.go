@@ -19,6 +19,7 @@ type PromoCode struct {
 	CreatedAt         time.Time  `json:"created_at"`
 	IsPublic          bool       `json:"is_public"`
 	AffiliatorOnly    bool       `json:"affiliator_only"`
+	IsActive          bool       `json:"is_active"`
 	// Partner marks a Mitra voucher. Nil is an ordinary promo; a student can
 	// never use a promo that carries it.
 	Partner *PartnerVoucher `json:"partner,omitempty"`

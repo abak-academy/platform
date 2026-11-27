@@ -56,7 +56,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
+			school_id, photo_url, avatar_index, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
@@ -64,7 +64,7 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*model.U
 		email,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.AvatarIndex, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
@@ -81,7 +81,7 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
+			school_id, photo_url, avatar_index, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
@@ -89,7 +89,7 @@ func (r *Repository) GetUserByUsername(ctx context.Context, username string) (*m
 		username,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.AvatarIndex, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
@@ -106,7 +106,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 	u := &model.User{}
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, email, username, phone, password_hash, role, name,
-			school_id, photo_url, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
+			school_id, photo_url, avatar_index, status, otp_enabled, auth_provider, password_temporary, created_at, updated_at,
 			jenjang, provinsi_id, kota_id, kecamatan_id, kode_pos,
 			unlisted_school_name, dob, gender, grade, alamat_domisili, target_exam
 		FROM users
@@ -114,7 +114,7 @@ func (r *Repository) GetUserByID(ctx context.Context, id string) (*model.User, e
 		id,
 	).Scan(
 		&u.ID, &u.Email, &u.Username, &u.Phone, &u.PasswordHash, &u.Role, &u.Name,
-		&u.SchoolID, &u.PhotoURL, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
+		&u.SchoolID, &u.PhotoURL, &u.AvatarIndex, &u.Status, &u.OTPEnabled, &u.AuthProvider, &u.PasswordTemporary, &u.CreatedAt, &u.UpdatedAt,
 		&u.Jenjang, &u.ProvinsiID, &u.KotaID, &u.KecamatanID, &u.KodePos,
 		&u.UnlistedSchoolName, &u.DOB, &u.Gender, &u.Grade, &u.AlamatDomisili, &u.TargetExam,
 	)
@@ -177,11 +177,22 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name,
 	return err
 }
 
-// UpdateUserPhoto sets the user's avatar URL.
+// UpdateUserPhoto sets the user's avatar URL and clears the sprite choice, so
+// the newest pick (photo upload vs sprite) is what renders.
 func (r *Repository) UpdateUserPhoto(ctx context.Context, userID, photoURL string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET photo_url = $1, updated_at = now() WHERE id = $2`,
+		`UPDATE users SET photo_url = $1, avatar_index = NULL, updated_at = now() WHERE id = $2`,
 		photoURL, userID,
+	)
+	return err
+}
+
+// UpdateUserAvatarIndex sets the sprite avatar (nil clears it). It wins over
+// photo_url at render time, so the uploaded photo is kept.
+func (r *Repository) UpdateUserAvatarIndex(ctx context.Context, userID string, avatarIndex *int) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE users SET avatar_index = $1::smallint, updated_at = now() WHERE id = $2`,
+		avatarIndex, userID,
 	)
 	return err
 }

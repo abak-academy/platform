@@ -25,6 +25,7 @@ func registerRoutes(e *echo.Echo, h *handler.Handler, svc *service.Service, jwtS
 	auth.PATCH("/password/change", h.ChangePassword, handler.JWTMiddleware(svc, jwtSigner))
 	auth.GET("/me", h.Me, handler.JWTMiddleware(svc, jwtSigner))
 	auth.PATCH("/photo", h.UpdatePhoto, handler.JWTMiddleware(svc, jwtSigner))
+	auth.PATCH("/avatar", h.UpdateAvatarIndex, handler.JWTMiddleware(svc, jwtSigner))
 
 	// Student product routes
 	products := v1.Group("/products")
