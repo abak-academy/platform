@@ -21,7 +21,7 @@ Outcome:
 
 - Product grouping becomes **Event**, managed by admins under **Akademik › Event**; the "Grup produk" nav item disappears.
 - An edition is an exam product in the event; it carries a structured level (jenjang + grade range).
-- Admins upload **results of rounds not taken on the platform** (offline rounds, organizer Global Round results) per edition and round; each student sees their own result once published (§ External round results).
+- Admins upload the **competition results curated outside the platform**, once per competition (product); each student sees their own result once published (§ Competition results).
 - A public read API serves visible events, their schedules, and their open editions (with phase, level, price, image) to the landing hero, the landing and Event page story cards, the Event page edition list, and the student home carousel.
 
 ## Product grouping today (verified on `feat/public-landing`, 2026-11-26)
@@ -58,9 +58,9 @@ Code keeps `grouping`/`series` names, not `event`, because "event" is already us
 | Event page "Edisi yang tersedia" | Edition cards with event name, date, jenjang, scope, price, phase badge; filters Event · Tingkat · Jenjang | `open_editions[]` with `stages`, `scheduled_at`, `phase`; scope from the parent event |
 | Program page "Kompetisi & Event" block | A link to the Event page; no data | — |
 | Student home carousel (`student-dashboard-v2.md` §5) | Open editions the student has not registered for: title, level, price/Gratis, image, open vs live headline, product link, order | Flattened `open_editions[]`; registered when every id in `exam_ids` has a registration |
-| Student "Event & kompetisi" card | Result released vs waiting per registration (student D3); **published external round results** per registration; empty-state link to the Event page | `external_results[]` on `GET /exam/registrations` (§ External round results) |
+| Student "Event & kompetisi" card | Result released vs waiting per registration (student D3); **the published competition result** per registration; empty-state link to the Event page | `competition_result` on `GET /exam/registrations` (§ Competition results) |
 | Toko filter, affiliate new-order filter | Published groupings by name; the Toko filter is labelled "Event" (D9) | Existing `GET /product-groupings`, unchanged |
-| Exam card, admin roster + CSV, external-result upload | Participant number with the event prefix (§ Participant number) | `participant_prefix` of the exam's event |
+| Exam card, admin roster + CSV, competition-result upload | Participant number with the event prefix (§ Participant number) | `participant_prefix` of the exam's event |
 
 ## Agreed behavior
 
@@ -93,7 +93,7 @@ Added 2026-11-26, settled 2026-11-26 (Panca):
 
 ## Data model
 
-Migration `0075_event` (latest on `main` and `feat/public-landing` is `0074`; re-check before creating). It **alters** `product_grouping` and creates the schedule table plus the two external-result tables (§ External round results).
+Migration `0075_event` (latest on `main` and `feat/public-landing` is `0074`; re-check before creating). It **alters** `product_grouping` and creates the schedule table; the competition-result tables arrive in `0080` (§ Competition results).
 
 ```sql
 ALTER TABLE product_grouping
@@ -163,7 +163,7 @@ ALTER TABLE product ADD COLUMN IF NOT EXISTS grade_max SMALLINT NULL CHECK (grad
 
 Why one JSONB keyed by locale instead of `_en` columns: the narrative is display-only, never queried or joined, and edited as a whole per language. In Go, `map[string]EventNarrative` with `id` and `en` as the only accepted keys (422 otherwise). The schedule gets its own table because the list and public API compute "next milestone" from it; a schedule label is short, so `label_en` is a plain column. Level is product columns because the edition is a product and the Event page filters on it.
 
-Down migration drops the external-result tables, the product level columns, the schedule table, the constraints, and the added grouping columns (incl. `participant_prefix`); the original grouping data survives. Cards re-rendered after the up migration keep the prefix until their `card_key` is cleared again (accepted).
+Down migration drops the product level columns, the schedule table, the constraints, and the added grouping columns (incl. `participant_prefix`); the original grouping data survives. Cards re-rendered after the up migration keep the prefix until their `card_key` is cleared again (accepted).
 
 ## API
 
@@ -214,63 +214,62 @@ Uses `design-tokens-v2.md`, `admin-list-toolbar.md`, and `COMPONENTS.md`.
 - "Lihat di landing" opens the public Event page anchored to the event; hidden until the landing PR has merged.
 - Copy: admin strings "Grouping Produk"/"grouping" become "Event". The Toko filter label becomes **Event** in this PR (D9): `catalog_grouping_label` "Event" / "Event", `catalog_grouping_all` "Semua event" / "All events". The affiliate new-order filter's copy is unchanged.
 
-## External round results
+## Competition results
 
-Added by Panca, 2026-11-26. Today results exist only for on-platform sessions (`/admin/results`, `/admin/exams/:id/results-workspace`, the session leaderboard); nothing imports results the organizer produces elsewhere.
+Abak competition exams never show results on-platform: every competition's results are curated outside the platform, then the admin uploads the curated result CSV for that competition and publishes it; students then see **Lihat hasil** on their registration. The exam is taken on the platform; only the result is curated off-platform. Results are announced once per competition (per product). An Event can be staged, but each stage is its own product (for example OLV Penyisihan, OLV Semifinal), so a result has no label or stage of its own. Added by Panca 2026-11-26; reshaped 2026-11-28 (D14).
 
 **Behavior.**
-1. Results are uploaded **per exam and round**: the admin opens an edition in the event editor, picks the exam (when the product has several) and a round (new label, e.g. "Global Round", or an existing one to replace), and uploads a CSV (D10).
+1. Results are uploaded **per product**: the admin opens the edition's product (event editor) and uploads one CSV (D10). There is **one result set per product** (`UNIQUE product_id`).
 2. Columns: `participant_no` (the participant number printed on the exam card, `[<PREFIX>-]YYMMDD-<exam_number>-NNNNNN`, accepted **with or without** the event prefix; D11, § Participant number), `score` (number, required), `rank` (integer ≥ 1, optional), `award` (text ≤ 60, optional, e.g. "Medali emas"), `certificate_url` (optional, `https://` only). Header row required; column order free; extra columns refused.
-3. **Preview** before anything is written: totals (matched, errors) and every bad row with its reason: unknown participant (no registration of this exam with that number, or revoked), unreadable participant number, participant number of another exam, duplicate participant in the file, bad score/rank/URL, award too long. **Confirm** is possible only with zero errors (the admin fixes the file and re-uploads).
-4. Confirm writes the round in one transaction. Re-uploading a round **replaces all its rows** (idempotent: the same file twice gives the same state); other rounds are untouched.
-5. A round is **hidden until the admin publishes it**; publish and unpublish are explicit actions. Replacing the rows of a published round keeps it published (the preview warns "Ronde ini sudah tayang").
-6. Every apply, publish, unpublish, and round delete is written to the audit log (`InsertAuditLogMeta`, entity `exam_external_round`, with row counts and the uploaded object key).
-7. Student side: a published round gives the student's registration row a **Lihat hasil** action showing round label, score, rank, award, and the certificate link (`student-dashboard-v2.md` §6). Unpublished rounds are invisible to students.
+3. **Participant resolution:** a participant number resolves **only within the exams attached to the product** through `product_exam`. The exam number inside the participant number selects the exam; the registration is that exam's registration.
+4. **Preview** before anything is written: totals (matched, errors) and every bad row with its reason: unknown participant (no registration of this product's exams with that number, or revoked), unreadable participant number, participant number of an exam outside the product, duplicate participant in the file, bad score/rank/URL, award too long. **Apply** is possible only with zero errors (the admin fixes the file and re-uploads).
+5. Flow: presign → preview → apply → publish / unpublish → delete. Apply **replaces** the product's whole result set in one transaction (idempotent: the same file twice gives the same state). A result set is **hidden until the admin publishes it**; replacing the rows of a published set keeps it published (the preview warns that the result is already live).
+6. Every apply, publish, unpublish, and delete is written to the audit log (`InsertAuditLogMeta`, entity `competition_result`, with row counts and the uploaded object key).
+7. Student side: a published result gives the student's registration row a **Lihat hasil** action showing score, rank, award, and the certificate link (`student-dashboard-v2.md` §6). An unpublished or missing result is invisible to students.
 8. Uploaded results never change on-platform sessions, scores, or the leaderboard (D12).
 
-**Data model** (same migration `0075`):
+**Data model** (migration `0080` drops `exam_external_round` and `exam_external_result` and creates):
 
 ```sql
-CREATE TABLE exam_external_round (
+CREATE TABLE competition_result (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  exam_id       UUID NOT NULL REFERENCES exam(id) ON DELETE CASCADE,
-  label         TEXT NOT NULL,
-  label_en      TEXT NULL,
+  product_id    UUID NOT NULL REFERENCES product(id) ON DELETE CASCADE,
   source_key    TEXT NULL,                  -- private object key of the last applied file
   published_at  TIMESTAMPTZ NULL,
   updated_by    UUID NULL REFERENCES users(id),
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (exam_id, label)
+  UNIQUE (product_id)
 );
-CREATE TABLE exam_external_result (
-  round_id         UUID NOT NULL REFERENCES exam_external_round(id) ON DELETE CASCADE,
+CREATE TABLE competition_result_row (
+  result_id        UUID NOT NULL REFERENCES competition_result(id) ON DELETE CASCADE,
   registration_id  UUID NOT NULL REFERENCES exam_registration(id) ON DELETE CASCADE,
   score            NUMERIC(8,2) NOT NULL,
   rank             INT NULL CHECK (rank >= 1),
   award            TEXT NULL CHECK (char_length(award) <= 60),
   certificate_url  TEXT NULL CHECK (certificate_url IS NULL OR certificate_url LIKE 'https://%'),
-  PRIMARY KEY (round_id, registration_id)
+  PRIMARY KEY (result_id, registration_id)
 );
 ```
 
-Rows point at the registration, not the student, so a revoked registration's result is not shown and the match is per exam.
+Rows point at the registration, not the student, so a revoked registration's result is not shown.
 
-**Upload path** — reuse the existing presign pattern, not the async job (D13 = a): `POST /admin/exams/:id/external-rounds/presign` signs a private PUT with the exam id in the key (`presignPrivatePut`, like `exam-grant-bulk/{examID}/…`); `POST …/external-rounds/preview {key, round_label}` reads the object (≤ 2 MB, `LimitReader`), parses with `encoding/csv`, matches participant numbers (`parseParticipantNo`, § Participant number), and returns the preview synchronously; `POST …/external-rounds/apply {key, round_label}` re-parses the same object and writes in one transaction (the preview is not trusted as state). The worker/job machinery (`Job` model, `AdminGetJob`, `worker.pollJobs`) runs fire-and-forget imports with a result CSV and has no preview step; a few thousand rows parse in well under a second, so a job adds polling UI for no gain.
+**Upload path** — reuse the existing presign pattern, not the async job (D13 = a): `POST /admin/products/:id/competition-result/presign` signs a private PUT with the product id in the key (`presignPrivatePut`, like `exam-grant-bulk/{examID}/…`); `…/preview {key}` reads the object (≤ 2 MB, `LimitReader`), parses with `encoding/csv`, matches participant numbers (`parseParticipantNo`, § Participant number) within the product's exams, and returns the preview synchronously; `…/apply {key}` re-parses the same object and writes in one transaction (the preview is not trusted as state). The worker/job machinery runs fire-and-forget imports with no preview step; a few thousand rows parse in well under a second, so a job adds polling UI for no gain.
 
-**Admin API** (permission `exam-results-external:write`; roles per D2, same as event editing):
+**Admin API** (permission `competition-results:write`; roles per D2, same as event editing):
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/admin/exams/:id/external-rounds` | Rounds with row count, `published_at`, `updated_at` |
-| POST | `/admin/exams/:id/external-rounds/presign` | Private PUT URL + key |
-| POST | `/admin/exams/:id/external-rounds/preview` | `{matched, errors: [{line, participant_no, reason}]}` |
-| POST | `/admin/exams/:id/external-rounds/apply` | 422 if the file has errors; creates or replaces the round's rows |
-| POST | `/admin/external-rounds/:round_id/publish` · `/unpublish` | Toggle `published_at` |
-| GET | `/admin/external-rounds/:round_id/results` | Rows with student name and participant no in the current display format (admin view / CSV export) |
-| DELETE | `/admin/external-rounds/:round_id` | Deletes round and rows |
+| POST | `/admin/products/:id/competition-result/presign` | Private PUT URL + key |
+| POST | `/admin/products/:id/competition-result/preview` | `{matched, errors: [{line, participant_no, reason}]}` |
+| POST | `/admin/products/:id/competition-result/apply` | 422 if the file has errors; creates or replaces the product's rows |
+| POST | `/admin/products/:id/competition-result/publish` · `/unpublish` | Toggle `published_at` |
+| GET | `/admin/products/:id/competition-result/results` | Rows with student name and participant no in the current display format (admin view / CSV export) |
+| DELETE | `/admin/products/:id/competition-result` | Deletes the result set and its rows |
 
-**Student API.** `GET /exam/registrations` items gain `external_results: [{round_id, round_label, score, rank, award, certificate_url, published_at}]` (published rounds only, `round_label` in the request language when `label_en` is set, ordered by `published_at`). One call, no per-row fetch; `[]` when none.
+**Student API.** `GET /exam/registrations` items gain `competition_result: {score, rank, award, certificate_url, published_at} | null` (published only; `null` when none or unpublished). One call, no per-row fetch.
+
+**Error taxonomy.** Unknown product or no result set: 404. Not a competition product / no attached exam: 422. File over 2 MB, not CSV, bad header or extra column: 400. Any row error on apply: 422 with the same list as preview. Missing `competition-results:write`: 403.
 
 ## Participant number
 
@@ -305,7 +304,7 @@ Added by Panca, 2026-11-26. **Only formatting changes; stored integers do not.**
 | `web/app/(print)/exam/[id]/card/page.tsx` L115 → `web/components/exam/ExamCardPrintable.tsx` L296, L309 | Web card | Display only; no change (string from the API) |
 | `web/components/admin/ExamRegistrationsTab.tsx` L142–155 | Roster column "No. Peserta" | Display only; no change |
 | `web/lib/types.ts` L1265–1266, L1366–1367 | `participant_no: string` | No change |
-| External rounds (§ External round results) | Preview errors and `GET /admin/external-rounds/:id/results` | Show the current display string; the upload parses with `parseParticipantNo` |
+| Competition results (§ Competition results) | Preview errors and `GET /admin/products/:id/competition-result/results` | Show the current display string; the upload parses with `parseParticipantNo` |
 | Event editor (`web/app/(admin)/admin/product-groupings/[id]`) | Identity card, edition rows | Prefix field; "ada di dua event" badge on an edition whose exam is in two events |
 
 Tests that pin today's string and gain a prefixed case (the unprefixed expectations stay): `backend/internal/service/exam_test.go`, `certificate_render_gate_test.go`, `backend/internal/handler/exam_roster_handler_test.go`, `backend/integration/participants_schools_test.go`, `web/app/(print)/exam/[id]/card/page.test.tsx`, `web/components/admin/ExamRegistrationsTab.test.tsx`, `web/lib/hooks/admin-exams.test.tsx`; grep `web/e2e/exam-event-info.spec.ts`, `exam-registrations-modal-bulk.spec.ts`, `exam-student-flow.spec.ts` for the `YYMMDD-NNNN-NNNNNN` shape.
@@ -323,8 +322,8 @@ Tests that pin today's string and gain a prefixed case (the unprefixed expectati
 5. Handler tests: RBAC per role (D2); the public endpoints never return hidden events, counts, or student data; `?lang=en` returns English narrative and labels; no `lang` returns Indonesian; `Cache-Control` set.
 6. `PATCH /admin/products/:id` persists `stages`, `grade_min/max`; 422 on an unknown stage and `grade_max < grade_min`; never changes sessions, scoring, or stock.
 7. Web tests: list filters/counts and reorder; editor round-trip of every field in both tabs; invalid schedule blocked; logo upload and remove; visibility with EN incomplete blocked and switches to the EN tab; level fields persist; nav shows Event in Akademik and no "Grup produk".
-8. External rounds: a participant number matches both with and without the event prefix (and with an old prefix after a prefix change); preview reports each error kind (unknown or revoked participant, unreadable number, another exam's number, duplicate, bad score, rank < 1, non-https URL, long award, missing/extra column) with its line; apply with errors is 422; apply twice with the same file gives identical rows; re-upload replaces only that round; a student sees a round only after publish and only their own row, via `external_results`; audit rows for apply, publish, unpublish, delete; on-platform leaderboard unchanged (regression test).
-9. Admin web: upload → preview table → confirm → publish round-trip; errors block confirm. The event editor saves the prefix (uppercased) and shows the API's format and duplicate errors.
+8. Competition results: a participant number matches both with and without the event prefix (and with an old prefix after a prefix change) and only within the product's `product_exam` exams; preview reports each error kind (unknown or revoked participant, unreadable number, an exam outside the product, duplicate, bad score, rank < 1, non-https URL, long award, missing/extra column) with its line; apply with errors is 422; apply twice with the same file gives identical rows; re-upload replaces the product's whole set; a student sees a result only after publish and only their own row, via `competition_result`; audit rows for apply, publish, unpublish, delete; on-platform leaderboard unchanged (regression test).
+9. Admin web: upload → preview table → apply → publish round-trip; errors block apply. The event editor saves the prefix (uppercased) and shows the API's format and duplicate errors.
 10. Participant number: for an exam in an event with prefix `ESOL`, the student registration detail, the web card, the card PDF, the admin roster, and the roster CSV all show `ESOL-YYMMDD-<exam>-NNNNNN`; an exam in no event, in an event without a prefix, or in two events shows today's string; changing the prefix or the exam's event clears that exam's cached cards so the next PDF shows the new string; stored `participant_number` and certificate numbers are unchanged (service + repository tests).
 11. `./deploy/pipeline/backend.sh`, `npx tsc --noEmit`, `npx vitest run`, `npm run build` pass.
 
@@ -334,17 +333,17 @@ Tests that pin today's string and gain a prefixed case (the unprefixed expectati
 - Registering or checking out per event; purchase stays per product.
 - Popularity, registration, or sales counts in any public payload.
 - Result-release state for on-platform sessions (student D3).
-- Generating certificates for uploaded rounds (the CSV links an existing one); showing uploaded results on any public page.
+- Generating certificates for uploaded results (the CSV links an existing one); showing uploaded results on any public page.
 - Edition venue/city; brand-level analytics.
 - Renaming the affiliate new-order grouping filter (the Toko filter becomes "Event", D9).
 - Changing stored participant numbers, the certificate number format, or cards already downloaded.
 
 ## Decisions
 
-All settled (Panca, 2026-11-26: the recommended option of each, plus the D9 and participant-number answers). Kept with their rejected options for the record.
+All settled (Panca, 2026-11-26: the recommended option of each, plus the D9 and participant-number answers; D14 added 2026-11-28). Kept with their rejected options for the record.
 
 - ~~D1. Narrative language.~~ Settled 2026-11-17: ID and EN both required (behaviors 8–9).
-- ~~D2. Who manages events.~~ **Settled: (a)** `super_admin`, `admin_store` (keeps today's access), and `admin_exam` (runs competitions); each role sees "Event" in its own nav (an Akademik group for `admin_store` holding only Event); `admin_school` none. The same roles hold `exam-results-external:write`. Not chosen: (b) `super_admin` + `admin_exam` only (regression for store staff); (c) today's roles only.
+- ~~D2. Who manages events.~~ **Settled: (a)** `super_admin`, `admin_store` (keeps today's access), and `admin_exam` (runs competitions); each role sees "Event" in its own nav (an Akademik group for `admin_store` holding only Event); `admin_school` none. The same roles hold `competition-results:write`. Not chosen: (b) `super_admin` + `admin_exam` only (regression for store staff); (c) today's roles only.
 - ~~D3. Level location.~~ **Settled: (a)** on the edition product (`stages`, `grade_min/max`). Not chosen: (b) on `exam`, aggregated; (c) no level.
 - ~~D4. Selling product of an edition.~~ Dissolved: the edition **is** the product in the event (behavior 11).
 - ~~D5. Admin `ListToolbar`.~~ **Settled: (a)** this PR builds the generic `components/admin/ListToolbar.tsx` per `admin-list-toolbar.md` § Technical contract and uses it for the event list (testimonials reuses it); migrating other admin lists stays phase 2b. Not chosen: (b) 2b first; (c) search box only.
@@ -353,9 +352,10 @@ All settled (Panca, 2026-11-26: the recommended option of each, plus the D9 and 
 - ~~D8. Naming of the evolved grouping.~~ **Settled: (a)** keep DB (`product_grouping`, `grouping_id`), Go/TS types, admin API `/admin/product-groupings`, web hooks, and the admin route; only UI copy says "Event"; new public `/event-series` endpoints. No alias or compat window. Not chosen: (b) rename throughout with aliases; (c) rename only the admin route and nav.
 - ~~D9. Non-competition groupings.~~ **Settled (Panca, 2026-11-26): grouping is used only for competitions.** Every existing grouping becomes an Event, hidden until an admin fills its narrative (and prefix) and makes it visible; no `kind` column; no prod inventory task. The Toko grouping filter is labelled "Event" (this PR; `landing-v2.md` keeps it). Not chosen: (b) a `kind` column; (c) client dissolves groupings first.
 - ~~D10. Results file format.~~ **Settled: (a)** CSV only (`encoding/csv`). Not chosen: (b) CSV + XLSX (`excelize`).
-- ~~D11. Participant identifier.~~ **Settled: (a)** `participant_no` as printed on the exam card, with or without the event prefix (§ Participant number); the upload is per exam. Correction of the earlier risk note: no registration lacks a number — `0037` backfilled every existing row and both insert paths always assign one (verified 2026-11-26). Not chosen: (b) email or username; (c) either column.
-- ~~D12. Uploaded results and the leaderboard.~~ **Settled: (a)** separate: uploaded rounds never enter the platform leaderboard or result pages; the student sees them in "Lihat hasil" only. Not chosen: (b) own leaderboard tab; (c) merge.
+- ~~D11. Participant identifier.~~ **Settled: (a)** (per-exam scope superseded by D14) `participant_no` as printed on the exam card, with or without the event prefix (§ Participant number); the upload is per product (exams resolved via `product_exam`, D14). Correction of the earlier risk note: no registration lacks a number — `0037` backfilled every existing row and both insert paths always assign one (verified 2026-11-26). Not chosen: (b) email or username; (c) either column.
+- ~~D12. Uploaded results and the leaderboard.~~ **Settled: (a)** separate: uploaded results never enter the platform leaderboard or result pages; the student sees them in "Lihat hasil" only. Not chosen: (b) own leaderboard tab; (c) merge.
 - ~~D13. Upload mechanics.~~ **Settled: (a)** presigned private upload + synchronous preview and apply. Not chosen: (b) async `Job`.
+- ~~D14. Competition results are announced once per product.~~ **Settled 2026-11-28 (Panca):** results are announced once per competition, per product; they are curated outside the platform and the admin uploads the curated CSV. A staged Event is several products (OLV Penyisihan, OLV Semifinal), so there are no per-result rounds or labels. Supersedes the 2026-11-26 per-exam, per-round design (the "external round results" section, which also shaped D11's per-exam upload and D12's wording); migration `0080` replaces its tables.
 - **Participant number prefix** (Panca, 2026-11-26): settled as § Participant number. Accepted: already printed cards keep the old string.
 
 ## Launch blockers (open; do not block the build)
@@ -375,8 +375,8 @@ Branch `feat/event-series` from `feat/public-landing` after PR 1 merges; one PR 
 | T4 | Generic admin ListToolbar (D5 = a) | new `web/components/admin/ListToolbar.tsx` (+ test) per `admin-list-toolbar.md` | — | `admin-list-toolbar.md` AC 2 cases (fail) | tests green |
 | T5 | Admin web: list, editor, product level, nav, Toko label | `app/(admin)/admin/product-groupings/**` (incl. prefix field, two-event badge), `ProductGroupingModal`, `lib/hooks/admin-product-groupings.ts`, product form level fields, `lib/types.ts`, `NAV_CONFIG` (Event in Akademik, no "Grup produk"), i18n incl. `catalog_grouping_label`/`catalog_grouping_all` → Event (+ tests) | T2, T4 | AC 7 cases + prefix field (uppercased, API errors shown) + Toko filter label "Event" (fail) | tests green; 390/1366 light/dark browser check |
 | T6 | Seed loader | `scripts/` one-off loader over the admin API (match by slug/name, create hidden, print prefixes) | T2 | Dry run on the local stack prints the match table and no visibility flips (fail on a hidden-only assertion) | run on the local stack; all events hidden |
-| T7 | External results backend | migration tables (in `0075`), `internal/service/exam_external_result.go` (uses `parseParticipantNo` from T9), handler, routes, RBAC, `external_results` on `GET /exam/registrations` (+ tests) | T1, T9 | AC 8 cases incl. prefixed/unprefixed match, idempotent re-apply, and leaderboard regression (fail) | `go test -run` green; `curl` preview/apply/publish on the local stack |
-| T8 | External results admin web | edition row in the event editor → "Hasil ronde luar" dialog: exam + round pick, upload, preview table, confirm, publish/unpublish, delete; `lib/types.ts` (`external_results`) (+ tests) | T5, T7 | AC 9 round-trip; confirm disabled with errors (fail) | tests green; browser check with a sample CSV (one prefixed, one unprefixed number) |
+| T7 | Competition results backend | migration `0080` tables, `internal/service/competition_result.go` (uses `parseParticipantNo` from T9), handler, routes, RBAC, `competition_result` on `GET /exam/registrations` (+ tests) | T1, T9 | AC 8 cases incl. prefixed/unprefixed match, idempotent re-apply, and leaderboard regression (fail) | `go test -run` green; `curl` preview/apply/publish on the local stack |
+| T8 | Competition results admin web | edition row in the event editor → "Hasil kompetisi" dialog: upload, preview table, apply, publish/unpublish, delete; `lib/types.ts` (`competition_result`) (+ tests) | T5, T7 | AC 9 round-trip; apply disabled with errors (fail) | tests green; browser check with a sample CSV (one prefixed, one unprefixed number) |
 | T9 | Participant number prefix | `internal/service/exam.go` (`formatParticipantNo` + `parseParticipantNo`, the three callers), `internal/repository/exam.go` (four reads select `event_prefix`), `internal/model/exam.go`, the tests listed in § Participant number (+ e2e grep) | T1 | AC 10 cases: prefixed and unprefixed output per surface, two-event exam unprefixed, parse table (with/without prefix, lowercase prefix, other exam's number, garbage) (fail) | `go test -run` green; card PDF rendered on the local stack shows `PREFIX-…`; roster CSV checked |
 | T10 | Integration verification | whole branch | T3, T5, T6, T8, T9 | — | `backend.sh`, `tsc`, `vitest`, `npm run build`; AC 1–11 with evidence; `git diff --check` |
 

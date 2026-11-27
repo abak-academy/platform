@@ -115,10 +115,12 @@ function mockApi(overrides: Partial<ProductGroupingDetail> = {}) {
       if (patchError) throw patchError;
       return { ...current, ...body, content: body.content, schedule: body.schedule };
     }
-    if (path === "/admin/exams/e1/external-rounds") return { data: [] };
+    if (path === "/admin/products/p1/competition-result" && method === "GET") {
+      return { id: "c1", product_id: "p1", source_key: "k", row_count: 7, published_at: null, updated_at: "2026-11-01T03:00:00Z" };
+    }
     if (path === "/admin/product-groupings/g1/products") return current;
     if (path === "/admin/product-groupings/g1" && method === "DELETE") return undefined;
-    if (path === "/admin/products") return { data: [{ ...p1, exam_ids: ["e1"] }, p2, p3, { id: "p4", type: "book", name: "Buku Latihan", price: 50000 }] };
+    if (path === "/admin/products") return { data: [p1, p2, p3, { id: "p4", type: "book", name: "Buku Latihan", price: 50000 }] };
     if (path.startsWith("/admin/uploads/image")) return { url: "https://upload.example.test/put", method: "PUT", key: "question/logo-abc.png" };
     return {};
   }) as typeof api.authFetch);
@@ -695,14 +697,15 @@ describe("event editor: delete", () => {
   });
 });
 
-describe("event editor: external results", () => {
-  it("opens the dialog for the edition's exam and offers no button on non-exam products", async () => {
+describe("event editor: competition results", () => {
+  it("opens the dialog by product id (no exam_ids) and offers no button on non-exam products", async () => {
     mockApi();
     renderPage();
     await ready();
-    expect(screen.getAllByRole("button", { name: /^Hasil ronde luar/ })).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Hasil ronde luar ESOLIO 2026 SD" }));
-    expect(await screen.findByText("Belum ada ronde.")).toBeTruthy();
-    expect(calls.some((c) => c.path === "/admin/exams/e1/external-rounds")).toBe(true);
+    expect(screen.getAllByRole("button", { name: /^Hasil kompetisi/ })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Hasil kompetisi ESOLIO 2026 SD" }));
+    expect(await screen.findByText(/7 baris/)).toBeTruthy();
+    expect(screen.getByText("Draf")).toBeTruthy();
+    expect(calls.some((c) => c.path === "/admin/products/p1/competition-result")).toBe(true);
   });
 });

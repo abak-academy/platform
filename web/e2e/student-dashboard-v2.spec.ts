@@ -53,9 +53,9 @@ const reg = (o: Record<string, unknown>) => ({
 const REGS = [
   reg({ id: "reg-live", exam_id: "exam-live", exam_title: "Olimpiade Matematika Penyisihan", scheduled_at: iso(-30 * 60_000), scheduled_end_at: iso(2 * HOUR) }),
   reg({ id: "reg-up", exam_id: "exam-reg-1", exam_title: "Olimpiade Sains Babak Awal", requires_checkin: true, check_in_window_minutes: 15, scheduled_at: iso(2 * DAY), scheduled_end_at: iso(2 * DAY + 2 * HOUR) }),
-  reg({ id: "reg-sub", exam_id: "exam-sub", exam_title: "Kompetisi Bahasa Inggris Ronde 1", status: "submitted", attempts_used: 1, session_id: "sess-sub-1",
+  reg({ id: "reg-sub", exam_id: "exam-sub", exam_title: "Kompetisi Bahasa Inggris Nasional", status: "submitted", attempts_used: 1, session_id: "sess-sub-1",
     scheduled_at: iso(-6 * DAY), scheduled_end_at: iso(-6 * DAY + 2 * HOUR),
-    external_results: [{ round_id: "r1", round_label: "Ronde Nasional", score: 87.5, rank: 12, award: "Medali Perak", certificate_url: "https://example.test/cert.pdf", published_at: iso(-3 * DAY) }] }),
+    competition_result: { score: 87.5, rank: 12, award: "Medali Perak", certificate_url: "https://example.test/cert.pdf", published_at: iso(-3 * DAY) } }),
   reg({ id: "reg-sub2", exam_id: "exam-sub2", exam_title: "Tryout Fisika Mingguan", status: "submitted", attempts_used: 1, session_id: "sess-sub-2",
     scheduled_at: iso(-4 * DAY), scheduled_end_at: iso(-4 * DAY + 2 * HOUR) }),
   reg({ id: "reg-exp", exam_id: "exam-exp", exam_title: "Tryout Kimia Terlewat", scheduled_at: iso(-3 * DAY), scheduled_end_at: iso(-3 * DAY + 2 * HOUR) }),

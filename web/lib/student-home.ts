@@ -89,7 +89,7 @@ export function levelText(stages: string[], gradeMin: number | null, gradeMax: n
 export interface EventRow {
   reg: RegistrationListItem;
   live: boolean;
-  action: "external" | "result" | "expired" | "start" | "detail";
+  action: "competition" | "result" | "expired" | "start" | "detail";
 }
 
 const MAX_EVENT_ROWS = 4;
@@ -98,8 +98,8 @@ export function eventRows(regs: RegistrationListItem[], now: number): EventRow[]
   const rows = regs.map((reg): EventRow & { finished: boolean } => {
     const kind = computeCardState(reg, now).kind;
     const live = LIVE_KINDS.includes(kind);
-    const action = reg.external_results?.length
-      ? "external"
+    const action = reg.competition_result
+      ? "competition"
       : kind === "submitted"
         ? "result"
         : kind === "expired"
