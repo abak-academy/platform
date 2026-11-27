@@ -21,6 +21,7 @@ import { useTranslation } from "@/lib/i18n";
 import { JENJANG_OPTIONS } from "@/lib/jenjang";
 import { useAuthStore } from "@/stores/auth";
 import { AbakAvatar } from "@/components/ui/abak-avatar";
+import { AvatarPicker } from "@/components/profile/AvatarPicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -430,6 +431,7 @@ export default function ProfilePage() {
   const avatarEl = (
     <AbakAvatar
       name={displayName ?? ""}
+      index={profile?.avatar_index}
       size="xl"
       ring="0 0 0 4px var(--color-surface), 0 0 0 6px var(--color-brand-50)"
       src={profile?.photo_url ? fileUrl(profile.photo_url) : undefined}
@@ -496,6 +498,7 @@ export default function ProfilePage() {
                   <ImageIcon />
                   {photoUploading ? t("saving") : t("profile_change_photo")}
                 </Button>
+                <AvatarPicker name={displayName ?? ""} current={profile?.avatar_index} />
                 <Button type="button" variant="outline" size="sm" className="w-full gap-2 border has-[>svg]:px-[13px]" onClick={() => setPasswordOpen(true)}>
                   <Lock />
                   {t("change_password")}

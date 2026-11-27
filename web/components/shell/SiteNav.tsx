@@ -57,6 +57,7 @@ function AccountControl({ light }: { light: boolean }) {
   const { t } = useTranslation();
   const token = useAuthStore((s) => s.token);
   const name = useAuthStore((s) => s.user?.name);
+  const avatarIdx = useAuthStore((s) => s.user?.avatar_index);
   const { role } = useResolvedRole();
 
   if (token && role) {
@@ -65,7 +66,7 @@ function AccountControl({ light }: { light: boolean }) {
         href={redirectForRole(role)}
         className="inline-flex h-10 items-center gap-2 rounded-[var(--radius-pill)] border border-line bg-surface py-1 pl-1 pr-3 text-sm font-semibold text-ink-900"
       >
-        <AbakAvatar name={name ?? "A"} size={34} ring={false} />
+        <AbakAvatar name={name ?? "A"} index={avatarIdx} size={34} ring={false} />
         {t("pub_nav_dashboard")}
         {role === "student" && <StudentCount />}
       </Link>

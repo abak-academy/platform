@@ -153,6 +153,7 @@ export interface User {
   kecamatan_id?: string | null;
   kode_pos?: string | null;
   photo_url?: string;
+  avatar_index?: number | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -516,9 +517,9 @@ export interface PromoCode {
   is_public?: boolean;
   /** Listed only on the affiliator dashboard; hidden from the student listing. */
   affiliator_only?: boolean;
-  /** Set on a Mitra voucher: who it is for (empty means every Mitra) and what max_uses counts. */
   /** False once an admin switches the code off; the API then refuses it like an unknown code. Absent means active. */
   is_active?: boolean;
+  /** Set on a Mitra voucher: who it is for (empty means every Mitra) and what max_uses counts. */
   partner?: PartnerVoucherInfo;
 }
 
@@ -548,9 +549,9 @@ export interface AdminUpdatePromoCodeInput {
   expires_at?: string;
   is_public?: boolean;
   affiliator_only?: boolean;
-  /** Left out, the Mitra voucher setting stays as it is. */
   /** Left out, the code stays as it is. */
   is_active?: boolean;
+  /** Left out, the Mitra voucher setting stays as it is. */
   partner_voucher?: PartnerVoucherInput;
 }
 
@@ -745,16 +746,16 @@ export interface AuditLogEntry {
   created_at: string;
 }
 
-export type SystemConfig = Record<string, string>;
-
-export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay" | "multi_blank" | "true_false";
-
 export interface AuditLogPage {
   data: AuditLogEntry[];
   total: number;
   page: number;
   per_page: number;
 }
+
+export type SystemConfig = Record<string, string>;
+
+export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay" | "multi_blank" | "true_false";
 
 export type SectionType = "listening" | "reading" | "writing";
 

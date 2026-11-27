@@ -540,3 +540,29 @@ func (s *Service) UpdatePhoto(ctx context.Context, userID, photoURL string) (*mo
 	}
 	return updated, nil
 }
+
+const avatarSpriteCount = 35
+
+func (s *Service) UpdateAvatarIndex(ctx context.Context, userID string, avatarIndex *int) (*model.User, error) {
+	if avatarIndex != nil && (*avatarIndex < 0 || *avatarIndex >= avatarSpriteCount) {
+		return nil, fmt.Errorf("%w: avatar_index must be between 0 and %d", ErrValidation, avatarSpriteCount-1)
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+	if err := s.repo.UpdateUserAvatarIndex(ctx, userID, avatarIndex); err != nil {
+		return nil, err
+	}
+	updated, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, ErrUserNotFound
+	}
+	return updated, nil
+}

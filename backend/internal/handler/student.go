@@ -249,3 +249,22 @@ func (h *Handler) UpdatePhoto(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, user)
 }
+
+// UpdateAvatarIndex: null (or absent) clears the sprite avatar.
+func (h *Handler) UpdateAvatarIndex(c echo.Context) error {
+	claims := claimsFromContext(c)
+	if claims == nil || claims.Sub == "" {
+		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
+	}
+	var req struct {
+		AvatarIndex *int `json:"avatar_index"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return badRequest(c, "invalid request body")
+	}
+	user, err := h.svc.UpdateAvatarIndex(c.Request().Context(), claims.Sub, req.AvatarIndex)
+	if err != nil {
+		return mapServiceError(c, err)
+	}
+	return c.JSON(http.StatusOK, user)
+}

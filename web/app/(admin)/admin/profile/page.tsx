@@ -10,6 +10,7 @@ import { useTranslation } from "@/lib/i18n";
 import { roleLabelKey } from "@/lib/nav-config";
 import { PageHead } from "@/components/shell/PageHead";
 import { AbakAvatar } from "@/components/ui/abak-avatar";
+import { AvatarPicker } from "@/components/profile/AvatarPicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -95,6 +96,7 @@ export default function AdminProfilePage() {
           ) : (
             <AbakAvatar
               name={me?.name ?? ""}
+              index={me?.avatar_index}
               size="xl"
               src={me?.photo_url ? fileUrl(me.photo_url) : undefined}
               className={uploading ? "animate-pulse" : undefined}
@@ -121,6 +123,7 @@ export default function AdminProfilePage() {
               >
                 {uploading ? t("saving") : t("upload_photo")}
               </Button>
+              <AvatarPicker name={me?.name ?? ""} current={me?.avatar_index} />
               <Button
                 type="button"
                 variant="outline"

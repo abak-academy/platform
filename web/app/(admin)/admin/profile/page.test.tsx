@@ -31,6 +31,7 @@ vi.mock("@/lib/hooks/students", () => ({
 }));
 
 vi.mock("@/lib/hooks/profile", () => ({
+  useUpdateOwnAvatar: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateOwnPhoto: () => ({
     mutateAsync: (...args: unknown[]) => {
       callOrder.push("updatePhoto");
@@ -95,6 +96,12 @@ describe("AdminProfilePage", () => {
     expect(av.style.width).toBe("104px");
     expect(av.style.backgroundSize).toBe("700% 500%");
     expect(screen.getByRole("button", { name: /unggah foto|upload/i })).toBeInTheDocument();
+  });
+
+  it("renders the chosen sprite avatar from avatar_index", () => {
+    meState = { data: { ...baseUser(), photo_url: undefined, avatar_index: 3 }, isLoading: false };
+    const { container } = renderPage();
+    expect(container.querySelector('[data-slot="abak-avatar"]')?.getAttribute("data-avatar-index")).toBe("3");
   });
 
   it("reports the sign-in method as password, naming the Google origin for a migrated account", () => {

@@ -12,6 +12,7 @@ type User struct {
 	Name         string     `json:"name"`
 	SchoolID     *string    `json:"school_id"`
 	PhotoURL     *string    `json:"photo_url"`
+	AvatarIndex  *int       `json:"avatar_index"`
 	Status       string     `json:"status"`
 	AuthProvider string     `json:"auth_provider"`
 	OTPEnabled   bool       `json:"otp_enabled"`

@@ -148,7 +148,7 @@ export function SidebarUserMenu({ role, counts, dotCountKey, subtitle }: Sidebar
     });
   }
 
-  const avatar = <AbakAvatar name={name} size={36} src={user?.photo_url ? fileUrl(user.photo_url) : undefined} />;
+  const avatar = <AbakAvatar name={name} index={user?.avatar_index} size={36} src={user?.photo_url ? fileUrl(user.photo_url) : undefined} />;
 
   return (
     <DropdownMenu>
