@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Suspense } from "react";
@@ -258,13 +258,21 @@ describe("OrderDetailPage payment countdown", () => {
     await renderOrder(pendingWith(deadlineIn(19 * 60_000 + 42_000)));
 
     expect(screen.getByText("Sisa waktu sebelum pesanan kedaluwarsa")).toBeInTheDocument();
-    expect(screen.getByText("19:42")).toBeInTheDocument();
+    const timer = screen.getByRole("timer");
+    // Prototype-style cells: minutes and seconds only, because the payment window is 20 minutes.
+    expect(timer).toHaveAttribute("aria-label", "19:42");
+    expect(within(timer).getByText("19")).toBeInTheDocument();
+    expect(within(timer).getByText("42")).toBeInTheDocument();
+    expect(within(timer).getByText("menit")).toBeInTheDocument();
+    expect(within(timer).getByText("detik")).toBeInTheDocument();
+    expect(within(timer).queryByText("jam")).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.getByText("19:41")).toBeInTheDocument();
+    expect(screen.getByRole("timer")).toHaveAttribute("aria-label", "19:41");
+    expect(within(screen.getByRole("timer")).getByText("41")).toBeInTheDocument();
   });
 
   it("does not poll the order before the deadline", async () => {

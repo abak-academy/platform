@@ -60,19 +60,35 @@ export default function CourseDetailPage() {
 
   const totalCount = flatLessons.length;
   const doneCount = flatLessons.filter((l) => l.completed).length;
+  const activeIndex = activeLesson ? flatLessons.indexOf(activeLesson) : -1;
+  // Advance to the next lesson still open, so a lesson watched out of order isn't landed on as "Selesai".
+  const nextOpenLesson =
+    activeIndex >= 0 ? flatLessons.slice(activeIndex + 1).find((l) => !l.completed) : undefined;
   const progressPct =
     totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   const handleToggleComplete = () => {
     if (!activeLesson) return;
     const wasDone = Boolean(activeLesson.completed);
+    const clickedId = activeLesson.id;
     completeLesson.mutate(
       { courseId, lessonId: activeLesson.id },
       {
         onSuccess: () => {
-          toast.success(
-            wasDone ? t("course_lesson_undone") : t("course_lesson_done")
-          );
+          if (wasDone) {
+            toast.success(t("course_lesson_undone"));
+            return;
+          }
+          // Prototype markDone: finishing the last open lesson ends the course; otherwise move on.
+          if (doneCount + 1 >= totalCount) {
+            toast.success(t("course_all_done_toast"));
+          } else {
+            toast.success(t("course_lesson_done"));
+            // Only follow along if the student hasn't picked another lesson while the save was in flight.
+            if (nextOpenLesson) {
+              setActiveLessonId((cur) => ((cur ?? clickedId) === clickedId ? nextOpenLesson.id : cur));
+            }
+          }
         },
         onError: (err: unknown) => {
           const message =
@@ -180,7 +196,11 @@ export default function CourseDetailPage() {
             ) : activeLesson?.completed ? (
               <CheckCircle2 className="size-4" />
             ) : null}
-            {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
+            {activeLesson?.completed
+              ? t("course_complete")
+              : nextOpenLesson
+                ? t("course_mark_complete_next")
+                : t("course_mark_complete")}
           </Button>
         </div>
 

@@ -3378,6 +3378,10 @@ export const DICT = {
     audit_sort_oldest_locked: "Urutan terlama belum tersedia: hanya log terbaru yang dimuat.",
     product_grouping_section_identity: "Identitas",
     product_grouping_section_display: "Tampilan",
+    order_countdown_minutes: "menit",
+    order_countdown_seconds: "detik",
+    course_mark_complete_next: "Tandai selesai & lanjut",
+    course_all_done_toast: "Selamat! Kursus selesai.",
   },
   en: {
     exam_admin_col_exam: "Exam",
@@ -6748,6 +6752,10 @@ export const DICT = {
     audit_sort_oldest_locked: "Oldest-first is unavailable: only the latest logs are loaded.",
     product_grouping_section_identity: "Identity",
     product_grouping_section_display: "Display",
+    order_countdown_minutes: "min",
+    order_countdown_seconds: "sec",
+    course_mark_complete_next: "Mark complete & next",
+    course_all_done_toast: "Congratulations! Course completed.",
   },
 };
 
