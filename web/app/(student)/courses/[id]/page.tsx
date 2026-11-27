@@ -60,6 +60,8 @@ export default function CourseDetailPage() {
 
   const totalCount = flatLessons.length;
   const doneCount = flatLessons.filter((l) => l.completed).length;
+  const activeIndex = activeLesson ? flatLessons.indexOf(activeLesson) : -1;
+  const nextLesson = activeIndex >= 0 ? flatLessons[activeIndex + 1] : undefined;
   const progressPct =
     totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
@@ -70,9 +72,17 @@ export default function CourseDetailPage() {
       { courseId, lessonId: activeLesson.id },
       {
         onSuccess: () => {
-          toast.success(
-            wasDone ? t("course_lesson_undone") : t("course_lesson_done")
-          );
+          if (wasDone) {
+            toast.success(t("course_lesson_undone"));
+            return;
+          }
+          // Prototype markDone: finishing the last open lesson ends the course; otherwise move on.
+          if (doneCount + 1 >= totalCount) {
+            toast.success(t("course_all_done_toast"));
+          } else {
+            toast.success(t("course_lesson_done"));
+            if (nextLesson) setActiveLessonId(nextLesson.id);
+          }
         },
         onError: (err: unknown) => {
           const message =
@@ -180,7 +190,11 @@ export default function CourseDetailPage() {
             ) : activeLesson?.completed ? (
               <CheckCircle2 className="size-4" />
             ) : null}
-            {activeLesson?.completed ? t("course_complete") : t("course_mark_complete")}
+            {activeLesson?.completed
+              ? t("course_complete")
+              : nextLesson
+                ? t("course_mark_complete_next")
+                : t("course_mark_complete")}
           </Button>
         </div>
 
