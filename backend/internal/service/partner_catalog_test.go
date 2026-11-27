@@ -36,13 +36,13 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 	mitra := uuid.NewString()
 	voucher := func(unit string, ids ...string) model.PromoCode {
 		return model.PromoCode{
-			ID: uuid.New(), Code: "MITRA", DiscountPercent: f(10),
+			ID: uuid.New(), Code: "MITRA", DiscountPercent: f(10), IsActive: true,
 			Partner: &model.PartnerVoucher{IDs: append([]string{}, ids...), QuotaUnit: unit},
 		}
 	}
 
 	t.Run("who it applies to", func(t *testing.T) {
-		_, err := evaluatePartnerPromo(model.PromoCode{Code: "BIASA", DiscountPercent: f(10)}, mitra, group1(100000, 1), 1, now)
+		_, err := evaluatePartnerPromo(model.PromoCode{Code: "BIASA", DiscountPercent: f(10), IsActive: true}, mitra, group1(100000, 1), 1, now)
 		require.ErrorIs(t, err, ErrInvalidPromo, "an ordinary promo is not a Mitra voucher")
 
 		_, err = evaluatePartnerPromo(voucher("order", uuid.NewString()), mitra, group1(100000, 1), 1, now)
@@ -71,6 +71,13 @@ func TestEvaluatePartnerPromo(t *testing.T) {
 		v.Partner.MinStudents = 0
 		_, err = evaluatePartnerPromo(v, mitra, group1(100000, 1), 1, now)
 		require.NoError(t, err, "zero means no minimum")
+	})
+
+	t.Run("a deactivated voucher is rejected like an unknown code", func(t *testing.T) {
+		v := voucher("order")
+		v.IsActive = false
+		_, err := evaluatePartnerPromo(v, mitra, group1(100000, 1), 1, now)
+		require.ErrorIs(t, err, ErrInvalidPromo)
 	})
 
 	t.Run("expiry and quota", func(t *testing.T) {
@@ -232,7 +239,7 @@ func TestPartnerVoucherAdmin(t *testing.T) {
 		_, err = svc.AdminCreatePromoCode(ctx, model.PromoCode{Code: code(), DiscountPercent: f(10), Partner: &model.PartnerVoucher{QuotaUnit: "order", MinStudents: -1}})
 		require.ErrorIs(t, err, ErrValidation)
 
-		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: true, QuotaUnit: "order", MinStudents: 8}))
+		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: true, QuotaUnit: "order", MinStudents: 8}, nil))
 		again, err = repo.GetPromoByCode(ctx, created.Code)
 		require.NoError(t, err)
 		require.Equal(t, 8, again.Partner.MinStudents)
@@ -260,19 +267,19 @@ func TestPartnerVoucherAdmin(t *testing.T) {
 		require.NoError(t, err)
 		cleanup(created.ID)
 
-		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), i(5), nil, true, false, nil))
+		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), i(5), nil, true, false, nil, nil))
 		got, err := repo.GetPromoByCode(ctx, created.Code)
 		require.NoError(t, err)
 		require.NotNil(t, got.Partner, "an old client that never heard of the setting must not turn the voucher into a public promo")
 		require.Equal(t, "order", got.Partner.QuotaUnit)
 		require.Equal(t, 5, *got.MaxUses)
 
-		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: true, IDs: []string{mitra}, QuotaUnit: "student"}))
+		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: true, IDs: []string{mitra}, QuotaUnit: "student"}, nil))
 		got, err = repo.GetPromoByCode(ctx, created.Code)
 		require.NoError(t, err)
 		require.Equal(t, &model.PartnerVoucher{IDs: []string{mitra}, QuotaUnit: "student"}, got.Partner)
 
-		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: false}))
+		require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, false, false, &PartnerVoucherInput{Enabled: false}, nil))
 		got, err = repo.GetPromoByCode(ctx, created.Code)
 		require.NoError(t, err)
 		require.Nil(t, got.Partner, "switching it off makes the promo ordinary again")
@@ -504,4 +511,42 @@ func TestPromoUses_countsSeatsOnlyForAPerStudentMitraVoucher(t *testing.T) {
 	got, err := svc.promoUses(ctx, model.Order{Items: items})
 	require.NoError(t, err)
 	require.Equal(t, 0, got, "no promo, no uses")
+}
+
+func TestPromoDeactivated(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	pc := model.PromoCode{Code: "OFF" + uniqueSuffix(), DiscountPercent: f(10), IsPublic: true}
+	created, err := svc.AdminCreatePromoCode(ctx, pc)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = repo.Pool().Exec(ctx, `DELETE FROM promo_code WHERE id = $1`, created.ID) })
+	require.True(t, created.IsActive, "a new promo is active")
+
+	_, err = svc.ValidatePromo(ctx, created.Code, 100000, 0)
+	require.NoError(t, err)
+
+	off := false
+	require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, true, false, nil, &off))
+	got, err := repo.GetPromoByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.False(t, got.IsActive)
+
+	_, err = svc.ValidatePromo(ctx, created.Code, 100000, 0)
+	require.ErrorIs(t, err, ErrInvalidPromo, "student validate/apply path")
+
+	tx, err := repo.Pool().Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+	require.ErrorIs(t, repo.IncrementPromoUsesTx(ctx, tx, created.ID, 1), repository.ErrPromoQuotaExceeded, "checkout consume path")
+
+	public, err := svc.ListActivePublicPromos(ctx)
+	require.NoError(t, err)
+	for _, p := range public {
+		require.NotEqual(t, created.Code, p.Code, "public listing")
+	}
+
+	require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, true, false, nil, nil))
+	got, err = repo.GetPromoByID(ctx, created.ID)
+	require.NoError(t, err)
+	require.False(t, got.IsActive, "omitting is_active leaves it as it is")
 }

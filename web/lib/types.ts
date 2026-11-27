@@ -517,6 +517,8 @@ export interface PromoCode {
   /** Listed only on the affiliator dashboard; hidden from the student listing. */
   affiliator_only?: boolean;
   /** Set on a Mitra voucher: who it is for (empty means every Mitra) and what max_uses counts. */
+  /** False once an admin switches the code off; the API then refuses it like an unknown code. Absent means active. */
+  is_active?: boolean;
   partner?: PartnerVoucherInfo;
 }
 
@@ -547,6 +549,8 @@ export interface AdminUpdatePromoCodeInput {
   is_public?: boolean;
   affiliator_only?: boolean;
   /** Left out, the Mitra voucher setting stays as it is. */
+  /** Left out, the code stays as it is. */
+  is_active?: boolean;
   partner_voucher?: PartnerVoucherInput;
 }
 

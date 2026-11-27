@@ -15,7 +15,7 @@ import (
 // ErrPromoQuotaExceeded reports that a promo cannot take the uses asked for.
 var ErrPromoQuotaExceeded = errors.New("promo quota exceeded")
 
-const promoColumns = `id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public, affiliator_only, partner`
+const promoColumns = `id, code, discount_percent, discount_amount, min_order_amount, max_discount_amount, max_uses, used_count, expires_at, created_at, is_public, affiliator_only, partner, is_active`
 
 type promoRow interface {
 	Scan(dest ...any) error
@@ -24,7 +24,7 @@ type promoRow interface {
 func scanPromo(row promoRow, p *model.PromoCode) error {
 	var partner []byte
 	if err := row.Scan(
-		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic, &p.AffiliatorOnly, &partner,
+		&p.ID, &p.Code, &p.DiscountPercent, &p.DiscountAmount, &p.MinOrderAmount, &p.MaxDiscountAmount, &p.MaxUses, &p.UsedCount, &p.ExpiresAt, &p.CreatedAt, &p.IsPublic, &p.AffiliatorOnly, &partner, &p.IsActive,
 	); err != nil {
 		return err
 	}
@@ -112,16 +112,17 @@ type PartnerVoucherChange struct {
 	Value *model.PartnerVoucher
 }
 
-func (r *Repository) UpdatePromoCode(ctx context.Context, id uuid.UUID, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool, partner PartnerVoucherChange) error {
+func (r *Repository) UpdatePromoCode(ctx context.Context, id uuid.UUID, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool, partner PartnerVoucherChange, isActive *bool) error {
 	value, err := partnerVoucherParam(partner.Value)
 	if err != nil {
 		return err
 	}
 	_, err = r.pool.Exec(ctx,
 		`UPDATE promo_code SET max_uses = $1, expires_at = $2, is_public = $3, affiliator_only = $4,
-		     partner = CASE WHEN $5 THEN $6::jsonb ELSE partner END
-		 WHERE id = $7`,
-		maxUses, expiresAt, isPublic, affiliatorOnly, partner.Set, value, id,
+		     partner = CASE WHEN $5 THEN $6::jsonb ELSE partner END,
+		     is_active = COALESCE($7, is_active)
+		 WHERE id = $8`,
+		maxUses, expiresAt, isPublic, affiliatorOnly, partner.Set, value, isActive, id,
 	)
 	return err
 }
@@ -150,7 +151,7 @@ func (r *Repository) ListActivePublicPromos(ctx context.Context) ([]model.PromoC
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+promoColumns+`
 		FROM promo_code
-		WHERE is_public = true AND NOT affiliator_only AND partner IS NULL
+		WHERE is_active AND is_public = true AND NOT affiliator_only AND partner IS NULL
 		AND (expires_at IS NULL OR expires_at > now())
 		AND (max_uses IS NULL OR used_count < max_uses)
 		ORDER BY created_at DESC`,
@@ -167,7 +168,7 @@ func (r *Repository) ListAffiliatorOnlyPromos(ctx context.Context) ([]model.Prom
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+promoColumns+`
 		FROM promo_code
-		WHERE affiliator_only = true
+		WHERE is_active AND affiliator_only = true
 		AND (expires_at IS NULL OR expires_at > now())
 		AND (max_uses IS NULL OR used_count < max_uses)
 		ORDER BY created_at DESC`,
@@ -184,7 +185,7 @@ func (r *Repository) ListPartnerPromos(ctx context.Context, partnerID string) ([
 	rows, err := r.pool.Query(ctx,
 		`SELECT `+promoColumns+`
 		FROM promo_code
-		WHERE partner IS NOT NULL
+		WHERE is_active AND partner IS NOT NULL
 		AND (jsonb_array_length(partner->'ids') = 0 OR partner->'ids' @> to_jsonb($1::text))
 		AND (expires_at IS NULL OR expires_at > now())
 		AND (max_uses IS NULL OR used_count < max_uses)
@@ -210,12 +211,12 @@ func (r *Repository) IncrementPromoUses(ctx context.Context, id uuid.UUID) error
 // checkout needs this: it has no gateway round-trip to wait on, so there is no
 // reason to settle the promo count outside the transaction and risk losing it.
 // It takes n uses at once and refuses, with ErrPromoQuotaExceeded, when that
-// would pass max_uses: the limit is checked by the UPDATE itself, so two
+// would pass max_uses or the promo was deactivated: the limit is checked by the UPDATE itself, so two
 // checkouts racing for the last use cannot both get it.
 func (r *Repository) IncrementPromoUsesTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, n int) error {
 	tag, err := tx.Exec(ctx,
 		`UPDATE promo_code SET used_count = used_count + $2
-		 WHERE id = $1 AND (max_uses IS NULL OR used_count + $2 <= max_uses)`,
+		 WHERE id = $1 AND is_active AND (max_uses IS NULL OR used_count + $2 <= max_uses)`,
 		id, n,
 	)
 	if err != nil {

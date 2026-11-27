@@ -114,6 +114,34 @@ describe("PromosPage", () => {
     expect(screen.queryByText("DISKON10")).not.toBeInTheDocument();
   });
 
+  it("toggles a promo off, resending its other fields so the PUT does not reset them", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ message: "promo code updated" });
+    render(<PromosPage />);
+
+    const card = screen.getByText("DISKON10").closest("article") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: /promo_deactivate|nonaktifkan/i }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        id: "promo-1",
+        input: { max_uses: 100, expires_at: "2026-12-31T00:00:00Z", is_public: false, affiliator_only: false, is_active: false },
+      }),
+    );
+  });
+
+  it("shows an inactive promo as such and offers to switch it back on", async () => {
+    promosState.data = [{ ...samplePromos[0], is_active: false }];
+    mockMutateAsync.mockResolvedValueOnce({ message: "promo code updated" });
+    render(<PromosPage />);
+
+    const card = screen.getByText("DISKON10").closest("article") as HTMLElement;
+    expect(card).toHaveTextContent(/promos_status_inactive|nonaktif/i);
+    expect(card).not.toHaveTextContent("Aktif");
+    fireEvent.click(within(card).getByRole("button", { name: /promo_activate|^aktifkan/i }));
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ is_active: true }) })));
+  });
+
   it("opens create modal and calls create mutation on save", async () => {
     mockMutateAsync.mockResolvedValueOnce({ id: "promo-3", code: "NEWPROMO", discount_percent: 10 });
 

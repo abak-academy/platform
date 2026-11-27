@@ -484,7 +484,7 @@ func (s *Service) ValidatePromo(ctx context.Context, code string, subtotal float
 	if err != nil {
 		return PromoValidation{}, err
 	}
-	if promo.Code == "" || promo.Partner != nil {
+	if promo.Code == "" || !promo.IsActive || promo.Partner != nil {
 		return PromoValidation{}, ErrInvalidPromo
 	}
 	if promo.ExpiresAt != nil && promo.ExpiresAt.Before(time.Now()) {
@@ -2174,7 +2174,7 @@ func (s *Service) AdminCreatePromoCode(ctx context.Context, p model.PromoCode) (
 
 // AdminUpdatePromoCode changes the editable fields of a promo. partner nil
 // leaves the Mitra voucher setting as it is.
-func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool, partner *PartnerVoucherInput) error {
+func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *int, expiresAt *time.Time, isPublic, affiliatorOnly bool, partner *PartnerVoucherInput, isActive *bool) error {
 	pID, err := parseUUID(id)
 	if err != nil {
 		return err
@@ -2197,7 +2197,7 @@ func (s *Service) AdminUpdatePromoCode(ctx context.Context, id string, maxUses *
 			isPublic = false
 		}
 	}
-	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic, affiliatorOnly, change)
+	return s.storeRepo.UpdatePromoCode(ctx, pID, maxUses, expiresAt, isPublic, affiliatorOnly, change, isActive)
 }
 
 // ListActivePublicPromos returns is_public promo codes that are still valid

@@ -10,7 +10,7 @@ import {
   useUpdatePromoCode,
   useDeletePromoCode,
 } from "@/lib/hooks/admin-promos";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 import { PromoModal } from "@/components/admin/PromoModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,7 +28,8 @@ function discountLabel(promo: PromoCode): string {
   return "-";
 }
 
-function promoStatus(promo: PromoCode): "active" | "expired" | "exhausted" {
+function promoStatus(promo: PromoCode): "active" | "inactive" | "expired" | "exhausted" {
+  if (promo.is_active === false) return "inactive";
   if (promo.expires_at && new Date(promo.expires_at).getTime() <= Date.now()) return "expired";
   if (promo.max_uses != null && promo.used_count >= promo.max_uses) return "exhausted";
   return "active";
@@ -95,6 +96,25 @@ export default function PromosPage() {
     }
   }
 
+  // PUT replaces max_uses, expires_at and the two flags, so the toggle resends them as they are.
+  async function handleToggleActive(promo: PromoCode) {
+    try {
+      await update.mutateAsync({
+        id: promo.id,
+        input: {
+          max_uses: promo.max_uses ?? undefined,
+          expires_at: promo.expires_at ?? undefined,
+          is_public: promo.is_public ?? false,
+          affiliator_only: promo.affiliator_only ?? false,
+          is_active: promo.is_active === false,
+        },
+      });
+      toast.success(t("changes_saved"));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  }
+
   async function handleDelete(id: string) {
     if (!confirm(t("promo_confirm_delete"))) return;
     try {
@@ -134,7 +154,7 @@ export default function PromosPage() {
           filters={[{
             key: "status",
             label: t("th_status"),
-            options: (["active", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}`) })),
+            options: (["active", "inactive", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}` as I18nKey) })),
           }]}
           sorts={[{ value: "used", label: t("promos_sort_used") }, { value: "ending", label: t("promos_sort_ending") }]}
         />
@@ -187,8 +207,11 @@ export default function PromosPage() {
                   </div>
                   {pct !== null && <Progress value={pct} variant={pct > 80 ? "hatch" : "ember"} aria-label={t("promos_used")} />}
                 </div>
-                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="w-full justify-start">{t(`promos_status_${status}`)}</Badge>
+                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="w-full justify-start">{t(`promos_status_${status}` as I18nKey)}</Badge>
                 <div className="mt-auto flex items-center justify-end gap-1.5 border-t border-line pt-3">
+                  <Button size="sm" variant="outline" onClick={() => handleToggleActive(promo)} disabled={update.isPending}>
+                    {t((promo.is_active === false ? "promo_activate" : "promo_deactivate") as I18nKey)}
+                  </Button>
                   <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
                     {t("action_edit")}
                   </Button>
