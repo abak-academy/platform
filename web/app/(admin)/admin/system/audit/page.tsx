@@ -191,10 +191,14 @@ export default function SystemAuditPage() {
         )}
         {total > 0 && (
           <TableFooter
-            summary={t("aff_range_summary")
-              .replace("{from}", String((page - 1) * PAGE_SIZE + 1))
-              .replace("{to}", String((page - 1) * PAGE_SIZE + loaded.length))
-              .replace("{total}", String(total))}
+            summary={
+              actor || loaded.length === 0
+                ? ""
+                : t("aff_range_summary")
+                    .replace("{from}", String((page - 1) * PAGE_SIZE + 1))
+                    .replace("{to}", String((page - 1) * PAGE_SIZE + loaded.length))
+                    .replace("{total}", String(total))
+            }
           >
             <Pagination page={page} pages={pages} onPageChange={setPage} />
           </TableFooter>

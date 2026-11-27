@@ -274,7 +274,7 @@ func TestAdminListAuditLog_InvalidActorID_400(t *testing.T) {
 }
 
 func TestAdminListAuditLog_InvalidPage_400(t *testing.T) {
-	for _, page := range []string{"0", "-1", "abc"} {
+	for _, page := range []string{"0", "-1", "abc", "10001", "9223372036854775807"} {
 		t.Run(page, func(t *testing.T) {
 			env := newAdminSystemEnv(t)
 			req := httptest.NewRequest(http.MethodGet, "/admin/system/audit?page="+page, nil)

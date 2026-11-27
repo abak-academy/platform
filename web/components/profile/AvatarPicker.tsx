@@ -22,6 +22,18 @@ export function AvatarPicker({ name, current }: { name: string; current?: number
     });
   }
 
+  function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const step = { ArrowRight: 1, ArrowDown: 5, ArrowLeft: -1, ArrowUp: -5 }[e.key];
+    if (!step) return;
+    const radios = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]'));
+    const at = radios.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    e.preventDefault();
+    const next = Math.min(Math.max(at + step, 0), radios.length - 1);
+    radios[next].focus();
+    pick(next);
+  }
+
   return (
     <div className="flex w-full flex-col gap-2">
       <Button
@@ -36,17 +48,24 @@ export function AvatarPicker({ name, current }: { name: string; current?: number
       </Button>
       {open && (
         <div id="avatar-picker-grid" className="flex flex-col gap-2">
-          <div className="grid max-h-[210px] grid-cols-5 gap-2 overflow-y-auto p-1">
+          <div
+            role="radiogroup"
+            aria-label={t("avatar_pick")}
+            onKeyDown={onKeyDown}
+            className="grid max-h-[210px] grid-cols-5 gap-2 overflow-y-auto p-1"
+          >
             {Array.from({ length: AVATAR_COUNT }, (_, i) => (
               <button
                 key={i}
                 type="button"
                 aria-label={t("avatar_pick_item").replace("{n}", String(i + 1))}
-                aria-pressed={current === i}
+                role="radio"
+                aria-checked={current === i}
+                tabIndex={i === (current ?? 0) ? 0 : -1}
                 disabled={update.isPending}
                 onClick={() => pick(i)}
                 className={cn(
-                  "rounded-full p-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300",
+                  "rounded-full p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-300",
                   current === i && "ring-2 ring-brand-600"
                 )}
               >

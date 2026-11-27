@@ -59,4 +59,10 @@ describe("AbakAvatar", () => {
     expect(el.style.backgroundSize).toBe("cover");
     expect(el.style.width).toBe("34px");
   });
+  it("a chosen sprite wins over src", () => {
+    const { container } = render(<AbakAvatar name="Budi" index={3} src="/p.jpg" />);
+    const el = container.firstElementChild as HTMLElement;
+    expect(el.getAttribute("data-avatar-index")).toBe("3");
+    expect(el.style.backgroundImage).not.toContain("/p.jpg");
+  });
 });

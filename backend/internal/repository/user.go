@@ -177,24 +177,21 @@ func (r *Repository) UpdateUserProfile(ctx context.Context, userID string, name,
 	return err
 }
 
-// UpdateUserPhoto sets the user's avatar URL.
+// UpdateUserPhoto sets the user's avatar URL and clears the sprite choice, so
+// the newest pick (photo upload vs sprite) is what renders.
 func (r *Repository) UpdateUserPhoto(ctx context.Context, userID, photoURL string) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE users SET photo_url = $1, updated_at = now() WHERE id = $2`,
+		`UPDATE users SET photo_url = $1, avatar_index = NULL, updated_at = now() WHERE id = $2`,
 		photoURL, userID,
 	)
 	return err
 }
 
-// UpdateUserAvatarIndex sets the sprite avatar (nil clears it). Picking a
-// sprite also drops any uploaded photo, since photo_url wins at render time.
+// UpdateUserAvatarIndex sets the sprite avatar (nil clears it). It wins over
+// photo_url at render time, so the uploaded photo is kept.
 func (r *Repository) UpdateUserAvatarIndex(ctx context.Context, userID string, avatarIndex *int) error {
 	_, err := r.pool.Exec(ctx,
-		`UPDATE users
-		SET avatar_index = $1::smallint,
-		    photo_url = CASE WHEN $1::smallint IS NULL THEN photo_url ELSE NULL END,
-		    updated_at = now()
-		WHERE id = $2`,
+		`UPDATE users SET avatar_index = $1::smallint, updated_at = now() WHERE id = $2`,
 		avatarIndex, userID,
 	)
 	return err

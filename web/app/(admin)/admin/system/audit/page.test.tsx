@@ -38,6 +38,20 @@ describe("SystemAuditPage", () => {
     auditEntries = [];
   });
 
+  it("hides the range summary while the actor filter narrows the page", () => {
+    auditEntries = [
+      { id: "1", action: "user.create", actor_name: "Ani", actor_email: null, target_type: "user", target_id: "u1", created_at: "2026-11-01T00:00:00Z" },
+    ];
+    auditTotal = 45;
+    render(<SystemAuditPage />);
+    expect(screen.getByText("aff_range_summary")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /list_toolbar_filter/ }));
+    fireEvent.click(screen.getByRole("combobox", { name: "audit_filter_actor" }));
+    fireEvent.click(screen.getByRole("option", { name: "audit_actor_admin" }));
+    expect(screen.queryByText("aff_range_summary")).not.toBeInTheDocument();
+    auditEntries = [];
+  });
+
   it("hides the pager when everything fits on one page", () => {
     auditEntries = [
       { id: "1", action: "user.create", actor_name: "Ani", actor_email: null, target_type: "user", target_id: "u1", created_at: "2026-11-01T00:00:00Z" },

@@ -211,8 +211,8 @@ func (r *Repository) IncrementPromoUses(ctx context.Context, id uuid.UUID) error
 // checkout needs this: it has no gateway round-trip to wait on, so there is no
 // reason to settle the promo count outside the transaction and risk losing it.
 // It takes n uses at once and refuses, with ErrPromoQuotaExceeded, when that
-// would pass max_uses or the promo was deactivated: the limit is checked by the UPDATE itself, so two
-// checkouts racing for the last use cannot both get it.
+// would pass max_uses or the promo is inactive; the UPDATE itself checks both,
+// so two checkouts racing for the last use cannot both get it.
 func (r *Repository) IncrementPromoUsesTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, n int) error {
 	tag, err := tx.Exec(ctx,
 		`UPDATE promo_code SET used_count = used_count + $2

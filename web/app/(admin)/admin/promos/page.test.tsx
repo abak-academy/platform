@@ -102,7 +102,7 @@ describe("PromosPage", () => {
     expect(screen.getByText((_, el) => el?.textContent === "12 / 100" && el.tagName === "SPAN")).toBeInTheDocument();
     expect(screen.getByText((_, el) => el?.textContent === "5 / 50" && el.tagName === "SPAN")).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(2);
-    expect(screen.getByText("DISKON10").closest("article")).toHaveTextContent("Aktif");
+    expect(within(screen.getByText("DISKON10").closest("article") as HTMLElement).getByText("Aktif")).toBeInTheDocument();
     expect(screen.getAllByRole("progressbar")).toHaveLength(2);
   });
 
@@ -136,7 +136,7 @@ describe("PromosPage", () => {
 
     const card = screen.getByText("DISKON10").closest("article") as HTMLElement;
     expect(card).toHaveTextContent(/promos_status_inactive|nonaktif/i);
-    expect(card).not.toHaveTextContent(/\bAktif\b/);
+    expect(within(card).queryByText("Aktif")).toBeNull();
     fireEvent.click(within(card).getByRole("button", { name: /promo_activate|^aktifkan/i }));
 
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ is_active: true }) })));

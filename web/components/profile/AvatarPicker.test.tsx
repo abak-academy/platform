@@ -9,7 +9,7 @@ vi.mock("@/lib/hooks/profile", () => ({
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 function options(container: HTMLElement) {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>("#avatar-picker-grid button[aria-pressed]"));
+  return Array.from(container.querySelectorAll<HTMLButtonElement>("#avatar-picker-grid button[role=radio]"));
 }
 
 describe("AvatarPicker", () => {
@@ -33,10 +33,22 @@ describe("AvatarPicker", () => {
     const { container } = render(<AvatarPicker name="Budi" current={12} />);
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     const opts = options(container);
-    expect(opts.filter((b) => b.getAttribute("aria-pressed") === "true")).toEqual([opts[12]]);
+    expect(opts.filter((b) => b.getAttribute("aria-checked") === "true")).toEqual([opts[12]]);
     const reset = container.querySelector("#avatar-picker-grid > button") as HTMLButtonElement;
     fireEvent.click(reset);
     expect(mutate).toHaveBeenCalledWith(null, expect.any(Object));
+  });
+
+  it("arrow keys move focus and pick the neighbour", () => {
+    const { container } = render(<AvatarPicker name="Budi" current={4} />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    const opts = options(container);
+    expect(opts[4].tabIndex).toBe(0);
+    expect(opts[5].tabIndex).toBe(-1);
+    opts[4].focus();
+    fireEvent.keyDown(opts[4], { key: "ArrowRight" });
+    expect(mutate).toHaveBeenCalledWith(5, expect.any(Object));
+    expect(document.activeElement).toBe(opts[5]);
   });
 
   it("shows no reset button while nothing is chosen", () => {

@@ -142,6 +142,7 @@ func (f *fakeUserRepo) UpdateUserPhoto(_ context.Context, userID, photoURL strin
 		return errors.New("not found")
 	}
 	u.PhotoURL = &photoURL
+	u.AvatarIndex = nil
 	return nil
 }
 

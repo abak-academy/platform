@@ -525,6 +525,23 @@ func TestPromoDeactivated(t *testing.T) {
 	_, err = svc.ValidatePromo(ctx, created.Code, 100000, 0)
 	require.NoError(t, err)
 
+	_, err = repo.Pool().Exec(ctx, `UPDATE promo_code SET affiliator_only = true, partner = '{"ids":[],"quota_unit":"order","min_students":1}' WHERE id = $1`, created.ID)
+	require.NoError(t, err)
+	hasCode := func(list []model.PromoCode) bool {
+		for _, p := range list {
+			if p.Code == created.Code {
+				return true
+			}
+		}
+		return false
+	}
+	affiliator, err := repo.ListAffiliatorOnlyPromos(ctx)
+	require.NoError(t, err)
+	require.True(t, hasCode(affiliator), "affiliator listing while active")
+	partner, err := repo.ListPartnerPromos(ctx, uuid.NewString())
+	require.NoError(t, err)
+	require.True(t, hasCode(partner), "partner listing while active")
+
 	off := false
 	require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, true, false, nil, &off))
 	got, err := repo.GetPromoByID(ctx, created.ID)
@@ -544,6 +561,12 @@ func TestPromoDeactivated(t *testing.T) {
 	for _, p := range public {
 		require.NotEqual(t, created.Code, p.Code, "public listing")
 	}
+	affiliator, err = repo.ListAffiliatorOnlyPromos(ctx)
+	require.NoError(t, err)
+	require.False(t, hasCode(affiliator), "affiliator listing")
+	partner, err = repo.ListPartnerPromos(ctx, uuid.NewString())
+	require.NoError(t, err)
+	require.False(t, hasCode(partner), "partner listing")
 
 	require.NoError(t, svc.AdminUpdatePromoCode(ctx, created.ID.String(), nil, nil, true, false, nil, nil))
 	got, err = repo.GetPromoByID(ctx, created.ID)

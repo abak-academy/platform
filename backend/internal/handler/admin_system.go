@@ -119,6 +119,8 @@ func (h *Handler) AdminResetAccountPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]string{"message": "password reset triggered"})
 }
 
+const maxAuditPage = 10000
+
 // AdminListAuditLog returns audit log entries with optional filters, page-paginated.
 func (h *Handler) AdminListAuditLog(c echo.Context) error {
 	actorID := c.QueryParam("actor_id")
@@ -129,7 +131,7 @@ func (h *Handler) AdminListAuditLog(c echo.Context) error {
 	page := 1
 	if p := c.QueryParam("page"); p != "" {
 		n, err := strconv.Atoi(p)
-		if err != nil || n < 1 {
+		if err != nil || n < 1 || n > maxAuditPage {
 			return badRequest(c, "page must be a positive integer")
 		}
 		page = n

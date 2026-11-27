@@ -10,7 +10,7 @@ import {
   useUpdatePromoCode,
   useDeletePromoCode,
 } from "@/lib/hooks/admin-promos";
-import { useTranslation, type I18nKey } from "@/lib/i18n";
+import { useTranslation } from "@/lib/i18n";
 import { PromoModal } from "@/components/admin/PromoModal";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -154,7 +154,7 @@ export default function PromosPage() {
           filters={[{
             key: "status",
             label: t("th_status"),
-            options: (["active", "inactive", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}` as I18nKey) })),
+            options: (["active", "inactive", "expired", "exhausted"] as const).map((v) => ({ value: v, label: t(`promos_status_${v}`) })),
           }]}
           sorts={[{ value: "used", label: t("promos_sort_used") }, { value: "ending", label: t("promos_sort_ending") }]}
         />
@@ -182,6 +182,7 @@ export default function PromosPage() {
         <div className="grid gap-[18px] [grid-template-columns:repeat(auto-fill,minmax(255px,1fr))]">
           {shown.map((promo) => {
             const status = promoStatus(promo);
+            const toggleLabel = t(promo.is_active === false ? "promo_activate" : "promo_deactivate");
             const pct = promo.max_uses ? Math.min(100, Math.round((promo.used_count / promo.max_uses) * 100)) : null;
             return (
               <article key={promo.id} className={cn("md-card-outlined flex flex-col gap-2.5", status !== "active" && "border-dashed bg-surface-sunken")}>
@@ -207,10 +208,16 @@ export default function PromosPage() {
                   </div>
                   {pct !== null && <Progress value={pct} variant={pct > 80 ? "hatch" : "ember"} aria-label={t("promos_used")} />}
                 </div>
-                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="w-full justify-start">{t(`promos_status_${status}` as I18nKey)}</Badge>
+                <Badge variant={status === "active" ? "teal" : status === "expired" ? "danger" : "mute"} className="w-full justify-start">{t(`promos_status_${status}`)}</Badge>
                 <div className="mt-auto flex items-center justify-end gap-1.5 border-t border-line pt-3">
-                  <Button size="sm" variant="outline" onClick={() => handleToggleActive(promo)} disabled={update.isPending}>
-                    {t((promo.is_active === false ? "promo_activate" : "promo_deactivate") as I18nKey)}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleToggleActive(promo)}
+                    disabled={update.isPending}
+                    aria-label={`${toggleLabel} ${promo.code}`}
+                  >
+                    {toggleLabel}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => openEdit(promo)}>
                     {t("action_edit")}
