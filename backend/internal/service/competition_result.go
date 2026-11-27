@@ -21,9 +21,8 @@ import (
 )
 
 const (
-	externalResultsMaxBytes = 2 << 20
-	externalLabelMaxLen     = 80
-	externalAwardMaxLen     = 60
+	competitionResultsMaxBytes = 2 << 20
+	competitionAwardMaxLen     = 60
 
 	ReasonUnreadableParticipantNo = "unreadable_participant_no"
 	ReasonOtherExamParticipantNo  = "other_exam_participant_no"
@@ -37,25 +36,25 @@ const (
 	ReasonBadRow                  = "bad_row"
 )
 
-var ErrExternalRoundNotFound = errors.New("external round not found")
+var ErrCompetitionResultNotFound = errors.New("competition result not found")
 
-var externalScoreRe = regexp.MustCompile(`^\d+(\.\d+)?$`)
+var competitionScoreRe = regexp.MustCompile(`^\d+(\.\d+)?$`)
 
-var externalColumns = map[string]bool{"participant_no": true, "score": true, "rank": true, "award": true, "certificate_url": true}
+var competitionColumns = map[string]bool{"participant_no": true, "score": true, "rank": true, "award": true, "certificate_url": true}
 
-func externalKeyPrefix(examID uuid.UUID) string {
-	return fmt.Sprintf("exam-external-results/%s/", examID)
+func competitionKeyPrefix(productID uuid.UUID) string {
+	return fmt.Sprintf("competition-results/%s/", productID)
 }
 
-func (s *Service) PresignExternalRoundUpload(ctx context.Context, examID uuid.UUID, filename string) (*PrivateUploadURL, error) {
+func (s *Service) PresignCompetitionResultUpload(ctx context.Context, productID uuid.UUID, filename string) (*PrivateUploadURL, error) {
 	if strings.TrimSpace(filename) == "" {
 		return nil, fmt.Errorf("%w: filename is required", ErrValidation)
 	}
-	return s.presignPrivatePut(ctx, externalKeyPrefix(examID)+uuid.NewString()+"-"+filename)
+	return s.presignPrivatePut(ctx, competitionKeyPrefix(productID)+uuid.NewString()+"-"+filename)
 }
 
-func (s *Service) readExternalRoundObject(ctx context.Context, examID uuid.UUID, key string) ([]byte, error) {
-	if !strings.HasPrefix(key, externalKeyPrefix(examID)) || strings.Contains(key, "..") {
+func (s *Service) readCompetitionResultObject(ctx context.Context, productID uuid.UUID, key string) ([]byte, error) {
+	if !strings.HasPrefix(key, competitionKeyPrefix(productID)) || strings.Contains(key, "..") {
 		return nil, ErrUploadNotFound
 	}
 	if s.storage == nil {
@@ -66,85 +65,69 @@ func (s *Service) readExternalRoundObject(ctx context.Context, examID uuid.UUID,
 		return nil, err
 	}
 	defer obj.Close()
-	data, err := io.ReadAll(io.LimitReader(obj, externalResultsMaxBytes+1))
+	data, err := io.ReadAll(io.LimitReader(obj, competitionResultsMaxBytes+1))
 	if err != nil {
 		if minio.ToErrorResponse(err).Code == "NoSuchKey" {
 			return nil, ErrUploadNotFound
 		}
 		return nil, err
 	}
-	if len(data) > externalResultsMaxBytes {
+	if len(data) > competitionResultsMaxBytes {
 		return nil, fmt.Errorf("%w: file_too_large (max 2 MB)", ErrValidation)
 	}
 	return data, nil
 }
 
-func cleanExternalLabel(label string) (string, error) {
-	label = strings.TrimSpace(label)
-	if label == "" || utf8.RuneCountInString(label) > externalLabelMaxLen {
-		return "", fmt.Errorf("%w: round_label must be 1-%d characters", ErrValidation, externalLabelMaxLen)
-	}
-	return label, nil
-}
-
-func mapExternalNotFound(err error) error {
-	if errors.Is(err, repository.ErrNotFound) {
-		return ErrExamNotFound
-	}
-	return err
-}
-
-// evaluateExternalRound reads and validates the file; it is the single source
-// for both preview and apply so the preview is never trusted as state.
-func (s *Service) evaluateExternalRound(ctx context.Context, examID uuid.UUID, key, label string) (string, []model.ExternalResultInput, *model.ExternalRoundPreview, error) {
-	label, err := cleanExternalLabel(label)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	data, err := s.readExternalRoundObject(ctx, examID, key)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	examNumber, regs, err := s.storeRepo.GetExternalMatchData(ctx, examID)
-	if err != nil {
-		return "", nil, nil, mapExternalNotFound(err)
-	}
-	inputs, rowErrs, err := parseExternalRoundCSV(data, examNumber, regs)
-	if err != nil {
-		return "", nil, nil, err
-	}
-	preview := &model.ExternalRoundPreview{Matched: len(inputs), Errors: rowErrs}
-	round, err := s.storeRepo.GetExternalRoundByLabel(ctx, examID, label)
-	if err != nil && !errors.Is(err, repository.ErrNotFound) {
-		return "", nil, nil, err
-	}
-	if round != nil {
-		preview.RoundExists = true
-		preview.RoundPublished = round.PublishedAt != nil
-	}
-	return label, inputs, preview, nil
-}
-
-func (s *Service) PreviewExternalRound(ctx context.Context, examID uuid.UUID, key, label string) (*model.ExternalRoundPreview, error) {
-	_, _, preview, err := s.evaluateExternalRound(ctx, examID, key, label)
-	return preview, err
-}
-
-// ApplyExternalRound writes nothing and returns the preview when the file has
-// row errors; the caller reports those as 422.
-func (s *Service) ApplyExternalRound(ctx context.Context, examID uuid.UUID, actorID, key, label string) (*model.ExternalRoundPreview, *model.ExternalRound, error) {
-	label, inputs, preview, err := s.evaluateExternalRound(ctx, examID, key, label)
-	if err != nil || len(preview.Errors) > 0 {
-		return preview, nil, err
-	}
-	round, err := s.storeRepo.ApplyExternalRound(ctx, examID, label, key, actorID, inputs)
+// evaluateCompetitionResult reads and validates the file; it is the single
+// source for both preview and apply so the preview is never trusted as state.
+func (s *Service) evaluateCompetitionResult(ctx context.Context, productID uuid.UUID, key string) ([]model.CompetitionResultInput, *model.CompetitionResultPreview, error) {
+	data, err := s.readCompetitionResultObject(ctx, productID, key)
 	if err != nil {
 		return nil, nil, err
 	}
-	return preview, round, nil
+	regs, err := s.storeRepo.GetCompetitionMatchData(ctx, productID)
+	if err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return nil, nil, ErrProductNotFound
+		}
+		return nil, nil, err
+	}
+	inputs, rowErrs, err := parseCompetitionResultCSV(data, regs)
+	if err != nil {
+		return nil, nil, err
+	}
+	preview := &model.CompetitionResultPreview{Matched: len(inputs), Errors: rowErrs}
+	existing, err := s.storeRepo.GetCompetitionResult(ctx, productID)
+	if err != nil && !errors.Is(err, repository.ErrNotFound) {
+		return nil, nil, err
+	}
+	if existing != nil {
+		preview.ResultExists = true
+		preview.ResultPublished = existing.PublishedAt != nil
+	}
+	return inputs, preview, nil
 }
 
-func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository.ExternalRegistration) ([]model.ExternalResultInput, []model.ExternalRowError, error) {
+func (s *Service) PreviewCompetitionResult(ctx context.Context, productID uuid.UUID, key string) (*model.CompetitionResultPreview, error) {
+	_, preview, err := s.evaluateCompetitionResult(ctx, productID, key)
+	return preview, err
+}
+
+// ApplyCompetitionResult writes nothing and returns the preview when the file
+// has row errors; the caller reports those as 422.
+func (s *Service) ApplyCompetitionResult(ctx context.Context, productID uuid.UUID, actorID, key string) (*model.CompetitionResultPreview, *model.CompetitionResult, error) {
+	inputs, preview, err := s.evaluateCompetitionResult(ctx, productID, key)
+	if err != nil || len(preview.Errors) > 0 {
+		return preview, nil, err
+	}
+	result, err := s.storeRepo.ApplyCompetitionResult(ctx, productID, key, actorID, inputs)
+	if err != nil {
+		return nil, nil, err
+	}
+	return preview, result, nil
+}
+
+func parseCompetitionResultCSV(data []byte, regs map[int]map[int]repository.CompetitionRegistration) ([]model.CompetitionResultInput, []model.CompetitionRowError, error) {
 	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\xef\xbb\xbf")))
 	r.FieldsPerRecord = -1
 	header, err := r.Read()
@@ -154,7 +137,7 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 	col := map[string]int{}
 	for i, h := range header {
 		h = strings.ToLower(strings.TrimSpace(h))
-		if !externalColumns[h] {
+		if !competitionColumns[h] {
 			return nil, nil, fmt.Errorf("%w: unknown_column %q", ErrValidation, h)
 		}
 		if _, dup := col[h]; dup {
@@ -174,9 +157,9 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 		return ""
 	}
 
-	inputs := []model.ExternalResultInput{}
-	rowErrs := []model.ExternalRowError{}
-	seen := map[int]bool{}
+	inputs := []model.CompetitionResultInput{}
+	rowErrs := []model.CompetitionRowError{}
+	seen := map[uuid.UUID]bool{}
 	rows := 0
 	for {
 		rec, err := r.Read()
@@ -190,7 +173,7 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 		line, _ := r.FieldPos(0)
 		no := get(rec, "participant_no")
 		fail := func(reason string) {
-			rowErrs = append(rowErrs, model.ExternalRowError{Line: line, ParticipantNo: no, Reason: reason})
+			rowErrs = append(rowErrs, model.CompetitionRowError{Line: line, ParticipantNo: no, Reason: reason})
 		}
 		if len(rec) != len(header) {
 			fail(ReasonBadRow)
@@ -201,11 +184,12 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 			fail(ReasonUnreadableParticipantNo)
 			continue
 		}
-		if examNumber == nil || examNo != *examNumber {
+		examRegs, ok := regs[examNo]
+		if !ok {
 			fail(ReasonOtherExamParticipantNo)
 			continue
 		}
-		reg, ok := regs[participantNo]
+		reg, ok := examRegs[participantNo]
 		if !ok {
 			fail(ReasonUnknownParticipant)
 			continue
@@ -214,14 +198,14 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 			fail(ReasonRevokedParticipant)
 			continue
 		}
-		if seen[participantNo] {
+		if seen[reg.ID] {
 			fail(ReasonDuplicateParticipant)
 			continue
 		}
-		seen[participantNo] = true
+		seen[reg.ID] = true
 
-		in := model.ExternalResultInput{RegistrationID: reg.ID, Score: get(rec, "score")}
-		if f, err := strconv.ParseFloat(in.Score, 64); !externalScoreRe.MatchString(in.Score) || err != nil || f >= 1e6 {
+		in := model.CompetitionResultInput{RegistrationID: reg.ID, Score: get(rec, "score")}
+		if f, err := strconv.ParseFloat(in.Score, 64); !competitionScoreRe.MatchString(in.Score) || err != nil || f >= 1e6 {
 			fail(ReasonBadScore)
 			continue
 		}
@@ -235,7 +219,7 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 			in.Rank = &rank
 		}
 		if v := get(rec, "award"); v != "" {
-			if utf8.RuneCountInString(v) > externalAwardMaxLen {
+			if utf8.RuneCountInString(v) > competitionAwardMaxLen {
 				fail(ReasonAwardTooLong)
 				continue
 			}
@@ -256,36 +240,36 @@ func parseExternalRoundCSV(data []byte, examNumber *int, regs map[int]repository
 	return inputs, rowErrs, nil
 }
 
-func (s *Service) ListExternalRounds(ctx context.Context, examID uuid.UUID) ([]model.ExternalRound, error) {
-	return s.storeRepo.ListExternalRounds(ctx, examID)
-}
-
-func (s *Service) SetExternalRoundPublished(ctx context.Context, roundID uuid.UUID, publish bool, actorID string) (*model.ExternalRound, error) {
-	rd, err := s.storeRepo.SetExternalRoundPublished(ctx, roundID, publish, actorID)
-	return rd, mapExternalRoundNotFound(err)
-}
-
-func (s *Service) DeleteExternalRound(ctx context.Context, roundID uuid.UUID, actorID string) error {
-	return mapExternalRoundNotFound(s.storeRepo.DeleteExternalRound(ctx, roundID, actorID))
-}
-
-func mapExternalRoundNotFound(err error) error {
+func (s *Service) GetCompetitionResult(ctx context.Context, productID uuid.UUID) (*model.CompetitionResult, error) {
+	res, err := s.storeRepo.GetCompetitionResult(ctx, productID)
 	if errors.Is(err, repository.ErrNotFound) {
-		return ErrExternalRoundNotFound
+		return nil, nil
+	}
+	return res, err
+}
+
+func (s *Service) SetCompetitionResultPublished(ctx context.Context, productID uuid.UUID, publish bool, actorID string) (*model.CompetitionResult, error) {
+	res, err := s.storeRepo.SetCompetitionResultPublished(ctx, productID, publish, actorID)
+	return res, mapCompetitionResultNotFound(err)
+}
+
+func (s *Service) DeleteCompetitionResult(ctx context.Context, productID uuid.UUID, actorID string) error {
+	return mapCompetitionResultNotFound(s.storeRepo.DeleteCompetitionResult(ctx, productID, actorID))
+}
+
+func mapCompetitionResultNotFound(err error) error {
+	if errors.Is(err, repository.ErrNotFound) {
+		return ErrCompetitionResultNotFound
 	}
 	return err
 }
 
-func (s *Service) ListExternalResults(ctx context.Context, roundID uuid.UUID) ([]model.ExternalResultRow, error) {
-	round, err := s.storeRepo.GetExternalRound(ctx, roundID)
+func (s *Service) ListCompetitionResultRows(ctx context.Context, productID uuid.UUID) ([]model.CompetitionResultRow, error) {
+	result, err := s.storeRepo.GetCompetitionResult(ctx, productID)
 	if err != nil {
-		return nil, mapExternalRoundNotFound(err)
+		return nil, mapCompetitionResultNotFound(err)
 	}
-	prefix, err := s.storeRepo.GetExamEventPrefix(ctx, round.ExamID)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := s.storeRepo.ListExternalResults(ctx, roundID)
+	rows, err := s.storeRepo.ListCompetitionResultRows(ctx, result.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -305,33 +289,27 @@ func (s *Service) ListExternalResults(ctx context.Context, roundID uuid.UUID) ([
 		if rows[i].ExamNumber != nil {
 			examNo = *rows[i].ExamNumber
 		}
-		rows[i].ParticipantNo = formatParticipantNo(derefPrefix(prefix), date, examNo, *rows[i].ParticipantNumber)
+		rows[i].ParticipantNo = formatParticipantNo(derefPrefix(rows[i].ExamPrefix), date, examNo, *rows[i].ParticipantNumber)
 	}
 	return rows, nil
 }
 
-// attachExternalResults fills ExternalResults on every item with one query.
-func (s *Service) attachExternalResults(ctx context.Context, items []model.RegistrationListItem, lang string) error {
+// attachCompetitionResults fills CompetitionResult on every item with one query.
+func (s *Service) attachCompetitionResults(ctx context.Context, items []model.RegistrationListItem) error {
 	ids := make([]uuid.UUID, len(items))
 	for i := range items {
 		ids[i] = items[i].ID
-		items[i].ExternalResults = []model.StudentExternalResult{}
 	}
-	results, err := s.storeRepo.ListPublishedExternalResults(ctx, ids)
+	results, err := s.storeRepo.ListPublishedCompetitionResults(ctx, ids)
 	if err != nil {
 		return err
 	}
-	byReg := map[uuid.UUID][]model.StudentExternalResult{}
-	for _, x := range results {
-		if lang == "en" && x.LabelEN != nil && *x.LabelEN != "" {
-			x.RoundLabel = *x.LabelEN
-		}
-		byReg[x.RegistrationID] = append(byReg[x.RegistrationID], x)
+	byReg := map[uuid.UUID]*model.StudentCompetitionResult{}
+	for i := range results {
+		byReg[results[i].RegistrationID] = &results[i]
 	}
 	for i := range items {
-		if xs := byReg[items[i].ID]; xs != nil {
-			items[i].ExternalResults = xs
-		}
+		items[i].CompetitionResult = byReg[items[i].ID]
 	}
 	return nil
 }

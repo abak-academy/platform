@@ -24,22 +24,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type externalEnv struct {
-	e        *echo.Echo
-	studentE *echo.Echo
-	objs     map[string]string
-	examID   uuid.UUID
-	examNo   int
-	student  uuid.UUID
-	actorID  uuid.UUID
-	students []uuid.UUID
+type competitionEnv struct {
+	e         *echo.Echo
+	studentE  *echo.Echo
+	objs      map[string]string
+	productID uuid.UUID
+	examNo    int
+	student   uuid.UUID
+	actorID   uuid.UUID
 }
 
-func newExternalEnv(t *testing.T, role string) *externalEnv {
+func newCompetitionEnv(t *testing.T, role string) *competitionEnv {
 	t.Helper()
 	ctx := context.Background()
 	pool := newTemplatedPool(t)
-	env := &externalEnv{objs: map[string]string{}}
+	env := &competitionEnv{objs: map[string]string{}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, ok := env.objs[strings.TrimPrefix(r.URL.Path, "/private/")]
 		if !ok {
@@ -69,31 +68,37 @@ func newExternalEnv(t *testing.T, role string) *externalEnv {
 		return id
 	}
 	env.actorID = user("Admin Uji")
+	var examID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO exam (title, status, scheduled_at) VALUES ('Handler External', 'draft', $1) RETURNING id, exam_number`,
-		time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)).Scan(&env.examID, &env.examNo))
+		`INSERT INTO exam (title, status, scheduled_at) VALUES ('Handler Competition', 'draft', $1) RETURNING id, exam_number`,
+		time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)).Scan(&examID, &env.examNo))
+	require.NoError(t, pool.QueryRow(ctx,
+		`INSERT INTO product (type, name, price, status) VALUES ('exam', 'Handler Edition', 0, 'published') RETURNING id`).Scan(&env.productID))
+	_, err = pool.Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, env.productID, examID)
+	require.NoError(t, err)
 	for n := 1; n <= 2; n++ {
 		sid := user(fmt.Sprintf("Peserta %d", n))
-		env.students = append(env.students, sid)
+		if n == 1 {
+			env.student = sid
+		}
 		_, err := pool.Exec(ctx,
 			`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', $4)`,
-			sid, env.examID, uuid.NewString(), n)
+			sid, examID, uuid.NewString(), n)
 		require.NoError(t, err)
 	}
-	env.student = env.students[0]
 
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(claimsInjector(&infra.Claims{Sub: env.actorID.String(), Role: role}))
-	rbac := handler.RBACMiddleware("exam-results-external:write")
-	e.GET("/admin/exams/:id/external-rounds", h.AdminListExternalRounds, rbac)
-	e.POST("/admin/exams/:id/external-rounds/presign", h.AdminPresignExternalRound, rbac)
-	e.POST("/admin/exams/:id/external-rounds/preview", h.AdminPreviewExternalRound, rbac)
-	e.POST("/admin/exams/:id/external-rounds/apply", h.AdminApplyExternalRound, rbac)
-	e.POST("/admin/external-rounds/:round_id/publish", h.AdminPublishExternalRound, rbac)
-	e.POST("/admin/external-rounds/:round_id/unpublish", h.AdminUnpublishExternalRound, rbac)
-	e.GET("/admin/external-rounds/:round_id/results", h.AdminListExternalResults, rbac)
-	e.DELETE("/admin/external-rounds/:round_id", h.AdminDeleteExternalRound, rbac)
+	rbac := handler.RBACMiddleware("competition-results:write")
+	e.GET("/admin/products/:id/competition-result", h.AdminGetCompetitionResult, rbac)
+	e.POST("/admin/products/:id/competition-result/presign", h.AdminPresignCompetitionResult, rbac)
+	e.POST("/admin/products/:id/competition-result/preview", h.AdminPreviewCompetitionResult, rbac)
+	e.POST("/admin/products/:id/competition-result/apply", h.AdminApplyCompetitionResult, rbac)
+	e.POST("/admin/products/:id/competition-result/publish", h.AdminPublishCompetitionResult, rbac)
+	e.POST("/admin/products/:id/competition-result/unpublish", h.AdminUnpublishCompetitionResult, rbac)
+	e.GET("/admin/products/:id/competition-result/results", h.AdminListCompetitionResultRows, rbac)
+	e.DELETE("/admin/products/:id/competition-result", h.AdminDeleteCompetitionResult, rbac)
 	env.e = e
 
 	se := echo.New()
@@ -104,7 +109,7 @@ func newExternalEnv(t *testing.T, role string) *externalEnv {
 	return env
 }
 
-func (env *externalEnv) do(method, path, body string) *httptest.ResponseRecorder {
+func (env *competitionEnv) do(method, path, body string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -112,54 +117,62 @@ func (env *externalEnv) do(method, path, body string) *httptest.ResponseRecorder
 	return rec
 }
 
-func (env *externalEnv) no(n int) string {
+func (env *competitionEnv) base() string {
+	return "/admin/products/" + env.productID.String() + "/competition-result"
+}
+
+func (env *competitionEnv) no(n int) string {
 	return fmt.Sprintf("250620-%04d-%06d", env.examNo, n)
 }
 
-func (env *externalEnv) fileBody(key, label string) string {
-	b, _ := json.Marshal(map[string]string{"key": key, "round_label": label})
+func fileBody(key string) string {
+	b, _ := json.Marshal(map[string]string{"key": key})
 	return string(b)
 }
 
-func TestExternalRoundsHTTP_Flow(t *testing.T) {
-	env := newExternalEnv(t, "admin_exam")
-	base := "/admin/exams/" + env.examID.String() + "/external-rounds"
+func TestCompetitionResultHTTP_Flow(t *testing.T) {
+	env := newCompetitionEnv(t, "admin_exam")
+	base := env.base()
 
-	rec := env.do(http.MethodPost, base+"/presign?filename=r.csv", "")
+	rec := env.do(http.MethodGet, base, "")
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.JSONEq(t, `{"data":null}`, rec.Body.String())
+
+	rec = env.do(http.MethodPost, base+"/presign?filename=r.csv", "")
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var presigned service.PrivateUploadURL
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &presigned))
-	assert.Regexp(t, `^exam-external-results/`+env.examID.String()+`/[0-9a-f-]{36}-r\.csv$`, presigned.Key)
+	assert.Regexp(t, `^competition-results/`+env.productID.String()+`/[0-9a-f-]{36}-r\.csv$`, presigned.Key)
 
 	bad := presigned.Key + "-bad"
 	env.objs[bad] = "participant_no,score\n" + env.no(1) + ",5\n" + env.no(9) + ",5\nnope,5\n"
-	rec = env.do(http.MethodPost, base+"/preview", env.fileBody(bad, "Global"))
+	rec = env.do(http.MethodPost, base+"/preview", fileBody(bad))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	assert.JSONEq(t, `{"matched":1,"round_exists":false,"round_published":false,"errors":[
+	assert.JSONEq(t, `{"matched":1,"result_exists":false,"result_published":false,"errors":[
 		{"line":3,"participant_no":"`+env.no(9)+`","reason":"unknown_participant"},
 		{"line":4,"participant_no":"nope","reason":"unreadable_participant_no"}]}`, rec.Body.String())
 
-	rec = env.do(http.MethodPost, base+"/apply", env.fileBody(bad, "Global"))
+	rec = env.do(http.MethodPost, base+"/apply", fileBody(bad))
 	assert.Equal(t, http.StatusUnprocessableEntity, rec.Code)
 	assert.Contains(t, rec.Body.String(), `"unknown_participant"`)
-	rec = env.do(http.MethodGet, base, "")
-	assert.JSONEq(t, `{"data":[]}`, rec.Body.String(), "a refused apply creates no round")
+	assert.JSONEq(t, `{"data":null}`, env.do(http.MethodGet, base, "").Body.String(), "a refused apply creates no result")
 
 	good := presigned.Key + "-good"
 	env.objs[good] = "participant_no,score,rank,award\n" + env.no(1) + ",90,1,Medali emas\n" + env.no(2) + ",80,2,\n"
-	rec = env.do(http.MethodPost, base+"/apply", env.fileBody(good, "Global"))
+	rec = env.do(http.MethodPost, base+"/apply", fileBody(good))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var applied struct {
 		Data struct {
-			ID       string `json:"id"`
-			RowCount int    `json:"row_count"`
+			ID        string `json:"id"`
+			ProductID string `json:"product_id"`
+			RowCount  int    `json:"row_count"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &applied))
 	assert.Equal(t, 2, applied.Data.RowCount)
-	roundPath := "/admin/external-rounds/" + applied.Data.ID
+	assert.Equal(t, env.productID.String(), applied.Data.ProductID)
 
-	rec = env.do(http.MethodGet, roundPath+"/results", "")
+	rec = env.do(http.MethodGet, base+"/results", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	var results struct {
 		Data []struct {
@@ -173,34 +186,38 @@ func TestExternalRoundsHTTP_Flow(t *testing.T) {
 	assert.Equal(t, "Peserta 1", results.Data[0].StudentName)
 	assert.Equal(t, env.no(1), results.Data[0].ParticipantNo)
 
-	rec = env.do(http.MethodPost, roundPath+"/publish", "")
+	rec = env.do(http.MethodPost, base+"/publish", "")
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.NotContains(t, rec.Body.String(), `"published_at":null`)
-	rec = env.do(http.MethodPost, roundPath+"/unpublish", "")
+	rec = env.do(http.MethodGet, base, "")
+	assert.Contains(t, rec.Body.String(), `"row_count":2`)
+	rec = env.do(http.MethodPost, base+"/unpublish", "")
 	assert.Contains(t, rec.Body.String(), `"published_at":null`)
 
-	assert.Equal(t, http.StatusNoContent, env.do(http.MethodDelete, roundPath, "").Code)
-	assert.Equal(t, http.StatusNotFound, env.do(http.MethodDelete, roundPath, "").Code)
-	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, roundPath+"/publish", "").Code)
+	assert.Equal(t, http.StatusNoContent, env.do(http.MethodDelete, base, "").Code)
+	rec = env.do(http.MethodDelete, base, "")
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Contains(t, rec.Body.String(), "competition_result_not_found")
+	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, base+"/publish", "").Code)
 }
 
-func TestExternalRoundsHTTP_ForeignKeyAndRBAC(t *testing.T) {
-	env := newExternalEnv(t, "admin_exam")
-	base := "/admin/exams/" + env.examID.String() + "/external-rounds"
-	foreign := "exam-external-results/" + uuid.NewString() + "/x.csv"
+func TestCompetitionResultHTTP_ForeignKeyAndRBAC(t *testing.T) {
+	env := newCompetitionEnv(t, "admin_exam")
+	base := env.base()
+	foreign := "competition-results/" + uuid.NewString() + "/x.csv"
 	env.objs[foreign] = "participant_no,score\n" + env.no(1) + ",5\n"
-	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, base+"/preview", env.fileBody(foreign, "R")).Code)
-	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, base+"/apply", env.fileBody(foreign, "R")).Code)
+	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, base+"/preview", fileBody(foreign)).Code)
+	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, base+"/apply", fileBody(foreign)).Code)
 	assert.Equal(t, http.StatusBadRequest, env.do(http.MethodPost, base+"/preview", `{}`).Code)
 
-	denied := newExternalEnv(t, "admin_school")
-	assert.Equal(t, http.StatusForbidden, denied.do(http.MethodGet, "/admin/exams/"+denied.examID.String()+"/external-rounds", "").Code)
+	denied := newCompetitionEnv(t, "admin_school")
+	assert.Equal(t, http.StatusForbidden, denied.do(http.MethodGet, denied.base(), "").Code)
 }
 
-func TestStudentRegistrationsHTTP_ExternalResultsShape(t *testing.T) {
-	env := newExternalEnv(t, "admin_exam")
-	list := func() []map[string]any {
-		req := httptest.NewRequest(http.MethodGet, "/exam/registrations?lang=en", nil)
+func TestStudentRegistrationsHTTP_CompetitionResultShape(t *testing.T) {
+	env := newCompetitionEnv(t, "admin_exam")
+	list := func() map[string]any {
+		req := httptest.NewRequest(http.MethodGet, "/exam/registrations", nil)
 		rec := httptest.NewRecorder()
 		env.studentE.ServeHTTP(rec, req)
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
@@ -209,31 +226,25 @@ func TestStudentRegistrationsHTTP_ExternalResultsShape(t *testing.T) {
 		}
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
 		require.Len(t, body.Data, 1)
-		return body.Data
+		return body.Data[0]
 	}
-	assert.Equal(t, []any{}, list()[0]["external_results"], "[] never null")
+	item := list()
+	val, present := item["competition_result"]
+	assert.True(t, present, "key is always present")
+	assert.Nil(t, val, "null when there is no result")
 
-	key := "exam-external-results/" + env.examID.String() + "/a.csv"
+	key := "competition-results/" + env.productID.String() + "/a.csv"
 	env.objs[key] = "participant_no,score,rank,award,certificate_url\n" + env.no(1) + ",90.5,1,Medali emas,https://certs.example.test/1\n"
-	rec := env.do(http.MethodPost, "/admin/exams/"+env.examID.String()+"/external-rounds/apply", env.fileBody(key, "Global Round"))
+	rec := env.do(http.MethodPost, env.base()+"/apply", fileBody(key))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	var applied struct {
-		Data struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &applied))
-	assert.Equal(t, []any{}, list()[0]["external_results"], "unpublished is hidden")
+	assert.Nil(t, list()["competition_result"], "unpublished is hidden")
 
-	require.Equal(t, http.StatusOK, env.do(http.MethodPost, "/admin/external-rounds/"+applied.Data.ID+"/publish", "").Code)
-	got := list()[0]["external_results"].([]any)
-	require.Len(t, got, 1)
-	item := got[0].(map[string]any)
-	assert.Equal(t, applied.Data.ID, item["round_id"])
-	assert.Equal(t, "Global Round", item["round_label"])
-	assert.Equal(t, 90.5, item["score"])
-	assert.Equal(t, 1.0, item["rank"])
-	assert.Equal(t, "Medali emas", item["award"])
-	assert.Equal(t, "https://certs.example.test/1", item["certificate_url"])
-	assert.NotEmpty(t, item["published_at"])
+	require.Equal(t, http.StatusOK, env.do(http.MethodPost, env.base()+"/publish", "").Code)
+	got, ok := list()["competition_result"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, 90.5, got["score"])
+	assert.Equal(t, 1.0, got["rank"])
+	assert.Equal(t, "Medali emas", got["award"])
+	assert.Equal(t, "https://certs.example.test/1", got["certificate_url"])
+	assert.NotEmpty(t, got["published_at"])
 }

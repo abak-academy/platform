@@ -11,133 +11,142 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func externalErr(c echo.Context, err error) error {
-	if errors.Is(err, service.ErrExternalRoundNotFound) {
-		return c.JSON(http.StatusNotFound, APIError{Code: "external_round_not_found", Message: err.Error()})
+func competitionErr(c echo.Context, err error) error {
+	if errors.Is(err, service.ErrCompetitionResultNotFound) {
+		return c.JSON(http.StatusNotFound, APIError{Code: "competition_result_not_found", Message: err.Error()})
 	}
 	return mapServiceError(c, err)
 }
 
-func (h *Handler) AdminListExternalRounds(c echo.Context) error {
-	examID, err := uuid.Parse(c.Param("id"))
+func productIDParam(c echo.Context) (uuid.UUID, bool) {
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		return badRequest(c, "invalid exam id")
+		_ = badRequest(c, "invalid product id")
+		return uuid.Nil, false
 	}
-	rounds, err := h.svc.ListExternalRounds(c.Request().Context(), examID)
-	if err != nil {
-		return externalErr(c, err)
-	}
-	return c.JSON(http.StatusOK, map[string]any{"data": rounds})
+	return id, true
 }
 
-func (h *Handler) AdminPresignExternalRound(c echo.Context) error {
-	examID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		return badRequest(c, "invalid exam id")
+func (h *Handler) AdminGetCompetitionResult(c echo.Context) error {
+	productID, ok := productIDParam(c)
+	if !ok {
+		return nil
 	}
-	resp, err := h.svc.PresignExternalRoundUpload(c.Request().Context(), examID, c.QueryParam("filename"))
+	result, err := h.svc.GetCompetitionResult(c.Request().Context(), productID)
 	if err != nil {
-		return externalErr(c, err)
+		return competitionErr(c, err)
+	}
+	return c.JSON(http.StatusOK, map[string]any{"data": result})
+}
+
+func (h *Handler) AdminPresignCompetitionResult(c echo.Context) error {
+	productID, ok := productIDParam(c)
+	if !ok {
+		return nil
+	}
+	resp, err := h.svc.PresignCompetitionResultUpload(c.Request().Context(), productID, c.QueryParam("filename"))
+	if err != nil {
+		return competitionErr(c, err)
 	}
 	return c.JSON(http.StatusOK, resp)
 }
 
-type externalRoundFileRequest struct {
-	Key        string `json:"key"`
-	RoundLabel string `json:"round_label"`
+type competitionResultFileRequest struct {
+	Key string `json:"key"`
 }
 
-func bindExternalRoundFile(c echo.Context) (uuid.UUID, externalRoundFileRequest, error) {
-	var req externalRoundFileRequest
-	examID, err := uuid.Parse(c.Param("id"))
-	if err != nil {
-		return uuid.Nil, req, badRequest(c, "invalid exam id")
+func bindCompetitionResultFile(c echo.Context) (uuid.UUID, competitionResultFileRequest, bool) {
+	var req competitionResultFileRequest
+	productID, ok := productIDParam(c)
+	if !ok {
+		return uuid.Nil, req, false
 	}
 	if err := json.NewDecoder(c.Request().Body).Decode(&req); err != nil || req.Key == "" {
-		return uuid.Nil, req, badRequest(c, "key and round_label are required")
+		_ = badRequest(c, "key is required")
+		return uuid.Nil, req, false
 	}
-	return examID, req, nil
+	return productID, req, true
 }
 
-func (h *Handler) AdminPreviewExternalRound(c echo.Context) error {
-	examID, req, err := bindExternalRoundFile(c)
-	if err != nil || examID == uuid.Nil {
-		return err
+func (h *Handler) AdminPreviewCompetitionResult(c echo.Context) error {
+	productID, req, ok := bindCompetitionResultFile(c)
+	if !ok {
+		return nil
 	}
-	preview, err := h.svc.PreviewExternalRound(c.Request().Context(), examID, req.Key, req.RoundLabel)
+	preview, err := h.svc.PreviewCompetitionResult(c.Request().Context(), productID, req.Key)
 	if err != nil {
-		return externalErr(c, err)
+		return competitionErr(c, err)
 	}
 	return c.JSON(http.StatusOK, preview)
 }
 
-func (h *Handler) AdminApplyExternalRound(c echo.Context) error {
-	examID, req, err := bindExternalRoundFile(c)
-	if err != nil || examID == uuid.Nil {
-		return err
+func (h *Handler) AdminApplyCompetitionResult(c echo.Context) error {
+	productID, req, ok := bindCompetitionResultFile(c)
+	if !ok {
+		return nil
 	}
 	actor, ok := actorFromClaims(c)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	preview, round, err := h.svc.ApplyExternalRound(c.Request().Context(), examID, actor, req.Key, req.RoundLabel)
+	preview, result, err := h.svc.ApplyCompetitionResult(c.Request().Context(), productID, actor, req.Key)
 	if err != nil {
-		return externalErr(c, err)
+		return competitionErr(c, err)
 	}
-	if round == nil {
+	if result == nil {
 		return c.JSON(http.StatusUnprocessableEntity, map[string]any{
 			"code": "validation_failed", "message": "file has errors", "matched": preview.Matched, "errors": preview.Errors,
 		})
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": round})
+	return c.JSON(http.StatusOK, map[string]any{"data": result})
 }
 
-func (h *Handler) setExternalPublished(c echo.Context, publish bool) error {
-	roundID, err := uuid.Parse(c.Param("round_id"))
-	if err != nil {
-		return badRequest(c, "invalid round id")
+func (h *Handler) setCompetitionPublished(c echo.Context, publish bool) error {
+	productID, ok := productIDParam(c)
+	if !ok {
+		return nil
 	}
 	actor, ok := actorFromClaims(c)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	round, err := h.svc.SetExternalRoundPublished(c.Request().Context(), roundID, publish, actor)
+	result, err := h.svc.SetCompetitionResultPublished(c.Request().Context(), productID, publish, actor)
 	if err != nil {
-		return externalErr(c, err)
+		return competitionErr(c, err)
 	}
-	return c.JSON(http.StatusOK, map[string]any{"data": round})
+	return c.JSON(http.StatusOK, map[string]any{"data": result})
 }
 
-func (h *Handler) AdminPublishExternalRound(c echo.Context) error {
-	return h.setExternalPublished(c, true)
+func (h *Handler) AdminPublishCompetitionResult(c echo.Context) error {
+	return h.setCompetitionPublished(c, true)
 }
-func (h *Handler) AdminUnpublishExternalRound(c echo.Context) error {
-	return h.setExternalPublished(c, false)
+func (h *Handler) AdminUnpublishCompetitionResult(c echo.Context) error {
+	return h.setCompetitionPublished(c, false)
 }
 
-func (h *Handler) AdminListExternalResults(c echo.Context) error {
-	roundID, err := uuid.Parse(c.Param("round_id"))
-	if err != nil {
-		return badRequest(c, "invalid round id")
+func (h *Handler) AdminListCompetitionResultRows(c echo.Context) error {
+	productID, ok := productIDParam(c)
+	if !ok {
+		return nil
 	}
-	rows, err := h.svc.ListExternalResults(c.Request().Context(), roundID)
+	rows, err := h.svc.ListCompetitionResultRows(c.Request().Context(), productID)
 	if err != nil {
-		return externalErr(c, err)
+		return competitionErr(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": rows})
 }
 
-func (h *Handler) AdminDeleteExternalRound(c echo.Context) error {
-	roundID, err := uuid.Parse(c.Param("round_id"))
-	if err != nil {
-		return badRequest(c, "invalid round id")
+func (h *Handler) AdminDeleteCompetitionResult(c echo.Context) error {
+	productID, ok := productIDParam(c)
+	if !ok {
+		return nil
 	}
 	actor, ok := actorFromClaims(c)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	if err := h.svc.DeleteExternalRound(c.Request().Context(), roundID, actor); err != nil {
-		return externalErr(c, err)
+	if err := h.svc.DeleteCompetitionResult(c.Request().Context(), productID, actor); err != nil {
+		return competitionErr(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)
 }

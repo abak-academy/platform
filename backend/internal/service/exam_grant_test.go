@@ -229,7 +229,7 @@ func TestGetExamRegistrations_Integration(t *testing.T) {
 		t.Fatalf("GrantExamAccess: %v", err)
 	}
 
-	items, err := svc.GetExamRegistrations(ctx, studentID.String(), "")
+	items, err := svc.GetExamRegistrations(ctx, studentID.String())
 	if err != nil {
 		t.Fatalf("GetExamRegistrations: %v", err)
 	}

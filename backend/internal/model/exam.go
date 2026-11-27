@@ -383,8 +383,8 @@ type RegistrationListItem struct {
 	QuestionCount           int             `json:"question_count"`
 	SectionsDurationMinutes *int            `json:"sections_duration_minutes"`
 	RawRules                ExamRuleColumns `json:"-"`
-	// ExternalResults are the published uploaded-round results of this registration.
-	ExternalResults []StudentExternalResult `json:"external_results"`
+	// CompetitionResult is the published competition result of this registration; nil when none.
+	CompetitionResult *StudentCompetitionResult `json:"competition_result"`
 }
 
 // ExamRuleColumns carries the raw exam columns the service resolves into the
