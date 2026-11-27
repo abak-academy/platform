@@ -26,10 +26,10 @@ beforeEach(() => {
   vi.spyOn(api, "authFetch").mockImplementation((async (path: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     calls.push({ path, method, body: init?.body ? JSON.parse(init.body as string) : undefined });
-    if (path === URL_BASE && method === "GET") return saved;
-    if (path.endsWith("/presign")) return { url: "https://minio.test/put", method: "PUT", key: "cr/p1/x.csv" };
+    if (path === URL_BASE && method === "GET") return { data: saved };
+    if (path.includes("/presign?")) return { url: "https://minio.test/put", method: "PUT", fields: {}, key: "cr/p1/x.csv" };
     if (path.endsWith("/preview")) return previewResult();
-    if (path.endsWith("/apply")) return draft;
+    if (path.endsWith("/apply")) return { data: draft };
     if (path.endsWith("/results")) {
       return { data: [{ registration_id: "r1", student_name: "Siswa Uji", participant_no: "ESOL-0001", score: 90, rank: 1, award: "Emas", certificate_url: null }] };
     }
@@ -77,7 +77,9 @@ describe("CompetitionResultDialog", () => {
     uploadAndPreview();
     expect(await screen.findByText(/baris cocok/)).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("https://minio.test/put", expect.objectContaining({ method: "PUT" }));
-    expect(calls.find((c) => c.path.endsWith("/presign"))?.body).toEqual({ filename: "hasil.csv" });
+    const presignCall = calls.find((c) => c.path.includes("/presign?"));
+    expect(presignCall?.path).toContain("?filename=hasil.csv");
+    expect(presignCall?.body).toBeUndefined();
     expect(calls.find((c) => c.path.endsWith("/preview"))?.body).toEqual({ key: "cr/p1/x.csv" });
 
     fireEvent.click(screen.getByRole("button", { name: "Terapkan" }));

@@ -116,7 +116,7 @@ function mockApi(overrides: Partial<ProductGroupingDetail> = {}) {
       return { ...current, ...body, content: body.content, schedule: body.schedule };
     }
     if (path === "/admin/products/p1/competition-result" && method === "GET") {
-      return { id: "c1", product_id: "p1", source_key: "k", row_count: 7, published_at: null, updated_at: "2026-11-01T03:00:00Z" };
+      return { data: { id: "c1", product_id: "p1", source_key: "k", row_count: 7, published_at: null, updated_at: "2026-11-01T03:00:00Z" } };
     }
     if (path === "/admin/product-groupings/g1/products") return current;
     if (path === "/admin/product-groupings/g1" && method === "DELETE") return undefined;

@@ -17,7 +17,7 @@ export function useCompetitionResult(productId: string | undefined) {
   return useQuery({
     queryKey: competitionResultKeys.detail(productId ?? ""),
     enabled: Boolean(productId),
-    queryFn: () => authFetch<CompetitionResult | null>(base(productId!)),
+    queryFn: async () => (await authFetch<{ data: CompetitionResult | null }>(base(productId!))).data,
   });
 }
 
@@ -32,10 +32,7 @@ export function useCompetitionResultRows(productId: string, enabled: boolean) {
 export function usePresignCompetitionResult(productId: string) {
   return useMutation({
     mutationFn: (filename: string) =>
-      authFetch<PresignedUpload>(`${base(productId)}/presign`, {
-        method: "POST",
-        body: JSON.stringify({ filename }),
-      }),
+      authFetch<PresignedUpload>(`${base(productId)}/presign?filename=${encodeURIComponent(filename)}`, { method: "POST" }),
   });
 }
 
@@ -52,11 +49,13 @@ export function usePreviewCompetitionResult(productId: string) {
 export function useApplyCompetitionResult(productId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (key: string) =>
-      authFetch<CompetitionResult>(`${base(productId)}/apply`, {
-        method: "POST",
-        body: JSON.stringify({ key }),
-      }),
+    mutationFn: async (key: string) =>
+      (
+        await authFetch<{ data: CompetitionResult }>(`${base(productId)}/apply`, {
+          method: "POST",
+          body: JSON.stringify({ key }),
+        })
+      ).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: competitionResultKeys.all }),
   });
 }
@@ -64,8 +63,8 @@ export function useApplyCompetitionResult(productId: string) {
 export function useSetCompetitionResultPublished(productId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (publish: boolean) =>
-      authFetch<CompetitionResult>(`${base(productId)}/${publish ? "publish" : "unpublish"}`, { method: "POST" }),
+    mutationFn: async (publish: boolean) =>
+      (await authFetch<{ data: CompetitionResult }>(`${base(productId)}/${publish ? "publish" : "unpublish"}`, { method: "POST" })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: competitionResultKeys.all }),
   });
 }

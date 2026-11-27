@@ -17,13 +17,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => (
 );
 
 describe("competition result hooks", () => {
-  it("presigns with the filename in the body", async () => {
+  it("presigns with the filename in the query and no body", async () => {
     mockAuthFetch.mockResolvedValueOnce({ url: "u", method: "PUT", key: "k" });
     const { result } = renderHook(() => usePresignCompetitionResult("p1"), { wrapper });
     await act(() => result.current.mutateAsync("hasil kompetisi.csv"));
-    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/products/p1/competition-result/presign", {
+    expect(mockAuthFetch).toHaveBeenCalledWith("/admin/products/p1/competition-result/presign?filename=hasil%20kompetisi.csv", {
       method: "POST",
-      body: JSON.stringify({ filename: "hasil kompetisi.csv" }),
     });
   });
 
