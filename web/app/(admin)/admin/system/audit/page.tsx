@@ -11,16 +11,19 @@ import {
   FilterGrid,
   FilterPanelFooter,
   FilterSelect,
-  ToolbarCount,
   ToolbarFilterButton,
   ToolbarSearch,
   ToolbarSort,
 } from "@/components/admin/ListToolbar";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/affiliate/Pagination";
+import { TableFooter } from "@/components/ui/table-footer";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAdminAuditLog } from "@/lib/hooks/admin-audit";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
 import type { AuditLogEntry } from "@/lib/types";
+
+const PAGE_SIZE = 20;
 
 function actionLabel(action: string): string {
   const verb = action.split(".").pop() ?? action;
@@ -50,11 +53,17 @@ export default function SystemAuditPage() {
   const dateLocale = lang === "en" ? "en-US" : "id-ID";
 
   const [actor, setActor] = useState("");
+  const [page, setPage] = useState(1);
 
-  const { data: loaded = [], isLoading, error } = useAdminAuditLog(
-    debouncedSearch.trim() ? { q: debouncedSearch } : undefined
-  );
-  // Hook has no pagination: only the newest page is loaded, so the actor filter covers loaded rows only.
+  const { data, isLoading, error } = useAdminAuditLog({
+    q: debouncedSearch.trim() || undefined,
+    page,
+    limit: PAGE_SIZE,
+  });
+  const loaded = data?.data ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Actor is not a server filter yet, so it narrows the current page only.
   const entries = useMemo(
     () => (actor ? loaded.filter((a) => (actor === "sys") === !a.actor_name) : loaded),
     [loaded, actor]
@@ -98,7 +107,10 @@ export default function SystemAuditPage() {
         <div className="flex flex-wrap items-center gap-2.5 border-b border-line px-4 py-3.5">
           <ToolbarSearch
             value={search}
-            onChange={setSearch}
+            onChange={(v) => {
+              setSearch(v);
+              setPage(1);
+            }}
             placeholder={t("audit_search_placeholder")}
             clearLabel={t("list_toolbar_clear_search")}
           />
@@ -127,7 +139,6 @@ export default function SystemAuditPage() {
               { value: "old", label: t("audit_sort_oldest"), disabled: true },
             ]}
           />
-          <ToolbarCount>{t("audit_count_latest").replace("{n}", String(entries.length))}</ToolbarCount>
         </div>
         <p className="border-b border-line px-4 py-2 text-xs text-ink-600">{t("audit_sort_oldest_locked")}</p>
         {actor && (
@@ -177,6 +188,16 @@ export default function SystemAuditPage() {
               );
             })}
           </ol>
+        )}
+        {total > 0 && (
+          <TableFooter
+            summary={t("aff_range_summary")
+              .replace("{from}", String((page - 1) * PAGE_SIZE + 1))
+              .replace("{to}", String((page - 1) * PAGE_SIZE + loaded.length))
+              .replace("{total}", String(total))}
+          >
+            <Pagination page={page} pages={pages} onPageChange={setPage} />
+          </TableFooter>
         )}
       </div>
     </div>

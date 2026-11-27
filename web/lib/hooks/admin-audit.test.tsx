@@ -38,7 +38,7 @@ describe("admin-audit hooks", () => {
     const entries: AuditLogEntry[] = [
       { id: 1, actor_id: "u1", actor_name: "Admin", target_type: "user", target_id: "t1", action: "account.create", created_at: "2026-01-01T00:00:00Z" },
     ];
-    mockAuthFetch.mockResolvedValueOnce({ data: entries });
+    mockAuthFetch.mockResolvedValueOnce({ data: entries, total: 1, page: 1, per_page: 20 });
 
     const { wrapper } = wrapperFactory();
     const { result } = renderHook(() => useAdminAuditLog(), { wrapper });
@@ -46,7 +46,7 @@ describe("admin-audit hooks", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/audit");
-    expect(result.current.data).toEqual(entries);
+    expect(result.current.data).toEqual({ data: entries, total: 1, page: 1, per_page: 20 });
   });
 
   it("useAdminAuditLog passes query params when filters are provided", async () => {
@@ -58,6 +58,18 @@ describe("admin-audit hooks", () => {
     await waitFor(() =>
       expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/audit?actor_id=u1&target_type=user&q=create")
     );
+  });
+
+  it("sends page and limit and keys the cache per page", async () => {
+    mockAuthFetch.mockResolvedValueOnce({ data: [], total: 45, page: 3, per_page: 20 });
+
+    const { wrapper } = wrapperFactory();
+    renderHook(() => useAdminAuditLog({ q: "x", page: 3, limit: 20 }), { wrapper });
+
+    await waitFor(() =>
+      expect(mockAuthFetch).toHaveBeenCalledWith("/admin/system/audit?q=x&page=3&limit=20")
+    );
+    expect(adminAuditKeys.list({ page: 2 })).not.toEqual(adminAuditKeys.list({ page: 3 }));
   });
 
   it("uses stable query key", () => {

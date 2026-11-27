@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -31,25 +30,26 @@ type AuditLogFilter struct {
 	To         string
 	TargetType string
 	Q          string // case-insensitive action keyword search
-	Cursor     string
+	Page       int
 	Limit      int
 }
 
 // ListAuditLog returns audit log entries with an optional LEFT JOIN to the
-// users table for actor display. Cursor-paginated by audit_log.id (BIGSERIAL).
-func (r *Repository) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]AuditLogRow, string, error) {
+// users table for actor display. Page-paginated; also returns the total
+// number of rows matching the filter.
+func (r *Repository) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]AuditLogRow, int, error) {
 	if filter.Limit <= 0 {
 		filter.Limit = 20
 	}
 	if filter.Limit > 100 {
 		filter.Limit = 100
 	}
+	if filter.Page < 1 {
+		filter.Page = 1
+	}
 
-	query := `SELECT al.id, al.actor_id, u.name, u.email,
-		al.target_type, al.target_id, al.action, al.metadata, al.created_at
-		FROM audit_log al
-		LEFT JOIN users u ON u.id = al.actor_id
-		WHERE 1=1`
+	from := ` FROM audit_log al LEFT JOIN users u ON u.id = al.actor_id WHERE 1=1`
+	query := ""
 	args := []any{}
 	argNum := 1
 
@@ -78,23 +78,24 @@ func (r *Repository) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([
 		args = append(args, "%"+filter.Q+"%")
 		argNum++
 	}
-	if filter.Cursor != "" {
-		query += fmt.Sprintf(` AND al.id < $%d`, argNum)
-		args = append(args, filter.Cursor)
-		argNum++
+
+	var total int
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*)`+from+query, args...).Scan(&total); err != nil {
+		return nil, 0, err
 	}
 
-	query += fmt.Sprintf(` ORDER BY al.created_at DESC, al.id DESC LIMIT $%d`, argNum)
-	args = append(args, filter.Limit+1)
+	pageSQL := `SELECT al.id, al.actor_id, u.name, u.email,
+		al.target_type, al.target_id, al.action, al.metadata, al.created_at` + from + query +
+		fmt.Sprintf(` ORDER BY al.created_at DESC, al.id DESC LIMIT $%d OFFSET $%d`, argNum, argNum+1)
+	args = append(args, filter.Limit, (filter.Page-1)*filter.Limit)
 
-	rows, err := r.pool.Query(ctx, query, args...)
+	rows, err := r.pool.Query(ctx, pageSQL, args...)
 	if err != nil {
-		return nil, "", err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
-	var entries []AuditLogRow
-	var nextCursor int64
+	entries := []AuditLogRow{}
 
 	for rows.Next() {
 		var e AuditLogRow
@@ -103,29 +104,20 @@ func (r *Repository) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([
 			&e.ID, &e.ActorID, &e.ActorName, &e.ActorEmail,
 			&e.TargetType, &e.TargetID, &e.Action, &metadataBytes, &e.CreatedAt,
 		); err != nil {
-			return nil, "", err
+			return nil, 0, err
 		}
 		if metadataBytes != nil {
 			rm := json.RawMessage(metadataBytes)
 			e.Metadata = &rm
 		}
-		if len(entries) < filter.Limit {
-			entries = append(entries, e)
-		} else {
-			nextCursor = e.ID
-		}
+		entries = append(entries, e)
 	}
 
 	if err = rows.Err(); err != nil {
-		return nil, "", err
+		return nil, 0, err
 	}
 
-	nextCursorStr := ""
-	if nextCursor > 0 {
-		nextCursorStr = strconv.FormatInt(nextCursor, 10)
-	}
-
-	return entries, nextCursorStr, nil
+	return entries, total, nil
 }
 
 // InsertAuditLogMeta writes an audit log row with a nullable actor, a nullable

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -112,5 +113,48 @@ func TestErrSentinelsExist(t *testing.T) {
 		if !errors.Is(wrapped, ErrInvalidDateFormat) {
 			t.Error("wrapped ErrInvalidDateFormat should be detectable via errors.Is")
 		}
+	}
+}
+
+func TestListAuditLog_Pagination(t *testing.T) {
+	svc, repo := newRealDBService(t)
+	ctx := context.Background()
+	targetType := "paging_" + uniqueSuffix()
+	for i := 0; i < 5; i++ {
+		if err := repo.InsertAuditLogMeta(ctx, nil, nil, targetType, fmt.Sprintf("t%d", i), "test.page", nil); err != nil {
+			t.Fatalf("seed audit row %d: %v", i, err)
+		}
+	}
+	list := func(page, limit int) ([]AuditLogEntry, int) {
+		t.Helper()
+		got, total, err := svc.ListAuditLog(ctx, AuditLogFilter{TargetType: targetType, Page: page, Limit: limit})
+		if err != nil {
+			t.Fatalf("ListAuditLog(page=%d, limit=%d): %v", page, limit, err)
+		}
+		return got, total
+	}
+
+	p1, total := list(1, 2)
+	p2, _ := list(2, 2)
+	p3, _ := list(3, 2)
+	if total != 5 {
+		t.Errorf("total = %d, want 5", total)
+	}
+	if len(p1) != 2 || len(p2) != 2 || len(p3) != 1 {
+		t.Fatalf("page sizes = %d,%d,%d, want 2,2,1", len(p1), len(p2), len(p3))
+	}
+	seen := map[int64]bool{}
+	for _, e := range append(append(p1, p2...), p3...) {
+		if seen[e.ID] {
+			t.Errorf("entry %d appears on more than one page", e.ID)
+		}
+		seen[e.ID] = true
+	}
+
+	if past, total := list(4, 2); len(past) != 0 || total != 5 {
+		t.Errorf("past-the-end page = %d rows total %d, want 0 rows total 5", len(past), total)
+	}
+	if clamped, _ := list(0, 1000); len(clamped) != 5 {
+		t.Errorf("page=0 limit=1000 returned %d rows, want 5 (page clamped to 1)", len(clamped))
 	}
 }

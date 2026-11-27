@@ -29,24 +29,24 @@ type AuditLogFilter struct {
 	To         string
 	TargetType string
 	Q          string
-	Cursor     string
+	Page       int
 	Limit      int
 }
 
-// ListAuditLog returns audit log entries with optional filters, cursor-paginated.
-func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]AuditLogEntry, string, error) {
+// ListAuditLog returns audit log entries with optional filters, page-paginated.
+func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]AuditLogEntry, int, error) {
 	// Validate date formats — accept RFC3339 or YYYY-MM-DD
 	if filter.From != "" {
 		if _, err := time.Parse(time.RFC3339, filter.From); err != nil {
 			if _, err2 := time.Parse("2006-01-02", filter.From); err2 != nil {
-				return nil, "", fmt.Errorf("%w: %s", ErrInvalidDateFormat, filter.From)
+				return nil, 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, filter.From)
 			}
 		}
 	}
 	if filter.To != "" {
 		if _, err := time.Parse(time.RFC3339, filter.To); err != nil {
 			if _, err2 := time.Parse("2006-01-02", filter.To); err2 != nil {
-				return nil, "", fmt.Errorf("%w: %s", ErrInvalidDateFormat, filter.To)
+				return nil, 0, fmt.Errorf("%w: %s", ErrInvalidDateFormat, filter.To)
 			}
 		}
 	}
@@ -54,21 +54,21 @@ func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]Au
 	// Validate actor_id as UUID if provided
 	if filter.ActorID != "" {
 		if _, err := parseUUID(filter.ActorID); err != nil {
-			return nil, "", ErrInvalidUUID
+			return nil, 0, ErrInvalidUUID
 		}
 	}
 
-	rows, nextCursor, err := s.storeRepo.ListAuditLog(ctx, repository.AuditLogFilter{
+	rows, total, err := s.storeRepo.ListAuditLog(ctx, repository.AuditLogFilter{
 		ActorID:    filter.ActorID,
 		From:       filter.From,
 		To:         filter.To,
 		TargetType: filter.TargetType,
 		Q:          filter.Q,
-		Cursor:     filter.Cursor,
+		Page:       filter.Page,
 		Limit:      filter.Limit,
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, 0, err
 	}
 
 	entries := make([]AuditLogEntry, len(rows))
@@ -85,5 +85,5 @@ func (s *Service) ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]Au
 			CreatedAt:  r.CreatedAt.Format(time.RFC3339),
 		}
 	}
-	return entries, nextCursor, nil
+	return entries, total, nil
 }

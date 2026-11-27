@@ -745,6 +745,13 @@ export type SystemConfig = Record<string, string>;
 
 export type QuestionFormat = "mcq" | "multi_answer" | "short" | "fill_blank" | "essay" | "multi_blank" | "true_false";
 
+export interface AuditLogPage {
+  data: AuditLogEntry[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
 export type SectionType = "listening" | "reading" | "writing";
 
 export interface Test {
