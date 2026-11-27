@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { User, Lock, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
 
@@ -118,6 +119,14 @@ export default function LoginPage() {
             >
               {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
+          </div>
+          <div className="mt-2 text-right">
+            <Link
+              href="/forgot-password"
+              className="text-[12.5px] font-semibold text-success transition-colors hover:text-success/80"
+            >
+              {t("forgot_link")}
+            </Link>
           </div>
         </div>
 

@@ -595,6 +595,7 @@ object_storage_secret_key: "sk"
 		{"ObjectStoragePrivateBucketName", cfg.ObjectStoragePrivateBucketName, "abak-academy-media"},
 		{"ObjectStorageEndpoint", cfg.ObjectStorageEndpoint, "storage.googleapis.com"},
 		{"MidtransEnv", cfg.MidtransEnv, "production"},
+		{"WebBaseURL", cfg.WebBaseURL, "https://hub.abakacademy.id"},
 	}
 	for _, c := range checks {
 		if c.got != c.want {

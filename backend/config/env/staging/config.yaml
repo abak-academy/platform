@@ -19,3 +19,4 @@ db_max_conns: 10
 enforce_school_npsn_registration: false
 
 gotenberg_url: "http://gotenberg:3000"
+web_base_url: "https://stg.abakacademy.id"

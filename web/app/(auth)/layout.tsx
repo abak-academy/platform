@@ -1,19 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth";
 import { BrandPanel } from "@/components/auth/BrandPanel";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
   const router = useRouter();
+  const pathname = usePathname();
+  // A reset link must work even in a browser still signed in (e.g. an admin-triggered reset).
+  const redirectSignedIn = !!token && pathname !== "/reset-password";
 
   useEffect(() => {
-    if (token) router.replace("/");
-  }, [token, router]);
+    if (redirectSignedIn) router.replace("/");
+  }, [redirectSignedIn, router]);
 
-  if (token) {
+  if (redirectSignedIn) {
     return (
       <div className="flex min-h-screen items-center justify-center text-ink-500">
         Memuat…

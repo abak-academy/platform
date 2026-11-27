@@ -134,3 +134,10 @@ describe("LoginPage", () => {
     expect(screen.queryByText("too many login attempts")).not.toBeInTheDocument();
   });
 });
+
+describe("LoginPage forgot-password link", () => {
+  it("points to /forgot-password", () => {
+    render(<LoginPage />);
+    expect(screen.getByRole("link", { name: "Lupa kata sandi?" }).getAttribute("href")).toBe("/forgot-password");
+  });
+});
