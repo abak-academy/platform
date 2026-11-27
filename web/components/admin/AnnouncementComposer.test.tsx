@@ -4,9 +4,10 @@ import { AnnouncementComposer } from "./AnnouncementComposer";
 
 const mockCreateMutate = vi.fn();
 const mockUpdateMutate = vi.fn();
+const pendingState = { create: false };
 
 vi.mock("@/lib/hooks/admin-announcements", () => ({
-  useCreateAnnouncement: () => ({ mutate: mockCreateMutate, isPending: false }),
+  useCreateAnnouncement: () => ({ mutate: mockCreateMutate, isPending: pendingState.create }),
   useUpdateAnnouncement: () => ({ mutate: mockUpdateMutate, isPending: false }),
 }));
 
@@ -58,6 +59,15 @@ describe("AnnouncementComposer", () => {
     expect(mockCreateMutate).toHaveBeenCalledWith(expect.objectContaining({ title: "Libur", status: "sent" }), expect.anything());
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(title.value).toBe("");
+  });
+
+  it("disables draft, schedule and send while a request is in flight", () => {
+    pendingState.create = true;
+    render(<AnnouncementComposer inline open onOpenChange={vi.fn()} />);
+    const actions = screen.getAllByRole("button").filter((el) => /save|notification_schedule|send/.test(el.textContent ?? ""));
+    expect(actions).toHaveLength(3);
+    for (const b of actions) expect(b).toBeDisabled();
+    pendingState.create = false;
   });
 
   it("does not render when closed", () => {

@@ -58,6 +58,8 @@ export function AnnouncementComposer({
   const { t } = useTranslation();
   const createMutation = useCreateAnnouncement();
   const updateMutation = useUpdateAnnouncement();
+  // The form now stays filled until the server answers, so block repeat clicks meanwhile.
+  const pending = createMutation.isPending || updateMutation.isPending;
 
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
@@ -216,17 +218,17 @@ export function AnnouncementComposer({
             {t("cancel")}
           </Button>
         )}
-        <Button variant="outline" onClick={handleSaveDraft}>
+        <Button variant="outline" onClick={handleSaveDraft} disabled={pending}>
           {t("save")} {t("notification_draft")}
         </Button>
         <Button
           variant="outline"
           onClick={handleSchedule}
-          disabled={!canSchedule}
+          disabled={!canSchedule || pending}
         >
           {t("notification_schedule")}
         </Button>
-        <Button onClick={handleSendNow}>
+        <Button onClick={handleSendNow} disabled={pending}>
           <Send className="mr-1 size-4" />
           {t("send")}
         </Button>
