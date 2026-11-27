@@ -136,7 +136,7 @@ describe("PromosPage", () => {
 
     const card = screen.getByText("DISKON10").closest("article") as HTMLElement;
     expect(card).toHaveTextContent(/promos_status_inactive|nonaktif/i);
-    expect(card).not.toHaveTextContent("Aktif");
+    expect(card).not.toHaveTextContent(/\bAktif\b/);
     fireEvent.click(within(card).getByRole("button", { name: /promo_activate|^aktifkan/i }));
 
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ is_active: true }) })));
