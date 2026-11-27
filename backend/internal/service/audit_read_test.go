@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // TestListAuditLog_DateParsing validates date format parsing via a dummy call.
@@ -120,8 +122,9 @@ func TestListAuditLog_Pagination(t *testing.T) {
 	svc, repo := newRealDBService(t)
 	ctx := context.Background()
 	targetType := "paging_" + uniqueSuffix()
+	actor := uuid.NewString()
 	for i := 0; i < 5; i++ {
-		if err := repo.InsertAuditLogMeta(ctx, nil, nil, targetType, fmt.Sprintf("t%d", i), "test.page", nil); err != nil {
+		if err := repo.InsertAuditLogMeta(ctx, nil, &actor, targetType, fmt.Sprintf("t%d", i), "test.page", nil); err != nil {
 			t.Fatalf("seed audit row %d: %v", i, err)
 		}
 	}
