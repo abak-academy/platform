@@ -38,6 +38,29 @@ function renderList(props: Partial<Parameters<typeof CourierRateList>[0]> = {}) 
   );
 }
 
+describe("CourierRateList keyboard", () => {
+  it("makes only the checked radio tabbable and moves selection with arrows", async () => {
+    const onSelect = vi.fn();
+    renderList({ selectedKey: "JNE::Reguler", onSelect });
+    const radios = screen.getAllByRole("radio");
+    expect(radios.filter((r) => r.tabIndex === 0)).toHaveLength(1);
+    expect(radios.find((r) => r.tabIndex === 0)).toHaveAttribute("aria-checked", "true");
+
+    radios.find((r) => r.tabIndex === 0)!.focus();
+    await userEvent.keyboard("{ArrowDown}");
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect.mock.calls[0][0]).toMatchObject({ courier: "Tiki", service: "Reguler" });
+    await userEvent.keyboard("{ArrowUp}");
+    expect(onSelect).toHaveBeenCalledTimes(2);
+    expect(onSelect.mock.calls[1][0]).toMatchObject({ courier: "JNE", service: "Yakin Esok Sampai (YES)" });
+  });
+
+  it("tabs into the first radio when nothing is checked", () => {
+    renderList();
+    expect(screen.getAllByRole("radio").map((r) => r.tabIndex)).toEqual([0, -1, -1, -1, -1]);
+  });
+});
+
 describe("CourierRateList", () => {
   // Prototype `.choices`: every quoted rate is on screen at once, nothing pre-picked.
   it("lists every option with nothing selected", () => {

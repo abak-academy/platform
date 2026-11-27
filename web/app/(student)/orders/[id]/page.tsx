@@ -379,8 +379,11 @@ export default function OrderDetailPage({
                 size="sm"
                 className="ml-auto"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(order.tracking_number!);
-                  toast.success(t("order_tracking_copied"));
+                  const copy = navigator.clipboard?.writeText(order.tracking_number!);
+                  (copy ?? Promise.reject(new Error("no clipboard"))).then(
+                    () => toast.success(t("order_tracking_copied")),
+                    () => toast.error(t("stu_home_ship_copy_failed")),
+                  );
                 }}
               >
                 <Copy aria-hidden />

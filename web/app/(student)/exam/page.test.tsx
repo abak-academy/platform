@@ -159,6 +159,7 @@ describe("ExamPage", () => {
 
     const card = (await screen.findByText("Ujian Akhir Matematika")).closest("[data-slot='card']") as HTMLElement;
     expect(within(card).getByText("75′")).toBeInTheDocument();
+    expect(within(card).getByText("Total waktu")).toBeInTheDocument();
     expect(within(card).getByText("Timer per section")).toBeInTheDocument();
     expect(within(card).getByText("3")).toBeInTheDocument();
     expect(within(card).getByText("60")).toBeInTheDocument();
@@ -166,6 +167,7 @@ describe("ExamPage", () => {
 
     const free = (await screen.findByText("Try Out UTBK Gratis #12")).closest("[data-slot='card']") as HTMLElement;
     expect(within(free).getByText("90′")).toBeInTheDocument();
+    expect(within(free).getByText("Waktu pengerjaan")).toBeInTheDocument();
     expect(within(free).getByText("Satu timer ujian")).toBeInTheDocument();
     expect(within(free).getByText(/Bebas pindah section/)).toBeInTheDocument();
   });

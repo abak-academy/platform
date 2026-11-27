@@ -348,7 +348,6 @@ function ServerCart() {
                 <CartLineItem
                   key={it.id}
                   item={it}
-                  flat
                   onRemove={() => {
                     if (!cart) return;
                     removeItem.mutate({ orderId: cart.id, itemId: it.id });

@@ -424,6 +424,7 @@ export function VideoPlayer({ videoRef, title, spot, forceFallback }: VideoPlaye
           html[data-theme="dark"] (ink-900 becomes #eeeffc) — which turned the
           scrim light and the white controls on it invisible. Video chrome is
           dark in both themes. */}
+      <div data-testid="video-scrim" aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-24 bg-gradient-to-t from-black/90 to-transparent" />
       <div data-testid="video-controls" className="absolute inset-x-4 bottom-4 z-20 flex items-center gap-3 rounded-full bg-[rgba(10,24,32,0.55)] px-4 py-[9px] text-xs text-white backdrop-blur-[12px]">
         <button
           type="button"

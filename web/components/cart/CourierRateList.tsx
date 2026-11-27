@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { cn } from "@/lib/utils";
 import { formatRupiah } from "@/lib/format";
 import { useTranslation } from "@/lib/i18n";
@@ -55,6 +56,7 @@ export function CourierRateList({
   isError,
 }: CourierRateListProps) {
   const { t, lang } = useTranslation();
+  const groupRef = useRef<HTMLDivElement>(null);
 
   if (isLoading) {
     return (
@@ -96,9 +98,26 @@ export function CourierRateList({
   }
 
   // Prototype `.choices` / `.choice`: one flat list of radio cards.
+  const checkedIdx = sorted.findIndex((r) => courierRateKey(r) === selectedKey);
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    const next = (Math.max(checkedIdx, 0) + step + sorted.length) % sorted.length;
+    onSelect(sorted[next]);
+    groupRef.current?.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus();
+  }
+
   return (
-    <div role="radiogroup" aria-label={t("cart_shipping_options") || "Shipping Options"} className="flex flex-col gap-2">
-      {sorted.map((rate) => {
+    <div
+      ref={groupRef}
+      role="radiogroup"
+      aria-label={t("cart_shipping_options") || "Shipping Options"}
+      onKeyDown={onKeyDown}
+      className="flex flex-col gap-2"
+    >
+      {sorted.map((rate, i) => {
         const key = courierRateKey(rate);
         const isSelected = selectedKey === key;
         const date = rowDate(rate);
@@ -108,6 +127,7 @@ export function CourierRateList({
             type="button"
             role="radio"
             aria-checked={isSelected}
+            tabIndex={i === Math.max(checkedIdx, 0) ? 0 : -1}
             onClick={() => onSelect(rate)}
             className={cn(
               "flex w-full items-center gap-3 rounded-[16px] border-[1.5px] px-4 py-[13px] text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600",

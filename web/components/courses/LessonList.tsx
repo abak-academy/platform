@@ -50,6 +50,7 @@ export function LessonList({
                 key={lesson.id}
                 type="button"
                 onClick={() => onSelectLesson(lesson.id)}
+                aria-current={isActive ? "true" : undefined}
                 className={[
                   "flex w-full items-center gap-2 rounded-[14px] px-3 py-2.5 text-left text-[14px]",
                   isActive ? "bg-brand-50 font-bold text-brand-ink" : "text-ink-700 hover:bg-surface-sunken",

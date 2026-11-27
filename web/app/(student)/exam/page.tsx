@@ -192,9 +192,12 @@ function PkgCard({ reg }: { reg: RegistrationListItem }) {
             <dd className="font-[family-name:var(--font-display)] text-lg leading-[normal] font-extrabold text-ink-900">
               {minutes != null ? `${minutes}′` : "—"}
             </dd>
-            <dt className="text-[11px] leading-[23.25px] text-ink-600">
-              {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+            <dt className="text-[11px] leading-[1.4] text-ink-600">
+              {reg.timer_mode === "per_test" ? t("examcard_time_total") : t("examcard_time_overall")}
             </dt>
+            <dd className="text-[10.5px] leading-[1.4] text-ink-600">
+              {reg.timer_mode === "per_test" ? t("examcard_timer_per_test") : t("examcard_timer_overall")}
+            </dd>
           </div>
           <div className="min-w-0 rounded-[14px] bg-surface-sunken p-2.5">
             <dd className="font-[family-name:var(--font-display)] text-lg leading-[normal] font-extrabold text-ink-900">{reg.section_count}</dd>

@@ -74,8 +74,6 @@ export interface CartLineItemProps {
   onQtyChange: (qty: number) => void;
   removing?: boolean;
   updatingQty?: boolean;
-  /** Kept for callers; every line now renders as the prototype's flat `.line` row. */
-  flat?: boolean;
 }
 
 // Prototype `.line`: thumb · name/sub · stepper or Digital chip · price · remove.
@@ -111,6 +109,12 @@ export function CartLineItem({
         <b className="block font-bold text-ink-900">{item.name}</b>
         <small className="block text-[12.5px] text-ink-600">
           <span>{label}</span>
+          {item.qty > 1 && (
+            <>
+              {" · "}
+              <span className="tabular-nums">× {formatRupiah(item.unit_price)}</span>
+            </>
+          )}
           {isDigital && (
             <>
               {" · "}

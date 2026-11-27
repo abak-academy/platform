@@ -124,6 +124,17 @@ describe("VideoPlayer", () => {
     expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
   });
 
+  it("keeps a full-width bottom scrim under the control pill, beside the shield", () => {
+    const { container } = render(
+      <VideoPlayer videoRef="https://www.youtube.com/watch?v=abc123" title="L1" />,
+    );
+    const scrim = container.querySelector('[data-testid="video-scrim"]') as HTMLElement;
+    expect(scrim.className).toContain("inset-x-0");
+    expect(scrim.className).toContain("bottom-0");
+    expect(scrim.className).toContain("from-black/90");
+    expect(container.querySelector('[data-testid="video-shield"]')).not.toBeNull();
+  });
+
   it("exposes no link to youtube.com anywhere in the tree", () => {
     const { container } = render(
       <VideoPlayer videoRef="https://www.youtube.com/watch?v=abc123" title="L1" />,

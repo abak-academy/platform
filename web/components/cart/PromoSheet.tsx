@@ -198,6 +198,13 @@ export function PromoSheet({
           </div>
           <button
             type="button"
+            onClick={() => setOpen(true)}
+            className="shrink-0 text-xs font-semibold text-brand-ink underline-offset-2 hover:underline"
+          >
+            {t("promo_change")}
+          </button>
+          <button
+            type="button"
             onClick={onClear}
             aria-label={t("promo_remove")}
             className="shrink-0 rounded-full p-1 text-ink-600 transition-colors hover:bg-surface hover:text-ink-900"
