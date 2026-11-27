@@ -61,6 +61,16 @@ func TestMigration0080_CompetitionResultUpDownUp(t *testing.T) {
 	requireTableExists("competition_result_row", false)
 	requireTableExists("exam_external_round", true)
 	requireTableExists("exam_external_result", true)
+	requireColumnExists := func(table, column string) {
+		t.Helper()
+		var n int
+		require.NoError(t, pool.QueryRow(ctx,
+			`SELECT count(*) FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`, table, column).Scan(&n))
+		require.Equal(t, 1, n, table+"."+column)
+	}
+	requireColumnExists("exam_external_round", "label")
+	requireColumnExists("exam_external_round", "label_en")
+	requireColumnExists("exam_external_result", "round_id")
 
 	applyMigrationFile(t, pool, "0080_competition_result.up.sql")
 	requireTableExists("competition_result_row", true)

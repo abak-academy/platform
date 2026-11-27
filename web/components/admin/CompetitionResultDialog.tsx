@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { groupingErrorParts } from "@/lib/hooks/admin-product-groupings";
+import { ApiError } from "@/lib/api";
 import { putFileToPresignedURL } from "@/lib/hooks/admin-students-bulk";
 import {
   useApplyCompetitionResult,
@@ -19,12 +19,25 @@ import {
 import { DICT, useTranslation, type I18nKey } from "@/lib/i18n";
 import type { CompetitionResultPreview } from "@/lib/types";
 
-const dateTime = (iso: string) => new Date(iso).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
+const FILE_ERRORS = ["invalid_csv", "unknown_column", "duplicate_column", "missing_column", "no_rows", "file_too_large"];
+
+function errorCopy(e: unknown, t: (k: I18nKey) => string): string {
+  if (e instanceof ApiError) {
+    if (e.code === "upload_not_found") return t("cr_err_upload_not_found");
+    if (e.code === "competition_result_not_found") return t("cr_err_result_not_found");
+    if (e.code === "validation_failed") {
+      const token = FILE_ERRORS.find((k) => e.message.includes(k));
+      if (token) return t(`cr_err_${token}` as I18nKey);
+    }
+  }
+  return t("cr_err_generic");
+}
 
 function ResultRows({ productId }: { productId: string }) {
   const { t } = useTranslation();
-  const { data, isLoading } = useCompetitionResultRows(productId, true);
+  const { data, isLoading, isError } = useCompetitionResultRows(productId, true);
   if (isLoading) return <p className="text-sm text-muted-foreground">{t("cr_loading")}</p>;
+  if (isError) return <p role="alert" className="text-sm text-destructive">{t("cr_err_rows")}</p>;
   return (
     <table className="w-full text-left text-xs" aria-label={t("cr_results_label")}>
       <thead>
@@ -54,7 +67,8 @@ export function CompetitionResultDialog({
   productId: string;
   productName: string;
 }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const dateTime = (iso: string) => new Date(iso).toLocaleString(lang === "id" ? "id-ID" : "en-US", { dateStyle: "medium", timeStyle: "short" });
   const [file, setFile] = useState<File | null>(null);
   const [key, setKey] = useState("");
   const [preview, setPreview] = useState<CompetitionResultPreview | null>(null);
@@ -85,7 +99,7 @@ export function CompetitionResultDialog({
       setKey(p.key);
       setPreview(await previewMut.mutateAsync(p.key));
     } catch (e) {
-      setFileError(groupingErrorParts(e).message);
+      setFileError(errorCopy(e, t));
     }
   }
 
@@ -96,7 +110,11 @@ export function CompetitionResultDialog({
       setFile(null);
       resetPreview();
     } catch (e) {
-      toast.error(groupingErrorParts(e).message);
+      if (e instanceof ApiError && e.status === 422 && preview && Array.isArray(e.body?.errors)) {
+        setPreview({ ...preview, matched: Number(e.body.matched ?? 0), errors: e.body.errors as CompetitionResultPreview["errors"] });
+      } else {
+        toast.error(errorCopy(e, t));
+      }
     }
   }
 
@@ -105,7 +123,7 @@ export function CompetitionResultDialog({
       await fn();
       toast.success(ok);
     } catch (e) {
-      toast.error(groupingErrorParts(e).message);
+      toast.error(errorCopy(e, t));
     }
   }
 

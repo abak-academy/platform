@@ -504,3 +504,29 @@ func TestParseCompetitionResultCSV_ResolvesOnlyWithinTheProductsExams(t *testing
 		4: ReasonOtherExamParticipantNo, 5: ReasonUnknownParticipant, 6: ReasonRevokedParticipant, 7: ReasonDuplicateParticipant,
 	}, got)
 }
+
+func TestParseCompetitionResultCSV_ShortRowIsBadRowNotPanic(t *testing.T) {
+	inputs, errs, err := parseCompetitionResultCSV([]byte("score,participant_no\n5\n"), nil)
+	require.NoError(t, err)
+	assert.Empty(t, inputs)
+	require.Len(t, errs, 1)
+	assert.Equal(t, ReasonBadRow, errs[0].Reason)
+}
+
+func TestParseCompetitionResultCSV_ScoreMustFitNumeric82(t *testing.T) {
+	reg := uuid.New()
+	regs := map[int]map[int]repository.CompetitionRegistration{1001: {1: {ID: reg}, 2: {ID: uuid.New()}}}
+	_, errs, err := parseCompetitionResultCSV([]byte(compHeader+
+		"250620-1001-000001,999999.999,,,\n"+
+		"250620-1001-000002,999999.99,,,\n"), regs)
+	require.NoError(t, err)
+	require.Len(t, errs, 1)
+	assert.Equal(t, ReasonBadScore, errs[0].Reason)
+	assert.Equal(t, 2, errs[0].Line)
+}
+
+func TestCompetitionFileName_NeverContainsDotDotOrPath(t *testing.T) {
+	assert.Equal(t, "hasil_final.csv", competitionFileName("hasil..final.csv"))
+	assert.Equal(t, "x.csv", competitionFileName("../../etc/x.csv"))
+	assert.Equal(t, "x.csv", competitionFileName(`a\b\x.csv`))
+}

@@ -222,11 +222,12 @@ Abak competition exams never show results on-platform: every competition's resul
 1. Results are uploaded **per product**: the admin opens the edition's product (event editor) and uploads one CSV (D10). There is **one result set per product** (`UNIQUE product_id`).
 2. Columns: `participant_no` (the participant number printed on the exam card, `[<PREFIX>-]YYMMDD-<exam_number>-NNNNNN`, accepted **with or without** the event prefix; D11, § Participant number), `score` (number, required), `rank` (integer ≥ 1, optional), `award` (text ≤ 60, optional, e.g. "Medali emas"), `certificate_url` (optional, `https://` only). Header row required; column order free; extra columns refused.
 3. **Participant resolution:** a participant number resolves **only within the exams attached to the product** through `product_exam`. The exam number inside the participant number selects the exam; the registration is that exam's registration.
-4. **Preview** before anything is written: totals (matched, errors) and every bad row with its reason: unknown participant (no registration of this product's exams with that number, or revoked), unreadable participant number, participant number of an exam outside the product, duplicate participant in the file, bad score/rank/URL, award too long. **Apply** is possible only with zero errors (the admin fixes the file and re-uploads).
+4. **Preview** before anything is written: totals (matched, errors) and every bad row with its reason: unknown participant (no registration of this product's exams with that number), revoked participant (`revoked_participant`, its own reason), unreadable participant number, participant number of an exam outside the product, duplicate participant in the file, bad score/rank/URL, award too long. **Apply** is possible only with zero errors (the admin fixes the file and re-uploads).
 5. Flow: presign → preview → apply → publish / unpublish → delete. Apply **replaces** the product's whole result set in one transaction (idempotent: the same file twice gives the same state). A result set is **hidden until the admin publishes it**; replacing the rows of a published set keeps it published (the preview warns that the result is already live).
-6. Every apply, publish, unpublish, and delete is written to the audit log (`InsertAuditLogMeta`, entity `competition_result`, with row counts and the uploaded object key).
-7. Student side: a published result gives the student's registration row a **Lihat hasil** action showing score, rank, award, and the certificate link (`student-dashboard-v2.md` §6). An unpublished or missing result is invisible to students.
-8. Uploaded results never change on-platform sessions, scores, or the leaderboard (D12).
+6. Every apply, publish, unpublish, and delete is written to the audit log (`InsertAuditLogMeta`, entity `competition_result`, with the product id and row count; only apply and delete also carry the uploaded object key as `source_key`, publish and unpublish do not).
+7. Student side: a published result gives the student's registration row a **Lihat hasil** action showing score, rank, award, and the certificate link (`student-dashboard-v2.md` §6). An unpublished or missing result is invisible to students. A registration whose exam is attached to several products (`product_exam` is M:N) can receive rows in more than one product's set; the student API shows the most recently published one.
+8. The CSV is matched against registrations just before the apply transaction opens, so a registration revoked in that window is not caught; revoked registrations drop out of the student list anyway (rows point at the registration).
+9. Uploaded results never change on-platform sessions, scores, or the leaderboard (D12).
 
 **Data model** (migration `0080` drops `exam_external_round` and `exam_external_result` and creates):
 
@@ -260,8 +261,9 @@ Rows point at the registration, not the student, so a revoked registration's res
 
 | Method | Path | Notes |
 |---|---|---|
+| GET | `/admin/products/:id/competition-result` | `{data: {id, product_id, source_key, row_count, published_at, updated_at} | null}` (`null` for none, also for an unknown product) |
 | POST | `/admin/products/:id/competition-result/presign` | Private PUT URL + key |
-| POST | `/admin/products/:id/competition-result/preview` | `{matched, errors: [{line, participant_no, reason}]}` |
+| POST | `/admin/products/:id/competition-result/preview` | `{matched, errors: [{line, participant_no, reason}], result_exists, result_published}` |
 | POST | `/admin/products/:id/competition-result/apply` | 422 if the file has errors; creates or replaces the product's rows |
 | POST | `/admin/products/:id/competition-result/publish` · `/unpublish` | Toggle `published_at` |
 | GET | `/admin/products/:id/competition-result/results` | Rows with student name and participant no in the current display format (admin view / CSV export) |
@@ -269,7 +271,7 @@ Rows point at the registration, not the student, so a revoked registration's res
 
 **Student API.** `GET /exam/registrations` items gain `competition_result: {score, rank, award, certificate_url, published_at} | null` (published only; `null` when none or unpublished). One call, no per-row fetch.
 
-**Error taxonomy.** Unknown product or no result set: 404. Not a competition product / no attached exam: 422. File over 2 MB, not CSV, bad header or extra column: 400. Any row error on apply: 422 with the same list as preview. Missing `competition-results:write`: 403.
+**Error taxonomy.** Unknown product: 404 `product_not_found` on preview and apply only; `GET` returns `{data: null}` and presign returns 200 without checking the product. No result set: 404 `competition_result_not_found` on publish, unpublish, delete, and the rows list. File-level problems (over 2 MB, not CSV, unknown, duplicate or missing column, no data rows) are 422 `validation_failed`; a key outside the product's prefix or a missing object is 404 `upload_not_found`. A product with no attached exam is not rejected: the preview marks every row `other_exam_participant_no`. Any row error on apply: 422 `validation_failed` with `{matched, errors}` (the same list as preview). Missing `competition-results:write`: 403.
 
 ## Participant number
 
@@ -355,7 +357,7 @@ All settled (Panca, 2026-11-26: the recommended option of each, plus the D9 and 
 - ~~D11. Participant identifier.~~ **Settled: (a)** (per-exam scope superseded by D14) `participant_no` as printed on the exam card, with or without the event prefix (§ Participant number); the upload is per product (exams resolved via `product_exam`, D14). Correction of the earlier risk note: no registration lacks a number — `0037` backfilled every existing row and both insert paths always assign one (verified 2026-11-26). Not chosen: (b) email or username; (c) either column.
 - ~~D12. Uploaded results and the leaderboard.~~ **Settled: (a)** separate: uploaded results never enter the platform leaderboard or result pages; the student sees them in "Lihat hasil" only. Not chosen: (b) own leaderboard tab; (c) merge.
 - ~~D13. Upload mechanics.~~ **Settled: (a)** presigned private upload + synchronous preview and apply. Not chosen: (b) async `Job`.
-- ~~D14. Competition results are announced once per product.~~ **Settled 2026-11-28 (Panca):** results are announced once per competition, per product; they are curated outside the platform and the admin uploads the curated CSV. A staged Event is several products (OLV Penyisihan, OLV Semifinal), so there are no per-result rounds or labels. Supersedes the 2026-11-26 per-exam, per-round design (the "external round results" section, which also shaped D11's per-exam upload and D12's wording); migration `0080` replaces its tables.
+- ~~D14. Competition results are announced once per product.~~ **Settled 2026-11-28 (Panca):** results are announced once per competition, per product; they are curated outside the platform and the admin uploads the curated CSV. A staged Event is several products (OLV Penyisihan, OLV Semifinal), so there are no per-result rounds or labels. Supersedes the 2026-11-26 per-exam, per-round design (the "external round results" section, which also shaped D11's per-exam upload and D12's wording); migration `0080` replaces its tables. Because `product_exam` is M:N, a registration can fall in two products' result sets; the student API shows the most recently published one (no code guard).
 - **Participant number prefix** (Panca, 2026-11-26): settled as § Participant number. Accepted: already printed cards keep the old string.
 
 ## Launch blockers (open; do not block the build)

@@ -1310,7 +1310,7 @@ export interface RegistrationListItem {
   section_count: number;
   question_count: number;
   sections_duration_minutes: number | null;
-  competition_result?: StudentCompetitionResult | null;
+  competition_result: StudentCompetitionResult | null;
 }
 
 export interface StudentCompetitionResult {
@@ -1324,7 +1324,7 @@ export interface StudentCompetitionResult {
 export interface CompetitionResult {
   id: string;
   product_id: string;
-  source_key: string;
+  source_key: string | null;
   row_count: number;
   published_at: string | null;
   updated_at: string;

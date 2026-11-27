@@ -55,6 +55,7 @@ const listItem: RegistrationListItem = {
   section_count: 2,
   question_count: 50,
   sections_duration_minutes: 100,
+  competition_result: null,
 };
 
 const detail: RegistrationDetail = {

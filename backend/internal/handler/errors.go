@@ -228,6 +228,8 @@ func mapServiceError(c echo.Context, err error) error {
 		status, apiErr = http.StatusUnprocessableEntity, APIError{Code: "invalid_kode_pos", Message: err.Error()}
 	case errors.Is(err, service.ErrUsernameGenerationExhausted):
 		status, apiErr = http.StatusServiceUnavailable, APIError{Code: "username_generation_exhausted", Message: err.Error()}
+	case errors.Is(err, service.ErrCompetitionResultNotFound):
+		status, apiErr = http.StatusNotFound, APIError{Code: "competition_result_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrUploadNotFound):
 		status, apiErr = http.StatusNotFound, APIError{Code: "upload_not_found", Message: err.Error()}
 	case errors.Is(err, service.ErrInvalidCSV):

@@ -22,7 +22,7 @@ function reg(over: Partial<RegistrationListItem> = {}): RegistrationListItem {
     scheduled_at: null, scheduled_end_at: null, is_free: false, requires_checkin: false,
     check_in_window_minutes: null, duration_minutes: 60, session_id: null, max_attempts: 1,
     navigation_policy: "free", timer_mode: "overall", section_count: 1, question_count: 10,
-    sections_duration_minutes: null, ...over,
+    sections_duration_minutes: null, competition_result: null, ...over,
   };
 }
 

@@ -21,12 +21,12 @@ export function CompetitionResultDialog({ open, onOpenChange, examTitle, result:
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("stu_home_ext_title").replace("{name}", examTitle)}</DialogTitle>
+          <DialogTitle>{t("stu_home_cr_title").replace("{name}", examTitle)}</DialogTitle>
         </DialogHeader>
         <div className="rounded-lg border border-line p-3">
           <p className="type-body-sm text-ink-600">
-            {t("stu_home_ext_score")} {r.score}
-            {r.rank != null && ` · ${t("stu_home_ext_rank")} #${r.rank}`}
+            {t("stu_home_cr_score")} {r.score}
+            {r.rank != null && ` · ${t("stu_home_cr_rank")} #${r.rank}`}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {r.award && <Badge variant="gold">{r.award}</Badge>}
@@ -37,14 +37,14 @@ export function CompetitionResultDialog({ open, onOpenChange, examTitle, result:
                 rel="noopener noreferrer"
                 className="type-label-sm text-brand-ink underline-offset-4 hover:underline"
               >
-                {t("stu_home_ext_certificate")}
+                {t("stu_home_cr_certificate")}
               </a>
             )}
           </div>
         </div>
         {leaderboardHref && (
           <Button asChild variant="outline" size="sm" className="self-start">
-            <Link href={leaderboardHref}>{t("stu_home_ext_leaderboard")}</Link>
+            <Link href={leaderboardHref}>{t("stu_home_cr_leaderboard")}</Link>
           </Button>
         )}
       </DialogContent>

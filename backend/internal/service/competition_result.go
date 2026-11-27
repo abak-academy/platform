@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -36,9 +37,7 @@ const (
 	ReasonBadRow                  = "bad_row"
 )
 
-var ErrCompetitionResultNotFound = errors.New("competition result not found")
-
-var competitionScoreRe = regexp.MustCompile(`^\d+(\.\d+)?$`)
+var competitionScoreRe = regexp.MustCompile(`^\d{1,6}(\.\d{1,2})?$`)
 
 var competitionColumns = map[string]bool{"participant_no": true, "score": true, "rank": true, "award": true, "certificate_url": true}
 
@@ -50,7 +49,12 @@ func (s *Service) PresignCompetitionResultUpload(ctx context.Context, productID 
 	if strings.TrimSpace(filename) == "" {
 		return nil, fmt.Errorf("%w: filename is required", ErrValidation)
 	}
-	return s.presignPrivatePut(ctx, competitionKeyPrefix(productID)+uuid.NewString()+"-"+filename)
+	return s.presignPrivatePut(ctx, competitionKeyPrefix(productID)+uuid.NewString()+"-"+competitionFileName(filename))
+}
+
+// competitionFileName keeps ".." out of the key because the read guard rejects it.
+func competitionFileName(filename string) string {
+	return strings.ReplaceAll(path.Base(strings.ReplaceAll(filename, "\\", "/")), "..", "_")
 }
 
 func (s *Service) readCompetitionResultObject(ctx context.Context, productID uuid.UUID, key string) ([]byte, error) {
@@ -151,7 +155,7 @@ func parseCompetitionResultCSV(data []byte, regs map[int]map[int]repository.Comp
 		}
 	}
 	get := func(rec []string, name string) string {
-		if i, ok := col[name]; ok {
+		if i, ok := col[name]; ok && i < len(rec) {
 			return strings.TrimSpace(rec[i])
 		}
 		return ""
@@ -205,7 +209,7 @@ func parseCompetitionResultCSV(data []byte, regs map[int]map[int]repository.Comp
 		seen[reg.ID] = true
 
 		in := model.CompetitionResultInput{RegistrationID: reg.ID, Score: get(rec, "score")}
-		if f, err := strconv.ParseFloat(in.Score, 64); !competitionScoreRe.MatchString(in.Score) || err != nil || f >= 1e6 {
+		if !competitionScoreRe.MatchString(in.Score) {
 			fail(ReasonBadScore)
 			continue
 		}

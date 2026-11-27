@@ -2,21 +2,11 @@ package handler
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
-
-	"akademi-bimbel/internal/service"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 )
-
-func competitionErr(c echo.Context, err error) error {
-	if errors.Is(err, service.ErrCompetitionResultNotFound) {
-		return c.JSON(http.StatusNotFound, APIError{Code: "competition_result_not_found", Message: err.Error()})
-	}
-	return mapServiceError(c, err)
-}
 
 func productIDParam(c echo.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -34,7 +24,7 @@ func (h *Handler) AdminGetCompetitionResult(c echo.Context) error {
 	}
 	result, err := h.svc.GetCompetitionResult(c.Request().Context(), productID)
 	if err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": result})
 }
@@ -46,7 +36,7 @@ func (h *Handler) AdminPresignCompetitionResult(c echo.Context) error {
 	}
 	resp, err := h.svc.PresignCompetitionResultUpload(c.Request().Context(), productID, c.QueryParam("filename"))
 	if err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, resp)
 }
@@ -75,7 +65,7 @@ func (h *Handler) AdminPreviewCompetitionResult(c echo.Context) error {
 	}
 	preview, err := h.svc.PreviewCompetitionResult(c.Request().Context(), productID, req.Key)
 	if err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, preview)
 }
@@ -91,7 +81,7 @@ func (h *Handler) AdminApplyCompetitionResult(c echo.Context) error {
 	}
 	preview, result, err := h.svc.ApplyCompetitionResult(c.Request().Context(), productID, actor, req.Key)
 	if err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	if result == nil {
 		return c.JSON(http.StatusUnprocessableEntity, map[string]any{
@@ -112,7 +102,7 @@ func (h *Handler) setCompetitionPublished(c echo.Context, publish bool) error {
 	}
 	result, err := h.svc.SetCompetitionResultPublished(c.Request().Context(), productID, publish, actor)
 	if err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": result})
 }
@@ -131,7 +121,7 @@ func (h *Handler) AdminListCompetitionResultRows(c echo.Context) error {
 	}
 	rows, err := h.svc.ListCompetitionResultRows(c.Request().Context(), productID)
 	if err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	return c.JSON(http.StatusOK, map[string]any{"data": rows})
 }
@@ -146,7 +136,7 @@ func (h *Handler) AdminDeleteCompetitionResult(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
 	if err := h.svc.DeleteCompetitionResult(c.Request().Context(), productID, actor); err != nil {
-		return competitionErr(c, err)
+		return mapServiceError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)
 }

@@ -11,6 +11,7 @@ type Call = { path: string; method: string; body: unknown };
 let calls: Call[];
 let saved: unknown;
 let previewResult: () => unknown;
+let applyResult: () => unknown;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 const draft = { id: "c1", product_id: "p1", source_key: "k", row_count: 3, published_at: null, updated_at: "2026-11-01T03:00:00Z" };
@@ -21,6 +22,7 @@ beforeEach(() => {
   calls = [];
   saved = null;
   previewResult = () => ({ matched: 2, errors: [], result_exists: false, result_published: false });
+  applyResult = () => ({ data: draft });
   fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
   vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(api, "authFetch").mockImplementation((async (path: string, init?: RequestInit) => {
@@ -29,7 +31,7 @@ beforeEach(() => {
     if (path === URL_BASE && method === "GET") return { data: saved };
     if (path.includes("/presign?")) return { url: "https://minio.test/put", method: "PUT", fields: {}, key: "cr/p1/x.csv" };
     if (path.endsWith("/preview")) return previewResult();
-    if (path.endsWith("/apply")) return { data: draft };
+    if (path.endsWith("/apply")) return applyResult();
     if (path.endsWith("/results")) {
       return { data: [{ registration_id: "r1", student_name: "Siswa Uji", participant_no: "ESOL-0001", score: 90, rank: 1, award: "Emas", certificate_url: null }] };
     }
@@ -129,14 +131,41 @@ describe("CompetitionResultDialog", () => {
     expect(paths("POST").some((p) => p.endsWith("/apply"))).toBe(false);
   });
 
-  it("shows the file-level 422 message and offers no confirm", async () => {
+  it("shows a localized message for a file-level 422 and offers no confirm", async () => {
     previewResult = () => {
-      throw new ApiError("validation_failed", "kolom participant_no tidak ditemukan", 422);
+      throw new ApiError("validation_failed", 'validation failed: missing_column "participant_no"', 422);
     };
     renderDialog();
     uploadAndPreview();
-    expect((await screen.findByRole("alert")).textContent).toContain("kolom participant_no tidak ditemukan");
+    expect((await screen.findByRole("alert")).textContent).toBe("CSV wajib punya kolom participant_no dan score.");
     expect(screen.queryByRole("button", { name: "Terapkan" })).toBeNull();
+  });
+
+  it("falls back to a localized generic message for an unknown error", async () => {
+    previewResult = () => {
+      throw new ApiError("boom", "raw english", 500);
+    };
+    renderDialog();
+    uploadAndPreview();
+    expect((await screen.findByRole("alert")).textContent).toBe("Terjadi kesalahan. Coba lagi.");
+  });
+
+  it("shows the row errors and disables Terapkan when apply returns 422", async () => {
+    applyResult = () => {
+      throw new ApiError("validation_failed", "file has errors", 422, {
+        code: "validation_failed",
+        message: "file has errors",
+        matched: 1,
+        errors: [{ line: 4, participant_no: "ESOL-0042", reason: "unknown_participant" }],
+      });
+    };
+    renderDialog();
+    uploadAndPreview();
+    await screen.findByText(/baris cocok/);
+    fireEvent.click(screen.getByRole("button", { name: "Terapkan" }));
+    expect(await screen.findByText("ESOL-0042")).toBeTruthy();
+    expect(screen.getByText("Nomor peserta tidak dikenal")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Terapkan" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("warns when the replaced result is already published", async () => {

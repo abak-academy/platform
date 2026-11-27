@@ -42,6 +42,7 @@ function reg(over: Partial<RegistrationListItem> = {}): RegistrationListItem {
     section_count: 1,
     question_count: 10,
     sections_duration_minutes: null,
+    competition_result: null,
     ...over,
   };
 }
