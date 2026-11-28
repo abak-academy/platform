@@ -24,7 +24,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Switch } from "@/components/ui/switch";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { ExternalRoundsDialog } from "@/components/admin/ExternalRoundsDialog";
 import { EVENT_ART_BG, EVENT_ILLUSTRATIONS, EVENT_TONES, EventMark } from "@/components/admin/EventMark";
 import { TabCount } from "@/components/ui/tabs";
 import { ProductLevelFields, gradeRangeInvalid, levelPayload } from "@/components/admin/ProductModal";
@@ -200,7 +199,6 @@ function MemberRow({
   onMove,
   onRemove,
   badges,
-  actions,
   children,
 }: {
   product: Product;
@@ -209,7 +207,6 @@ function MemberRow({
   onMove: (index: number, delta: number) => void;
   onRemove: (id: string) => void;
   badges?: React.ReactNode;
-  actions?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const { t } = useTranslation();
@@ -236,7 +233,6 @@ function MemberRow({
           {badges}
         </div>
         <div className="flex items-center gap-1">
-          {actions}
           <Button type="button" size="icon" variant="ghost" className="size-7" aria-label={t("grouping_move_up")} disabled={index === 0} onClick={() => onMove(index, -1)}>
             <ArrowUp className="size-4" aria-hidden />
           </Button>
@@ -256,7 +252,6 @@ function MemberRow({
 function EditionRow({
   groupingId,
   product,
-  actions,
   ...row
 }: {
   groupingId: string;
@@ -265,7 +260,6 @@ function EditionRow({
   total: number;
   onMove: (index: number, delta: number) => void;
   onRemove: (id: string) => void;
-  actions?: React.ReactNode;
 }) {
   const saveLevel = useUpdateEditionLevel(groupingId);
   const [stages, setStages] = useState<EventStage[]>(product.stages ?? []);
@@ -284,7 +278,6 @@ function EditionRow({
   return (
     <MemberRow
       product={product}
-      actions={actions}
       badges={
         <>
           {product.phase && (
@@ -343,7 +336,6 @@ export default function ProductGroupingDetailPage() {
 
   const { data: grouping, isLoading, isError, error } = useAdminProductGrouping(id);
   const { data: allProducts } = useAdminProducts();
-  const [externalFor, setExternalFor] = useState<Product | null>(null);
   const setMembers = useSetGroupingProducts();
   const update = useUpdateProductGrouping();
   const remove = useDeleteProductGrouping();
@@ -711,13 +703,6 @@ export default function ProductGroupingDetailPage() {
                               product={p}
                               index={i}
                               total={editions.length}
-                              actions={
-                                p.type === "exam" && (
-                                  <Button type="button" size="sm" variant="outline" aria-label={`Hasil ronde luar ${p.name}`} onClick={() => setExternalFor(p)}>
-                                    Hasil ronde luar
-                                  </Button>
-                                )
-                              }
                               onMove={(index, delta) => move("edition", index, delta)}
                               onRemove={(pid) => setMemberIds(ids.filter((x) => x !== pid))}
                             />
@@ -746,16 +731,6 @@ export default function ProductGroupingDetailPage() {
                     </div>
                   )}
                 </DndContext>
-
-                {externalFor && (
-                  <ExternalRoundsDialog
-                    key={externalFor.id}
-                    open
-                    onOpenChange={(o) => !o && setExternalFor(null)}
-                    productName={externalFor.name}
-                    examIds={externalFor.exam_ids ?? allProducts?.find((x) => x.id === externalFor.id)?.exam_ids ?? []}
-                  />
-                )}
 
                 <div className="space-y-2">
                   <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("grouping_add_product")} aria-label={t("grouping_add_product")} />

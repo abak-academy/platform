@@ -331,14 +331,18 @@ func TestRegisterRoutes_ExamModuleGates(t *testing.T) {
 	}
 }
 
-func TestRegisterRoutes_ExternalRoundGate(t *testing.T) {
+func TestRegisterRoutes_CompetitionResultGate(t *testing.T) {
 	paths := []struct{ method, path string }{
-		{http.MethodGet, "/api/v1/admin/exams/not-a-uuid/external-rounds"},
-		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/external-rounds/preview"},
-		{http.MethodPost, "/api/v1/admin/external-rounds/not-a-uuid/publish"},
-		{http.MethodDelete, "/api/v1/admin/external-rounds/not-a-uuid"},
+		{http.MethodGet, "/api/v1/admin/exams/not-a-uuid/competition-result"},
+		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/competition-result/presign"},
+		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/competition-result/preview"},
+		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/competition-result/apply"},
+		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/competition-result/publish"},
+		{http.MethodPost, "/api/v1/admin/exams/not-a-uuid/competition-result/unpublish"},
+		{http.MethodGet, "/api/v1/admin/exams/not-a-uuid/competition-result/results"},
+		{http.MethodDelete, "/api/v1/admin/exams/not-a-uuid/competition-result"},
 	}
-	allowed := []string{service.RoleAdminStore, service.RoleAdminExam, service.RoleSuperAdmin}
+	allowed := []string{service.RoleAdminExam, service.RoleSuperAdmin}
 	roles := []string{service.RoleStudent, service.RoleAdminSchool, service.RoleAdminStore, service.RoleAdminExam, service.RoleSuperAdmin}
 
 	for _, p := range paths {

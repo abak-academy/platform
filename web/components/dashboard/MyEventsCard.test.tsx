@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MyEventsCard } from "./MyEventsCard";
-import type { RegistrationListItem, SessionResult, StudentExternalResult } from "@/lib/types";
+import type { RegistrationListItem, SessionResult, StudentCompetitionResult } from "@/lib/types";
 
 const mockAuthFetch = vi.fn();
 
@@ -42,6 +42,7 @@ function reg(over: Partial<RegistrationListItem> = {}): RegistrationListItem {
     section_count: 1,
     question_count: 10,
     sections_duration_minutes: null,
+    competition_result: null,
     ...over,
   };
 }
@@ -58,9 +59,7 @@ const submitted = (over: Partial<RegistrationListItem> = {}) =>
     ...over,
   });
 
-const round = (over: Partial<StudentExternalResult> = {}): StudentExternalResult => ({
-  round_id: "r1",
-  round_label: "Babak Penyisihan",
+const compResult = (over: Partial<StudentCompetitionResult> = {}): StudentCompetitionResult => ({
   score: 87.5,
   rank: 12,
   award: "Medali Emas",
@@ -214,24 +213,15 @@ describe("MyEventsCard on-platform result", () => {
   });
 });
 
-describe("MyEventsCard external results", () => {
-  it("opens a dialog listing each round with score, rank, award and certificate", async () => {
+describe("MyEventsCard competition result", () => {
+  it("opens a dialog with score, rank, award and certificate", async () => {
     const user = userEvent.setup();
-    renderCard([
-      reg({
-        exam_title: "Olimpiade Eksternal",
-        external_results: [
-          round(),
-          round({ round_id: "r2", round_label: "Babak Final", score: 90, rank: null, award: null, certificate_url: null }),
-        ],
-      }),
-    ]);
+    renderCard([reg({ exam_title: "Olimpiade Nasional", competition_result: compResult() })]);
     expect(mockAuthFetch).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Lihat hasil" }));
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Hasil Olimpiade Eksternal")).toBeInTheDocument();
-    expect(within(dialog).getByText("Babak Penyisihan")).toBeInTheDocument();
+    expect(within(dialog).getByText("Hasil Olimpiade Nasional")).toBeInTheDocument();
     expect(within(dialog).getByText(/87[.,]5/)).toBeInTheDocument();
     expect(within(dialog).getByText(/12/)).toBeInTheDocument();
     expect(within(dialog).getByText("Medali Emas")).toBeInTheDocument();
@@ -240,14 +230,23 @@ describe("MyEventsCard external results", () => {
     expect(cert[0]).toHaveAttribute("href", "https://certs.example.test/c1.pdf");
     expect(cert[0]).toHaveAttribute("target", "_blank");
     expect(cert[0]).toHaveAttribute("rel", "noopener noreferrer");
-    expect(within(dialog).getByText("Babak Final")).toBeInTheDocument();
     expect(within(dialog).queryByRole("link", { name: "Lihat papan peringkat" })).not.toBeInTheDocument();
+  });
+
+  it("omits rank, award and certificate when the result has none", async () => {
+    const user = userEvent.setup();
+    renderCard([reg({ competition_result: compResult({ rank: null, award: null, certificate_url: null }) })]);
+    await user.click(screen.getByRole("button", { name: "Lihat hasil" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).queryByRole("link", { name: "Lihat sertifikat" })).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Medali Emas")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/#/)).not.toBeInTheDocument();
   });
 
   it("adds a leaderboard link when an on-platform result is also released", async () => {
     answerResult(fullResult);
     const user = userEvent.setup();
-    renderCard([submitted({ external_results: [round()] })]);
+    renderCard([submitted({ competition_result: compResult() })]);
     await user.click(screen.getByRole("button", { name: "Lihat hasil" }));
     const dialog = await screen.findByRole("dialog");
     expect(await within(dialog).findByRole("link", { name: "Lihat papan peringkat" })).toHaveAttribute(
@@ -259,7 +258,7 @@ describe("MyEventsCard external results", () => {
   it("omits the leaderboard link when the on-platform result is gated", async () => {
     answerResult({ state: "grading" } as SessionResult);
     const user = userEvent.setup();
-    renderCard([submitted({ external_results: [round()] })]);
+    renderCard([submitted({ competition_result: compResult() })]);
     await user.click(screen.getByRole("button", { name: "Lihat hasil" }));
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(resultCalls()).toHaveLength(1));
@@ -268,14 +267,14 @@ describe("MyEventsCard external results", () => {
     expect(within(dialog).queryByRole("link", { name: "Lihat papan peringkat" })).not.toBeInTheDocument();
   });
 
-  it("does not request the result for an external row that is not submitted", async () => {
-    renderCard([reg({ external_results: [round()], session_id: "sess-x" })]);
+  it("does not request the result for a competition row that is not submitted", async () => {
+    renderCard([reg({ competition_result: compResult(), session_id: "sess-x" })]);
     await screen.findByRole("button", { name: "Lihat hasil" });
     expect(mockAuthFetch).not.toHaveBeenCalled();
   });
 
-  it("empty external_results falls through to the normal action", () => {
-    renderCard([reg({ external_results: [] })]);
+  it("a null competition_result falls through to the normal action", () => {
+    renderCard([reg({ competition_result: null })]);
     expect(screen.getByRole("link", { name: "Detail" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Lihat hasil" })).not.toBeInTheDocument();
   });
@@ -294,8 +293,8 @@ describe("MyEventsCard button mapping (prototype evListRow)", () => {
     expect(await screen.findByRole("link", { name: "Lihat hasil" })).toHaveAttribute("data-variant", "default");
   });
 
-  it("draws the external Lihat hasil as the filled ember pill", () => {
-    renderCard([reg({ external_results: [round()] })]);
+  it("draws the competition Lihat hasil as the filled ember pill", () => {
+    renderCard([reg({ competition_result: compResult() })]);
     expect(screen.getByRole("button", { name: "Lihat hasil" })).toHaveAttribute("data-variant", "default");
   });
 

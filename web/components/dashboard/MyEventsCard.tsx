@@ -11,7 +11,7 @@ import { useTranslation } from "@/lib/i18n";
 import { eventRows, minutesFor, type EventRow } from "@/lib/student-home";
 import type { RegistrationListItem } from "@/lib/types";
 import { DashCard } from "./DashCard";
-import { ExternalResultsDialog } from "./ExternalResultsDialog";
+import { CompetitionResultDialog } from "./CompetitionResultDialog";
 
 const TZ = "Asia/Jakarta";
 // Prototype .ab-btn.sm: 34px, 13px side padding.
@@ -38,24 +38,24 @@ function EventListRow({ row }: { row: EventRow }) {
   const { reg, live, action } = row;
   const [open, setOpen] = useState(false);
   const detailHref = `/exam/${reg.id}`;
-  const needsResult = (action === "result" || (action === "external" && reg.status === "submitted")) && !!reg.session_id;
+  const needsResult = (action === "result" || (action === "competition" && reg.status === "submitted")) && !!reg.session_id;
   const result = useSessionResult(needsResult ? reg.session_id! : undefined);
   const leaderboardHref = `/exam/sessions/${reg.session_id}/leaderboard`;
   const released = result.data?.state === "result";
   const minutes = minutesFor(reg);
 
   let actionNode: React.ReactNode = null;
-  if (action === "external") {
+  if (action === "competition" && reg.competition_result) {
     actionNode = (
       <>
         <Button size="sm" className={SM} onClick={() => setOpen(true)}>
           {t("stu_home_events_results")}
         </Button>
-        <ExternalResultsDialog
+        <CompetitionResultDialog
           open={open}
           onOpenChange={setOpen}
           examTitle={reg.exam_title}
-          results={reg.external_results ?? []}
+          result={reg.competition_result}
           leaderboardHref={released ? leaderboardHref : null}
         />
       </>

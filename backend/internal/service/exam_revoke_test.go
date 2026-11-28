@@ -352,10 +352,10 @@ func TestRevokedRegistration_ExcludedFromStudentListCountAndEligibility(t *testi
 	}
 
 	t.Run("student list hides revoked", func(t *testing.T) {
-		items, err := svc.GetExamRegistrations(ctx, revoked.String(), "")
+		items, err := svc.GetExamRegistrations(ctx, revoked.String())
 		require.NoError(t, err)
 		require.Empty(t, items)
-		items, err = svc.GetExamRegistrations(ctx, live.String(), "")
+		items, err = svc.GetExamRegistrations(ctx, live.String())
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 	})

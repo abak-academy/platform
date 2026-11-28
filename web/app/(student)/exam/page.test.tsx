@@ -66,6 +66,7 @@ const freeUpcoming: RegistrationListItem = {
   section_count: 2,
   question_count: 40,
   sections_duration_minutes: 90,
+  competition_result: null,
 };
 
 const paidNoSchedule: RegistrationListItem = {
@@ -92,6 +93,7 @@ const paidNoSchedule: RegistrationListItem = {
   section_count: 3,
   question_count: 60,
   sections_duration_minutes: 75,
+  competition_result: null,
 };
 
 const sample: RegistrationListItem[] = [freeUpcoming, paidNoSchedule];

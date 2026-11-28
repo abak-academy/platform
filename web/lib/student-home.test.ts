@@ -22,7 +22,7 @@ function reg(over: Partial<RegistrationListItem> = {}): RegistrationListItem {
     scheduled_at: null, scheduled_end_at: null, is_free: false, requires_checkin: false,
     check_in_window_minutes: null, duration_minutes: 60, session_id: null, max_attempts: 1,
     navigation_policy: "free", timer_mode: "overall", section_count: 1, question_count: 10,
-    sections_duration_minutes: null, ...over,
+    sections_duration_minutes: null, competition_result: null, ...over,
   };
 }
 
@@ -155,20 +155,20 @@ describe("eventRows", () => {
     const regs = Array.from({ length: 6 }, (_, i) => reg({ id: "r" + i }));
     expect(eventRows(regs, NOW)).toHaveLength(4);
   });
-  it("resolves actions with external first, even when submitted", () => {
-    const ext = [{ round_id: "x", round_label: "R", score: 1, rank: null, award: null, certificate_url: null, published_at: iso(0) }];
+  it("resolves actions with competition first, even when submitted", () => {
+    const comp = { score: 1, rank: null, award: null, certificate_url: null, published_at: iso(0) };
     const rows = eventRows(
       [
-        reg({ id: "ext", status: "submitted", external_results: ext }),
-        reg({ id: "sub", status: "submitted" }),
+        reg({ id: "comp", status: "submitted", competition_result: comp }),
+        reg({ id: "nocomp", status: "submitted", competition_result: null }),
         reg({ id: "exp", scheduled_at: iso(-120), scheduled_end_at: iso(-60) }),
         reg({ id: "go", status: "in_progress" }),
       ],
       NOW,
     );
     const by = Object.fromEntries(rows.map((r) => [r.reg.id, r]));
-    expect(by.ext.action).toBe("external");
-    expect(by.sub.action).toBe("result");
+    expect(by.comp.action).toBe("competition");
+    expect(by.nocomp.action).toBe("result");
     expect(by.exp.action).toBe("expired");
     expect(by.go).toMatchObject({ action: "start", live: true });
     const [locked] = eventRows([reg({ scheduled_at: iso(60), scheduled_end_at: iso(120) })], NOW);

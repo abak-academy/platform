@@ -1310,12 +1310,10 @@ export interface RegistrationListItem {
   section_count: number;
   question_count: number;
   sections_duration_minutes: number | null;
-  external_results?: StudentExternalResult[];
+  competition_result: StudentCompetitionResult | null;
 }
 
-export interface StudentExternalResult {
-  round_id: string;
-  round_label: string;
+export interface StudentCompetitionResult {
   score: number;
   rank: number | null;
   award: string | null;
@@ -1323,30 +1321,29 @@ export interface StudentExternalResult {
   published_at: string;
 }
 
-export interface ExternalRound {
+export interface CompetitionResult {
   id: string;
   exam_id: string;
-  label: string;
-  label_en: string | null;
+  source_key: string | null;
   row_count: number;
   published_at: string | null;
   updated_at: string;
 }
 
-export interface ExternalRowError {
+export interface CompetitionRowError {
   line: number;
   participant_no: string;
   reason: string;
 }
 
-export interface ExternalRoundPreview {
+export interface CompetitionResultPreview {
   matched: number;
-  errors: ExternalRowError[];
-  round_exists: boolean;
-  round_published: boolean;
+  errors: CompetitionRowError[];
+  result_exists: boolean;
+  result_published: boolean;
 }
 
-export interface ExternalResultRow {
+export interface CompetitionResultRow {
   registration_id: string;
   student_name: string;
   participant_no: string;

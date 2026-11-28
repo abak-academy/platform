@@ -115,10 +115,9 @@ function mockApi(overrides: Partial<ProductGroupingDetail> = {}) {
       if (patchError) throw patchError;
       return { ...current, ...body, content: body.content, schedule: body.schedule };
     }
-    if (path === "/admin/exams/e1/external-rounds") return { data: [] };
     if (path === "/admin/product-groupings/g1/products") return current;
     if (path === "/admin/product-groupings/g1" && method === "DELETE") return undefined;
-    if (path === "/admin/products") return { data: [{ ...p1, exam_ids: ["e1"] }, p2, p3, { id: "p4", type: "book", name: "Buku Latihan", price: 50000 }] };
+    if (path === "/admin/products") return { data: [p1, p2, p3, { id: "p4", type: "book", name: "Buku Latihan", price: 50000 }] };
     if (path.startsWith("/admin/uploads/image")) return { url: "https://upload.example.test/put", method: "PUT", key: "question/logo-abc.png" };
     return {};
   }) as typeof api.authFetch);
@@ -692,17 +691,5 @@ describe("event editor: delete", () => {
 
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
     expect(push).not.toHaveBeenCalled();
-  });
-});
-
-describe("event editor: external results", () => {
-  it("opens the dialog for the edition's exam and offers no button on non-exam products", async () => {
-    mockApi();
-    renderPage();
-    await ready();
-    expect(screen.getAllByRole("button", { name: /^Hasil ronde luar/ })).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Hasil ronde luar ESOLIO 2026 SD" }));
-    expect(await screen.findByText("Belum ada ronde.")).toBeTruthy();
-    expect(calls.some((c) => c.path === "/admin/exams/e1/external-rounds")).toBe(true);
   });
 });

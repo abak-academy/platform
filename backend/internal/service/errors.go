@@ -283,6 +283,8 @@ var (
 	ErrJobNotFound    = errors.New("job not found")
 )
 
+var ErrCompetitionResultNotFound = errors.New("competition result not found")
+
 // --- from participants.go ---
 var (
 	// ErrCrossSchoolStudent is returned when a student_id in the selector
