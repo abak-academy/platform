@@ -129,10 +129,9 @@ describe("TestsPage", () => {
     });
 
     expect(screen.getAllByTestId("test-row")[0].tagName).toBe("ARTICLE");
-    expect(screen.getByText("Matematika")).toBeInTheDocument();
-    expect(screen.getByText("Aljabar")).toBeInTheDocument();
+    expect(screen.getByText("Section · Matematika · Aljabar")).toBeInTheDocument();
     expect(screen.getByText(/90\s*menit/)).toBeInTheDocument();
-    expect(screen.getByText("Reading")).toBeInTheDocument();
+    expect(screen.getByText("Section · Bahasa Inggris · Reading")).toBeInTheDocument();
     expect(screen.getByText(/60\s*menit/)).toBeInTheDocument();
   });
 
@@ -147,7 +146,7 @@ describe("TestsPage", () => {
     expect(push).toHaveBeenCalledWith("/admin/exam/tests/t1");
   });
 
-  it("does not navigate when clicking the edit or delete action buttons", async () => {
+  it("does not navigate when clicking the delete action button", async () => {
     render(<TestsPage />);
 
     await waitFor(() => {
@@ -155,7 +154,8 @@ describe("TestsPage", () => {
     });
 
     const row = screen.getByText("Tryout UTBK Saintek").closest("[data-testid=test-row]") as HTMLElement;
-    fireEvent.click(within(row).getByRole("button", { name: /^edit$/i }));
+    vi.stubGlobal("confirm", () => false);
+    fireEvent.click(within(row).getByRole("button", { name: /hapus/i }));
     expect(push).not.toHaveBeenCalled();
   });
 
@@ -236,31 +236,12 @@ describe("TestsPage", () => {
     });
   });
 
-  it("opens the edit modal prefilled and calls update mutation on save", async () => {
-    mockMutateAsync.mockResolvedValueOnce({ id: "t1", title: "Tryout UTBK Saintek Revisi" });
-
+  it("has no quick-edit button on a card, only delete", () => {
     render(<TestsPage />);
 
-    await waitFor(() => expect(screen.getByText("Tryout UTBK Saintek")).toBeInTheDocument());
-
-    const row = screen.getByText("Tryout UTBK Saintek").closest("[data-testid=test-row]") as HTMLElement;
-    expect(row).toBeTruthy();
-    const editButton = within(row).getByRole("button", { name: /^edit$/i });
-    fireEvent.click(editButton);
-
-    expect(screen.getByRole("dialog", { name: /sunting tes/i })).toBeInTheDocument();
-    expect(screen.getByDisplayValue("Tryout UTBK Saintek")).toBeInTheDocument();
-
-    fireEvent.input(screen.getByLabelText(/judul/i), { target: { value: "Tryout UTBK Saintek Revisi" } });
-
-    fireEvent.click(screen.getByRole("button", { name: /^simpan$/i }));
-
-    await waitFor(() => {
-      expect(mockMutateAsync).toHaveBeenCalledWith(
-        expect.objectContaining({ title: "Tryout UTBK Saintek Revisi" })
-      );
-      expect(toast.success).toHaveBeenCalledWith("Tes diperbarui");
-    });
+    const [row] = screen.getAllByTestId("test-row");
+    expect(within(row).queryByRole("button", { name: /^edit$/i })).not.toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: /hapus/i })).toBeInTheDocument();
   });
 
   it("deletes a test after confirm and shows a success toast", async () => {
@@ -292,6 +273,7 @@ describe("TestsPage", () => {
       subject: undefined,
       topic: undefined,
       q: undefined,
+      used: undefined,
       cursor: undefined,
     });
   });
@@ -403,27 +385,77 @@ describe("TestsPage", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("shows question count, duration and material/audio text lines per row", () => {
+  it("puts question count and duration chips in one row container next to delete", () => {
+    testsState = { ...testsState, data: { data: [{ ...sampleTests[0], question_count: 12 }] } };
+    render(<TestsPage />);
+
+    const chips = screen.getByTestId("test-chips");
+    expect(within(chips).getByText("12 soal")).toBeInTheDocument();
+    expect(within(chips).getByText("90 menit")).toBeInTheDocument();
+    expect(chips).toHaveClass("flex-nowrap");
+  });
+
+  it("shows one section line with subject, topic and section type", () => {
+    testsState = {
+      ...testsState,
+      data: { data: [{ ...sampleTests[0], section_type: "listening" }, sampleTests[1]] },
+    };
+    render(<TestsPage />);
+
+    const [first, second] = screen.getAllByTestId("test-row");
+    expect(within(first).getByText("Section · Matematika · Aljabar · Listening")).toBeInTheDocument();
+    expect(within(second).getByText("Section · Bahasa Inggris · Reading")).toBeInTheDocument();
+  });
+
+  it("joins shared material and audio on one line, only what exists, never a negative", () => {
     testsState = {
       ...testsState,
       data: {
         data: [
-          { ...sampleTests[0], question_count: 12, shared_material_html: "<p>Bacaan</p>", audio_url: "https://cdn.test/a.mp3" },
-          { ...sampleTests[1], question_count: 0 },
+          { ...sampleTests[0], id: "a", shared_material_html: "<p>x</p>", audio_url: "https://cdn.test/a.mp3" },
+          { ...sampleTests[0], id: "b", shared_material_html: "<p>x</p>" },
+          { ...sampleTests[0], id: "c", audio_url: "https://cdn.test/a.mp3" },
+          { ...sampleTests[0], id: "d", shared_material_html: "  " },
         ],
       },
     };
-
     render(<TestsPage />);
 
-    const [first, second] = screen.getAllByTestId("test-row");
-    expect(within(first).getByText("12 soal")).toBeInTheDocument();
-    expect(within(first).getByText("90 menit")).toBeInTheDocument();
-    expect(within(first).getByText("Materi bersama")).toBeInTheDocument();
-    expect(within(first).getByText("Audio section")).toBeInTheDocument();
-    expect(within(second).getByText("0 soal")).toBeInTheDocument();
-    expect(within(second).getByText("Tanpa materi bersama")).toBeInTheDocument();
-    expect(within(second).queryByText("Audio section")).not.toBeInTheDocument();
+    const [both, material, audio, none] = screen.getAllByTestId("test-row");
+    expect(within(both).getByTestId("test-content")).toHaveTextContent(/^Materi bersama · Audio section$/);
+    expect(within(material).getByTestId("test-content")).toHaveTextContent(/^Materi bersama$/);
+    expect(within(audio).getByTestId("test-content")).toHaveTextContent(/^Audio section$/);
+    expect(within(none).queryByTestId("test-content")).not.toBeInTheDocument();
+    expect(screen.queryByText(/tanpa materi/i)).not.toBeInTheDocument();
+  });
+
+  it("shows how many exams use a test, or that it is unused", () => {
+    testsState = {
+      ...testsState,
+      data: { data: [{ ...sampleTests[0], exam_count: 3 }, { ...sampleTests[1], exam_count: 0 }] },
+    };
+    render(<TestsPage />);
+
+    const [used, unused] = screen.getAllByTestId("test-row");
+    expect(within(used).getByText("Dipakai di 3 ujian")).toBeInTheDocument();
+    expect(within(unused).getByText("Belum dipakai")).toBeInTheDocument();
+  });
+
+  it("sends used=true/false from the Usage filter, counts it, and reset clears it", async () => {
+    render(<TestsPage />);
+
+    await userEvent.click(screen.getByRole("button", { name: /^filter/i }));
+    await pick("Pemakaian", "Dipakai");
+    expect(mockUseAdminTests).toHaveBeenLastCalledWith(expect.objectContaining({ used: true }));
+    expect(screen.getByRole("button", { name: /^filter \(1\)$/i })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Filter aktif" })).getByText("Pemakaian: Dipakai")).toBeInTheDocument();
+
+    await pick("Pemakaian", "Belum dipakai");
+    expect(mockUseAdminTests).toHaveBeenLastCalledWith(expect.objectContaining({ used: false }));
+
+    await userEvent.click(screen.getByRole("button", { name: /^reset filter$/i }));
+    expect(mockUseAdminTests).toHaveBeenLastCalledWith(expect.objectContaining({ used: undefined }));
+    expect(screen.queryByRole("group", { name: "Filter aktif" })).not.toBeInTheDocument();
   });
 
   it("shows the result count beside the search and the source-of-truth footnote", () => {

@@ -27,6 +27,7 @@ export interface AdminTestsFilters {
   subject?: string;
   topic?: string;
   q?: string;
+  used?: boolean;
   cursor?: string;
   limit?: number;
 }
@@ -37,6 +38,7 @@ function buildListPath(filters?: AdminTestsFilters): string {
   if (filters.subject) params.set("subject", filters.subject);
   if (filters.topic) params.set("topic", filters.topic);
   if (filters.q) params.set("q", filters.q);
+  if (filters.used !== undefined) params.set("used", String(filters.used));
   if (filters.cursor) params.set("cursor", filters.cursor);
   if (filters.limit !== undefined) params.set("limit", String(filters.limit));
   const query = params.toString();
