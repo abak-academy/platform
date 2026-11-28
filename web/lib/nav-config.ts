@@ -10,32 +10,31 @@ import {
   Library,
   Tag,
   BarChart3,
-  Bell,
   ClipboardList,
-  BarChart,
   UserCog,
   Users,
   Calendar,
   Building,
   Settings,
-  MessageSquareQuote,
-  ShieldCheck,
   Store,
   Wallet,
   Link2,
   SlidersHorizontal,
   FileBarChart,
-  HandCoins,
   GraduationCap,
   School,
   ShoppingCart,
   Ticket,
-  Layers,
   Languages,
   Moon,
   Globe,
   Handshake,
   Shield,
+  MessageSquare,
+  Monitor,
+  Megaphone,
+  Coins,
+  KeyRound,
 } from "lucide-react";
 
 export type UserRole =
@@ -102,16 +101,16 @@ const STUDENT_NAV: RoleNavConfig = [
 
 const academicItems = (...items: NavItem[]): NavGroup => ({ titleKey: "nav_group_academic", icon: GraduationCap, items });
 const PACKAGES: NavItem = { labelKey: "packages", href: "/admin/exam/packages", icon: Calendar };
-const MONITOR: NavItem = { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: BarChart };
+const MONITOR: NavItem = { labelKey: "session_monitor", href: "/admin/exam/monitor", icon: Monitor };
 const TESTS: NavItem = { labelKey: "tests", href: "/admin/exam/tests", icon: ClipboardList };
 const QUESTIONS: NavItem = { labelKey: "question_bank", href: "/admin/exam/questions", icon: Library };
 const STUDENTS: NavItem = { labelKey: "students", href: "/admin/school/students", icon: Users };
-const ANNOUNCEMENTS: NavItem = { labelKey: "nav_announcements", href: "/admin/notifications", icon: Bell };
+const ANNOUNCEMENTS: NavItem = { labelKey: "nav_announcements", href: "/admin/notifications", icon: Megaphone };
 const ORDERS: NavItem = { labelKey: "admin_nav_orders", href: "/admin/orders", icon: Receipt };
 const PRODUCTS: NavItem = { labelKey: "admin_nav_products", href: "/admin/products", icon: Package };
-const EVENT: NavItem = { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Layers };
-const TESTIMONIALS: NavItem = { labelKey: "admin_nav_testimonials", href: "/admin/testimonials", icon: MessageSquareQuote };
-const COURSES: NavItem = { labelKey: "admin_nav_courses", href: "/admin/courses", icon: Library };
+const EVENT: NavItem = { labelKey: "admin_nav_product_groupings", href: "/admin/product-groupings", icon: Trophy };
+const TESTIMONIALS: NavItem = { labelKey: "admin_nav_testimonials", href: "/admin/testimonials", icon: MessageSquare };
+const COURSES: NavItem = { labelKey: "admin_nav_courses", href: "/admin/courses", icon: BookOpen };
 const PROMOS: NavItem = { labelKey: "promos", href: "/admin/promos", icon: Tag };
 
 const home = (href: string): NavGroup => ({
@@ -144,7 +143,7 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     MONITOR,
     TESTS,
     QUESTIONS,
-    { labelKey: "schools", href: "/admin/system/schools", icon: Building },
+    { labelKey: "schools", href: "/admin/system/schools", icon: School },
     STUDENTS,
     ANNOUNCEMENTS
   ),
@@ -156,15 +155,15 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
       PRODUCTS,
       COURSES,
       PROMOS,
-      { labelKey: "nav_store_summary", href: "/admin/store", icon: Store, exact: true },
-      { labelKey: "revenue", href: "/admin/revenue", icon: BarChart3 },
+      { labelKey: "nav_store_summary", href: "/admin/store", icon: BarChart3, exact: true },
+      { labelKey: "revenue", href: "/admin/revenue", icon: Coins },
     ],
   },
   {
     titleKey: "nav_group_affiliate",
     icon: Handshake,
     items: [
-      { labelKey: "admin_aff_nav_list", href: "/admin/affiliates", icon: HandCoins, exact: true },
+      { labelKey: "admin_aff_nav_list", href: "/admin/affiliates", icon: Handshake, exact: true },
       { labelKey: "admin_aff_nav_payouts", href: "/admin/affiliates/payouts", icon: Wallet },
       { labelKey: "admin_aff_nav_reports", href: "/admin/affiliates/reports", icon: FileBarChart },
       { labelKey: "admin_aff_nav_settings", href: "/admin/affiliates/settings", icon: Settings },
@@ -174,9 +173,9 @@ const SUPER_ADMIN_NAV: RoleNavConfig = [
     titleKey: "system",
     icon: Shield,
     items: [
-      { labelKey: "accounts", href: "/admin/system/accounts", icon: Users },
+      { labelKey: "accounts", href: "/admin/system/accounts", icon: KeyRound },
       { labelKey: "config", href: "/admin/system/config", icon: Settings },
-      { labelKey: "audit", href: "/admin/system/audit", icon: ShieldCheck },
+      { labelKey: "audit", href: "/admin/system/audit", icon: Shield },
     ],
   },
 ];

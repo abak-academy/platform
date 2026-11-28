@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { BarChart3, BookOpen, Coins, Handshake, KeyRound, Megaphone, MessageSquare, Monitor, School, Settings, Shield, Trophy } from "lucide-react";
 import { DICT } from "./i18n";
 import { ADMIN_ROLES, NAV_CONFIG, USER_MENU, type UserRole } from "./nav-config";
 
@@ -193,5 +194,31 @@ describe("USER_MENU", () => {
       ["nav_profile", "/affiliate/account"],
       ["user_menu_language", "language"],
     ]);
+  });
+});
+
+describe("super-admin nav icons", () => {
+  const leaves = NAV_CONFIG.super_admin.flatMap((g) => g.items);
+  const iconOf = (href: string) => leaves.find((i) => i.href === href)!.icon;
+
+  it("maps the redesigned items to their icons", () => {
+    expect(iconOf("/admin/product-groupings")).toBe(Trophy);
+    expect(iconOf("/admin/testimonials")).toBe(MessageSquare);
+    expect(iconOf("/admin/exam/monitor")).toBe(Monitor);
+    expect(iconOf("/admin/system/schools")).toBe(School);
+    expect(iconOf("/admin/notifications")).toBe(Megaphone);
+    expect(iconOf("/admin/courses")).toBe(BookOpen);
+    expect(iconOf("/admin/store")).toBe(BarChart3);
+    expect(iconOf("/admin/revenue")).toBe(Coins);
+    expect(iconOf("/admin/affiliates")).toBe(Handshake);
+    expect(iconOf("/admin/system/accounts")).toBe(KeyRound);
+    expect(iconOf("/admin/system/audit")).toBe(Shield);
+  });
+
+  it("gives every leaf its own icon, except the two Settings entries", () => {
+    const seen = new Map<unknown, number>();
+    for (const i of leaves) seen.set(i.icon, (seen.get(i.icon) ?? 0) + 1);
+    const shared = [...seen].filter(([, n]) => n > 1).map(([icon]) => icon);
+    expect(shared).toEqual([Settings]);
   });
 });
