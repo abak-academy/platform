@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import * as api from "@/lib/api";
 import { ApiError } from "@/lib/api";
-import { CompetitionResultDialog } from "./CompetitionResultDialog";
+import { CompetitionResultPanel } from "./CompetitionResultPanel";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -14,9 +14,9 @@ let previewResult: () => unknown;
 let applyResult: () => unknown;
 let fetchMock: ReturnType<typeof vi.fn>;
 
-const draft = { id: "c1", product_id: "p1", source_key: "k", row_count: 3, published_at: null, updated_at: "2026-11-01T03:00:00Z" };
+const draft = { id: "c1", exam_id: "e1", source_key: "k", row_count: 3, published_at: null, updated_at: "2026-11-01T03:00:00Z" };
 const live = { ...draft, published_at: "2026-11-02T03:00:00Z" };
-const URL_BASE = "/admin/products/p1/competition-result";
+const URL_BASE = "/admin/exams/e1/competition-result";
 
 beforeEach(() => {
   calls = [];
@@ -29,7 +29,7 @@ beforeEach(() => {
     const method = init?.method ?? "GET";
     calls.push({ path, method, body: init?.body ? JSON.parse(init.body as string) : undefined });
     if (path === URL_BASE && method === "GET") return { data: saved };
-    if (path.includes("/presign?")) return { url: "https://minio.test/put", method: "PUT", fields: {}, key: "cr/p1/x.csv" };
+    if (path.includes("/presign?")) return { url: "https://minio.test/put", method: "PUT", fields: {}, key: "cr/e1/x.csv" };
     if (path.endsWith("/preview")) return previewResult();
     if (path.endsWith("/apply")) return applyResult();
     if (path.endsWith("/results")) {
@@ -43,11 +43,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderDialog() {
+function renderDialog(canWrite = true) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <CompetitionResultDialog open onOpenChange={() => {}} productId="p1" productName="ESOLIO 2026" />
+      <CompetitionResultPanel examId="e1" canWrite={canWrite} />
     </QueryClientProvider>,
   );
 }
@@ -59,11 +59,12 @@ function uploadAndPreview() {
 
 const paths = (m: string) => calls.filter((c) => c.method === m).map((c) => c.path);
 
-describe("CompetitionResultDialog", () => {
-  it("renders the saved result from the product id alone", async () => {
+describe("CompetitionResultPanel", () => {
+  it("renders the saved result from the exam id alone", async () => {
     saved = draft;
     renderDialog();
-    expect(await screen.findByText("Unggah hasil kompetisi — ESOLIO 2026")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Impor hasil kompetisi" })).toBeTruthy();
+    expect(screen.getByText(/tidak mengubah skor di platform/)).toBeTruthy();
     expect(await screen.findByText(/3 baris/)).toBeTruthy();
     expect(screen.getByText("Draf")).toBeTruthy();
     expect(calls[0].path).toBe(URL_BASE);
@@ -82,10 +83,10 @@ describe("CompetitionResultDialog", () => {
     const presignCall = calls.find((c) => c.path.includes("/presign?"));
     expect(presignCall?.path).toContain("?filename=hasil.csv");
     expect(presignCall?.body).toBeUndefined();
-    expect(calls.find((c) => c.path.endsWith("/preview"))?.body).toEqual({ key: "cr/p1/x.csv" });
+    expect(calls.find((c) => c.path.endsWith("/preview"))?.body).toEqual({ key: "cr/e1/x.csv" });
 
     fireEvent.click(screen.getByRole("button", { name: "Terapkan" }));
-    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/apply"))?.body).toEqual({ key: "cr/p1/x.csv" }));
+    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/apply"))?.body).toEqual({ key: "cr/e1/x.csv" }));
   });
 
   it("publishes a draft", async () => {
@@ -185,5 +186,20 @@ describe("CompetitionResultDialog", () => {
     expect(paths("DELETE")).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Ya, hapus" }));
     await waitFor(() => expect(paths("DELETE")).toEqual([URL_BASE]));
+  });
+
+  it("shows only the read-only saved result to a non-writer", async () => {
+    saved = live;
+    renderDialog(false);
+    expect(await screen.findByText(/3 baris/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Lihat" })).toBeTruthy();
+    for (const name of ["Tayangkan", "Tarik", "Hapus", "Pratinjau"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByLabelText("Berkas CSV")).toBeNull();
+  });
+
+  it("renders nothing when the result GET is forbidden", async () => {
+    vi.spyOn(api, "authFetch").mockRejectedValue(new ApiError("forbidden", "no", 403));
+    renderDialog();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Impor hasil kompetisi" })).toBeNull());
   });
 });

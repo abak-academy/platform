@@ -7,51 +7,51 @@ import type { PresignedUpload } from "@/lib/hooks/admin-exam-grants";
 
 export const competitionResultKeys = {
   all: ["admin", "competitionResults"] as const,
-  detail: (productId: string) => [...competitionResultKeys.all, "detail", productId] as const,
-  rows: (productId: string) => [...competitionResultKeys.all, "rows", productId] as const,
+  detail: (examId: string) => [...competitionResultKeys.all, "detail", examId] as const,
+  rows: (examId: string) => [...competitionResultKeys.all, "rows", examId] as const,
 };
 
-const base = (productId: string) => `/admin/products/${encodeURIComponent(productId)}/competition-result`;
+const base = (examId: string) => `/admin/exams/${encodeURIComponent(examId)}/competition-result`;
 
-export function useCompetitionResult(productId: string | undefined) {
+export function useCompetitionResult(examId: string | undefined) {
   return useQuery({
-    queryKey: competitionResultKeys.detail(productId ?? ""),
-    enabled: Boolean(productId),
-    queryFn: async () => (await authFetch<{ data: CompetitionResult | null }>(base(productId!))).data,
+    queryKey: competitionResultKeys.detail(examId ?? ""),
+    enabled: Boolean(examId),
+    queryFn: async () => (await authFetch<{ data: CompetitionResult | null }>(base(examId!))).data,
   });
 }
 
-export function useCompetitionResultRows(productId: string, enabled: boolean) {
+export function useCompetitionResultRows(examId: string, enabled: boolean) {
   return useQuery({
-    queryKey: competitionResultKeys.rows(productId),
+    queryKey: competitionResultKeys.rows(examId),
     enabled,
-    queryFn: () => authFetch<{ data: CompetitionResultRow[] }>(`${base(productId)}/results`),
+    queryFn: () => authFetch<{ data: CompetitionResultRow[] }>(`${base(examId)}/results`),
   });
 }
 
-export function usePresignCompetitionResult(productId: string) {
+export function usePresignCompetitionResult(examId: string) {
   return useMutation({
     mutationFn: (filename: string) =>
-      authFetch<PresignedUpload>(`${base(productId)}/presign?filename=${encodeURIComponent(filename)}`, { method: "POST" }),
+      authFetch<PresignedUpload>(`${base(examId)}/presign?filename=${encodeURIComponent(filename)}`, { method: "POST" }),
   });
 }
 
-export function usePreviewCompetitionResult(productId: string) {
+export function usePreviewCompetitionResult(examId: string) {
   return useMutation({
     mutationFn: (key: string) =>
-      authFetch<CompetitionResultPreview>(`${base(productId)}/preview`, {
+      authFetch<CompetitionResultPreview>(`${base(examId)}/preview`, {
         method: "POST",
         body: JSON.stringify({ key }),
       }),
   });
 }
 
-export function useApplyCompetitionResult(productId: string) {
+export function useApplyCompetitionResult(examId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (key: string) =>
       (
-        await authFetch<{ data: CompetitionResult }>(`${base(productId)}/apply`, {
+        await authFetch<{ data: CompetitionResult }>(`${base(examId)}/apply`, {
           method: "POST",
           body: JSON.stringify({ key }),
         })
@@ -60,19 +60,19 @@ export function useApplyCompetitionResult(productId: string) {
   });
 }
 
-export function useSetCompetitionResultPublished(productId: string) {
+export function useSetCompetitionResultPublished(examId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (publish: boolean) =>
-      (await authFetch<{ data: CompetitionResult }>(`${base(productId)}/${publish ? "publish" : "unpublish"}`, { method: "POST" })).data,
+      (await authFetch<{ data: CompetitionResult }>(`${base(examId)}/${publish ? "publish" : "unpublish"}`, { method: "POST" })).data,
     onSuccess: () => qc.invalidateQueries({ queryKey: competitionResultKeys.all }),
   });
 }
 
-export function useDeleteCompetitionResult(productId: string) {
+export function useDeleteCompetitionResult(examId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => authFetch<void>(base(productId), { method: "DELETE" }),
+    mutationFn: () => authFetch<void>(base(examId), { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: competitionResultKeys.all }),
   });
 }

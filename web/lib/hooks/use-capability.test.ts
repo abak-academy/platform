@@ -22,6 +22,7 @@ describe("admin_exam capabilities", () => {
     "exam-grants:write",
     "product-relations:write",
     "schools:read",
+    "competition-results:write",
   ])("grants '%s'", (cap) => {
     expect(hasCapability("admin_exam", cap)).toBe(true);
   });
@@ -32,6 +33,12 @@ describe("admin_exam capabilities", () => {
       expect(hasCapability("admin_exam", cap)).toBe(false);
     },
   );
+});
+
+describe("competition results capability", () => {
+  it.each([["admin_store", true], ["super_admin", true], ["admin_school", false], ["student", false]])("%s -> %s", (role, ok) => {
+    expect(hasCapability(role, "competition-results:write")).toBe(ok);
+  });
 });
 
 // students:* prefix-matches, so the password capability lives outside that namespace.

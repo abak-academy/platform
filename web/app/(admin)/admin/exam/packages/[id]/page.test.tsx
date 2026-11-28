@@ -49,6 +49,12 @@ vi.mock("@/components/admin/ExamResultsTab", () => ({
   ),
 }));
 
+vi.mock("@/components/admin/CompetitionResultPanel", () => ({
+  CompetitionResultPanel: ({ examId, canWrite }: { examId: string; canWrite: boolean }) => (
+    <div data-testid="competition-result-panel">{examId}:{String(canWrite)}</div>
+  ),
+}));
+
 vi.mock("@/components/admin/ResultsWorkspaceTab", () => ({
   ResultsWorkspaceTab: ({ examId }: { examId: string }) => (
     <div data-testid="results-workspace-tab">{examId}</div>
@@ -933,6 +939,22 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     expect(screen.getByRole("tab", { name: /^hasil$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Leaderboard" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^pengaturan$/i })).toBeInTheDocument();
+  });
+
+  it("renders the competition panel under the workspace results tab", async () => {
+    mockRole = "super_admin";
+    render(<ExamPackageDetailPage />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^hasil$/i }));
+    expect(screen.getByTestId("results-workspace-tab")).toBeInTheDocument();
+    expect(screen.getByTestId("competition-result-panel")).toHaveTextContent("exam-1:true");
+  });
+
+  it("renders the panel read-only under the legacy results tab (admin_school)", async () => {
+    mockRole = "admin_school";
+    render(<ExamPackageDetailPage />);
+    fireEvent.mouseDown(await screen.findByRole("tab", { name: /^hasil$/i }));
+    expect(screen.getByTestId("exam-results-tab")).toBeInTheDocument();
+    expect(screen.getByTestId("competition-result-panel")).toHaveTextContent("exam-1:false");
   });
 
   it("renders the CertificateDesignTab on the Sertifikat tab", async () => {

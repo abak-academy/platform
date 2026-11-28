@@ -27,6 +27,7 @@ import { ExamAdditionalRulesCard, ExamWhatsAppCard } from "@/components/admin/Ex
 import { ExamAddTestDialog } from "@/components/admin/ExamAddTestDialog";
 import { ExamModal } from "@/components/admin/ExamModal";
 import { ExamRegistrationsTab } from "@/components/admin/ExamRegistrationsTab";
+import { CompetitionResultPanel } from "@/components/admin/CompetitionResultPanel";
 import { ExamResultsTab } from "@/components/admin/ExamResultsTab";
 import { UnderMaintenance } from "@/components/admin/UnderMaintenance";
 import { Button } from "@/components/ui/button";
@@ -137,6 +138,7 @@ function ExamPackageDetail() {
   const role = useAuthStore((s) => s.user?.role);
   const isSchoolScoped = role === "admin_school";
   const hasResultsWorkspace = hasCapability(role, "results-workspace:read");
+  const canWriteCompetitionResults = hasCapability(role, "competition-results:write");
   const canPreviewStudent = hasCapability(role, "exam-preview:read");
   const canAccessResultsAndRegistrations =
     role === "admin_school" || role === "super_admin" || role === "admin_exam";
@@ -1004,12 +1006,20 @@ function ExamPackageDetail() {
           )}
           {tab === "results" && (
             canAccessResultsAndRegistrations ? (
-              <ExamResultsTab examId={id} />
+              <>
+                <ExamResultsTab examId={id} />
+                <CompetitionResultPanel examId={id} canWrite={canWriteCompetitionResults} />
+              </>
             ) : (
               <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
             )
           )}
-          {tab === "results_workspace" && hasResultsWorkspace && <ResultsWorkspaceTab examId={id} />}
+          {tab === "results_workspace" && hasResultsWorkspace && (
+            <>
+              <ResultsWorkspaceTab examId={id} />
+              <CompetitionResultPanel examId={id} canWrite={canWriteCompetitionResults} />
+            </>
+          )}
           {tab === "grading" && (
             <div className="md-card-outlined flex flex-col gap-4">
               <div className="flex items-center justify-between">

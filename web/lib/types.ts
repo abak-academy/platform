@@ -1323,7 +1323,7 @@ export interface StudentCompetitionResult {
 
 export interface CompetitionResult {
   id: string;
-  product_id: string;
+  exam_id: string;
   source_key: string | null;
   row_count: number;
   published_at: string | null;

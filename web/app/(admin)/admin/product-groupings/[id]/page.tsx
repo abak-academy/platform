@@ -24,7 +24,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Switch } from "@/components/ui/switch";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { CompetitionResultDialog } from "@/components/admin/CompetitionResultDialog";
 import { EVENT_ART_BG, EVENT_ILLUSTRATIONS, EVENT_TONES, EventMark } from "@/components/admin/EventMark";
 import { TabCount } from "@/components/ui/tabs";
 import { ProductLevelFields, gradeRangeInvalid, levelPayload } from "@/components/admin/ProductModal";
@@ -343,7 +342,6 @@ export default function ProductGroupingDetailPage() {
 
   const { data: grouping, isLoading, isError, error } = useAdminProductGrouping(id);
   const { data: allProducts } = useAdminProducts();
-  const [competitionFor, setCompetitionFor] = useState<Product | null>(null);
   const setMembers = useSetGroupingProducts();
   const update = useUpdateProductGrouping();
   const remove = useDeleteProductGrouping();
@@ -711,13 +709,6 @@ export default function ProductGroupingDetailPage() {
                               product={p}
                               index={i}
                               total={editions.length}
-                              actions={
-                                p.type === "exam" && (
-                                  <Button type="button" size="sm" variant="outline" aria-label={`${t("cr_button")} ${p.name}`} onClick={() => setCompetitionFor(p)}>
-                                    {t("cr_button")}
-                                  </Button>
-                                )
-                              }
                               onMove={(index, delta) => move("edition", index, delta)}
                               onRemove={(pid) => setMemberIds(ids.filter((x) => x !== pid))}
                             />
@@ -746,16 +737,6 @@ export default function ProductGroupingDetailPage() {
                     </div>
                   )}
                 </DndContext>
-
-                {competitionFor && (
-                  <CompetitionResultDialog
-                    key={competitionFor.id}
-                    open
-                    onOpenChange={(o) => !o && setCompetitionFor(null)}
-                    productId={competitionFor.id}
-                    productName={competitionFor.name}
-                  />
-                )}
 
                 <div className="space-y-2">
                   <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("grouping_add_product")} aria-label={t("grouping_add_product")} />
