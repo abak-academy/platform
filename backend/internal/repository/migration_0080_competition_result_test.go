@@ -29,17 +29,15 @@ func TestMigration0080_CompetitionResultUpDownUp(t *testing.T) {
 	requireTableExists("competition_result", true)
 	requireTableExists("competition_result_row", true)
 
-	var productID, examID, regID, resultID uuid.UUID
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO product (type, name, price, status) VALUES ('exam', 'Edition', 0, 'published') RETURNING id`).Scan(&productID))
+	var examID, regID, resultID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx, `INSERT INTO exam (title) VALUES ('E') RETURNING id`).Scan(&examID))
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO exam_registration (student_id, exam_id, token, participant_number) VALUES ($1, $2, $3, 1) RETURNING id`,
 		seedMigrationStudent(t, pool, "Siswa"), examID, "tok-"+uuid.NewString()).Scan(&regID))
 	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO competition_result (product_id) VALUES ($1) RETURNING id`, productID).Scan(&resultID))
-	_, err := pool.Exec(ctx, `INSERT INTO competition_result (product_id) VALUES ($1)`, productID)
-	require.Error(t, err, "one result set per product")
+		`INSERT INTO competition_result (exam_id) VALUES ($1) RETURNING id`, examID).Scan(&resultID))
+	_, err := pool.Exec(ctx, `INSERT INTO competition_result (exam_id) VALUES ($1)`, examID)
+	require.Error(t, err, "one result set per exam")
 	_, err = pool.Exec(ctx,
 		`INSERT INTO competition_result_row (result_id, registration_id, score, rank) VALUES ($1, $2, 1, 0)`, resultID, regID)
 	require.Error(t, err, "rank >= 1")
@@ -50,11 +48,11 @@ func TestMigration0080_CompetitionResultUpDownUp(t *testing.T) {
 		`INSERT INTO competition_result_row (result_id, registration_id, score, rank) VALUES ($1, $2, 90.5, 1)`, resultID, regID)
 	require.NoError(t, err)
 
-	_, err = pool.Exec(ctx, `DELETE FROM product WHERE id = $1`, productID)
+	_, err = pool.Exec(ctx, `DELETE FROM exam WHERE id = $1`, examID)
 	require.NoError(t, err)
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM competition_result_row`).Scan(&rows))
-	require.Zero(t, rows, "deleting the product cascades its result set and rows")
+	require.Zero(t, rows, "deleting the exam cascades its result set and rows")
 
 	applyMigrationFile(t, pool, "0080_competition_result.down.sql")
 	requireTableExists("competition_result", false)

@@ -8,7 +8,7 @@ import (
 
 type CompetitionResult struct {
 	ID          uuid.UUID  `json:"id"`
-	ProductID   uuid.UUID  `json:"product_id"`
+	ExamID      uuid.UUID  `json:"exam_id"`
 	SourceKey   *string    `json:"source_key"`
 	RowCount    int        `json:"row_count"`
 	PublishedAt *time.Time `json:"published_at"`

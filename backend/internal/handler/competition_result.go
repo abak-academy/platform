@@ -8,21 +8,21 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func productIDParam(c echo.Context) (uuid.UUID, bool) {
+func examIDParam(c echo.Context) (uuid.UUID, bool) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		_ = badRequest(c, "invalid product id")
+		_ = badRequest(c, "invalid exam id")
 		return uuid.Nil, false
 	}
 	return id, true
 }
 
 func (h *Handler) AdminGetCompetitionResult(c echo.Context) error {
-	productID, ok := productIDParam(c)
+	examID, ok := examIDParam(c)
 	if !ok {
 		return nil
 	}
-	result, err := h.svc.GetCompetitionResult(c.Request().Context(), productID)
+	result, err := h.svc.GetCompetitionResult(c.Request().Context(), examID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -30,11 +30,11 @@ func (h *Handler) AdminGetCompetitionResult(c echo.Context) error {
 }
 
 func (h *Handler) AdminPresignCompetitionResult(c echo.Context) error {
-	productID, ok := productIDParam(c)
+	examID, ok := examIDParam(c)
 	if !ok {
 		return nil
 	}
-	resp, err := h.svc.PresignCompetitionResultUpload(c.Request().Context(), productID, c.QueryParam("filename"))
+	resp, err := h.svc.PresignCompetitionResultUpload(c.Request().Context(), examID, c.QueryParam("filename"))
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -47,7 +47,7 @@ type competitionResultFileRequest struct {
 
 func bindCompetitionResultFile(c echo.Context) (uuid.UUID, competitionResultFileRequest, bool) {
 	var req competitionResultFileRequest
-	productID, ok := productIDParam(c)
+	examID, ok := examIDParam(c)
 	if !ok {
 		return uuid.Nil, req, false
 	}
@@ -55,15 +55,15 @@ func bindCompetitionResultFile(c echo.Context) (uuid.UUID, competitionResultFile
 		_ = badRequest(c, "key is required")
 		return uuid.Nil, req, false
 	}
-	return productID, req, true
+	return examID, req, true
 }
 
 func (h *Handler) AdminPreviewCompetitionResult(c echo.Context) error {
-	productID, req, ok := bindCompetitionResultFile(c)
+	examID, req, ok := bindCompetitionResultFile(c)
 	if !ok {
 		return nil
 	}
-	preview, err := h.svc.PreviewCompetitionResult(c.Request().Context(), productID, req.Key)
+	preview, err := h.svc.PreviewCompetitionResult(c.Request().Context(), examID, req.Key)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -71,7 +71,7 @@ func (h *Handler) AdminPreviewCompetitionResult(c echo.Context) error {
 }
 
 func (h *Handler) AdminApplyCompetitionResult(c echo.Context) error {
-	productID, req, ok := bindCompetitionResultFile(c)
+	examID, req, ok := bindCompetitionResultFile(c)
 	if !ok {
 		return nil
 	}
@@ -79,7 +79,7 @@ func (h *Handler) AdminApplyCompetitionResult(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	preview, result, err := h.svc.ApplyCompetitionResult(c.Request().Context(), productID, actor, req.Key)
+	preview, result, err := h.svc.ApplyCompetitionResult(c.Request().Context(), examID, actor, req.Key)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -92,7 +92,7 @@ func (h *Handler) AdminApplyCompetitionResult(c echo.Context) error {
 }
 
 func (h *Handler) setCompetitionPublished(c echo.Context, publish bool) error {
-	productID, ok := productIDParam(c)
+	examID, ok := examIDParam(c)
 	if !ok {
 		return nil
 	}
@@ -100,7 +100,7 @@ func (h *Handler) setCompetitionPublished(c echo.Context, publish bool) error {
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	result, err := h.svc.SetCompetitionResultPublished(c.Request().Context(), productID, publish, actor)
+	result, err := h.svc.SetCompetitionResultPublished(c.Request().Context(), examID, publish, actor)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -115,11 +115,11 @@ func (h *Handler) AdminUnpublishCompetitionResult(c echo.Context) error {
 }
 
 func (h *Handler) AdminListCompetitionResultRows(c echo.Context) error {
-	productID, ok := productIDParam(c)
+	examID, ok := examIDParam(c)
 	if !ok {
 		return nil
 	}
-	rows, err := h.svc.ListCompetitionResultRows(c.Request().Context(), productID)
+	rows, err := h.svc.ListCompetitionResultRows(c.Request().Context(), examID)
 	if err != nil {
 		return mapServiceError(c, err)
 	}
@@ -127,7 +127,7 @@ func (h *Handler) AdminListCompetitionResultRows(c echo.Context) error {
 }
 
 func (h *Handler) AdminDeleteCompetitionResult(c echo.Context) error {
-	productID, ok := productIDParam(c)
+	examID, ok := examIDParam(c)
 	if !ok {
 		return nil
 	}
@@ -135,7 +135,7 @@ func (h *Handler) AdminDeleteCompetitionResult(c echo.Context) error {
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, APIError{Code: "unauthorized", Message: "missing auth"})
 	}
-	if err := h.svc.DeleteCompetitionResult(c.Request().Context(), productID, actor); err != nil {
+	if err := h.svc.DeleteCompetitionResult(c.Request().Context(), examID, actor); err != nil {
 		return mapServiceError(c, err)
 	}
 	return c.NoContent(http.StatusNoContent)

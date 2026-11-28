@@ -3,7 +3,7 @@ DROP TABLE IF EXISTS exam_external_round;
 
 CREATE TABLE competition_result (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  product_id    UUID NOT NULL UNIQUE REFERENCES product(id) ON DELETE CASCADE,
+  exam_id       UUID NOT NULL UNIQUE REFERENCES exam(id) ON DELETE CASCADE,
   source_key    TEXT NULL,
   published_at  TIMESTAMPTZ NULL,
   updated_by    UUID NULL REFERENCES users(id),

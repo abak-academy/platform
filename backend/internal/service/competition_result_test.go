@@ -55,8 +55,8 @@ func newCompetitionSvc(t *testing.T) (*Service, *repository.Repository, *fakeObj
 	return svc, repo, fake
 }
 
-func (f *fakeObjectStore) put(productID uuid.UUID, name, csv string) string {
-	key := competitionKeyPrefix(productID) + name
+func (f *fakeObjectStore) put(examID uuid.UUID, name, csv string) string {
+	key := competitionKeyPrefix(examID) + name
 	f.mu.Lock()
 	f.objs[key] = []byte(csv)
 	f.mu.Unlock()
@@ -64,13 +64,12 @@ func (f *fakeObjectStore) put(productID uuid.UUID, name, csv string) string {
 }
 
 type competitionFixture struct {
-	productID uuid.UUID
-	examID    uuid.UUID
-	examNo    int
-	regs      map[int]uuid.UUID
-	students  map[int]uuid.UUID
-	revoked   int
-	actor     string
+	examID   uuid.UUID
+	examNo   int
+	regs     map[int]uuid.UUID
+	students map[int]uuid.UUID
+	revoked  int
+	actor    string
 }
 
 func seedCompetitionExam(t *testing.T, repo *repository.Repository, productID *uuid.UUID) (examID uuid.UUID, examNo int) {
@@ -100,8 +99,7 @@ func seedCompetitionFixture(t *testing.T, repo *repository.Repository) competiti
 	t.Helper()
 	ctx := context.Background()
 	f := competitionFixture{regs: map[int]uuid.UUID{}, students: map[int]uuid.UUID{}, revoked: 4, actor: seedStudentDirect(t, ctx, repo, "Admin Uji", "adm-"+uniqueSuffix()).String()}
-	f.productID = seedCompetitionProduct(t, repo)
-	f.examID, f.examNo = seedCompetitionExam(t, repo, &f.productID)
+	f.examID, f.examNo = seedCompetitionExam(t, repo, nil)
 	for n := 1; n <= 4; n++ {
 		status := "registered"
 		if n == f.revoked {
@@ -129,28 +127,31 @@ func TestCompetitionResult_MatchesWithoutPrefixWithPrefixAndOldPrefix(t *testing
 	f := seedCompetitionFixture(t, repo)
 	oldPfx, newPfx := "OLDPX", "NEWPX"
 	gid := seedGrouping(t, repo, &oldPfx)
-	_, err := repo.Pool().Exec(ctx, `UPDATE product SET grouping_id = $1 WHERE id = $2`, gid, f.productID)
+	productID := seedCompetitionProduct(t, repo)
+	_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, productID, f.examID)
+	require.NoError(t, err)
+	_, err = repo.Pool().Exec(ctx, `UPDATE product SET grouping_id = $1 WHERE id = $2`, gid, productID)
 	require.NoError(t, err)
 	_, err = repo.Pool().Exec(ctx, `UPDATE product_grouping SET participant_prefix = $1 WHERE id = $2`, newPfx, gid)
 	require.NoError(t, err)
 
-	key := store.put(f.productID, "a.csv", compHeader+
+	key := store.put(f.examID, "a.csv", compHeader+
 		f.no("", 1)+",90,1,Medali emas,https://certs.example.test/1\n"+
 		f.no(newPfx, 2)+",80.5,,,\n"+
 		f.no(oldPfx, 3)+",70,3,,\n")
 
-	preview, err := svc.PreviewCompetitionResult(ctx, f.productID, key)
+	preview, err := svc.PreviewCompetitionResult(ctx, f.examID, key)
 	require.NoError(t, err)
 	assert.Equal(t, 3, preview.Matched)
 	assert.Empty(t, preview.Errors)
 	assert.False(t, preview.ResultExists)
 
-	_, result, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, key)
+	_, result, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, 3, result.RowCount)
 
-	rows, err := svc.ListCompetitionResultRows(ctx, f.productID)
+	rows, err := svc.ListCompetitionResultRows(ctx, f.examID)
 	require.NoError(t, err)
 	require.Len(t, rows, 3)
 	assert.Equal(t, f.no(newPfx, 1), rows[0].ParticipantNo, "shown in the CURRENT prefix, not the uploaded one")
@@ -158,45 +159,48 @@ func TestCompetitionResult_MatchesWithoutPrefixWithPrefixAndOldPrefix(t *testing
 	assert.Equal(t, 90.0, rows[0].Score)
 }
 
-func TestCompetitionResult_ResolvesAcrossEveryExamOfTheProductAndRejectsOthers(t *testing.T) {
+func TestCompetitionResult_RejectsParticipantNumberOfAnotherExam(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
-	secondExam, secondNo := seedCompetitionExam(t, repo, &f.productID)
-	secondStudent := seedStudentDirect(t, ctx, repo, "Peserta Dua", "p2e-"+uniqueSuffix())
-	var secondReg uuid.UUID
-	require.NoError(t, repo.Pool().QueryRow(ctx,
-		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', 1) RETURNING id`,
-		secondStudent, secondExam, "TOK"+uniqueSuffix()).Scan(&secondReg))
-
-	foreignExam, foreignNo := seedCompetitionExam(t, repo, nil)
-	foreignStudent := seedStudentDirect(t, ctx, repo, "Peserta Luar", "pf-"+uniqueSuffix())
+	otherExam, otherNo := seedCompetitionExam(t, repo, nil)
 	_, err := repo.Pool().Exec(ctx,
 		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', 1)`,
-		foreignStudent, foreignExam, "TOK"+uniqueSuffix())
-	require.NoError(t, err)
-	otherProduct := seedCompetitionProduct(t, repo)
-	attachedElsewhere, attachedElsewhereNo := seedCompetitionExam(t, repo, &otherProduct)
-	_, err = repo.Pool().Exec(ctx,
-		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', 1)`,
-		foreignStudent, attachedElsewhere, "TOK"+uniqueSuffix())
+		f.students[1], otherExam, "TOK"+uniqueSuffix())
 	require.NoError(t, err)
 
 	at := time.Date(2025, 6, 20, 0, 0, 0, 0, time.UTC)
-	key := store.put(f.productID, "m.csv", compHeader+
-		f.no("", 1)+",1,,,\n"+
-		formatParticipantNo("", at, secondNo, 1)+",2,,,\n"+
-		formatParticipantNo("", at, foreignNo, 1)+",3,,,\n"+
-		formatParticipantNo("", at, attachedElsewhereNo, 1)+",4,,,\n"+
-		formatParticipantNo("", at, secondNo, 9)+",5,,,\n")
-	preview, err := svc.PreviewCompetitionResult(ctx, f.productID, key)
+	key := store.put(f.examID, "m.csv", compHeader+f.no("", 1)+",1,,,\n"+formatParticipantNo("", at, otherNo, 1)+",2,,,\n")
+	preview, err := svc.PreviewCompetitionResult(ctx, f.examID, key)
 	require.NoError(t, err)
-	assert.Equal(t, 2, preview.Matched, "numbers of both attached exams resolve")
+	assert.Equal(t, 1, preview.Matched)
 	assert.Equal(t, []model.CompetitionRowError{
-		{Line: 4, ParticipantNo: formatParticipantNo("", at, foreignNo, 1), Reason: ReasonOtherExamParticipantNo},
-		{Line: 5, ParticipantNo: formatParticipantNo("", at, attachedElsewhereNo, 1), Reason: ReasonOtherExamParticipantNo},
-		{Line: 6, ParticipantNo: formatParticipantNo("", at, secondNo, 9), Reason: ReasonUnknownParticipant},
+		{Line: 3, ParticipantNo: formatParticipantNo("", at, otherNo, 1), Reason: ReasonOtherExamParticipantNo},
 	}, preview.Errors)
+}
+
+func TestCompetitionResult_ExamOnTwoProductsHasOneResultVisibleOnce(t *testing.T) {
+	svc, repo, store := newCompetitionSvc(t)
+	ctx := context.Background()
+	f := seedCompetitionFixture(t, repo)
+	for i := 0; i < 2; i++ {
+		_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, seedCompetitionProduct(t, repo), f.examID)
+		require.NoError(t, err)
+	}
+	key := store.put(f.examID, "a.csv", compHeader+f.no("", 1)+",90,1,,\n")
+	_, _, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
+	require.NoError(t, err)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
+	require.NoError(t, err)
+
+	var results int
+	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT count(*) FROM competition_result WHERE exam_id = $1`, f.examID).Scan(&results))
+	assert.Equal(t, 1, results)
+	items, err := svc.GetExamRegistrations(ctx, f.students[1].String())
+	require.NoError(t, err)
+	require.Len(t, items, 1, "product attachments do not multiply registrations")
+	require.NotNil(t, items[0].CompetitionResult)
+	assert.Equal(t, 90.0, items[0].CompetitionResult.Score)
 }
 
 func TestCompetitionResult_PreviewReportsEveryErrorKindWithItsLine(t *testing.T) {
@@ -206,7 +210,7 @@ func TestCompetitionResult_PreviewReportsEveryErrorKindWithItsLine(t *testing.T)
 	longAward := strings.Repeat("x", 61)
 	otherExam := formatParticipantNo("", time.Now(), f.examNo+1000000, 1)
 
-	key := store.put(f.productID, "bad.csv", compHeader+
+	key := store.put(f.examID, "bad.csv", compHeader+
 		f.no("", 1)+",90,1,ok,https://ok.example.test/c\n"+ // line 2 valid
 		f.no("", 99)+",50,,,\n"+ // 3 unknown
 		f.no("", f.revoked)+",50,,,\n"+ // 4 revoked
@@ -221,7 +225,7 @@ func TestCompetitionResult_PreviewReportsEveryErrorKindWithItsLine(t *testing.T)
 		f.no("OTHR", 2)+",50,,,\n"+ // 13 duplicate through a different prefix
 		f.no("", 2)+",50\n") // 14 bad row
 
-	preview, err := svc.PreviewCompetitionResult(ctx, f.productID, key)
+	preview, err := svc.PreviewCompetitionResult(ctx, f.examID, key)
 	require.NoError(t, err)
 	got := map[int]string{}
 	for _, e := range preview.Errors {
@@ -234,11 +238,11 @@ func TestCompetitionResult_PreviewReportsEveryErrorKindWithItsLine(t *testing.T)
 	}, got)
 	assert.Equal(t, 1, preview.Matched)
 
-	key2 := store.put(f.productID, "bad2.csv", compHeader+
+	key2 := store.put(f.examID, "bad2.csv", compHeader+
 		f.no("", 1)+",1,0,,\n"+
 		f.no("", 2)+",1,,"+longAward+",\n"+
 		f.no("", 3)+",1,,,http://insecure.example.test/c\n")
-	preview, err = svc.PreviewCompetitionResult(ctx, f.productID, key2)
+	preview, err = svc.PreviewCompetitionResult(ctx, f.examID, key2)
 	require.NoError(t, err)
 	assert.Equal(t, []model.CompetitionRowError{
 		{Line: 2, ParticipantNo: f.no("", 1), Reason: ReasonBadRank},
@@ -246,8 +250,8 @@ func TestCompetitionResult_PreviewReportsEveryErrorKindWithItsLine(t *testing.T)
 		{Line: 4, ParticipantNo: f.no("", 3), Reason: ReasonBadCertificateURL},
 	}, preview.Errors)
 
-	key3 := store.put(f.productID, "bad3.csv", compHeader+f.no("", 1)+",1,2147483648,,\n")
-	preview, err = svc.PreviewCompetitionResult(ctx, f.productID, key3)
+	key3 := store.put(f.examID, "bad3.csv", compHeader+f.no("", 1)+",1,2147483648,,\n")
+	preview, err = svc.PreviewCompetitionResult(ctx, f.examID, key3)
 	require.NoError(t, err)
 	assert.Equal(t, []model.CompetitionRowError{{Line: 2, ParticipantNo: f.no("", 1), Reason: ReasonBadRank}}, preview.Errors)
 }
@@ -267,30 +271,30 @@ func TestCompetitionResult_FileLevelErrors(t *testing.T) {
 		"too large":      "participant_no,score\n" + strings.Repeat(row, 200000),
 	} {
 		t.Run(name, func(t *testing.T) {
-			key := store.put(f.productID, strings.ReplaceAll(name, " ", "-")+".csv", csv)
-			_, err := svc.PreviewCompetitionResult(context.Background(), f.productID, key)
+			key := store.put(f.examID, strings.ReplaceAll(name, " ", "-")+".csv", csv)
+			_, err := svc.PreviewCompetitionResult(context.Background(), f.examID, key)
 			assert.ErrorIs(t, err, ErrValidation)
 		})
 	}
-	key := store.put(f.productID, "ok.csv", "Score , Participant_No\n5,"+f.no("", 1)+"\n")
-	p, err := svc.PreviewCompetitionResult(context.Background(), f.productID, key)
+	key := store.put(f.examID, "ok.csv", "Score , Participant_No\n5,"+f.no("", 1)+"\n")
+	p, err := svc.PreviewCompetitionResult(context.Background(), f.examID, key)
 	require.NoError(t, err, "column order is free and header case/space insensitive")
 	assert.Equal(t, 1, p.Matched)
 }
 
-func TestCompetitionResult_RejectsKeyOutsideTheProductPrefix(t *testing.T) {
+func TestCompetitionResult_RejectsKeyOutsideTheExamPrefix(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f, other := seedCompetitionFixture(t, repo), seedCompetitionFixture(t, repo)
-	foreign := store.put(other.productID, "x.csv", compHeader+other.no("", 1)+",5,,,\n")
-	traversal := store.put(f.productID, "../../"+competitionKeyPrefix(other.productID)+"x.csv", compHeader+f.no("", 1)+",5,,,\n")
-	for _, key := range []string{foreign, traversal, "exam-grant-bulk/" + f.productID.String() + "/x.csv"} {
-		_, err := svc.PreviewCompetitionResult(ctx, f.productID, key)
+	foreign := store.put(other.examID, "x.csv", compHeader+other.no("", 1)+",5,,,\n")
+	traversal := store.put(f.examID, "../../"+competitionKeyPrefix(other.examID)+"x.csv", compHeader+f.no("", 1)+",5,,,\n")
+	for _, key := range []string{foreign, traversal, "exam-grant-bulk/" + f.examID.String() + "/x.csv"} {
+		_, err := svc.PreviewCompetitionResult(ctx, f.examID, key)
 		assert.ErrorIs(t, err, ErrUploadNotFound, key)
-		_, _, err = svc.ApplyCompetitionResult(ctx, f.productID, f.actor, key)
+		_, _, err = svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 		assert.ErrorIs(t, err, ErrUploadNotFound, key)
 	}
-	_, err := svc.PreviewCompetitionResult(ctx, f.productID, competitionKeyPrefix(f.productID)+"missing.csv")
+	_, err := svc.PreviewCompetitionResult(ctx, f.examID, competitionKeyPrefix(f.examID)+"missing.csv")
 	assert.ErrorIs(t, err, ErrUploadNotFound)
 }
 
@@ -298,18 +302,18 @@ func TestCompetitionResult_ApplyWithErrorsWritesNothing(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
-	key := store.put(f.productID, "e.csv", compHeader+f.no("", 1)+",5,,,\n"+f.no("", 99)+",5,,,\n")
-	preview, result, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, key)
+	key := store.put(f.examID, "e.csv", compHeader+f.no("", 1)+",5,,,\n"+f.no("", 99)+",5,,,\n")
+	preview, result, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 	require.NoError(t, err)
 	assert.Nil(t, result)
 	assert.Len(t, preview.Errors, 1)
-	_, err = repo.GetCompetitionResult(ctx, f.productID)
+	_, err = repo.GetCompetitionResult(ctx, f.examID)
 	assert.ErrorIs(t, err, repository.ErrNotFound)
 }
 
-func dumpCompetition(t *testing.T, svc *Service, productID uuid.UUID) string {
+func dumpCompetition(t *testing.T, svc *Service, examID uuid.UUID) string {
 	t.Helper()
-	rows, err := svc.ListCompetitionResultRows(context.Background(), productID)
+	rows, err := svc.ListCompetitionResultRows(context.Background(), examID)
 	require.NoError(t, err)
 	var b strings.Builder
 	for _, r := range rows {
@@ -329,31 +333,31 @@ func TestCompetitionResult_ApplyIsIdempotentAndReplacesAllRows(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
-	keyA := store.put(f.productID, "a.csv", compHeader+f.no("", 1)+",90,1,,\n"+f.no("", 2)+",80,2,,\n")
+	keyA := store.put(f.examID, "a.csv", compHeader+f.no("", 1)+",90,1,,\n"+f.no("", 2)+",80,2,,\n")
 
-	_, a1, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, keyA)
+	_, a1, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, keyA)
 	require.NoError(t, err)
-	first := dumpCompetition(t, svc, f.productID)
+	first := dumpCompetition(t, svc, f.examID)
 
-	_, a2, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, keyA)
+	_, a2, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, keyA)
 	require.NoError(t, err)
 	assert.Equal(t, a1.ID, a2.ID)
-	assert.Equal(t, first, dumpCompetition(t, svc, f.productID), "same file twice gives identical rows")
+	assert.Equal(t, first, dumpCompetition(t, svc, f.examID), "same file twice gives identical rows")
 
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, true, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
 	require.NoError(t, err)
-	keyB := store.put(f.productID, "b.csv", compHeader+f.no("", 3)+",55,9,,\n")
-	preview, err := svc.PreviewCompetitionResult(ctx, f.productID, keyB)
+	keyB := store.put(f.examID, "b.csv", compHeader+f.no("", 3)+",55,9,,\n")
+	preview, err := svc.PreviewCompetitionResult(ctx, f.examID, keyB)
 	require.NoError(t, err)
 	assert.True(t, preview.ResultExists)
 	assert.True(t, preview.ResultPublished)
-	_, a3, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, keyB)
+	_, a3, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, keyB)
 	require.NoError(t, err)
 	assert.Equal(t, 1, a3.RowCount, "rows absent from the new file are dropped")
 	assert.Equal(t, a1.ID, a3.ID)
 	assert.NotNil(t, a3.PublishedAt, "replacing a published set keeps it published")
 	assert.Equal(t, keyB, *a3.SourceKey)
-	rows, err := svc.ListCompetitionResultRows(ctx, f.productID)
+	rows, err := svc.ListCompetitionResultRows(ctx, f.examID)
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 	assert.Equal(t, f.regs[3], rows[0].RegistrationID)
@@ -363,8 +367,8 @@ func TestCompetitionResult_StudentSeesOnlyPublishedOwnRow(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
-	key := store.put(f.productID, "a.csv", compHeader+f.no("", 1)+",90,1,Medali emas,https://certs.example.test/1\n"+f.no("", 2)+",80,2,,\n")
-	_, _, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, key)
+	key := store.put(f.examID, "a.csv", compHeader+f.no("", 1)+",90,1,Medali emas,https://certs.example.test/1\n"+f.no("", 2)+",80,2,,\n")
+	_, _, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 	require.NoError(t, err)
 
 	result := func(student int) *model.StudentCompetitionResult {
@@ -375,7 +379,7 @@ func TestCompetitionResult_StudentSeesOnlyPublishedOwnRow(t *testing.T) {
 	}
 	assert.Nil(t, result(1), "an unpublished set is invisible")
 
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, true, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
 	require.NoError(t, err)
 	got := result(1)
 	require.NotNil(t, got)
@@ -387,7 +391,7 @@ func TestCompetitionResult_StudentSeesOnlyPublishedOwnRow(t *testing.T) {
 	assert.Equal(t, 80.0, result(2).Score, "each student sees their own row")
 	assert.Nil(t, result(3), "student with no row")
 
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, false, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, false, f.actor)
 	require.NoError(t, err)
 	assert.Nil(t, result(1))
 }
@@ -396,15 +400,15 @@ func TestCompetitionResult_AuditsApplyPublishUnpublishDelete(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
-	key := store.put(f.productID, "a.csv", compHeader+f.no("", 1)+",90,,,\n"+f.no("", 2)+",80,,,\n")
-	_, result, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, key)
+	key := store.put(f.examID, "a.csv", compHeader+f.no("", 1)+",90,,,\n"+f.no("", 2)+",80,,,\n")
+	_, result, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 	require.NoError(t, err)
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, true, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
 	require.NoError(t, err)
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, false, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, false, f.actor)
 	require.NoError(t, err)
-	require.NoError(t, svc.DeleteCompetitionResult(ctx, f.productID, f.actor))
-	assert.ErrorIs(t, svc.DeleteCompetitionResult(ctx, f.productID, f.actor), ErrCompetitionResultNotFound)
+	require.NoError(t, svc.DeleteCompetitionResult(ctx, f.examID, f.actor))
+	assert.ErrorIs(t, svc.DeleteCompetitionResult(ctx, f.examID, f.actor), ErrCompetitionResultNotFound)
 
 	rows, err := repo.Pool().Query(ctx,
 		`SELECT action, actor_id::text, (metadata->>'rows')::int, COALESCE(metadata->>'source_key','') FROM audit_log
@@ -448,10 +452,10 @@ func TestCompetitionResult_DoesNotTouchSessionsOrLeaderboard(t *testing.T) {
 	sessionsBefore, boardBefore := snapshot()
 	require.Len(t, boardBefore, 2)
 
-	key := store.put(f.productID, "a.csv", compHeader+f.no("", 1)+",1,2,,\n"+f.no("", 2)+",2,1,,\n"+f.no("", 3)+",3,3,,\n")
-	_, _, err := svc.ApplyCompetitionResult(ctx, f.productID, f.actor, key)
+	key := store.put(f.examID, "a.csv", compHeader+f.no("", 1)+",1,2,,\n"+f.no("", 2)+",2,1,,\n"+f.no("", 3)+",3,3,,\n")
+	_, _, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 	require.NoError(t, err)
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, true, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
 	require.NoError(t, err)
 
 	sessionsAfter, boardAfter := snapshot()
@@ -459,54 +463,50 @@ func TestCompetitionResult_DoesNotTouchSessionsOrLeaderboard(t *testing.T) {
 	assert.Equal(t, boardBefore, boardAfter)
 }
 
-func TestCompetitionResult_MissingProductAndNoResult(t *testing.T) {
+func TestCompetitionResult_MissingExamAndNoResult(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
 	ghost := uuid.New()
 	key := store.put(ghost, "a.csv", compHeader+f.no("", 1)+",1,,,\n")
 	_, err := svc.PreviewCompetitionResult(ctx, ghost, key)
-	assert.ErrorIs(t, err, ErrProductNotFound)
+	assert.ErrorIs(t, err, ErrExamNotFound)
 
-	got, err := svc.GetCompetitionResult(ctx, f.productID)
+	got, err := svc.GetCompetitionResult(ctx, f.examID)
 	require.NoError(t, err)
 	assert.Nil(t, got, "no result yet is nil, not an error")
-	_, err = svc.SetCompetitionResultPublished(ctx, f.productID, true, f.actor)
+	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
 	assert.ErrorIs(t, err, ErrCompetitionResultNotFound)
-	_, err = svc.ListCompetitionResultRows(ctx, f.productID)
+	_, err = svc.ListCompetitionResultRows(ctx, f.examID)
 	assert.ErrorIs(t, err, ErrCompetitionResultNotFound)
 }
 
-func TestParseCompetitionResultCSV_ResolvesOnlyWithinTheProductsExams(t *testing.T) {
-	regA, regB, revoked := uuid.New(), uuid.New(), uuid.New()
-	regs := map[int]map[int]repository.CompetitionRegistration{
-		1001: {1: {ID: regA}, 2: {ID: revoked, Revoked: true}},
-		1002: {1: {ID: regB}},
-		1003: {},
-	}
+func TestParseCompetitionResultCSV_ResolvesOnlyWithinThisExam(t *testing.T) {
+	regA, revoked := uuid.New(), uuid.New()
+	regs := map[int]repository.CompetitionRegistration{1: {ID: regA}, 2: {ID: revoked, Revoked: true}}
 	csv := compHeader +
-		"250620-1001-000001,1,,,\n" + // 2 ok
-		"250620-1002-000001,2,,,\n" + // 3 ok, second attached exam
-		"250620-2002-000001,3,,,\n" + // 4 exam not attached to the product
-		"250620-1003-000001,4,,,\n" + // 5 attached exam, nobody registered
-		"250620-1001-000002,5,,,\n" + // 6 revoked
-		"OLDPX-250620-1001-000001,6,,,\n" // 7 same registration as line 2, other prefix
-	inputs, errs, err := parseCompetitionResultCSV([]byte(csv), regs)
+		"250620-1001-000001,1,,,\n" + // 2 ok, no prefix
+		"OLDPX-250620-1001-000001,2,,,\n" + // 3 same registration, with prefix
+		"250620-1002-000001,3,,,\n" + // 4 another exam
+		"OLDPX-250620-1002-000001,4,,,\n" + // 5 another exam, with prefix
+		"250620-1001-000009,5,,,\n" + // 6 nobody
+		"250620-1001-000002,6,,,\n" // 7 revoked
+	inputs, errs, err := parseCompetitionResultCSV([]byte(csv), 1001, regs)
 	require.NoError(t, err)
-	require.Len(t, inputs, 2)
+	require.Len(t, inputs, 1)
 	assert.Equal(t, regA, inputs[0].RegistrationID)
-	assert.Equal(t, regB, inputs[1].RegistrationID)
 	got := map[int]string{}
 	for _, e := range errs {
 		got[e.Line] = e.Reason
 	}
 	assert.Equal(t, map[int]string{
-		4: ReasonOtherExamParticipantNo, 5: ReasonUnknownParticipant, 6: ReasonRevokedParticipant, 7: ReasonDuplicateParticipant,
+		3: ReasonDuplicateParticipant, 4: ReasonOtherExamParticipantNo, 5: ReasonOtherExamParticipantNo,
+		6: ReasonUnknownParticipant, 7: ReasonRevokedParticipant,
 	}, got)
 }
 
 func TestParseCompetitionResultCSV_ShortRowIsBadRowNotPanic(t *testing.T) {
-	inputs, errs, err := parseCompetitionResultCSV([]byte("score,participant_no\n5\n"), nil)
+	inputs, errs, err := parseCompetitionResultCSV([]byte("score,participant_no\n5\n"), 1001, nil)
 	require.NoError(t, err)
 	assert.Empty(t, inputs)
 	require.Len(t, errs, 1)
@@ -515,10 +515,10 @@ func TestParseCompetitionResultCSV_ShortRowIsBadRowNotPanic(t *testing.T) {
 
 func TestParseCompetitionResultCSV_ScoreMustFitNumeric82(t *testing.T) {
 	reg := uuid.New()
-	regs := map[int]map[int]repository.CompetitionRegistration{1001: {1: {ID: reg}, 2: {ID: uuid.New()}}}
+	regs := map[int]repository.CompetitionRegistration{1: {ID: reg}, 2: {ID: uuid.New()}}
 	_, errs, err := parseCompetitionResultCSV([]byte(compHeader+
 		"250620-1001-000001,999999.999,,,\n"+
-		"250620-1001-000002,999999.99,,,\n"), regs)
+		"250620-1001-000002,999999.99,,,\n"), 1001, regs)
 	require.NoError(t, err)
 	require.Len(t, errs, 1)
 	assert.Equal(t, ReasonBadScore, errs[0].Reason)

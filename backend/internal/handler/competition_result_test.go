@@ -25,13 +25,13 @@ import (
 )
 
 type competitionEnv struct {
-	e         *echo.Echo
-	studentE  *echo.Echo
-	objs      map[string]string
-	productID uuid.UUID
-	examNo    int
-	student   uuid.UUID
-	actorID   uuid.UUID
+	e        *echo.Echo
+	studentE *echo.Echo
+	objs     map[string]string
+	examID   uuid.UUID
+	examNo   int
+	student  uuid.UUID
+	actorID  uuid.UUID
 }
 
 func newCompetitionEnv(t *testing.T, role string) *competitionEnv {
@@ -68,14 +68,9 @@ func newCompetitionEnv(t *testing.T, role string) *competitionEnv {
 		return id
 	}
 	env.actorID = user("Admin Uji")
-	var examID uuid.UUID
 	require.NoError(t, pool.QueryRow(ctx,
 		`INSERT INTO exam (title, status, scheduled_at) VALUES ('Handler Competition', 'draft', $1) RETURNING id, exam_number`,
-		time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)).Scan(&examID, &env.examNo))
-	require.NoError(t, pool.QueryRow(ctx,
-		`INSERT INTO product (type, name, price, status) VALUES ('exam', 'Handler Edition', 0, 'published') RETURNING id`).Scan(&env.productID))
-	_, err = pool.Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, env.productID, examID)
-	require.NoError(t, err)
+		time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)).Scan(&env.examID, &env.examNo))
 	for n := 1; n <= 2; n++ {
 		sid := user(fmt.Sprintf("Peserta %d", n))
 		if n == 1 {
@@ -83,7 +78,7 @@ func newCompetitionEnv(t *testing.T, role string) *competitionEnv {
 		}
 		_, err := pool.Exec(ctx,
 			`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', $4)`,
-			sid, examID, uuid.NewString(), n)
+			sid, env.examID, uuid.NewString(), n)
 		require.NoError(t, err)
 	}
 
@@ -91,14 +86,14 @@ func newCompetitionEnv(t *testing.T, role string) *competitionEnv {
 	e.HideBanner = true
 	e.Use(claimsInjector(&infra.Claims{Sub: env.actorID.String(), Role: role}))
 	rbac := handler.RBACMiddleware("competition-results:write")
-	e.GET("/admin/products/:id/competition-result", h.AdminGetCompetitionResult, rbac)
-	e.POST("/admin/products/:id/competition-result/presign", h.AdminPresignCompetitionResult, rbac)
-	e.POST("/admin/products/:id/competition-result/preview", h.AdminPreviewCompetitionResult, rbac)
-	e.POST("/admin/products/:id/competition-result/apply", h.AdminApplyCompetitionResult, rbac)
-	e.POST("/admin/products/:id/competition-result/publish", h.AdminPublishCompetitionResult, rbac)
-	e.POST("/admin/products/:id/competition-result/unpublish", h.AdminUnpublishCompetitionResult, rbac)
-	e.GET("/admin/products/:id/competition-result/results", h.AdminListCompetitionResultRows, rbac)
-	e.DELETE("/admin/products/:id/competition-result", h.AdminDeleteCompetitionResult, rbac)
+	e.GET("/admin/exams/:id/competition-result", h.AdminGetCompetitionResult, rbac)
+	e.POST("/admin/exams/:id/competition-result/presign", h.AdminPresignCompetitionResult, rbac)
+	e.POST("/admin/exams/:id/competition-result/preview", h.AdminPreviewCompetitionResult, rbac)
+	e.POST("/admin/exams/:id/competition-result/apply", h.AdminApplyCompetitionResult, rbac)
+	e.POST("/admin/exams/:id/competition-result/publish", h.AdminPublishCompetitionResult, rbac)
+	e.POST("/admin/exams/:id/competition-result/unpublish", h.AdminUnpublishCompetitionResult, rbac)
+	e.GET("/admin/exams/:id/competition-result/results", h.AdminListCompetitionResultRows, rbac)
+	e.DELETE("/admin/exams/:id/competition-result", h.AdminDeleteCompetitionResult, rbac)
 	env.e = e
 
 	se := echo.New()
@@ -118,7 +113,7 @@ func (env *competitionEnv) do(method, path, body string) *httptest.ResponseRecor
 }
 
 func (env *competitionEnv) base() string {
-	return "/admin/products/" + env.productID.String() + "/competition-result"
+	return "/admin/exams/" + env.examID.String() + "/competition-result"
 }
 
 func (env *competitionEnv) no(n int) string {
@@ -142,7 +137,7 @@ func TestCompetitionResultHTTP_Flow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var presigned service.PrivateUploadURL
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &presigned))
-	assert.Regexp(t, `^competition-results/`+env.productID.String()+`/[0-9a-f-]{36}-r\.csv$`, presigned.Key)
+	assert.Regexp(t, `^competition-results/`+env.examID.String()+`/[0-9a-f-]{36}-r\.csv$`, presigned.Key)
 
 	bad := presigned.Key + "-bad"
 	env.objs[bad] = "participant_no,score\n" + env.no(1) + ",5\n" + env.no(9) + ",5\nnope,5\n"
@@ -163,14 +158,14 @@ func TestCompetitionResultHTTP_Flow(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var applied struct {
 		Data struct {
-			ID        string `json:"id"`
-			ProductID string `json:"product_id"`
-			RowCount  int    `json:"row_count"`
+			ID       string `json:"id"`
+			ExamID   string `json:"exam_id"`
+			RowCount int    `json:"row_count"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &applied))
 	assert.Equal(t, 2, applied.Data.RowCount)
-	assert.Equal(t, env.productID.String(), applied.Data.ProductID)
+	assert.Equal(t, env.examID.String(), applied.Data.ExamID)
 
 	rec = env.do(http.MethodGet, base+"/results", "")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -233,7 +228,7 @@ func TestStudentRegistrationsHTTP_CompetitionResultShape(t *testing.T) {
 	assert.True(t, present, "key is always present")
 	assert.Nil(t, val, "null when there is no result")
 
-	key := "competition-results/" + env.productID.String() + "/a.csv"
+	key := "competition-results/" + env.examID.String() + "/a.csv"
 	env.objs[key] = "participant_no,score,rank,award,certificate_url\n" + env.no(1) + ",90.5,1,Medali emas,https://certs.example.test/1\n"
 	rec := env.do(http.MethodPost, env.base()+"/apply", fileBody(key))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())

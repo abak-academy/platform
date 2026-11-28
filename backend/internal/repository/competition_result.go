@@ -11,12 +11,12 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const competitionResultCols = `r.id, r.product_id, r.source_key, r.published_at, r.updated_at,
+const competitionResultCols = `r.id, r.exam_id, r.source_key, r.published_at, r.updated_at,
 	(SELECT COUNT(*) FROM competition_result_row x WHERE x.result_id = r.id)`
 
 func scanCompetitionResult(row pgx.Row) (*model.CompetitionResult, error) {
 	var res model.CompetitionResult
-	if err := row.Scan(&res.ID, &res.ProductID, &res.SourceKey, &res.PublishedAt, &res.UpdatedAt, &res.RowCount); err != nil {
+	if err := row.Scan(&res.ID, &res.ExamID, &res.SourceKey, &res.PublishedAt, &res.UpdatedAt, &res.RowCount); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -31,54 +31,46 @@ type CompetitionRegistration struct {
 	Revoked bool
 }
 
-// GetCompetitionMatchData returns, for every exam attached to the product, its
-// registrations by participant_number (revoked ones included, flagged), keyed
-// by exam_number then participant_number; ErrNotFound for no product.
-func (r *Repository) GetCompetitionMatchData(ctx context.Context, productID uuid.UUID) (map[int]map[int]CompetitionRegistration, error) {
-	var exists bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM product WHERE id = $1)`, productID).Scan(&exists); err != nil {
-		return nil, err
-	}
-	if !exists {
-		return nil, ErrNotFound
+// GetCompetitionMatchData returns the exam's exam_number and its registrations
+// by participant_number (revoked ones included, flagged); ErrNotFound for no exam.
+func (r *Repository) GetCompetitionMatchData(ctx context.Context, examID uuid.UUID) (int, map[int]CompetitionRegistration, error) {
+	var examNo *int
+	if err := r.pool.QueryRow(ctx, `SELECT exam_number FROM exam WHERE id = $1`, examID).Scan(&examNo); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil, ErrNotFound
+		}
+		return 0, nil, err
 	}
 	rows, err := r.pool.Query(ctx,
-		`SELECT e.exam_number, reg.participant_number, reg.id, COALESCE(reg.status = 'revoked', false)
-		FROM product_exam pe
-		JOIN exam e ON e.id = pe.exam_id
-		LEFT JOIN exam_registration reg ON reg.exam_id = e.id AND reg.participant_number IS NOT NULL
-		WHERE pe.product_id = $1`, productID)
+		`SELECT participant_number, id, status = 'revoked'
+		FROM exam_registration WHERE exam_id = $1 AND participant_number IS NOT NULL`, examID)
 	if err != nil {
-		return nil, err
+		return 0, nil, err
 	}
 	defer rows.Close()
-	out := map[int]map[int]CompetitionRegistration{}
+	out := map[int]CompetitionRegistration{}
 	for rows.Next() {
-		var examNo int
-		var n *int
-		var id *uuid.UUID
-		var revoked bool
-		if err := rows.Scan(&examNo, &n, &id, &revoked); err != nil {
-			return nil, err
+		var n int
+		var reg CompetitionRegistration
+		if err := rows.Scan(&n, &reg.ID, &reg.Revoked); err != nil {
+			return 0, nil, err
 		}
-		if out[examNo] == nil {
-			out[examNo] = map[int]CompetitionRegistration{}
-		}
-		if n != nil && id != nil {
-			out[examNo][*n] = CompetitionRegistration{ID: *id, Revoked: revoked}
-		}
+		out[n] = reg
 	}
-	return out, rows.Err()
+	if examNo == nil {
+		return 0, out, rows.Err()
+	}
+	return *examNo, out, rows.Err()
 }
 
-func (r *Repository) GetCompetitionResult(ctx context.Context, productID uuid.UUID) (*model.CompetitionResult, error) {
+func (r *Repository) GetCompetitionResult(ctx context.Context, examID uuid.UUID) (*model.CompetitionResult, error) {
 	return scanCompetitionResult(r.pool.QueryRow(ctx,
-		`SELECT `+competitionResultCols+` FROM competition_result r WHERE r.product_id = $1`, productID))
+		`SELECT `+competitionResultCols+` FROM competition_result r WHERE r.exam_id = $1`, examID))
 }
 
-// ApplyCompetitionResult upserts the product's result set, replaces all its
+// ApplyCompetitionResult upserts the exam's result set, replaces all its
 // rows, and audits, in one transaction. published_at is left untouched.
-func (r *Repository) ApplyCompetitionResult(ctx context.Context, productID uuid.UUID, sourceKey, actorID string, inputs []model.CompetitionResultInput) (*model.CompetitionResult, error) {
+func (r *Repository) ApplyCompetitionResult(ctx context.Context, examID uuid.UUID, sourceKey, actorID string, inputs []model.CompetitionResultInput) (*model.CompetitionResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -87,11 +79,11 @@ func (r *Repository) ApplyCompetitionResult(ctx context.Context, productID uuid.
 
 	var resultID uuid.UUID
 	if err := tx.QueryRow(ctx,
-		`INSERT INTO competition_result (product_id, source_key, updated_by)
+		`INSERT INTO competition_result (exam_id, source_key, updated_by)
 		VALUES ($1, $2, $3)
-		ON CONFLICT (product_id) DO UPDATE
+		ON CONFLICT (exam_id) DO UPDATE
 		SET source_key = EXCLUDED.source_key, updated_by = EXCLUDED.updated_by, updated_at = now()
-		RETURNING id`, productID, sourceKey, actorID).Scan(&resultID); err != nil {
+		RETURNING id`, examID, sourceKey, actorID).Scan(&resultID); err != nil {
 		return nil, err
 	}
 	del, err := tx.Exec(ctx, `DELETE FROM competition_result_row WHERE result_id = $1`, resultID)
@@ -117,7 +109,7 @@ func (r *Repository) ApplyCompetitionResult(ctx context.Context, productID uuid.
 		}
 	}
 	if err := r.InsertAuditLogMeta(ctx, tx, &actorID, "competition_result", resultID.String(), "apply", map[string]any{
-		"product_id": productID.String(), "rows": len(inputs), "replaced_rows": del.RowsAffected(), "source_key": sourceKey,
+		"exam_id": examID.String(), "rows": len(inputs), "replaced_rows": del.RowsAffected(), "source_key": sourceKey,
 	}); err != nil {
 		return nil, err
 	}
@@ -129,8 +121,8 @@ func (r *Repository) ApplyCompetitionResult(ctx context.Context, productID uuid.
 }
 
 // SetCompetitionResultPublished publishes (keeping an earlier published_at) or
-// unpublishes the product's result set and audits; ErrNotFound for none.
-func (r *Repository) SetCompetitionResultPublished(ctx context.Context, productID uuid.UUID, publish bool, actorID string) (*model.CompetitionResult, error) {
+// unpublishes the exam's result set and audits; ErrNotFound for none.
+func (r *Repository) SetCompetitionResultPublished(ctx context.Context, examID uuid.UUID, publish bool, actorID string) (*model.CompetitionResult, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -141,8 +133,8 @@ func (r *Repository) SetCompetitionResultPublished(ctx context.Context, productI
 		`UPDATE competition_result r SET
 			published_at = CASE WHEN $2 THEN COALESCE(r.published_at, now()) END,
 			updated_by = $3, updated_at = now()
-		WHERE r.product_id = $1
-		RETURNING `+competitionResultCols, productID, publish, actorID))
+		WHERE r.exam_id = $1
+		RETURNING `+competitionResultCols, examID, publish, actorID))
 	if err != nil {
 		return nil, err
 	}
@@ -151,14 +143,14 @@ func (r *Repository) SetCompetitionResultPublished(ctx context.Context, productI
 		action = "publish"
 	}
 	if err := r.InsertAuditLogMeta(ctx, tx, &actorID, "competition_result", res.ID.String(), action, map[string]any{
-		"product_id": productID.String(), "rows": res.RowCount,
+		"exam_id": examID.String(), "rows": res.RowCount,
 	}); err != nil {
 		return nil, err
 	}
 	return res, tx.Commit(ctx)
 }
 
-func (r *Repository) DeleteCompetitionResult(ctx context.Context, productID uuid.UUID, actorID string) error {
+func (r *Repository) DeleteCompetitionResult(ctx context.Context, examID uuid.UUID, actorID string) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return err
@@ -166,7 +158,7 @@ func (r *Repository) DeleteCompetitionResult(ctx context.Context, productID uuid
 	defer tx.Rollback(ctx)
 
 	res, err := scanCompetitionResult(tx.QueryRow(ctx,
-		`SELECT `+competitionResultCols+` FROM competition_result r WHERE r.product_id = $1 FOR UPDATE`, productID))
+		`SELECT `+competitionResultCols+` FROM competition_result r WHERE r.exam_id = $1 FOR UPDATE`, examID))
 	if err != nil {
 		return err
 	}
@@ -178,7 +170,7 @@ func (r *Repository) DeleteCompetitionResult(ctx context.Context, productID uuid
 		source = *res.SourceKey
 	}
 	if err := r.InsertAuditLogMeta(ctx, tx, &actorID, "competition_result", res.ID.String(), "delete", map[string]any{
-		"product_id": productID.String(), "rows": res.RowCount, "source_key": source,
+		"exam_id": examID.String(), "rows": res.RowCount, "source_key": source,
 	}); err != nil {
 		return err
 	}
@@ -215,17 +207,17 @@ func (r *Repository) ListCompetitionResultRows(ctx context.Context, resultID uui
 }
 
 // ListPublishedCompetitionResults returns the published results for the given
-// registrations in one query.
+// registrations, read via each registration's exam, in one query.
 func (r *Repository) ListPublishedCompetitionResults(ctx context.Context, registrationIDs []uuid.UUID) ([]model.StudentCompetitionResult, error) {
 	if len(registrationIDs) == 0 {
 		return nil, nil
 	}
 	rows, err := r.pool.Query(ctx,
 		`SELECT x.registration_id, x.score::float8, x.rank, x.award, x.certificate_url, r.published_at
-		FROM competition_result_row x
-		JOIN competition_result r ON r.id = x.result_id
-		WHERE x.registration_id = ANY($1) AND r.published_at IS NOT NULL
-		ORDER BY r.published_at`, registrationIDs)
+		FROM exam_registration reg
+		JOIN competition_result r ON r.exam_id = reg.exam_id AND r.published_at IS NOT NULL
+		JOIN competition_result_row x ON x.result_id = r.id AND x.registration_id = reg.id
+		WHERE reg.id = ANY($1)`, registrationIDs)
 	if err != nil {
 		return nil, err
 	}

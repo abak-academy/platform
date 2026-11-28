@@ -41,15 +41,15 @@ var competitionScoreRe = regexp.MustCompile(`^\d{1,6}(\.\d{1,2})?$`)
 
 var competitionColumns = map[string]bool{"participant_no": true, "score": true, "rank": true, "award": true, "certificate_url": true}
 
-func competitionKeyPrefix(productID uuid.UUID) string {
-	return fmt.Sprintf("competition-results/%s/", productID)
+func competitionKeyPrefix(examID uuid.UUID) string {
+	return fmt.Sprintf("competition-results/%s/", examID)
 }
 
-func (s *Service) PresignCompetitionResultUpload(ctx context.Context, productID uuid.UUID, filename string) (*PrivateUploadURL, error) {
+func (s *Service) PresignCompetitionResultUpload(ctx context.Context, examID uuid.UUID, filename string) (*PrivateUploadURL, error) {
 	if strings.TrimSpace(filename) == "" {
 		return nil, fmt.Errorf("%w: filename is required", ErrValidation)
 	}
-	return s.presignPrivatePut(ctx, competitionKeyPrefix(productID)+uuid.NewString()+"-"+competitionFileName(filename))
+	return s.presignPrivatePut(ctx, competitionKeyPrefix(examID)+uuid.NewString()+"-"+competitionFileName(filename))
 }
 
 // competitionFileName keeps ".." out of the key because the read guard rejects it.
@@ -57,8 +57,8 @@ func competitionFileName(filename string) string {
 	return strings.ReplaceAll(path.Base(strings.ReplaceAll(filename, "\\", "/")), "..", "_")
 }
 
-func (s *Service) readCompetitionResultObject(ctx context.Context, productID uuid.UUID, key string) ([]byte, error) {
-	if !strings.HasPrefix(key, competitionKeyPrefix(productID)) || strings.Contains(key, "..") {
+func (s *Service) readCompetitionResultObject(ctx context.Context, examID uuid.UUID, key string) ([]byte, error) {
+	if !strings.HasPrefix(key, competitionKeyPrefix(examID)) || strings.Contains(key, "..") {
 		return nil, ErrUploadNotFound
 	}
 	if s.storage == nil {
@@ -84,24 +84,24 @@ func (s *Service) readCompetitionResultObject(ctx context.Context, productID uui
 
 // evaluateCompetitionResult reads and validates the file; it is the single
 // source for both preview and apply so the preview is never trusted as state.
-func (s *Service) evaluateCompetitionResult(ctx context.Context, productID uuid.UUID, key string) ([]model.CompetitionResultInput, *model.CompetitionResultPreview, error) {
-	data, err := s.readCompetitionResultObject(ctx, productID, key)
+func (s *Service) evaluateCompetitionResult(ctx context.Context, examID uuid.UUID, key string) ([]model.CompetitionResultInput, *model.CompetitionResultPreview, error) {
+	data, err := s.readCompetitionResultObject(ctx, examID, key)
 	if err != nil {
 		return nil, nil, err
 	}
-	regs, err := s.storeRepo.GetCompetitionMatchData(ctx, productID)
+	examNo, regs, err := s.storeRepo.GetCompetitionMatchData(ctx, examID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, nil, ErrProductNotFound
+			return nil, nil, ErrExamNotFound
 		}
 		return nil, nil, err
 	}
-	inputs, rowErrs, err := parseCompetitionResultCSV(data, regs)
+	inputs, rowErrs, err := parseCompetitionResultCSV(data, examNo, regs)
 	if err != nil {
 		return nil, nil, err
 	}
 	preview := &model.CompetitionResultPreview{Matched: len(inputs), Errors: rowErrs}
-	existing, err := s.storeRepo.GetCompetitionResult(ctx, productID)
+	existing, err := s.storeRepo.GetCompetitionResult(ctx, examID)
 	if err != nil && !errors.Is(err, repository.ErrNotFound) {
 		return nil, nil, err
 	}
@@ -112,26 +112,26 @@ func (s *Service) evaluateCompetitionResult(ctx context.Context, productID uuid.
 	return inputs, preview, nil
 }
 
-func (s *Service) PreviewCompetitionResult(ctx context.Context, productID uuid.UUID, key string) (*model.CompetitionResultPreview, error) {
-	_, preview, err := s.evaluateCompetitionResult(ctx, productID, key)
+func (s *Service) PreviewCompetitionResult(ctx context.Context, examID uuid.UUID, key string) (*model.CompetitionResultPreview, error) {
+	_, preview, err := s.evaluateCompetitionResult(ctx, examID, key)
 	return preview, err
 }
 
 // ApplyCompetitionResult writes nothing and returns the preview when the file
 // has row errors; the caller reports those as 422.
-func (s *Service) ApplyCompetitionResult(ctx context.Context, productID uuid.UUID, actorID, key string) (*model.CompetitionResultPreview, *model.CompetitionResult, error) {
-	inputs, preview, err := s.evaluateCompetitionResult(ctx, productID, key)
+func (s *Service) ApplyCompetitionResult(ctx context.Context, examID uuid.UUID, actorID, key string) (*model.CompetitionResultPreview, *model.CompetitionResult, error) {
+	inputs, preview, err := s.evaluateCompetitionResult(ctx, examID, key)
 	if err != nil || len(preview.Errors) > 0 {
 		return preview, nil, err
 	}
-	result, err := s.storeRepo.ApplyCompetitionResult(ctx, productID, key, actorID, inputs)
+	result, err := s.storeRepo.ApplyCompetitionResult(ctx, examID, key, actorID, inputs)
 	if err != nil {
 		return nil, nil, err
 	}
 	return preview, result, nil
 }
 
-func parseCompetitionResultCSV(data []byte, regs map[int]map[int]repository.CompetitionRegistration) ([]model.CompetitionResultInput, []model.CompetitionRowError, error) {
+func parseCompetitionResultCSV(data []byte, examNumber int, regs map[int]repository.CompetitionRegistration) ([]model.CompetitionResultInput, []model.CompetitionRowError, error) {
 	r := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\xef\xbb\xbf")))
 	r.FieldsPerRecord = -1
 	header, err := r.Read()
@@ -188,12 +188,11 @@ func parseCompetitionResultCSV(data []byte, regs map[int]map[int]repository.Comp
 			fail(ReasonUnreadableParticipantNo)
 			continue
 		}
-		examRegs, ok := regs[examNo]
-		if !ok {
+		if examNo != examNumber {
 			fail(ReasonOtherExamParticipantNo)
 			continue
 		}
-		reg, ok := examRegs[participantNo]
+		reg, ok := regs[participantNo]
 		if !ok {
 			fail(ReasonUnknownParticipant)
 			continue
@@ -244,21 +243,21 @@ func parseCompetitionResultCSV(data []byte, regs map[int]map[int]repository.Comp
 	return inputs, rowErrs, nil
 }
 
-func (s *Service) GetCompetitionResult(ctx context.Context, productID uuid.UUID) (*model.CompetitionResult, error) {
-	res, err := s.storeRepo.GetCompetitionResult(ctx, productID)
+func (s *Service) GetCompetitionResult(ctx context.Context, examID uuid.UUID) (*model.CompetitionResult, error) {
+	res, err := s.storeRepo.GetCompetitionResult(ctx, examID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, nil
 	}
 	return res, err
 }
 
-func (s *Service) SetCompetitionResultPublished(ctx context.Context, productID uuid.UUID, publish bool, actorID string) (*model.CompetitionResult, error) {
-	res, err := s.storeRepo.SetCompetitionResultPublished(ctx, productID, publish, actorID)
+func (s *Service) SetCompetitionResultPublished(ctx context.Context, examID uuid.UUID, publish bool, actorID string) (*model.CompetitionResult, error) {
+	res, err := s.storeRepo.SetCompetitionResultPublished(ctx, examID, publish, actorID)
 	return res, mapCompetitionResultNotFound(err)
 }
 
-func (s *Service) DeleteCompetitionResult(ctx context.Context, productID uuid.UUID, actorID string) error {
-	return mapCompetitionResultNotFound(s.storeRepo.DeleteCompetitionResult(ctx, productID, actorID))
+func (s *Service) DeleteCompetitionResult(ctx context.Context, examID uuid.UUID, actorID string) error {
+	return mapCompetitionResultNotFound(s.storeRepo.DeleteCompetitionResult(ctx, examID, actorID))
 }
 
 func mapCompetitionResultNotFound(err error) error {
@@ -268,8 +267,8 @@ func mapCompetitionResultNotFound(err error) error {
 	return err
 }
 
-func (s *Service) ListCompetitionResultRows(ctx context.Context, productID uuid.UUID) ([]model.CompetitionResultRow, error) {
-	result, err := s.storeRepo.GetCompetitionResult(ctx, productID)
+func (s *Service) ListCompetitionResultRows(ctx context.Context, examID uuid.UUID) ([]model.CompetitionResultRow, error) {
+	result, err := s.storeRepo.GetCompetitionResult(ctx, examID)
 	if err != nil {
 		return nil, mapCompetitionResultNotFound(err)
 	}

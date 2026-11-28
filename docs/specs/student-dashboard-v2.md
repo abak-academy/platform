@@ -205,7 +205,7 @@ Any extension PR 2 makes to shared shell files is listed in its PR body with adm
 ## Non-goals
 
 - Restyling `/exam`, `/courses`, `/catalog`, `/cart`, `/profile` beyond what the PR 1 shell and primitives give.
-- Public Toko pages, guest cart, the public navbar's Dashboard button, and renaming the existing Toko page strings (`landing-v2.md`). Event-series backend and competition result upload (`event-series.md`); this PR only consumes `GET /event-series` and `competition_result`.
+- Public Toko pages, guest cart, the public navbar's Dashboard button, and renaming the existing Toko page strings (`landing-v2.md`). Event-series backend and the competition result import in the exam admin Results tab (`event-series.md`); this PR only consumes `GET /event-series` and `competition_result`.
 - Any backend, migration, or dashboard-API change (D3 and D6 settled on web-only options).
 - Student notifications backend; referral code for students; "Pesanan sudah diterima" button and access buttons from the prototype order page.
 - Server-side or text-selectable invoice PDF; invoice numbering scheme beyond `INV/<order id>`.
