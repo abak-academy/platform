@@ -36,7 +36,7 @@ describe("admin_exam capabilities", () => {
 });
 
 describe("competition results capability", () => {
-  it.each([["admin_store", true], ["super_admin", true], ["admin_school", false], ["student", false]])("%s -> %s", (role, ok) => {
+  it.each([["admin_store", false], ["admin_exam", true], ["super_admin", true], ["admin_school", false], ["student", false]])("%s -> %s", (role, ok) => {
     expect(hasCapability(role, "competition-results:write")).toBe(ok);
   });
 });

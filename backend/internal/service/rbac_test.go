@@ -323,7 +323,7 @@ func TestEventCapabilitiesPerRole(t *testing.T) {
 		groupings, results bool
 	}{
 		{RoleSuperAdmin, true, true},
-		{RoleAdminStore, true, true},
+		{RoleAdminStore, true, false},
 		{RoleAdminExam, true, true},
 		{RoleAdminSchool, false, false},
 		{RoleAffiliator, false, false},

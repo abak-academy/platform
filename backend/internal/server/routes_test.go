@@ -342,7 +342,7 @@ func TestRegisterRoutes_CompetitionResultGate(t *testing.T) {
 		{http.MethodGet, "/api/v1/admin/exams/not-a-uuid/competition-result/results"},
 		{http.MethodDelete, "/api/v1/admin/exams/not-a-uuid/competition-result"},
 	}
-	allowed := []string{service.RoleAdminStore, service.RoleAdminExam, service.RoleSuperAdmin}
+	allowed := []string{service.RoleAdminExam, service.RoleSuperAdmin}
 	roles := []string{service.RoleStudent, service.RoleAdminSchool, service.RoleAdminStore, service.RoleAdminExam, service.RoleSuperAdmin}
 
 	for _, p := range paths {
