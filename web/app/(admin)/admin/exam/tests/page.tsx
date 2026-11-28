@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search, Trash2 } from "lucide-react";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { TestModal } from "@/components/admin/TestModal";
 import { Button } from "@/components/ui/button";
@@ -26,12 +26,11 @@ import { cn } from "@/lib/utils";
 import {
   useAdminTests,
   useCreateTest,
-  useUpdateTest,
   useDeleteTest,
 } from "@/lib/hooks/admin-tests";
 import { useTopics } from "@/lib/hooks/admin-topics";
 import { useDebouncedValue } from "@/lib/hooks/use-debounced-value";
-import { useTranslation } from "@/lib/i18n";
+import { useTranslation, type I18nKey } from "@/lib/i18n";
 import type { Test, AdminCreateTestInput, AdminUpdateTestInput } from "@/lib/types";
 
 const ICON_BTN =
@@ -41,11 +40,11 @@ export default function TestsPage() {
   const { t } = useTranslation();
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingTest, setEditingTest] = useState<Test | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState("");
+  const [used, setUsed] = useState("");
   const [search, setSearch] = useState("");
   const q = useDebouncedValue(search).trim();
 
@@ -66,17 +65,19 @@ export default function TestsPage() {
     if (topic && !topicOptions.some((opt) => opt.name === topic)) setTopic("");
   }, [topic, topicsForSubject.data]);
 
-  const activeFilters = (subject ? 1 : 0) + (topic ? 1 : 0);
+  const activeFilters = (subject ? 1 : 0) + (topic ? 1 : 0) + (used ? 1 : 0);
   const activeChips = [
     ...(subject ? [{ key: "subject", label: `${t("tests_field_subject")}: ${subject}`, clear: () => setSubject("") }] : []),
     ...(topic ? [{ key: "topic", label: `${t("tests_field_topic")}: ${topic}`, clear: () => setTopic("") }] : []),
+    ...(used ? [{ key: "used", label: `${t("tests_filter_usage")}: ${t(used === "true" ? "tests_filter_usage_used" : "tests_filter_usage_unused")}`, clear: () => setUsed("") }] : []),
   ];
   const resetFilters = () => {
     setSubject("");
     setTopic("");
+    setUsed("");
   };
 
-  const filterKey = `${subject}\u0000${topic}\u0000${q}`;
+  const filterKey = `${subject}\u0000${topic}\u0000${used}\u0000${q}`;
   const [page, setPage] = useState<{ key: string; cursor?: string }>({ key: filterKey });
   const cursor = page.key === filterKey ? page.cursor : undefined;
   const [entries, setEntries] = useState<Test[]>([]);
@@ -92,17 +93,17 @@ export default function TestsPage() {
     subject: subject || undefined,
     topic: topic || undefined,
     q: q || undefined,
+    used: used === "" ? undefined : used === "true",
     cursor,
   });
   const tests = entries;
   const create = useCreateTest();
-  const update = useUpdateTest(editingTest?.id ?? "");
   const remove = useDeleteTest(deletingId ?? "");
 
   // Reset accumulated rows when filters change
   useEffect(() => {
     setEntries([]);
-  }, [subject, topic, q]);
+  }, [subject, topic, used, q]);
 
   // Accumulate pages
   useEffect(() => {
@@ -121,12 +122,6 @@ export default function TestsPage() {
   }
 
   function openCreate() {
-    setEditingTest(null);
-    setModalOpen(true);
-  }
-
-  function openEdit(test: Test) {
-    setEditingTest(test);
     setModalOpen(true);
   }
 
@@ -137,18 +132,10 @@ export default function TestsPage() {
 
   async function handleSubmit(input: AdminCreateTestInput | AdminUpdateTestInput) {
     try {
-      if (editingTest) {
-        await update.mutateAsync(input as AdminUpdateTestInput);
-        toast.success(t("tests_update_success"));
-      } else {
-        const created = await create.mutateAsync(input as AdminCreateTestInput);
-        toast.success(t("tests_create_success"));
-        setModalOpen(false);
-        router.push(`/admin/exam/tests/${created.id}`);
-        return;
-      }
+      const created = await create.mutateAsync(input as AdminCreateTestInput);
+      toast.success(t("tests_create_success"));
       setModalOpen(false);
-      setEditingTest(null);
+      router.push(`/admin/exam/tests/${created.id}`);
     } catch (e) {
       toast.error(errorMessage(e));
     }
@@ -211,6 +198,15 @@ export default function TestsPage() {
                     onChange={setTopic}
                     disabled={topicsForSubject.isLoading}
                   />
+                  <FilterSelect
+                    label={t("tests_filter_usage")}
+                    value={used}
+                    options={[
+                      { value: "true", label: t("tests_filter_usage_used") },
+                      { value: "false", label: t("tests_filter_usage_unused") },
+                    ]}
+                    onChange={setUsed}
+                  />
                 </FilterGrid>
                 <FilterPanelFooter
                   onReset={resetFilters}
@@ -254,7 +250,14 @@ export default function TestsPage() {
 
       {!isError && tests.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(255px,1fr))] gap-[18px]">
-          {tests.map((test) => (
+          {tests.map((test) => {
+            const contentLine = [
+              test.shared_material_html?.trim() && t("tests_content_material"),
+              test.audio_url && t("tests_content_audio"),
+            ]
+              .filter(Boolean)
+              .join(" · ");
+            return (
             <article
               key={test.id}
               data-testid="test-row"
@@ -262,19 +265,11 @@ export default function TestsPage() {
               className="md-card-outlined flex cursor-pointer flex-col gap-2.5 transition-transform duration-300 ease-spring hover:-translate-y-1"
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="flex flex-wrap gap-1.5">
+                <div data-testid="test-chips" className="flex flex-nowrap gap-2">
                   <Badge variant="mute">{t("tests_questions_n").replace("{n}", String(test.question_count ?? 0))}</Badge>
                   <Badge variant="sky">{t("tests_minutes_n").replace("{n}", String(test.duration_minutes))}</Badge>
                 </div>
                 <div className="-mt-1 -mr-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={() => openEdit(test)}
-                    aria-label={t("action_edit")}
-                    className={ICON_BTN}
-                  >
-                    <Pencil className="size-3.5" aria-hidden />
-                  </button>
                   <button
                     type="button"
                     onClick={() => handleDelete(test.id)}
@@ -300,20 +295,27 @@ export default function TestsPage() {
                   {test.title}
                 </Link>
               </h3>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <Badge variant="sky">{test.subject}</Badge>
-                <span className="text-xs text-ink-600">{test.topic}</span>
+              <div className="text-xs text-ink-600">
+                {[
+                  t("tests_section_label"),
+                  test.subject,
+                  test.topic,
+                  test.section_type && t(`tests_field_section_type_${test.section_type}` as I18nKey),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
               <div className="mt-auto text-[13px] leading-[1.55] text-ink-600">
+                {contentLine && <div data-testid="test-content">{contentLine}</div>}
                 <div>
-                  {test.shared_material_html?.trim()
-                    ? t("tests_content_material")
-                    : t("tests_content_no_material")}
+                  {test.exam_count
+                    ? t("tests_usage_n").replace("{n}", String(test.exam_count))
+                    : t("tests_usage_none")}
                 </div>
-                {test.audio_url && <div>{t("tests_content_audio")}</div>}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -346,9 +348,8 @@ export default function TestsPage() {
       <TestModal
         open={modalOpen}
         onOpenChange={setModalOpen}
-        test={editingTest}
         onSubmit={handleSubmit}
-        isPending={create.isPending || update.isPending}
+        isPending={create.isPending}
       />
     </div>
   );

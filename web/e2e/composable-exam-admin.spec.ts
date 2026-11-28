@@ -15,6 +15,8 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
         attachmentPayload = request.postDataJSON();
         presentation = "all_on_page";
         await route.fulfill({ status: 204 });
+      } else if (request.method() === "GET" && path.endsWith("/admin/tests/reading")) {
+        await route.fulfill({ json: { test: section, questions: [] } });
       } else if (request.method() === "PATCH" && path.endsWith("/admin/tests/reading")) {
         materialPayload = request.postDataJSON();
         await route.fulfill({ json: { ...section, ...materialPayload } });
@@ -39,11 +41,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 
     const overflow = await page.evaluate(() => Array.from(document.querySelectorAll("main *")).filter(el => el.getBoundingClientRect().right > innerWidth + 1).map(el => ({ tag: el.tagName, class: el.className, right: el.getBoundingClientRect().right })).slice(0, 8));
     expect(overflow).toEqual([]);
     await page.goto("/admin/exam/tests");
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.getByTestId("test-row").click();
+    await page.getByRole("tab", { name: "Materi & instruksi" }).click();
     const shared = page.getByRole("textbox", { name: "Materi bersama", exact: true });
     await expect(shared).toContainText("Shared passage");
     await shared.fill("");
-    await page.getByRole("dialog").getByRole("button", { name: /Simpan/ }).click();
+    await page.getByRole("button", { name: "Simpan pengaturan", exact: true }).click();
     await expect.poll(() => materialPayload?.shared_material_html).toBeNull();
     expect(materialPayload?.instructions_html).toBe("<p>Read carefully</p>");
   });
