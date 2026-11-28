@@ -274,7 +274,7 @@ func TestExam_AdminListTests_filters_by_used(t *testing.T) {
 
 	usedID := seedTest(t, env, "Used", "math", "algebra", 60)
 	freeID := seedTest(t, env, "Free", "math", "algebra", 60)
-	linkExamTest(t, env, seedExam(t, env, "E", "{}", nil), usedID, 0)
+	linkExamTest(t, env, seedExam(t, env, "E", "hidden", nil), usedID, 0)
 
 	for _, tc := range []struct{ query, want string }{{"used=true", usedID}, {"used=false", freeID}} {
 		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?"+tc.query, nil, token)
