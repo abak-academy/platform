@@ -50,8 +50,8 @@ vi.mock("@/components/admin/ExamResultsTab", () => ({
 }));
 
 vi.mock("@/components/admin/CompetitionResultPanel", () => ({
-  CompetitionResultPanel: ({ examId, canWrite }: { examId: string; canWrite: boolean }) => (
-    <div data-testid="competition-result-panel">{examId}:{String(canWrite)}</div>
+  CompetitionResultPanel: ({ examId }: { examId: string }) => (
+    <div data-testid="competition-result-panel">{examId}</div>
   ),
 }));
 
@@ -946,15 +946,15 @@ describe("ExamPackageDetailPage — role-scoped registrations tab", () => {
     render(<ExamPackageDetailPage />);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /^hasil$/i }));
     expect(screen.getByTestId("results-workspace-tab")).toBeInTheDocument();
-    expect(screen.getByTestId("competition-result-panel")).toHaveTextContent("exam-1:true");
+    expect(screen.getByTestId("competition-result-panel")).toHaveTextContent("exam-1");
   });
 
-  it("renders the panel read-only under the legacy results tab (admin_school)", async () => {
+  it("hides the competition panel from a non-writer (admin_school)", async () => {
     mockRole = "admin_school";
     render(<ExamPackageDetailPage />);
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /^hasil$/i }));
     expect(screen.getByTestId("exam-results-tab")).toBeInTheDocument();
-    expect(screen.getByTestId("competition-result-panel")).toHaveTextContent("exam-1:false");
+    expect(screen.queryByTestId("competition-result-panel")).toBeNull();
   });
 
   it("renders the CertificateDesignTab on the Sertifikat tab", async () => {

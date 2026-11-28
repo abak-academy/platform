@@ -42,7 +42,7 @@ function errorCopy(e: unknown, t: (k: I18nKey) => string): string {
 
 function ResultRows({ examId }: { examId: string }) {
   const { t } = useTranslation();
-  const { data, isLoading, isError } = useCompetitionResultRows(examId, true);
+  const { data, isLoading, isError } = useCompetitionResultRows(examId);
   if (isLoading)
     return <p className="text-sm text-muted-foreground">{t("cr_loading")}</p>;
   if (isError)
@@ -80,13 +80,7 @@ function ResultRows({ examId }: { examId: string }) {
   );
 }
 
-export function CompetitionResultPanel({
-  examId,
-  canWrite,
-}: {
-  examId: string;
-  canWrite: boolean;
-}) {
+export function CompetitionResultPanel({ examId }: { examId: string }) {
   const { t, lang } = useTranslation();
   const dateTime = (iso: string) =>
     new Date(iso).toLocaleString(lang === "id" ? "id-ID" : "en-US", {
@@ -188,7 +182,15 @@ export function CompetitionResultPanel({
 
       <section className="space-y-2" aria-label={t("cr_saved_title")}>
         <h3 className="text-sm font-semibold">{t("cr_saved_title")}</h3>
-        {!result && (
+        {query.isLoading && (
+          <p className="text-sm text-muted-foreground">{t("cr_loading")}</p>
+        )}
+        {query.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            {t("cr_err_load")}
+          </p>
+        )}
+        {query.isSuccess && !result && (
           <p className="text-sm text-muted-foreground">{t("cr_none")}</p>
         )}
         {result && (
@@ -214,9 +216,7 @@ export function CompetitionResultPanel({
                 >
                   {viewing ? t("cr_close") : t("cr_view")}
                 </Button>
-                {canWrite && (
-                  <>
-                    <Button
+                <Button
                       type="button"
                       size="sm"
                       variant="outline"
@@ -266,8 +266,6 @@ export function CompetitionResultPanel({
                         {t("cr_delete")}
                       </Button>
                     )}
-                  </>
-                )}
               </div>
             </div>
             {confirmDelete && (
@@ -280,8 +278,7 @@ export function CompetitionResultPanel({
         )}
       </section>
 
-      {canWrite && (
-        <section className="space-y-3" aria-label={t("cr_upload_title")}>
+      <section className="space-y-3" aria-label={t("cr_upload_title")}>
           <h3 className="text-sm font-semibold">{t("cr_upload_title")}</h3>
           <div className="space-y-1">
             <Label htmlFor="cr-file">{t("cr_file")}</Label>
@@ -356,8 +353,7 @@ export function CompetitionResultPanel({
               </Button>
             </div>
           )}
-        </section>
-      )}
+      </section>
     </section>
   );
 }

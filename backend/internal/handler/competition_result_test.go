@@ -205,6 +205,15 @@ func TestCompetitionResultHTTP_ForeignKeyAndRBAC(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, env.do(http.MethodPost, base+"/apply", fileBody(foreign)).Code)
 	assert.Equal(t, http.StatusBadRequest, env.do(http.MethodPost, base+"/preview", `{}`).Code)
 
+	unknown := uuid.New()
+	unknownKey := "competition-results/" + unknown.String() + "/x.csv"
+	env.objs[unknownKey] = "participant_no,score\n" + env.no(1) + ",5\n"
+	for _, op := range []string{"preview", "apply"} {
+		rec := env.do(http.MethodPost, "/admin/exams/"+unknown.String()+"/competition-result/"+op, fileBody(unknownKey))
+		assert.Equal(t, http.StatusNotFound, rec.Code, op)
+		assert.Contains(t, rec.Body.String(), "exam_not_found", op)
+	}
+
 	denied := newCompetitionEnv(t, "admin_school")
 	assert.Equal(t, http.StatusForbidden, denied.do(http.MethodGet, denied.base(), "").Code)
 }

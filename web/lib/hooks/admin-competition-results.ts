@@ -21,10 +21,9 @@ export function useCompetitionResult(examId: string | undefined) {
   });
 }
 
-export function useCompetitionResultRows(examId: string, enabled: boolean) {
+export function useCompetitionResultRows(examId: string) {
   return useQuery({
     queryKey: competitionResultKeys.rows(examId),
-    enabled,
     queryFn: () => authFetch<{ data: CompetitionResultRow[] }>(`${base(examId)}/results`),
   });
 }

@@ -34,7 +34,7 @@ type CompetitionRegistration struct {
 // GetCompetitionMatchData returns the exam's exam_number and its registrations
 // by participant_number (revoked ones included, flagged); ErrNotFound for no exam.
 func (r *Repository) GetCompetitionMatchData(ctx context.Context, examID uuid.UUID) (int, map[int]CompetitionRegistration, error) {
-	var examNo *int
+	var examNo int
 	if err := r.pool.QueryRow(ctx, `SELECT exam_number FROM exam WHERE id = $1`, examID).Scan(&examNo); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return 0, nil, ErrNotFound
@@ -57,10 +57,7 @@ func (r *Repository) GetCompetitionMatchData(ctx context.Context, examID uuid.UU
 		}
 		out[n] = reg
 	}
-	if examNo == nil {
-		return 0, out, rows.Err()
-	}
-	return *examNo, out, rows.Err()
+	return examNo, out, rows.Err()
 }
 
 func (r *Repository) GetCompetitionResult(ctx context.Context, examID uuid.UUID) (*model.CompetitionResult, error) {

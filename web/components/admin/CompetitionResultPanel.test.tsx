@@ -43,11 +43,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderDialog(canWrite = true) {
+function renderPanel() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <CompetitionResultPanel examId="e1" canWrite={canWrite} />
+      <CompetitionResultPanel examId="e1" />
     </QueryClientProvider>,
   );
 }
@@ -62,7 +62,7 @@ const paths = (m: string) => calls.filter((c) => c.method === m).map((c) => c.pa
 describe("CompetitionResultPanel", () => {
   it("renders the saved result from the exam id alone", async () => {
     saved = draft;
-    renderDialog();
+    renderPanel();
     expect(await screen.findByRole("heading", { name: "Impor hasil kompetisi" })).toBeTruthy();
     expect(screen.getByText(/tidak mengubah skor di platform/)).toBeTruthy();
     expect(await screen.findByText(/3 baris/)).toBeTruthy();
@@ -71,12 +71,12 @@ describe("CompetitionResultPanel", () => {
   });
 
   it("shows the empty state when nothing is saved", async () => {
-    renderDialog();
+    renderPanel();
     expect(await screen.findByText("Belum ada hasil kompetisi.")).toBeTruthy();
   });
 
   it("uploads, previews and applies with the right requests", async () => {
-    renderDialog();
+    renderPanel();
     uploadAndPreview();
     expect(await screen.findByText(/baris cocok/)).toBeTruthy();
     expect(fetchMock).toHaveBeenCalledWith("https://minio.test/put", expect.objectContaining({ method: "PUT" }));
@@ -91,21 +91,21 @@ describe("CompetitionResultPanel", () => {
 
   it("publishes a draft", async () => {
     saved = draft;
-    renderDialog();
+    renderPanel();
     fireEvent.click(await screen.findByRole("button", { name: "Tayangkan" }));
     await waitFor(() => expect(paths("POST")).toContain(`${URL_BASE}/publish`));
   });
 
   it("unpublishes a live result", async () => {
     saved = live;
-    renderDialog();
+    renderPanel();
     fireEvent.click(await screen.findByRole("button", { name: "Tarik" }));
     await waitFor(() => expect(paths("POST")).toContain(`${URL_BASE}/unpublish`));
   });
 
   it("lists the result rows on Lihat", async () => {
     saved = draft;
-    renderDialog();
+    renderPanel();
     fireEvent.click(await screen.findByRole("button", { name: "Lihat" }));
     expect(await screen.findByText("Siswa Uji")).toBeTruthy();
     expect(paths("GET")).toContain(`${URL_BASE}/results`);
@@ -121,7 +121,7 @@ describe("CompetitionResultPanel", () => {
       result_exists: false,
       result_published: false,
     });
-    renderDialog();
+    renderPanel();
     uploadAndPreview();
     expect(await screen.findByText("Nomor peserta tidak dikenal")).toBeTruthy();
     expect(screen.getByText("Skor tidak valid")).toBeTruthy();
@@ -136,7 +136,7 @@ describe("CompetitionResultPanel", () => {
     previewResult = () => {
       throw new ApiError("validation_failed", 'validation failed: missing_column "participant_no"', 422);
     };
-    renderDialog();
+    renderPanel();
     uploadAndPreview();
     expect((await screen.findByRole("alert")).textContent).toBe("CSV wajib punya kolom participant_no dan score.");
     expect(screen.queryByRole("button", { name: "Terapkan" })).toBeNull();
@@ -146,7 +146,7 @@ describe("CompetitionResultPanel", () => {
     previewResult = () => {
       throw new ApiError("boom", "raw english", 500);
     };
-    renderDialog();
+    renderPanel();
     uploadAndPreview();
     expect((await screen.findByRole("alert")).textContent).toBe("Terjadi kesalahan. Coba lagi.");
   });
@@ -160,7 +160,7 @@ describe("CompetitionResultPanel", () => {
         errors: [{ line: 4, participant_no: "ESOL-0042", reason: "unknown_participant" }],
       });
     };
-    renderDialog();
+    renderPanel();
     uploadAndPreview();
     await screen.findByText(/baris cocok/);
     fireEvent.click(screen.getByRole("button", { name: "Terapkan" }));
@@ -172,7 +172,7 @@ describe("CompetitionResultPanel", () => {
   it("warns when the replaced result is already published", async () => {
     saved = live;
     previewResult = () => ({ matched: 2, errors: [], result_exists: true, result_published: true });
-    renderDialog();
+    renderPanel();
     await screen.findByText("Tayang");
     uploadAndPreview();
     expect(await screen.findByText(/Hasil ini sudah tayang/)).toBeTruthy();
@@ -181,25 +181,30 @@ describe("CompetitionResultPanel", () => {
 
   it("deletes only after confirmation", async () => {
     saved = draft;
-    renderDialog();
+    renderPanel();
     fireEvent.click(await screen.findByRole("button", { name: "Hapus" }));
     expect(paths("DELETE")).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Ya, hapus" }));
     await waitFor(() => expect(paths("DELETE")).toEqual([URL_BASE]));
   });
 
-  it("shows only the read-only saved result to a non-writer", async () => {
-    saved = live;
-    renderDialog(false);
-    expect(await screen.findByText(/3 baris/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Lihat" })).toBeTruthy();
-    for (const name of ["Tayangkan", "Tarik", "Hapus", "Pratinjau"]) expect(screen.queryByRole("button", { name })).toBeNull();
-    expect(screen.queryByLabelText("Berkas CSV")).toBeNull();
-  });
-
   it("renders nothing when the result GET is forbidden", async () => {
     vi.spyOn(api, "authFetch").mockRejectedValue(new ApiError("forbidden", "no", 403));
-    renderDialog();
+    renderPanel();
     await waitFor(() => expect(screen.queryByRole("heading", { name: "Impor hasil kompetisi" })).toBeNull());
+  });
+
+  it("shows no empty text while loading", async () => {
+    vi.spyOn(api, "authFetch").mockReturnValue(new Promise(() => {}));
+    renderPanel();
+    expect(await screen.findByText("Memuat…")).toBeTruthy();
+    expect(screen.queryByText("Belum ada hasil kompetisi.")).toBeNull();
+  });
+
+  it("shows an error line when the GET fails with 500", async () => {
+    vi.spyOn(api, "authFetch").mockRejectedValue(new ApiError("boom", "x", 500));
+    renderPanel();
+    expect((await screen.findByRole("alert")).textContent).toBe("Gagal memuat hasil kompetisi.");
+    expect(screen.queryByText("Belum ada hasil kompetisi.")).toBeNull();
   });
 });

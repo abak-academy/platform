@@ -72,16 +72,12 @@ type competitionFixture struct {
 	actor    string
 }
 
-func seedCompetitionExam(t *testing.T, repo *repository.Repository, productID *uuid.UUID) (examID uuid.UUID, examNo int) {
+func seedCompetitionExam(t *testing.T, repo *repository.Repository) (examID uuid.UUID, examNo int) {
 	t.Helper()
 	ctx := context.Background()
 	require.NoError(t, repo.Pool().QueryRow(ctx,
 		`INSERT INTO exam (title, status, scheduled_at) VALUES ($1, 'draft', $2) RETURNING id, exam_number`,
 		"Competition Exam "+uniqueSuffix(), time.Date(2025, 6, 20, 9, 0, 0, 0, time.UTC)).Scan(&examID, &examNo))
-	if productID != nil {
-		_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, *productID, examID)
-		require.NoError(t, err)
-	}
 	return examID, examNo
 }
 
@@ -99,7 +95,7 @@ func seedCompetitionFixture(t *testing.T, repo *repository.Repository) competiti
 	t.Helper()
 	ctx := context.Background()
 	f := competitionFixture{regs: map[int]uuid.UUID{}, students: map[int]uuid.UUID{}, revoked: 4, actor: seedStudentDirect(t, ctx, repo, "Admin Uji", "adm-"+uniqueSuffix()).String()}
-	f.examID, f.examNo = seedCompetitionExam(t, repo, nil)
+	f.examID, f.examNo = seedCompetitionExam(t, repo)
 	for n := 1; n <= 4; n++ {
 		status := "registered"
 		if n == f.revoked {
@@ -163,7 +159,7 @@ func TestCompetitionResult_RejectsParticipantNumberOfAnotherExam(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
-	otherExam, otherNo := seedCompetitionExam(t, repo, nil)
+	otherExam, otherNo := seedCompetitionExam(t, repo)
 	_, err := repo.Pool().Exec(ctx,
 		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', 1)`,
 		f.students[1], otherExam, "TOK"+uniqueSuffix())
@@ -179,28 +175,41 @@ func TestCompetitionResult_RejectsParticipantNumberOfAnotherExam(t *testing.T) {
 	}, preview.Errors)
 }
 
-func TestCompetitionResult_ExamOnTwoProductsHasOneResultVisibleOnce(t *testing.T) {
+func TestCompetitionResult_PublishedOnOneExamIsVisibleOnlyOnThatRegistration(t *testing.T) {
 	svc, repo, store := newCompetitionSvc(t)
 	ctx := context.Background()
 	f := seedCompetitionFixture(t, repo)
+	examB, _ := seedCompetitionExam(t, repo)
+	_, err := repo.Pool().Exec(ctx,
+		`INSERT INTO exam_registration (student_id, exam_id, token, status, participant_number) VALUES ($1, $2, $3, 'registered', 1)`,
+		f.students[1], examB, "TOK"+uniqueSuffix())
+	require.NoError(t, err)
 	for i := 0; i < 2; i++ {
-		_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, seedCompetitionProduct(t, repo), f.examID)
-		require.NoError(t, err)
+		for _, examID := range []uuid.UUID{f.examID, examB} {
+			_, err := repo.Pool().Exec(ctx, `INSERT INTO product_exam (product_id, exam_id) VALUES ($1, $2)`, seedCompetitionProduct(t, repo), examID)
+			require.NoError(t, err)
+		}
 	}
 	key := store.put(f.examID, "a.csv", compHeader+f.no("", 1)+",90,1,,\n")
-	_, _, err := svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
+	_, _, err = svc.ApplyCompetitionResult(ctx, f.examID, f.actor, key)
 	require.NoError(t, err)
 	_, err = svc.SetCompetitionResultPublished(ctx, f.examID, true, f.actor)
 	require.NoError(t, err)
 
-	var results int
-	require.NoError(t, repo.Pool().QueryRow(ctx, `SELECT count(*) FROM competition_result WHERE exam_id = $1`, f.examID).Scan(&results))
-	assert.Equal(t, 1, results)
 	items, err := svc.GetExamRegistrations(ctx, f.students[1].String())
 	require.NoError(t, err)
-	require.Len(t, items, 1, "product attachments do not multiply registrations")
-	require.NotNil(t, items[0].CompetitionResult)
-	assert.Equal(t, 90.0, items[0].CompetitionResult.Score)
+	require.Len(t, items, 2, "product attachments do not multiply registrations")
+	for _, it := range items {
+		switch it.ExamID {
+		case f.examID:
+			require.NotNil(t, it.CompetitionResult)
+			assert.Equal(t, 90.0, it.CompetitionResult.Score)
+		case examB:
+			assert.Nil(t, it.CompetitionResult, "exam B has no published result")
+		default:
+			t.Fatalf("unexpected exam %s", it.ExamID)
+		}
+	}
 }
 
 func TestCompetitionResult_PreviewReportsEveryErrorKindWithItsLine(t *testing.T) {
@@ -411,7 +420,7 @@ func TestCompetitionResult_AuditsApplyPublishUnpublishDelete(t *testing.T) {
 	assert.ErrorIs(t, svc.DeleteCompetitionResult(ctx, f.examID, f.actor), ErrCompetitionResultNotFound)
 
 	rows, err := repo.Pool().Query(ctx,
-		`SELECT action, actor_id::text, (metadata->>'rows')::int, COALESCE(metadata->>'source_key','') FROM audit_log
+		`SELECT action, actor_id::text, (metadata->>'rows')::int, COALESCE(metadata->>'source_key',''), COALESCE(metadata->>'exam_id','') FROM audit_log
 		WHERE target_type = 'competition_result' AND target_id = $1 ORDER BY id`, result.ID.String())
 	require.NoError(t, err)
 	defer rows.Close()
@@ -419,15 +428,17 @@ func TestCompetitionResult_AuditsApplyPublishUnpublishDelete(t *testing.T) {
 		action, actor string
 		n             int
 		key           string
+		examID        string
 	}
 	var got []entry
 	for rows.Next() {
 		var e entry
-		require.NoError(t, rows.Scan(&e.action, &e.actor, &e.n, &e.key))
+		require.NoError(t, rows.Scan(&e.action, &e.actor, &e.n, &e.key, &e.examID))
 		got = append(got, e)
 	}
+	eid := f.examID.String()
 	assert.Equal(t, []entry{
-		{"apply", f.actor, 2, key}, {"publish", f.actor, 2, ""}, {"unpublish", f.actor, 2, ""}, {"delete", f.actor, 2, key},
+		{"apply", f.actor, 2, key, eid}, {"publish", f.actor, 2, "", eid}, {"unpublish", f.actor, 2, "", eid}, {"delete", f.actor, 2, key, eid},
 	}, got)
 }
 

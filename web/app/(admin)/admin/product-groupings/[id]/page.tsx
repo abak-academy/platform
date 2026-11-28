@@ -199,7 +199,6 @@ function MemberRow({
   onMove,
   onRemove,
   badges,
-  actions,
   children,
 }: {
   product: Product;
@@ -208,7 +207,6 @@ function MemberRow({
   onMove: (index: number, delta: number) => void;
   onRemove: (id: string) => void;
   badges?: React.ReactNode;
-  actions?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const { t } = useTranslation();
@@ -235,7 +233,6 @@ function MemberRow({
           {badges}
         </div>
         <div className="flex items-center gap-1">
-          {actions}
           <Button type="button" size="icon" variant="ghost" className="size-7" aria-label={t("grouping_move_up")} disabled={index === 0} onClick={() => onMove(index, -1)}>
             <ArrowUp className="size-4" aria-hidden />
           </Button>
@@ -255,7 +252,6 @@ function MemberRow({
 function EditionRow({
   groupingId,
   product,
-  actions,
   ...row
 }: {
   groupingId: string;
@@ -264,7 +260,6 @@ function EditionRow({
   total: number;
   onMove: (index: number, delta: number) => void;
   onRemove: (id: string) => void;
-  actions?: React.ReactNode;
 }) {
   const saveLevel = useUpdateEditionLevel(groupingId);
   const [stages, setStages] = useState<EventStage[]>(product.stages ?? []);
@@ -283,7 +278,6 @@ function EditionRow({
   return (
     <MemberRow
       product={product}
-      actions={actions}
       badges={
         <>
           {product.phase && (

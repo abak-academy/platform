@@ -1008,7 +1008,7 @@ function ExamPackageDetail() {
             canAccessResultsAndRegistrations ? (
               <>
                 <ExamResultsTab examId={id} />
-                <CompetitionResultPanel examId={id} canWrite={canWriteCompetitionResults} />
+                {canWriteCompetitionResults && <CompetitionResultPanel examId={id} />}
               </>
             ) : (
               <UnderMaintenance icon={ListChecks} title={t("admin_exam_detail_tab_results")} />
@@ -1017,7 +1017,7 @@ function ExamPackageDetail() {
           {tab === "results_workspace" && hasResultsWorkspace && (
             <>
               <ResultsWorkspaceTab examId={id} />
-              <CompetitionResultPanel examId={id} canWrite={canWriteCompetitionResults} />
+              {canWriteCompetitionResults && <CompetitionResultPanel examId={id} />}
             </>
           )}
           {tab === "grading" && (

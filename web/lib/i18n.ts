@@ -1442,6 +1442,7 @@ export const DICT = {
  
     cr_err_generic: "Terjadi kesalahan. Coba lagi.",
     cr_err_rows: "Gagal memuat baris hasil.",
+    cr_err_load: "Gagal memuat hasil kompetisi.",
     cr_err_upload_not_found: "Berkas tidak ditemukan. Unggah ulang CSV Anda.",
     cr_err_result_not_found: "Hasil kompetisi tidak ditemukan.",
     cr_err_invalid_csv: "Berkas bukan CSV yang valid.",
@@ -4880,6 +4881,7 @@ export const DICT = {
  
     cr_err_generic: "Something went wrong. Try again.",
     cr_err_rows: "Could not load the result rows.",
+    cr_err_load: "Could not load the competition result.",
     cr_err_upload_not_found: "File not found. Upload your CSV again.",
     cr_err_result_not_found: "Competition results not found.",
     cr_err_invalid_csv: "The file is not a valid CSV.",

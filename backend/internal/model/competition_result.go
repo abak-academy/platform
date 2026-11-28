@@ -34,7 +34,7 @@ type CompetitionResultRow struct {
 	CertificateURL *string   `json:"certificate_url"`
 
 	ParticipantNumber *int       `json:"-"`
-	ExamNumber        *int       `json:"-"`
+	ExamNumber        int        `json:"-"`
 	ExamPrefix        *string    `json:"-"`
 	DisplayDate       time.Time  `json:"-"`
 	ExamScheduledAt   *time.Time `json:"-"`

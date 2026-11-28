@@ -288,11 +288,7 @@ func (s *Service) ListCompetitionResultRows(ctx context.Context, examID uuid.UUI
 		if wib != nil {
 			date = date.In(wib)
 		}
-		examNo := 0
-		if rows[i].ExamNumber != nil {
-			examNo = *rows[i].ExamNumber
-		}
-		rows[i].ParticipantNo = formatParticipantNo(derefPrefix(rows[i].ExamPrefix), date, examNo, *rows[i].ParticipantNumber)
+		rows[i].ParticipantNo = formatParticipantNo(derefPrefix(rows[i].ExamPrefix), date, rows[i].ExamNumber, *rows[i].ParticipantNumber)
 	}
 	return rows, nil
 }
