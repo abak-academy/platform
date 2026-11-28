@@ -48,11 +48,17 @@ func TestMigration0080_CompetitionResultUpDownUp(t *testing.T) {
 		`INSERT INTO competition_result_row (result_id, registration_id, score, rank) VALUES ($1, $2, 90.5, 1)`, resultID, regID)
 	require.NoError(t, err)
 
-	_, err = pool.Exec(ctx, `DELETE FROM exam WHERE id = $1`, examID)
+	_, err = pool.Exec(ctx, `DELETE FROM exam_registration WHERE id = $1`, regID)
 	require.NoError(t, err)
 	var rows int
 	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM competition_result_row`).Scan(&rows))
-	require.Zero(t, rows, "deleting the exam cascades its result set and rows")
+	require.Zero(t, rows, "deleting the registration cascades its result row")
+
+	_, err = pool.Exec(ctx, `DELETE FROM exam WHERE id = $1`, examID)
+	require.NoError(t, err)
+	var sets int
+	require.NoError(t, pool.QueryRow(ctx, `SELECT count(*) FROM competition_result`).Scan(&sets))
+	require.Zero(t, sets, "deleting the exam cascades its result set")
 
 	applyMigrationFile(t, pool, "0080_competition_result.down.sql")
 	requireTableExists("competition_result", false)
