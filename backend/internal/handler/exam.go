@@ -17,6 +17,17 @@ import (
 	"akademi-bimbel/internal/service"
 )
 
+func parseUsedParam(v string) (*bool, error) {
+	if v == "" {
+		return nil, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil || (v != "true" && v != "false") {
+		return nil, fmt.Errorf("invalid used %q", v)
+	}
+	return &b, nil
+}
+
 func (h *Handler) AdminListTests(c echo.Context) error {
 	limit := 20
 	if l := c.QueryParam("limit"); l != "" {
@@ -24,10 +35,15 @@ func (h *Handler) AdminListTests(c echo.Context) error {
 			limit = n
 		}
 	}
+	used, err := parseUsedParam(c.QueryParam("used"))
+	if err != nil {
+		return badRequest(c, "invalid used")
+	}
 	filter := repository.TestFilter{
 		Subject: c.QueryParam("subject"),
 		Topic:   c.QueryParam("topic"),
 		Q:       c.QueryParam("q"),
+		Used:    used,
 		Cursor:  c.QueryParam("cursor"),
 		Limit:   limit,
 	}

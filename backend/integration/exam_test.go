@@ -267,6 +267,28 @@ func TestExam_AdminListTests_filters_by_subject(t *testing.T) {
 	assert.Equal(t, "biology", first["subject"])
 }
 
+func TestExam_AdminListTests_filters_by_used(t *testing.T) {
+	env := newTestEnv(t)
+	adminID := seedUser(t, env, "admin_exam", "active", false)
+	token := authToken(t, env, adminID, "admin_exam")
+
+	usedID := seedTest(t, env, "Used", "math", "algebra", 60)
+	freeID := seedTest(t, env, "Free", "math", "algebra", 60)
+	linkExamTest(t, env, seedExam(t, env, "E", "{}", nil), usedID, 0)
+
+	for _, tc := range []struct{ query, want string }{{"used=true", usedID}, {"used=false", freeID}} {
+		resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?"+tc.query, nil, token)
+		require.Equal(t, http.StatusOK, resp.StatusCode, "body=%v", out)
+		data := out["data"].([]any)
+		require.Len(t, data, 1, tc.query)
+		assert.Equal(t, tc.want, data[0].(map[string]any)["id"], tc.query)
+		assert.Equal(t, float64(1), out["total"], tc.query)
+	}
+
+	resp, out := doJSONBody(t, env, http.MethodGet, "/api/v1/admin/tests?used=maybe", nil, token)
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode, "body=%v", out)
+}
+
 func TestExam_AdminGetTest_returns_TestDetail(t *testing.T) {
 	env := newTestEnv(t)
 	adminID := seedUser(t, env, "admin_exam", "active", false)

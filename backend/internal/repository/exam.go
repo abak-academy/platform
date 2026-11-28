@@ -131,6 +131,7 @@ type TestFilter struct {
 	Subject string
 	Topic   string
 	Q       string
+	Used    *bool
 	Cursor  string
 	Limit   int
 }
@@ -155,6 +156,13 @@ func testFilterSQL(filter TestFilter, argIdx int) (string, []interface{}, int) {
 		query += fmt.Sprintf(` AND t.title ILIKE '%%' || $%d || '%%'`, argIdx)
 		args = append(args, filter.Q)
 		argIdx++
+	}
+	if filter.Used != nil {
+		if *filter.Used {
+			query += ` AND EXISTS (SELECT 1 FROM exam_test et WHERE et.test_id = t.id)`
+		} else {
+			query += ` AND NOT EXISTS (SELECT 1 FROM exam_test et WHERE et.test_id = t.id)`
+		}
 	}
 	return query, args, argIdx
 }
