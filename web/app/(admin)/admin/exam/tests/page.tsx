@@ -265,7 +265,7 @@ export default function TestsPage() {
               className="md-card-outlined flex cursor-pointer flex-col gap-2.5 transition-transform duration-300 ease-spring hover:-translate-y-1"
             >
               <div className="flex items-start justify-between gap-2">
-                <div data-testid="test-chips" className="flex flex-nowrap gap-1.5">
+                <div data-testid="test-chips" className="flex flex-nowrap gap-2">
                   <Badge variant="mute">{t("tests_questions_n").replace("{n}", String(test.question_count ?? 0))}</Badge>
                   <Badge variant="sky">{t("tests_minutes_n").replace("{n}", String(test.duration_minutes))}</Badge>
                 </div>
